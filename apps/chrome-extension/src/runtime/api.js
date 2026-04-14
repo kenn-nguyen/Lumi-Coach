@@ -113,16 +113,24 @@ export async function fetchResumeById(resumeId) {
   return payload;
 }
 
-export async function patchResume(resumeId, resumeData) {
+export async function patchResume(resumeId, resumeData, generationFeedback = null) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}`;
-  logInfo('ResumeApi', 'Patching resume.', { resumeId, endpoint });
+  const requestPayload = {
+    resume_data: resumeData,
+    generation_feedback: generationFeedback,
+  };
+  logInfo('ResumeApi', 'Patching resume.', {
+    resumeId,
+    endpoint,
+    hasGenerationFeedback: Boolean(generationFeedback),
+  });
   let response;
   try {
     response = await fetch(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(resumeData),
+      body: JSON.stringify(requestPayload),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

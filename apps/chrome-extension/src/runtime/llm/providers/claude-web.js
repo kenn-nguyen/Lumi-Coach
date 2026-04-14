@@ -1,0 +1,88 @@
+import { runWebAutomationPrompt } from './web-automation.js';
+
+const CLAUDE_WEB_CONFIG = {
+  providerLabel: 'Claude',
+  scope: 'ClaudeWebAutomation',
+  defaultTargetUrl: 'https://claude.ai/new?incognito',
+  popupWidth: 980,
+  popupHeight: 900,
+  popupTop: 40,
+  popupLeft: 40,
+  responseIdleTimeoutMs: 90000,
+  responseFirstTokenTimeoutMs: 90000,
+  urlMatchers: ['https://claude.ai/'],
+  inputSelectors: [
+    '#main-content [contenteditable="true"][role="textbox"]',
+    '#main-content [contenteditable="true"]',
+    '#main-content textarea',
+    'div[contenteditable="true"][role="textbox"]',
+    'div[contenteditable="true"].ProseMirror',
+    'div.ProseMirror[contenteditable="true"]',
+    'textarea[placeholder*="Message"]',
+    'textarea[placeholder*="Talk"]',
+    'form [contenteditable="true"]',
+    'form textarea',
+  ],
+  sendButtonSelectors: [
+    'button[aria-label*="Send"]',
+    'button[data-testid*="send"]',
+    'form button[type="submit"]',
+    'button[type="submit"]',
+  ],
+  stopButtonSelectors: [
+    'button[aria-label*="Stop"]',
+    'button[data-testid*="stop"]',
+  ],
+  primaryAssistantTextSelectors: [
+    '#main-content .overflow-x-auto > pre > code',
+    '#main-content pre code',
+    '[data-testid*="assistant"] pre code',
+    '[data-testid*="message"] pre code',
+    '[data-testid*="chat-message"] pre code',
+    'main pre code',
+  ],
+  assistantTextSelectors: [
+    '#main-content pre code',
+    '#main-content .overflow-x-auto > pre > code',
+    '#main-content [data-is-streaming]',
+    '#main-content .whitespace-pre-wrap',
+    '#main-content .font-claude-message',
+    '#main-content .prose',
+    '[data-testid*="assistant"] .font-claude-message',
+    '[data-testid*="assistant"] [data-is-streaming]',
+    '[data-testid*="assistant"] pre code',
+    '[data-testid*="message"] .font-claude-message',
+    '[data-testid*="message"] .prose',
+    '[data-testid*="message"] pre code',
+    '[data-testid*="chat-message"] .font-claude-message',
+    '[data-testid*="chat-message"] pre code',
+    'main .font-claude-message',
+    'main .prose',
+    'main pre code',
+  ],
+  loginSelectors: [
+    'a[href*="/login"]',
+    'button[aria-label*="Log in"]',
+    'button[aria-label*="Sign in"]',
+    'input[type="email"]',
+  ],
+  authRequiredMessage: 'Please log into Claude in a normal browser tab first.',
+  openPopupMessage: 'Opening Claude popup.',
+  popupCreatedMessage: 'Claude popup created.',
+  waitForTabMessage: 'Waiting for Claude tab to finish loading.',
+  tabReadyMessage: 'Claude tab ready.',
+  waitForHydrationMessage: 'Waiting for Claude page hydration.',
+  injectRunnerMessage: 'Injecting Claude prompt runner.',
+  progressMessage: 'Claude prompt runner in progress.',
+  retryMessage: 'Retrying prompt after submit-start failure.',
+  partialSuccessMessage: 'Using parseable partial Claude response after timeout.',
+  partialRetrySuccessMessage: 'Using parseable partial Claude response after retry timeout.',
+};
+
+export async function runClaudeWebPrompt(prompt, options = {}) {
+  const targetUrl = options.profile?.targetUrl || options.targetUrl || CLAUDE_WEB_CONFIG.defaultTargetUrl;
+  return runWebAutomationPrompt(prompt, CLAUDE_WEB_CONFIG, {
+    ...options,
+    targetUrl,
+  });
+}

@@ -720,6 +720,12 @@
       "failedToLoad": "Falha ao carregar dados do currículo.",
       "failedToDelete": "Falha ao excluir currículo. Por favor, tente novamente."
     },
+    "feedback": {
+      "summaryLabel": "Resumo",
+      "prosLabel": "Pontos fortes",
+      "consLabel": "Pontos fracos",
+      "caveatsLabel": "Observações"
+    },
     "titlePlaceholder": "Digite o título do currículo..."
   },
   "preview": {

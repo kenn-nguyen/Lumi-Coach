@@ -12,6 +12,7 @@ import {
   deleteResume,
   retryProcessing,
   renameResume,
+  type GenerationFeedback,
 } from '@/lib/api/resume';
 import { useStatusCache } from '@/lib/context/status-cache';
 import { ArrowLeft, Edit, Download, Loader2, AlertCircle, Sparkles, Pencil } from 'lucide-react';
@@ -44,6 +45,7 @@ export default function ResumeViewerPage() {
   const [resumeTitle, setResumeTitle] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState('');
+  const [generationFeedback, setGenerationFeedback] = useState<GenerationFeedback | null>(null);
 
   const resumeId = params?.id as string;
 
@@ -67,6 +69,7 @@ export default function ResumeViewerPage() {
 
         // Capture title for editable display (always set to clear stale state)
         setResumeTitle(data.title ?? null);
+        setGenerationFeedback(data.generation_feedback ?? null);
 
         // Prioritize processed_resume if available (structured JSON)
         if (data.processed_resume) {
@@ -149,6 +152,7 @@ export default function ResumeViewerPage() {
   const reloadResumeData = async () => {
     try {
       const data = await fetchResume(resumeId);
+      setGenerationFeedback(data.generation_feedback ?? null);
       if (data.processed_resume) {
         setResumeData(data.processed_resume as ResumeData);
         setError(null);
@@ -212,6 +216,28 @@ export default function ResumeViewerPage() {
   const handleDownloadSuccessConfirm = () => {
     setShowDownloadSuccessDialog(false);
   };
+
+  const feedbackRows = [
+    {
+      key: 'pros',
+      label: t('resumeViewer.feedback.prosLabel'),
+      items: generationFeedback?.pros ?? [],
+    },
+    {
+      key: 'cons',
+      label: t('resumeViewer.feedback.consLabel'),
+      items: generationFeedback?.cons ?? [],
+    },
+    {
+      key: 'caveats',
+      label: t('resumeViewer.feedback.caveatsLabel'),
+      items: generationFeedback?.caveats ?? [],
+    },
+  ].filter((row) => row.items.length > 0);
+
+  const hasGenerationFeedback = Boolean(
+    generationFeedback?.summary?.trim() || feedbackRows.length > 0
+  );
 
   if (loading) {
     return (
@@ -343,6 +369,35 @@ export default function ResumeViewerPage() {
                 />
               </button>
             )}
+          </div>
+        )}
+
+        {hasGenerationFeedback && (
+          <div className="mb-6 no-print">
+            <div className="border-2 border-black bg-white px-5 py-3 shadow-[4px_4px_0px_0px_#000000]">
+              {generationFeedback?.summary?.trim() && (
+                <div className="mb-2 grid gap-1 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
+                  <p className="font-sans text-sm font-bold text-black">
+                    {t('resumeViewer.feedback.summaryLabel')}
+                  </p>
+                  <p className="text-sm leading-5 text-black">
+                    {generationFeedback.summary.trim()}
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1.5 text-sm leading-5 text-black">
+                {feedbackRows.map((row) => (
+                  <div key={row.key} className="grid gap-1 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
+                    <p className="font-bold">{row.label}</p>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {row.items.map((item, index) => (
+                        <li key={`${row.key}-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

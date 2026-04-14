@@ -27,6 +27,7 @@ def mock_resume_record(sample_resume):
         "parent_id": None,
         "processed_data": sample_resume,
         "processing_status": "ready",
+        "generation_feedback": None,
         "cover_letter": None,
         "outreach_message": None,
         "title": None,
@@ -103,6 +104,70 @@ class TestDeleteResume:
         async with client:
             resp = await client.delete("/api/v1/resumes/nonexistent")
         assert resp.status_code == 404
+
+
+class TestUpdateResume:
+    """PATCH /api/v1/resumes/{resume_id}"""
+
+    @patch("app.routers.resumes.db")
+    async def test_update_resume_accepts_legacy_resume_payload(
+        self, mock_db, client, mock_resume_record, sample_resume
+    ):
+        updated_record = {
+            **mock_resume_record,
+            "content": '{"summary": "updated"}',
+            "content_type": "json",
+            "processed_data": sample_resume,
+            "generation_feedback": {
+                "summary": "Keep this existing summary.",
+                "pros": ["Strong scope"],
+                "cons": [],
+                "caveats": [],
+            },
+        }
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_db.update_resume.return_value = updated_record
+
+        async with client:
+            resp = await client.patch("/api/v1/resumes/res-123", json=sample_resume)
+
+        assert resp.status_code == 200
+        mock_db.update_resume.assert_called_once()
+        updates = mock_db.update_resume.call_args.args[1]
+        assert updates["processed_data"] == sample_resume
+        assert updates["generation_feedback"] is None
+
+    @patch("app.routers.resumes.db")
+    async def test_update_resume_accepts_generation_feedback_wrapper(
+        self, mock_db, client, mock_resume_record, sample_resume
+    ):
+        feedback = {
+            "summary": "Strong fit for product leadership roles.",
+            "pros": ["Clear ownership", "Good cross-functional scope"],
+            "cons": ["Metrics could be tighter"],
+            "caveats": ["Verify claims before applying"],
+        }
+        updated_record = {
+            **mock_resume_record,
+            "content": '{"summary": "updated"}',
+            "content_type": "json",
+            "processed_data": sample_resume,
+            "generation_feedback": feedback,
+        }
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_db.update_resume.return_value = updated_record
+
+        async with client:
+            resp = await client.patch(
+                "/api/v1/resumes/res-123",
+                json={"resume_data": sample_resume, "generation_feedback": feedback},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["generation_feedback"] == feedback
+        updates = mock_db.update_resume.call_args.args[1]
+        assert updates["generation_feedback"] == feedback
 
 
 class TestCloneResume:

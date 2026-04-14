@@ -4,19 +4,21 @@ function $(id) {
 
 const masterResumeContextInput = $('master-resume-context-input');
 const storyboardInput = $('storyboard-input');
-const prompt1TemplateInput = $('prompt1-template-input');
-const prompt2TemplateInput = $('prompt2-template-input');
-const prompt3TemplateInput = $('prompt3-template-input');
 const masterResumeContextStatus = $('master-resume-context-status');
 const storyboardStatus = $('storyboard-status');
-const prompt1TemplateStatus = $('prompt1-template-status');
-const prompt2TemplateStatus = $('prompt2-template-status');
-const prompt3TemplateStatus = $('prompt3-template-status');
-const chatGptUrlInput = $('chatgpt-url-input');
-const saveChatGptUrlButton = $('save-chatgpt-url-button');
+const promptProfileButtons = Array.from(document.querySelectorAll('[data-prompt-profile-id]'));
+const llmProfileSelect = $('llm-profile-select');
+const providerUrlRow = $('provider-url-row');
+const providerUrlLabel = $('provider-url-label');
+const providerUrlInput = $('provider-url-input');
+const providerApiEndpointRow = $('provider-api-endpoint-row');
+const providerApiEndpointInput = $('provider-api-endpoint-input');
+const providerModelRow = $('provider-model-row');
+const providerModelInput = $('provider-model-input');
+const providerApiKeyRow = $('provider-api-key-row');
+const providerApiKeyInput = $('provider-api-key-input');
 const appUrlInput = $('app-url-input');
 const apiUrlInput = $('api-url-input');
-const saveRuntimeUrlsButton = $('save-runtime-urls-button');
 const resetLocalDataButton = $('reset-local-data-button');
 const resetDefaultSettingsButton = $('reset-default-settings-button');
 const historyList = $('history-list');
@@ -28,6 +30,27 @@ const historyPrevPage = $('history-prev-page');
 const historyNextPage = $('history-next-page');
 const historyPageIndicator = $('history-page-indicator');
 
+const PROMPT_FILE_DESCRIPTORS = [
+  { templateName: 'prompt1', label: 'Prompt 1' },
+  { templateName: 'prompt2', label: 'Prompt 2' },
+  { templateName: 'prompt3', label: 'Prompt 3' },
+  { templateName: 'systemPrompt', label: 'System prompt' },
+];
+
+const promptFileControls = Object.fromEntries(
+  PROMPT_FILE_DESCRIPTORS.map(({ templateName, label }) => [
+    templateName,
+    {
+      label,
+      item: document.querySelector(`.prompt-file-item[data-template-name="${templateName}"]`),
+      button: $(`prompt-file-button-${templateName}`),
+      text: $(`prompt-file-text-${templateName}`),
+      remove: $(`prompt-file-remove-${templateName}`),
+      input: $(`prompt-file-input-${templateName}`),
+    },
+  ])
+);
+
 const historyUiState = {
   search: '',
   sortField: 'generatedAt',
@@ -37,6 +60,10 @@ const historyUiState = {
 };
 
 let latestHistory = [];
+let latestLlmSettings = null;
+let latestPromptTemplateProfiles = null;
+let providerSettingsSaveTimer = null;
+let runtimeUrlsSaveTimer = null;
 
 async function sendMessage(type, payload) {
   return chrome.runtime.sendMessage({ type, payload });
@@ -123,13 +150,222 @@ function renderHistory(history) {
   historyNextPage.disabled = historyUiState.page >= totalPages;
 }
 
+function ensureProfileOptions(settings) {
+  const profiles = Object.values(settings?.profiles || {}).sort((left, right) =>
+    (left?.label || '').localeCompare(right?.label || '', undefined, { sensitivity: 'base' })
+  );
+  const nextOptionMarkup = profiles
+    .map((profile) => `<option value="${profile.id}">${profile.label}</option>`)
+    .join('');
+
+  if (llmProfileSelect.innerHTML !== nextOptionMarkup) {
+    llmProfileSelect.innerHTML = nextOptionMarkup;
+  }
+}
+
+function getActiveProfile(settings) {
+  if (!settings?.activeProfileId || !settings?.profiles) {
+    return null;
+  }
+  return settings.profiles[settings.activeProfileId] ?? null;
+}
+
+function renderLlmProfile(settings) {
+  latestLlmSettings = settings || null;
+  ensureProfileOptions(settings || {});
+  const activeProfile = getActiveProfile(settings);
+  if (!activeProfile) {
+    llmProfileSelect.value = '';
+    renderProviderSettings(null);
+    return;
+  }
+
+  llmProfileSelect.value = activeProfile.id;
+  renderProviderSettings(activeProfile);
+}
+
+function renderProviderSettings(profile) {
+  const isWeb = profile?.mode === 'web_automation';
+  const isApi = profile?.mode === 'api';
+
+  const setRowVisible = (node, visible) => {
+    if (!node) return;
+    node.hidden = !visible;
+    node.style.display = visible ? 'grid' : 'none';
+  };
+
+  setRowVisible(providerUrlRow, isWeb);
+  setRowVisible(providerApiEndpointRow, isApi);
+  setRowVisible(providerModelRow, isApi);
+  setRowVisible(providerApiKeyRow, isApi);
+
+  if (!profile) {
+    providerUrlInput.value = '';
+    providerApiEndpointInput.value = '';
+    providerModelInput.value = '';
+    providerApiKeyInput.value = '';
+    providerUrlLabel.textContent = 'Provider URL';
+    return;
+  }
+
+  if (isWeb) {
+    providerUrlLabel.textContent = `${profile.vendor.charAt(0).toUpperCase()}${profile.vendor.slice(1)} URL`;
+    providerUrlInput.value = profile.targetUrl || '';
+    providerUrlInput.placeholder = profile.targetUrl || 'https://';
+  } else {
+    providerUrlInput.value = '';
+  }
+
+  if (isApi) {
+    providerApiEndpointInput.value = profile.apiBaseUrl || '';
+    providerApiEndpointInput.placeholder = profile.apiBaseUrl || 'https://api.example.com';
+    providerModelInput.value = profile.model || '';
+    providerModelInput.placeholder = profile.model || 'model-name';
+    providerApiKeyInput.value = profile.apiKey || '';
+    providerApiKeyInput.placeholder = 'sk-...';
+  } else {
+    providerApiEndpointInput.value = '';
+    providerModelInput.value = '';
+    providerApiKeyInput.value = '';
+  }
+}
+
+function getActivePromptTemplateProfile(assets) {
+  const promptTemplateProfiles = assets?.promptTemplateProfiles;
+  if (!promptTemplateProfiles?.activeProfileId || !promptTemplateProfiles?.profiles) {
+    return null;
+  }
+  return promptTemplateProfiles.profiles[promptTemplateProfiles.activeProfileId] ?? null;
+}
+
+function renderPromptProfileButtons(promptTemplateProfiles) {
+  latestPromptTemplateProfiles = promptTemplateProfiles || null;
+  const activeProfileId = promptTemplateProfiles?.activeProfileId ?? 'profile1';
+  promptProfileButtons.forEach((button) => {
+    const isActive = button.dataset.promptProfileId === activeProfileId;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function renderPromptFileTiles(activePromptProfile) {
+  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label }) => {
+    const controls = promptFileControls[templateName];
+    if (!controls?.item || !controls.button || !controls.text || !controls.remove || !controls.input) {
+      return;
+    }
+
+    const asset = activePromptProfile?.[`${templateName}TemplateAsset`] ?? null;
+    const filename = asset?.filename?.trim() || '';
+    controls.text.textContent = filename || '...upload';
+    controls.button.title = filename || '';
+    controls.item.classList.toggle('has-file', Boolean(filename));
+    controls.item.classList.toggle('is-empty', !filename);
+    controls.remove.hidden = !filename;
+    controls.remove.setAttribute('aria-label', `Remove ${label} file`);
+    controls.input.value = '';
+  });
+}
+
+function getSelectedProfileDraft() {
+  if (!latestLlmSettings?.profiles) return null;
+  return latestLlmSettings.profiles[llmProfileSelect.value] ?? null;
+}
+
+function updateLocalProfileSettings(profileId, profileUpdates) {
+  if (!latestLlmSettings?.profiles?.[profileId]) return;
+  latestLlmSettings = {
+    ...latestLlmSettings,
+    activeProfileId: profileId,
+    profiles: {
+      ...latestLlmSettings.profiles,
+      [profileId]: {
+        ...latestLlmSettings.profiles[profileId],
+        ...profileUpdates,
+      },
+    },
+  };
+}
+
+async function persistProviderSelection(profileId) {
+  const response = await sendMessage('SAVE_LLM_SETTINGS', {
+    activeProfileId: profileId,
+    profileUpdates: null,
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error ?? 'Failed to save provider selection.');
+  }
+  if (response.llmSettings) {
+    latestLlmSettings = response.llmSettings;
+  }
+}
+
+async function persistSelectedProviderSettings() {
+  const activeProfile = getSelectedProfileDraft();
+  if (!activeProfile) return;
+
+  const profileUpdates = activeProfile.mode === 'web_automation'
+    ? {
+        targetUrl: providerUrlInput.value.trim(),
+      }
+    : {
+        apiBaseUrl: providerApiEndpointInput.value.trim(),
+        model: providerModelInput.value.trim(),
+        apiKey: providerApiKeyInput.value.trim(),
+      };
+
+  updateLocalProfileSettings(activeProfile.id, profileUpdates);
+  const response = await sendMessage('SAVE_LLM_SETTINGS', {
+    activeProfileId: activeProfile.id,
+    profileUpdates,
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error ?? 'Failed to save provider settings.');
+  }
+  if (response.llmSettings) {
+    latestLlmSettings = response.llmSettings;
+  }
+}
+
+function scheduleProviderSettingsSave() {
+  if (providerSettingsSaveTimer) {
+    window.clearTimeout(providerSettingsSaveTimer);
+  }
+  providerSettingsSaveTimer = window.setTimeout(() => {
+    providerSettingsSaveTimer = null;
+    persistSelectedProviderSettings().catch((error) => {
+      console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave provider settings.', error);
+      renderLlmProfile(latestLlmSettings);
+    });
+  }, 400);
+}
+
+async function persistRuntimeUrls() {
+  const appUrl = appUrlInput.value.trim();
+  const apiUrl = apiUrlInput.value.trim();
+  const response = await sendMessage('SAVE_RUNTIME_URLS', { appUrl, apiUrl });
+  if (!response?.ok) {
+    throw new Error(response?.error ?? 'Failed to save app URLs.');
+  }
+}
+
+function scheduleRuntimeUrlsSave() {
+  if (runtimeUrlsSaveTimer) {
+    window.clearTimeout(runtimeUrlsSaveTimer);
+  }
+  runtimeUrlsSaveTimer = window.setTimeout(() => {
+    runtimeUrlsSaveTimer = null;
+    persistRuntimeUrls().catch((error) => {
+      console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave runtime URLs.', error);
+      void refresh();
+    });
+  }, 400);
+}
+
 function renderAssets(assets) {
   const masterContext = assets?.masterResumeContextAsset;
   const storyboard = assets?.storyboardAsset;
-  const prompt1Template = assets?.prompt1TemplateAsset;
-  const prompt2Template = assets?.prompt2TemplateAsset;
-  const prompt3Template = assets?.prompt3TemplateAsset;
-  const chatGptUrl = assets?.chatGptTargetUrl;
+  const activePromptProfile = getActivePromptTemplateProfile(assets);
   const appUrl = assets?.appOrigin;
   const apiUrl = assets?.apiOrigin;
   masterResumeContextStatus.textContent = masterContext
@@ -138,16 +374,9 @@ function renderAssets(assets) {
   storyboardStatus.textContent = storyboard
     ? storyboard.filename
     : '';
-  prompt1TemplateStatus.textContent = prompt1Template
-    ? prompt1Template.filename
-    : '';
-  prompt2TemplateStatus.textContent = prompt2Template
-    ? prompt2Template.filename
-    : '';
-  prompt3TemplateStatus.textContent = prompt3Template
-    ? prompt3Template.filename
-    : '';
-  chatGptUrlInput.value = chatGptUrl || '';
+  renderPromptProfileButtons(assets?.promptTemplateProfiles);
+  renderPromptFileTiles(activePromptProfile);
+  renderLlmProfile(assets?.llmSettings);
   appUrlInput.value = appUrl || '';
   apiUrlInput.value = apiUrl || '';
 }
@@ -212,58 +441,177 @@ storyboardInput.addEventListener('change', async (event) => {
   );
 });
 
-function bindPromptTemplateUpload(inputNode, statusNode, templateName) {
-  inputNode.addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    await saveTextAsset(
-      file,
-      'SAVE_PROMPT_TEMPLATE',
-      (selectedFile, content) => ({
-        templateName,
-        filename: selectedFile.name,
-        content,
-      }),
-      statusNode,
-      `Failed to save ${templateName} template.`
-    );
-  });
-}
-
-bindPromptTemplateUpload(prompt1TemplateInput, prompt1TemplateStatus, 'prompt1');
-bindPromptTemplateUpload(prompt2TemplateInput, prompt2TemplateStatus, 'prompt2');
-bindPromptTemplateUpload(prompt3TemplateInput, prompt3TemplateStatus, 'prompt3');
-
-saveChatGptUrlButton.addEventListener('click', async () => {
-  const url = chatGptUrlInput.value.trim();
-  saveChatGptUrlButton.disabled = true;
-  try {
-    const response = await sendMessage('SAVE_CHATGPT_URL', { url });
-    if (!response?.ok) {
-      throw new Error(response?.error ?? 'Failed to save ChatGPT URL.');
+promptProfileButtons.forEach((button) => {
+  button.addEventListener('click', async () => {
+    const profileId = button.dataset.promptProfileId;
+    if (!profileId || latestPromptTemplateProfiles?.activeProfileId === profileId) {
+      return;
     }
-    await refresh();
-  } catch (error) {
-    console.error('[ResumeMatcherExt][AdminBoard] Failed to save ChatGPT URL.', error);
-  } finally {
-    saveChatGptUrlButton.disabled = false;
-  }
+    const previousProfiles = latestPromptTemplateProfiles
+      ? JSON.parse(JSON.stringify(latestPromptTemplateProfiles))
+      : null;
+    try {
+      latestPromptTemplateProfiles = {
+        ...(latestPromptTemplateProfiles || { profiles: {} }),
+        activeProfileId: profileId,
+      };
+      renderPromptProfileButtons(latestPromptTemplateProfiles);
+      const response = await sendMessage('SAVE_PROMPT_PROFILE_SELECTION', { profileId });
+      if (!response?.ok) {
+        throw new Error(response?.error ?? 'Failed to save prompt profile selection.');
+      }
+      await refresh();
+    } catch (error) {
+      console.error('[ResumeMatcherExt][AdminBoard] Failed to save prompt profile selection.', error);
+      latestPromptTemplateProfiles = previousProfiles;
+      renderPromptProfileButtons(latestPromptTemplateProfiles);
+    }
+  });
 });
 
-saveRuntimeUrlsButton.addEventListener('click', async () => {
-  const appUrl = appUrlInput.value.trim();
-  const apiUrl = apiUrlInput.value.trim();
-  saveRuntimeUrlsButton.disabled = true;
-  try {
-    const response = await sendMessage('SAVE_RUNTIME_URLS', { appUrl, apiUrl });
-    if (!response?.ok) {
-      throw new Error(response?.error ?? 'Failed to save app URLs.');
-    }
-    await refresh();
-  } catch (error) {
-    console.error('[ResumeMatcherExt][AdminBoard] Failed to save app URLs.', error);
-  } finally {
-    saveRuntimeUrlsButton.disabled = false;
+PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label }) => {
+  const controls = promptFileControls[templateName];
+  if (!controls?.button || !controls?.input || !controls?.remove) {
+    return;
   }
+
+  controls.button.addEventListener('click', () => {
+    controls.input.click();
+  });
+
+  controls.input.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const response = await sendMessage('SAVE_PROMPT_TEMPLATE', {
+        templateName,
+        promptProfileId: latestPromptTemplateProfiles?.activeProfileId ?? 'profile1',
+        filename: file.name,
+        content: await file.text(),
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error ?? `Failed to save ${label}.`);
+      }
+      await refresh();
+    } catch (error) {
+      console.error('[ResumeMatcherExt][AdminBoard] Failed to save prompt file.', {
+        templateName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  controls.remove.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    try {
+      const response = await sendMessage('DELETE_PROMPT_TEMPLATE', {
+        templateName,
+        promptProfileId: latestPromptTemplateProfiles?.activeProfileId ?? 'profile1',
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error ?? `Failed to remove ${label}.`);
+      }
+      await refresh();
+    } catch (error) {
+      console.error('[ResumeMatcherExt][AdminBoard] Failed to remove prompt file.', {
+        templateName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+});
+
+llmProfileSelect.addEventListener('change', async () => {
+  if (!latestLlmSettings?.profiles) return;
+  const previousSettings = latestLlmSettings
+    ? JSON.parse(JSON.stringify(latestLlmSettings))
+    : null;
+  const nextProfile = latestLlmSettings.profiles[llmProfileSelect.value];
+  if (!nextProfile) return;
+  try {
+    updateLocalProfileSettings(nextProfile.id, {});
+    latestLlmSettings = {
+      ...latestLlmSettings,
+      activeProfileId: nextProfile.id,
+    };
+    renderProviderSettings(nextProfile);
+    await persistProviderSelection(nextProfile.id);
+  } catch (error) {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to save provider selection.', error);
+    latestLlmSettings = previousSettings;
+    renderLlmProfile(latestLlmSettings);
+  }
+});
+providerUrlInput.addEventListener('input', scheduleProviderSettingsSave);
+providerApiEndpointInput.addEventListener('input', scheduleProviderSettingsSave);
+providerModelInput.addEventListener('input', scheduleProviderSettingsSave);
+providerApiKeyInput.addEventListener('input', scheduleProviderSettingsSave);
+providerUrlInput.addEventListener('blur', () => {
+  if (providerSettingsSaveTimer) {
+    window.clearTimeout(providerSettingsSaveTimer);
+    providerSettingsSaveTimer = null;
+  }
+  persistSelectedProviderSettings().catch((error) => {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave provider settings.', error);
+    renderLlmProfile(latestLlmSettings);
+  });
+});
+providerApiEndpointInput.addEventListener('blur', () => {
+  if (providerSettingsSaveTimer) {
+    window.clearTimeout(providerSettingsSaveTimer);
+    providerSettingsSaveTimer = null;
+  }
+  persistSelectedProviderSettings().catch((error) => {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave provider settings.', error);
+    renderLlmProfile(latestLlmSettings);
+  });
+});
+providerModelInput.addEventListener('blur', () => {
+  if (providerSettingsSaveTimer) {
+    window.clearTimeout(providerSettingsSaveTimer);
+    providerSettingsSaveTimer = null;
+  }
+  persistSelectedProviderSettings().catch((error) => {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave provider settings.', error);
+    renderLlmProfile(latestLlmSettings);
+  });
+});
+providerApiKeyInput.addEventListener('blur', () => {
+  if (providerSettingsSaveTimer) {
+    window.clearTimeout(providerSettingsSaveTimer);
+    providerSettingsSaveTimer = null;
+  }
+  persistSelectedProviderSettings().catch((error) => {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave provider settings.', error);
+    renderLlmProfile(latestLlmSettings);
+  });
+});
+
+appUrlInput.addEventListener('input', scheduleRuntimeUrlsSave);
+apiUrlInput.addEventListener('input', scheduleRuntimeUrlsSave);
+appUrlInput.addEventListener('blur', () => {
+  if (runtimeUrlsSaveTimer) {
+    window.clearTimeout(runtimeUrlsSaveTimer);
+    runtimeUrlsSaveTimer = null;
+  }
+  persistRuntimeUrls().catch((error) => {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave runtime URLs.', error);
+    void refresh();
+  });
+});
+apiUrlInput.addEventListener('blur', () => {
+  if (runtimeUrlsSaveTimer) {
+    window.clearTimeout(runtimeUrlsSaveTimer);
+    runtimeUrlsSaveTimer = null;
+  }
+  persistRuntimeUrls().catch((error) => {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave runtime URLs.', error);
+    void refresh();
+  });
 });
 
 resetLocalDataButton.addEventListener('click', async () => {
@@ -275,9 +623,12 @@ resetLocalDataButton.addEventListener('click', async () => {
     }
     masterResumeContextInput.value = '';
     storyboardInput.value = '';
-    prompt1TemplateInput.value = '';
-    prompt2TemplateInput.value = '';
-    prompt3TemplateInput.value = '';
+    PROMPT_FILE_DESCRIPTORS.forEach(({ templateName }) => {
+      const controls = promptFileControls[templateName];
+      if (controls?.input) {
+        controls.input.value = '';
+      }
+    });
     await refresh();
   } catch (error) {
     console.error('[ResumeMatcherExt][AdminBoard] Failed to reset local extension data.', error);

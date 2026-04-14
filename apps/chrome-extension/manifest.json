@@ -20,6 +20,11 @@
     "https://www.linkedin.com/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://api.anthropic.com/*",
+    "https://api.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://generativelanguage.googleapis.com/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*",
     "http://127.0.0.1:3000/*",
@@ -55,6 +60,7 @@
     {
       "resources": [
         "src/prompts/*.txt",
+        "src/prompts/patches/*.txt",
         "src/assets/*.gif"
       ],
       "matches": [

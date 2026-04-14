@@ -3,5 +3,5 @@
 export const RESUME_MATCHER_NOTES = {
   patchEndpoint: "PATCH /resumes/{resume_id}",
   pdfEndpoint: "GET /resumes/{resume_id}/pdf",
-  expectedOutput: "ResumeData JSON"
+  expectedOutput: "JSON object with resume_data and optional generation_feedback"
 };

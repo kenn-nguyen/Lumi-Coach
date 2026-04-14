@@ -10,6 +10,104 @@ function isStringArray(value) {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function hasMeaningfulText(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function arrayHasMeaningfulText(value) {
+  return Array.isArray(value) && value.some((item) => hasMeaningfulText(item));
+}
+
+function workExperienceHasMeaningfulContent(items) {
+  return Array.isArray(items) && items.some((item) =>
+    hasMeaningfulText(item?.title) ||
+    hasMeaningfulText(item?.company) ||
+    hasMeaningfulText(item?.years) ||
+    hasMeaningfulText(item?.location) ||
+    arrayHasMeaningfulText(item?.description)
+  );
+}
+
+function educationHasMeaningfulContent(items) {
+  return Array.isArray(items) && items.some((item) =>
+    hasMeaningfulText(item?.institution) ||
+    hasMeaningfulText(item?.degree) ||
+    hasMeaningfulText(item?.years) ||
+    hasMeaningfulText(item?.description)
+  );
+}
+
+function personalProjectsHasMeaningfulContent(items) {
+  return Array.isArray(items) && items.some((item) =>
+    hasMeaningfulText(item?.name) ||
+    hasMeaningfulText(item?.role) ||
+    hasMeaningfulText(item?.years) ||
+    hasMeaningfulText(item?.github) ||
+    hasMeaningfulText(item?.website) ||
+    arrayHasMeaningfulText(item?.description)
+  );
+}
+
+function additionalHasMeaningfulContent(additional) {
+  return Boolean(
+    additional &&
+    typeof additional === 'object' &&
+    ['technicalSkills', 'languages', 'certificationsTraining', 'awards'].some((field) =>
+      arrayHasMeaningfulText(additional[field])
+    )
+  );
+}
+
+function customSectionsHaveMeaningfulContent(customSections) {
+  if (!customSections || typeof customSections !== 'object' || Array.isArray(customSections)) {
+    return false;
+  }
+
+  return Object.values(customSections).some((section) => {
+    if (!section || typeof section !== 'object') return false;
+    if (hasMeaningfulText(section.text)) return true;
+    if (arrayHasMeaningfulText(section.strings)) return true;
+    if (Array.isArray(section.items)) {
+      return section.items.some((item) =>
+        hasMeaningfulText(item?.title) ||
+        hasMeaningfulText(item?.subtitle) ||
+        hasMeaningfulText(item?.location) ||
+        hasMeaningfulText(item?.years) ||
+        arrayHasMeaningfulText(item?.description)
+      );
+    }
+    return false;
+  });
+}
+
+function looksLikeEmptyResumeTemplate(data) {
+  const personalInfo = data?.personalInfo;
+  const personalInfoHasMeaningfulContent =
+    personalInfo &&
+    typeof personalInfo === 'object' &&
+    [
+      'name',
+      'title',
+      'customTagline',
+      'email',
+      'phone',
+      'location',
+      'website',
+      'linkedin',
+      'github',
+    ].some((field) => hasMeaningfulText(personalInfo[field]));
+
+  return !(
+    personalInfoHasMeaningfulContent ||
+    hasMeaningfulText(data?.summary) ||
+    workExperienceHasMeaningfulContent(data?.workExperience) ||
+    educationHasMeaningfulContent(data?.education) ||
+    personalProjectsHasMeaningfulContent(data?.personalProjects) ||
+    additionalHasMeaningfulContent(data?.additional) ||
+    customSectionsHaveMeaningfulContent(data?.customSections)
+  );
+}
+
 function validateSectionMetaItem(item, index, errors) {
   const validSectionTypes = new Set(['personalInfo', 'text', 'itemList', 'stringList']);
   if (!item || typeof item !== 'object') {
@@ -146,6 +244,10 @@ export function validateResumeData(data) {
     errors.push('customSections must be an object.');
   } else {
     Object.entries(data.customSections).forEach(([key, section]) => validateCustomSection(section, key, errors));
+  }
+
+  if (errors.length === 0 && looksLikeEmptyResumeTemplate(data)) {
+    errors.push('Resume data appears to be an empty schema template.');
   }
 
   return errors;

@@ -381,12 +381,47 @@ class RawResume(BaseModel):
     processing_status: str = "pending"  # pending, processing, ready, failed
 
 
+class GenerationFeedback(BaseModel):
+    """Optional user-facing feedback returned alongside generated resume data."""
+
+    summary: str = ""
+    pros: list[str] = Field(default_factory=list)
+    cons: list[str] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def _normalize_summary(cls, value: Any) -> str:
+        return _coerce_text(value)
+
+    @field_validator("pros", "cons", "caveats", mode="before")
+    @classmethod
+    def _normalize_feedback_items(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            normalized = _coerce_text(value)
+            return [normalized] if normalized else []
+        if isinstance(value, list):
+            normalized_items = [_coerce_text(item) for item in value]
+            return [item for item in normalized_items if item]
+        return []
+
+
+class ResumeUpdateRequest(BaseModel):
+    """Extended resume update payload with optional generation feedback."""
+
+    resume_data: ResumeData
+    generation_feedback: GenerationFeedback | None = None
+
+
 class ResumeFetchData(BaseModel):
     """Data payload for resume fetch response."""
 
     resume_id: str
     raw_resume: RawResume
     processed_resume: ResumeData | None = None
+    generation_feedback: GenerationFeedback | None = None
     cover_letter: str | None = None
     outreach_message: str | None = None
     parent_id: str | None = None  # For determining if resume is tailored

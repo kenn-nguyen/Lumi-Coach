@@ -720,6 +720,12 @@
       "failedToLoad": "履歴書データの読み込みに失敗しました。",
       "failedToDelete": "履歴書の削除に失敗しました。もう一度お試しください。"
     },
+    "feedback": {
+      "summaryLabel": "要約",
+      "prosLabel": "長所",
+      "consLabel": "短所",
+      "caveatsLabel": "注意点"
+    },
     "titlePlaceholder": "履歴書のタイトルを入力..."
   },
   "preview": {

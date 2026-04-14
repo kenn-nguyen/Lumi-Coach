@@ -90,16 +90,16 @@ function injectStyles() {
   style.textContent = `
     #${ROOT_ID} {
       position: fixed;
-      right: 0;
+      right: 8px;
       top: 50vh;
       z-index: 2147483647;
       display: grid;
-      justify-items: end;
-      gap: 6px;
+      justify-items: center;
+      gap: 4px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       touch-action: none;
       user-select: none;
-      width: 86px;
+      width: 132px;
     }
 
     #${BUTTON_ID} {
@@ -151,23 +151,32 @@ function injectStyles() {
 
     #${STATUS_ID} {
       display: none;
-      max-width: min(220px, calc(100vw - 8px));
-      min-height: 15px;
-      padding: 8px 10px;
+      width: fit-content;
+      max-width: min(372px, calc(100vw - 24px));
+      min-width: 0;
+      padding: 9px 12px;
       border-radius: 12px;
       background: rgba(255, 247, 237, 0.95);
       box-shadow: 0 10px 22px rgba(180, 83, 9, 0.12);
       border: 1px solid rgba(245, 158, 11, 0.18);
-      font-size: 11px;
-      line-height: 1.35;
+      font-size: 12px;
+      line-height: 1.3;
       color: #9a3412;
-      text-align: right;
+      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
       word-break: break-word;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
       justify-self: end;
+      align-self: start;
+      box-sizing: border-box;
     }
 
     #${STATUS_ID}[data-visible="true"] {
-      display: block;
+      display: -webkit-box;
     }
 
     #${ROOT_ID}[data-state="running"] #${STATUS_ID} {
@@ -189,9 +198,10 @@ function injectStyles() {
 
     #${PROMPT1_DETAILS_ID} {
       position: relative;
-      width: 86px;
+      width: 132px;
       display: grid;
       justify-items: center;
+      justify-self: center;
     }
 
     #${PROMPT1_SUMMARY_ID} {
@@ -204,7 +214,7 @@ function injectStyles() {
       user-select: none;
       text-align: center;
       justify-self: center;
-      margin-top: -2px;
+      margin-top: -1px;
       display: grid;
       place-items: center;
     }
@@ -234,7 +244,8 @@ function injectStyles() {
     .resume-matcher-prompt1-panel {
       position: absolute;
       top: calc(100% + 6px);
-      right: 0;
+      right: 50%;
+      transform: translateX(50%);
       width: min(210px, calc(100vw - 8px));
       display: grid;
       padding: 10px;
@@ -421,7 +432,7 @@ function ensureRoot() {
 
   prompt1Panel.append(prompt1Textarea);
   prompt1Details.append(prompt1Summary, prompt1Panel);
-  root.append(button, status, prompt1Details);
+  root.append(button, prompt1Details, status);
   document.documentElement.appendChild(root);
   void applyStoredTopOffset(root);
   logInfo('Floating action injected.', { url: location.href });
@@ -548,25 +559,84 @@ function getProgressMessage(scope, message) {
   return null;
 }
 
-function getChatGptProgressMessage(message, data) {
+function getLlmProgressMessage(scope, message, data) {
   const promptLabel = typeof data?.promptLabel === 'string' ? data.promptLabel : 'Prompt';
 
-  if (message === 'Opening ChatGPT popup.') return `${promptLabel}: opening ChatGPT…`;
-  if (message === 'ChatGPT popup created.') return `${promptLabel}: popup created.`;
-  if (message === 'Waiting for ChatGPT tab to finish loading.') return `${promptLabel}: loading tab…`;
-  if (message === 'ChatGPT tab ready.') return `${promptLabel}: ChatGPT ready.`;
-  if (message === 'Injecting ChatGPT prompt runner.') return `${promptLabel}: injecting runner…`;
-  if (message === 'ChatGPT prompt runner in progress.') {
-    const phase = typeof data?.phaseText === 'string'
-      ? data.phaseText
-      : typeof data?.phase === 'string'
-        ? data.phase
-        : 'Waiting on ChatGPT…';
-    return `${promptLabel}: ${phase}`;
+  if (scope === 'ChatGptAutomation') {
+    if (message === 'Opening ChatGPT popup.') return `${promptLabel}: opening ChatGPT…`;
+    if (message === 'ChatGPT popup created.') return `${promptLabel}: popup created.`;
+    if (message === 'Waiting for ChatGPT tab to finish loading.') return `${promptLabel}: loading tab…`;
+    if (message === 'ChatGPT tab ready.') return `${promptLabel}: ChatGPT ready.`;
+    if (message === 'Injecting ChatGPT prompt runner.') return `${promptLabel}: injecting runner…`;
+    if (message === 'ChatGPT prompt runner in progress.') {
+      const phase = typeof data?.phaseText === 'string'
+        ? data.phaseText
+        : typeof data?.phase === 'string'
+          ? data.phase
+          : 'Waiting on ChatGPT…';
+      return `${promptLabel}: ${phase}`;
+    }
+    if (message === 'Retrying prompt after submit-start failure.') return `${promptLabel}: retrying submit…`;
+    if (message === 'Using parseable partial ChatGPT response after timeout.') return `${promptLabel}: using partial JSON output.`;
+    if (message === 'Using parseable partial ChatGPT response after retry timeout.') return `${promptLabel}: using partial JSON output.`;
   }
-  if (message === 'Retrying prompt after submit-start failure.') return `${promptLabel}: retrying submit…`;
-  if (message === 'Using parseable partial ChatGPT response after timeout.') return `${promptLabel}: using partial JSON output.`;
-  if (message === 'Using parseable partial ChatGPT response after retry timeout.') return `${promptLabel}: using partial JSON output.`;
+
+  if (scope === 'ClaudeApi') {
+    if (message === 'Sending prompt to Claude API.') return `${promptLabel}: sending to Claude API…`;
+    if (message === 'Claude API response parsed successfully.') return `${promptLabel}: Claude API complete.`;
+  }
+
+  if (scope === 'ClaudeWebAutomation') {
+    if (message === 'Opening Claude popup.') return `${promptLabel}: opening Claude…`;
+    if (message === 'Claude popup created.') return `${promptLabel}: popup created.`;
+    if (message === 'Waiting for Claude tab to finish loading.') return `${promptLabel}: loading tab…`;
+    if (message === 'Claude tab ready.') return `${promptLabel}: Claude ready.`;
+    if (message === 'Injecting Claude prompt runner.') return `${promptLabel}: injecting runner…`;
+    if (message === 'Claude prompt runner in progress.') {
+      const phase = typeof data?.phaseText === 'string'
+        ? data.phaseText
+        : typeof data?.phase === 'string'
+          ? data.phase
+          : 'Waiting on Claude…';
+      return `${promptLabel}: ${phase}`;
+    }
+    if (message === 'Retrying prompt after submit-start failure.') return `${promptLabel}: retrying submit…`;
+    if (message === 'Using parseable partial Claude response after timeout.') return `${promptLabel}: using partial JSON output.`;
+    if (message === 'Using parseable partial Claude response after retry timeout.') return `${promptLabel}: using partial JSON output.`;
+  }
+
+  if (scope === 'GeminiWebAutomation') {
+    if (message === 'Opening Gemini popup.') return `${promptLabel}: opening Gemini…`;
+    if (message === 'Gemini popup created.') return `${promptLabel}: popup created.`;
+    if (message === 'Waiting for Gemini tab to finish loading.') return `${promptLabel}: loading tab…`;
+    if (message === 'Gemini tab ready.') return `${promptLabel}: Gemini ready.`;
+    if (message === 'Injecting Gemini prompt runner.') return `${promptLabel}: injecting runner…`;
+    if (message === 'Gemini prompt runner in progress.') {
+      const phase = typeof data?.phaseText === 'string'
+        ? data.phaseText
+        : typeof data?.phase === 'string'
+          ? data.phase
+          : 'Waiting on Gemini…';
+      return `${promptLabel}: ${phase}`;
+    }
+    if (message === 'Retrying prompt after submit-start failure.') return `${promptLabel}: retrying submit…`;
+    if (message === 'Using parseable partial Gemini response after timeout.') return `${promptLabel}: using partial JSON output.`;
+    if (message === 'Using parseable partial Gemini response after retry timeout.') return `${promptLabel}: using partial JSON output.`;
+  }
+
+  if (scope === 'GeminiApi') {
+    if (message === 'Sending prompt to Gemini API.') return `${promptLabel}: sending to Gemini API…`;
+    if (message === 'Gemini API response parsed successfully.') return `${promptLabel}: Gemini API complete.`;
+  }
+
+  if (scope === 'LlmRunner') {
+    if (message === 'Resolved prompt runner.') {
+      const vendor = typeof data?.vendor === 'string' ? data.vendor : 'llm';
+      const mode = typeof data?.mode === 'string' ? data.mode.replace('_', ' ') : 'runner';
+      return `${promptLabel}: ${vendor} ${mode} selected.`;
+    }
+  }
+
   return null;
 }
 
@@ -584,9 +654,8 @@ function updateStatusFromLog(level, scope, message, data) {
     return;
   }
 
-  const progressMessage = scope === 'ChatGptAutomation'
-    ? getChatGptProgressMessage(message, data)
-    : getProgressMessage(scope, message);
+  const progressMessage = getLlmProgressMessage(scope, message, data)
+    ?? getProgressMessage(scope, message);
   if (!progressMessage) return;
   setUiState(isRunning ? 'running' : 'idle', progressMessage);
 }

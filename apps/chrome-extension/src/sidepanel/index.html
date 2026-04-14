@@ -36,42 +36,89 @@
 
           <details class="asset-help">
             <summary class="asset-help__summary">
-              <span>Prompt Files</span>
+              <span>Prompt Profiles</span>
               <span class="asset-help__chevron" aria-hidden="true">⌄</span>
             </summary>
             <div class="asset-help__content meta">
+              <div class="prompt-profile-toolbar">
+                <div>
+                  <div id="prompt-profile-buttons" class="prompt-profile-buttons" role="group" aria-label="Prompt profiles">
+                    <button type="button" class="prompt-profile-button" data-prompt-profile-id="profile1">Profile 1</button>
+                    <button type="button" class="prompt-profile-button" data-prompt-profile-id="profile2">Profile 2</button>
+                    <button type="button" class="prompt-profile-button" data-prompt-profile-id="profile3">Profile 3</button>
+                  </div>
+                </div>
+              </div>
+              <div class="prompt-file-grid" id="prompt-file-grid">
+                <div class="prompt-file-item" data-template-name="prompt1">
+                  <button id="prompt-file-button-prompt1" class="prompt-file-tile" type="button" title="">
+                    <span id="prompt-file-text-prompt1" class="prompt-file-tile__text">...upload</span>
+                  </button>
+                  <button id="prompt-file-remove-prompt1" class="prompt-file-remove" type="button" aria-label="Remove Prompt 1 file">×</button>
+                  <input id="prompt-file-input-prompt1" class="asset-row__input" type="file" accept=".txt,text/plain" />
+                  <span class="prompt-file-item__label">Prompt 1</span>
+                </div>
+                <div class="prompt-file-item" data-template-name="prompt2">
+                  <button id="prompt-file-button-prompt2" class="prompt-file-tile" type="button" title="">
+                    <span id="prompt-file-text-prompt2" class="prompt-file-tile__text">...upload</span>
+                  </button>
+                  <button id="prompt-file-remove-prompt2" class="prompt-file-remove" type="button" aria-label="Remove Prompt 2 file">×</button>
+                  <input id="prompt-file-input-prompt2" class="asset-row__input" type="file" accept=".txt,text/plain" />
+                  <span class="prompt-file-item__label">Prompt 2</span>
+                </div>
+                <div class="prompt-file-item" data-template-name="prompt3">
+                  <button id="prompt-file-button-prompt3" class="prompt-file-tile" type="button" title="">
+                    <span id="prompt-file-text-prompt3" class="prompt-file-tile__text">...upload</span>
+                  </button>
+                  <button id="prompt-file-remove-prompt3" class="prompt-file-remove" type="button" aria-label="Remove Prompt 3 file">×</button>
+                  <input id="prompt-file-input-prompt3" class="asset-row__input" type="file" accept=".txt,text/plain" />
+                  <span class="prompt-file-item__label">Prompt 3</span>
+                </div>
+                <div class="prompt-file-item" data-template-name="systemPrompt">
+                  <button id="prompt-file-button-systemPrompt" class="prompt-file-tile" type="button" title="">
+                    <span id="prompt-file-text-systemPrompt" class="prompt-file-tile__text">...upload</span>
+                  </button>
+                  <button id="prompt-file-remove-systemPrompt" class="prompt-file-remove" type="button" aria-label="Remove System prompt file">×</button>
+                  <input id="prompt-file-input-systemPrompt" class="asset-row__input" type="file" accept=".txt,text/plain" />
+                  <span class="prompt-file-item__label">System prompt</span>
+                </div>
+              </div>
               <p><strong>Prompt 1</strong> reads the LinkedIn job description and extracts the hiring signals that matter.</p>
               <p><strong>Prompt 2</strong> compresses that into a sharper writing brief so Prompt 3 does less guessing.</p>
               <p><strong>Prompt 3</strong> writes the final resume JSON. Most quality problems happen here if the brief is vague or overloaded.</p>
+              <p><strong>System prompt</strong> is only used for API providers. Leave it blank until you want a shared instruction layer across API calls.</p>
               <p>Optimize prompts by keeping instructions concrete, preserving the schema, and avoiding keyword stuffing. Tight prompts usually outperform longer prompts that repeat the same rule.</p>
             </div>
           </details>
 
-          <div class="asset-row">
-            <span class="asset-row__label">Prompt 1</span>
-            <span id="prompt1-template-status" class="asset-row__value"></span>
-            <label class="button button--secondary asset-row__button" for="prompt1-template-input">Upload</label>
-            <input id="prompt1-template-input" class="asset-row__input" type="file" accept=".txt,text/plain" />
-          </div>
-
-          <div class="asset-row">
-            <span class="asset-row__label">Prompt 2</span>
-            <span id="prompt2-template-status" class="asset-row__value"></span>
-            <label class="button button--secondary asset-row__button" for="prompt2-template-input">Upload</label>
-            <input id="prompt2-template-input" class="asset-row__input" type="file" accept=".txt,text/plain" />
-          </div>
-
-          <div class="asset-row">
-            <span class="asset-row__label">Prompt 3</span>
-            <span id="prompt3-template-status" class="asset-row__value"></span>
-            <label class="button button--secondary asset-row__button" for="prompt3-template-input">Upload</label>
-            <input id="prompt3-template-input" class="asset-row__input" type="file" accept=".txt,text/plain" />
-          </div>
-
           <div class="asset-row asset-row--input">
-            <span class="asset-row__label">ChatGPT URL</span>
-            <input id="chatgpt-url-input" class="asset-row__text" type="url" placeholder="https://chatgpt.com/?temporary-chat=true" />
-            <button id="save-chatgpt-url-button" class="button asset-row__button" type="button">Save</button>
+            <span class="asset-row__label">Provider</span>
+            <select id="llm-profile-select" class="asset-row__text"></select>
+            <span class="asset-row__spacer" aria-hidden="true"></span>
+          </div>
+
+          <div id="provider-url-row" class="asset-row asset-row--input" hidden>
+            <span id="provider-url-label" class="asset-row__label">Provider URL</span>
+            <input id="provider-url-input" class="asset-row__text" type="url" placeholder="" />
+            <span class="asset-row__spacer" aria-hidden="true"></span>
+          </div>
+
+          <div id="provider-api-endpoint-row" class="asset-row asset-row--input" hidden>
+            <span class="asset-row__label">API Endpoint</span>
+            <input id="provider-api-endpoint-input" class="asset-row__text" type="url" placeholder="" />
+            <span class="asset-row__spacer" aria-hidden="true"></span>
+          </div>
+
+          <div id="provider-model-row" class="asset-row asset-row--input" hidden>
+            <span class="asset-row__label">Model</span>
+            <input id="provider-model-input" class="asset-row__text" type="text" placeholder="" />
+            <span class="asset-row__spacer" aria-hidden="true"></span>
+          </div>
+
+          <div id="provider-api-key-row" class="asset-row asset-row--input" hidden>
+            <span class="asset-row__label">API Key</span>
+            <input id="provider-api-key-input" class="asset-row__text" type="password" placeholder="" />
+            <span class="asset-row__spacer" aria-hidden="true"></span>
           </div>
 
           <div class="asset-row asset-row--input">
@@ -83,7 +130,7 @@
           <div class="asset-row asset-row--input">
             <span class="asset-row__label">Backend API URL</span>
             <input id="api-url-input" class="asset-row__text" type="url" placeholder="http://localhost:3000" />
-            <button id="save-runtime-urls-button" class="button asset-row__button" type="button">Save</button>
+            <span class="asset-row__spacer" aria-hidden="true"></span>
           </div>
         </div>
       </details>

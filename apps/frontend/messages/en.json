@@ -720,6 +720,12 @@
       "failedToLoad": "Failed to load resume data.",
       "failedToDelete": "Failed to delete resume. Please try again."
     },
+    "feedback": {
+      "summaryLabel": "Summary",
+      "prosLabel": "Pros",
+      "consLabel": "Cons",
+      "caveatsLabel": "Caveats"
+    },
     "titlePlaceholder": "Enter resume title..."
   },
   "preview": {

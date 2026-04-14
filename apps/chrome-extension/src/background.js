@@ -7,11 +7,13 @@ import {
   getHistoryEntries,
   getUserAssets,
   resetExtensionSettingsToDefault,
+  saveLlmSettings,
   setApiOrigin,
   setAppOrigin,
   setChatGptTargetUrl,
   setLastError,
   setMasterResumeContextAsset,
+  savePromptTemplateProfileSelection,
   setPromptTemplateAsset,
 } from './runtime/storage.js';
 import { openPreviewTab } from './runtime/api.js';
@@ -64,13 +66,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           filename: message.payload?.filename,
           content: message.payload?.content,
           uploadedAt: new Date().toISOString(),
-        });
+        }, message.payload?.promptProfileId);
         clearPromptTemplateCache();
+        return { ok: true };
+
+      case 'SAVE_PROMPT_PROFILE_SELECTION':
+        clearPromptTemplateCache();
+        return {
+          ok: true,
+          promptTemplateProfiles: await savePromptTemplateProfileSelection(message.payload?.profileId),
+        };
+
+      case 'DELETE_PROMPT_TEMPLATE':
+        clearPromptTemplateCache();
+        await setPromptTemplateAsset(message.payload?.templateName, null, message.payload?.promptProfileId);
         return { ok: true };
 
       case 'SAVE_CHATGPT_URL':
         await setChatGptTargetUrl(message.payload?.url);
         return { ok: true };
+
+      case 'SAVE_LLM_SETTINGS':
+        return {
+          ok: true,
+          llmSettings: await saveLlmSettings(message.payload?.activeProfileId, message.payload?.profileUpdates),
+        };
 
       case 'SAVE_RUNTIME_URLS':
         await setAppOrigin(message.payload?.appUrl);

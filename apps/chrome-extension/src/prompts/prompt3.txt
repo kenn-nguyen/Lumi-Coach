@@ -12,7 +12,7 @@ Primary objectives:
 - Use the current resume as the structural base whenever possible.
 - Use the storyboard or supporting evidence to strengthen emphasis only when truthfully supported.
 - Produce a final resume that is sharper, more relevant, and more credible, not merely more keyword-dense.
-- Output valid Resume Matcher JSON only.
+- Output valid JSON only.
 
 Input hierarchy:
 - The current resume is the base structure.
@@ -35,10 +35,13 @@ How to use the compressed tailoring brief:
 
 Hard rules:
 - Output valid JSON only.
-- Output the final Resume Matcher resume object directly.
+- Output exactly one JSON object with:
+  - `resume_data`: the final Resume Matcher resume object
+  - `generation_feedback`: optional short user-facing feedback
 - Do not output an edit plan.
 - Do not output explanations.
 - Do not output markdown fences.
+- Do not output prose before or after the JSON object.
 - Do not invent experience, employers, dates, titles, tools, scope, metrics, ownership, certifications, education, credentials, or qualifications.
 - Do not add signals unless they are supported by the current resume, storyboard, or both.
 - Prefer omission over weak inference.
@@ -107,76 +110,91 @@ Resume assembly rules:
 
 Return exactly one JSON object matching this schema:
 {
-  "personalInfo": {
-    "name": "",
-    "title": "",
-    "customTagline": null,
-    "email": "",
-    "phone": "",
-    "location": "",
-    "website": null,
-    "linkedin": null,
-    "github": null
-  },
-  "summary": "",
-  "workExperience": [
-    {
-      "id": 1,
-      "title": "",
-      "company": "",
-      "location": null,
-      "years": "",
-      "description": []
-    }
-  ],
-  "education": [
-    {
-      "id": 1,
-      "institution": "",
-      "degree": "",
-      "years": "",
-      "description": null
-    }
-  ],
-  "personalProjects": [
-    {
-      "id": 1,
+  "resume_data": {
+    "personalInfo": {
       "name": "",
-      "role": "",
-      "years": "",
-      "github": null,
+      "title": "",
+      "customTagline": null,
+      "email": "",
+      "phone": "",
+      "location": "",
       "website": null,
-      "description": []
+      "linkedin": null,
+      "github": null
+    },
+    "summary": "",
+    "workExperience": [
+      {
+        "id": 1,
+        "title": "",
+        "company": "",
+        "location": null,
+        "years": "",
+        "description": []
+      }
+    ],
+    "education": [
+      {
+        "id": 1,
+        "institution": "",
+        "degree": "",
+        "years": "",
+        "description": null
+      }
+    ],
+    "personalProjects": [
+      {
+        "id": 1,
+        "name": "",
+        "role": "",
+        "years": "",
+        "github": null,
+        "website": null,
+        "description": []
+      }
+    ],
+    "additional": {
+      "technicalSkills": [],
+      "languages": [],
+      "certificationsTraining": [],
+      "awards": []
+    },
+    "sectionMeta": [
+      {
+        "id": "",
+        "key": "",
+        "displayName": "",
+        "sectionType": "personalInfo",
+        "isDefault": true,
+        "isVisible": true,
+        "order": 0
+      }
+    ],
+    "customSections": {
+      "custom_1": {
+        "sectionType": "text",
+        "items": null,
+        "strings": null,
+        "text": ""
+      }
     }
-  ],
-  "additional": {
-    "technicalSkills": [],
-    "languages": [],
-    "certificationsTraining": [],
-    "awards": []
   },
-  "sectionMeta": [
-    {
-      "id": "",
-      "key": "",
-      "displayName": "",
-      "sectionType": "personalInfo",
-      "isDefault": true,
-      "isVisible": true,
-      "order": 0
-    }
-  ],
-  "customSections": {
-    "custom_1": {
-      "sectionType": "text",
-      "items": null,
-      "strings": null,
-      "text": ""
-    }
+  "generation_feedback": {
+    "summary": "",
+    "pros": [],
+    "cons": [],
+    "caveats": []
   }
 }
 
 Additional schema rules:
+- `resume_data` is required.
+- `generation_feedback` is optional but recommended when there are concise user-facing notes worth showing.
+- If `generation_feedback` is present:
+  - `summary` should be one short sentence
+  - `pros`, `cons`, and `caveats` should contain short bullet-style strings only
+  - keep every item concise and user-facing
+- If there is no meaningful feedback, you may omit `generation_feedback` or return it with empty values.
 - Valid `sectionType` values are:
   - `personalInfo`
   - `text`

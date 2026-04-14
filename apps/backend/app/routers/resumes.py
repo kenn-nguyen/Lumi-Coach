@@ -22,6 +22,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 from app.schemas import (
     GenerateContentResponse,
+    GenerationFeedback,
     ImproveResumeConfirmRequest,
     ImproveResumeRequest,
     ImproveResumeResponse,
@@ -35,6 +36,7 @@ from app.schemas import (
     ResumeListResponse,
     ResumeSummary,
     ResumeUploadResponse,
+    ResumeUpdateRequest,
     RawResume,
     UpdateCoverLetterRequest,
     UpdateOutreachMessageRequest,
@@ -308,6 +310,12 @@ def _build_resume_fetch_response(
     processed_resume = (
         ResumeData.model_validate(processed_data) if processed_data else None
     )
+    raw_generation_feedback = resume.get("generation_feedback")
+    generation_feedback = (
+        GenerationFeedback.model_validate(raw_generation_feedback)
+        if raw_generation_feedback
+        else None
+    )
 
     return ResumeFetchResponse(
         request_id=request_id or str(uuid4()),
@@ -315,6 +323,7 @@ def _build_resume_fetch_response(
             resume_id=resume["resume_id"],
             raw_resume=raw_resume,
             processed_resume=processed_resume,
+            generation_feedback=generation_feedback,
             cover_letter=resume.get("cover_letter"),
             outreach_message=resume.get("outreach_message"),
             parent_id=resume.get("parent_id"),
@@ -1324,12 +1333,24 @@ async def improve_resume_endpoint(
 
 @router.patch("/{resume_id}", response_model=ResumeFetchResponse)
 async def update_resume_endpoint(
-    resume_id: str, resume_data: ResumeData
+    resume_id: str, payload: dict[str, Any]
 ) -> ResumeFetchResponse:
     """Update a resume with new structured data."""
     existing = db.get_resume(resume_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Resume not found")
+
+    generation_feedback_update = existing.get("generation_feedback")
+    if "resume_data" in payload:
+        parsed_payload = ResumeUpdateRequest.model_validate(payload)
+        resume_data = parsed_payload.resume_data
+        generation_feedback_update = (
+            parsed_payload.generation_feedback.model_dump()
+            if parsed_payload.generation_feedback
+            else None
+        )
+    else:
+        resume_data = ResumeData.model_validate(payload)
 
     updated_data = resume_data.model_dump()
     updated_content = json.dumps(updated_data, indent=2)
@@ -1341,6 +1362,7 @@ async def update_resume_endpoint(
             "content_type": "json",
             "processed_data": updated_data,
             "processing_status": "ready",
+            "generation_feedback": generation_feedback_update,
         },
     )
 

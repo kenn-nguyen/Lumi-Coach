@@ -50,6 +50,13 @@ interface ProcessedResume {
   };
 }
 
+export interface GenerationFeedback {
+  summary?: string;
+  pros?: string[];
+  cons?: string[];
+  caveats?: string[];
+}
+
 interface ResumeResponse {
   request_id: string;
   data: {
@@ -62,6 +69,7 @@ interface ResumeResponse {
       processing_status: 'pending' | 'processing' | 'ready' | 'failed';
     };
     processed_resume: ProcessedResume | null;
+    generation_feedback?: GenerationFeedback | null;
     cover_letter?: string | null;
     outreach_message?: string | null;
     parent_id?: string | null; // For determining if resume is tailored
@@ -205,9 +213,17 @@ export async function fetchResumeList(includeMaster = false): Promise<ResumeList
 
 export async function updateResume(
   resumeId: string,
-  resumeData: ProcessedResume
+  resumeData: ProcessedResume,
+  generationFeedback?: GenerationFeedback | null
 ): Promise<ResumeResponse['data']> {
-  const res = await apiPatch(`/resumes/${encodeURIComponent(resumeId)}`, resumeData);
+  const body =
+    generationFeedback === undefined
+      ? resumeData
+      : {
+          resume_data: resumeData,
+          generation_feedback: generationFeedback,
+        };
+  const res = await apiPatch(`/resumes/${encodeURIComponent(resumeId)}`, body);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Failed to update resume (status ${res.status}): ${text}`);

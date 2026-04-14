@@ -720,6 +720,12 @@
       "failedToLoad": "No se pudieron cargar los datos del currículum.",
       "failedToDelete": "No se pudo eliminar el currículum. Inténtalo de nuevo."
     },
+    "feedback": {
+      "summaryLabel": "Resumen",
+      "prosLabel": "Ventajas",
+      "consLabel": "Desventajas",
+      "caveatsLabel": "Advertencias"
+    },
     "titlePlaceholder": "Ingrese el título del currículum..."
   },
   "preview": {

@@ -720,6 +720,12 @@
       "failedToLoad": "加载简历数据失败。",
       "failedToDelete": "删除简历失败，请重试。"
     },
+    "feedback": {
+      "summaryLabel": "总结",
+      "prosLabel": "优点",
+      "consLabel": "缺点",
+      "caveatsLabel": "注意事项"
+    },
     "titlePlaceholder": "输入简历标题..."
   },
   "preview": {

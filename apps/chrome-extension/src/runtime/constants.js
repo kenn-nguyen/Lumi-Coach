@@ -8,6 +8,8 @@ export const STORAGE_KEYS = {
   prompt1TemplateAsset: 'prompt1TemplateAsset',
   prompt2TemplateAsset: 'prompt2TemplateAsset',
   prompt3TemplateAsset: 'prompt3TemplateAsset',
+  promptTemplateProfiles: 'promptTemplateProfiles',
+  llmSettings: 'llmSettings',
   chatGptTargetUrl: 'chatGptTargetUrl',
   appOrigin: 'appOrigin',
   apiOrigin: 'apiOrigin',
