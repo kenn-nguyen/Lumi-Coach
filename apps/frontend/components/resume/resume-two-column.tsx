@@ -146,7 +146,14 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
           <div
             className={`flex flex-wrap justify-center gap-x-1 gap-y-1 ${baseStyles['resume-meta']}`}
           >
-            {personalInfo.email && renderContactDetail('Email', personalInfo.email, 'mailto:')}
+            {personalInfo.customTagline &&
+              renderContactDetail('CustomTagline', personalInfo.customTagline)}
+            {personalInfo.email && (
+              <>
+                {personalInfo.customTagline && <span className={baseStyles['text-muted']}>,</span>}
+                {renderContactDetail('Email', personalInfo.email, 'mailto:')}
+              </>
+            )}
             {personalInfo.phone && (
               <>
                 <span className={baseStyles['text-muted']}>,</span>
@@ -385,9 +392,16 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
                     </h4>
                     <p className={baseStyles['resume-item-subtitle-sm']}>{edu.degree}</p>
                     {edu.description && (
-                      <p className={`${baseStyles['resume-text-xs']} ${baseStyles['resume-meta']}`}>
-                        {edu.description}
-                      </p>
+                      <ul
+                        className={`ml-4 ${baseStyles['resume-list']} ${baseStyles['resume-text-xs']} ${baseStyles['resume-meta']}`}
+                      >
+                        <li className="flex">
+                          <span className="mr-1.5 flex-shrink-0">•&nbsp;</span>
+                          <span>
+                            <SafeHtml html={edu.description} />
+                          </span>
+                        </li>
+                      </ul>
                     )}
                   </div>
                 ))}

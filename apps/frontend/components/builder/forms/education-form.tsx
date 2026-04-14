@@ -4,7 +4,7 @@ import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Education } from '@/components/dashboard/resume-component';
 import { Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
@@ -172,11 +172,11 @@ export const EducationForm: React.FC<EducationFormProps> = ({ data, onChange }) 
                       <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
                         {t('builder.forms.education.fields.descriptionOptional')}
                       </Label>
-                      <Textarea
+                      <RichTextEditor
                         value={item.description || ''}
-                        onChange={(e) => handleChange(item.id, 'description', e.target.value)}
-                        className="min-h-[60px] text-black text-sm rounded-none border-black bg-white"
+                        onChange={(html) => handleChange(item.id, 'description', html)}
                         placeholder={t('builder.forms.education.placeholders.description')}
+                        minHeight="60px"
                       />
                     </div>
                   </div>

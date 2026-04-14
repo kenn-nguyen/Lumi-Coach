@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT_DIR="$(cd "$APP_DIR/.." && pwd)"
+LAUNCH_SCRIPT="$ROOT_DIR/scripts/open-local-dev.command"
+
+if [[ ! -x "$LAUNCH_SCRIPT" ]]; then
+  osascript -e 'display dialog "Launcher script is missing or not executable." buttons {"OK"} default button "OK" with icon stop'
+  exit 1
+fi
+
+osascript <<EOF
+tell application "Terminal"
+  activate
+  do script "cd \"$ROOT_DIR\" && \"$LAUNCH_SCRIPT\""
+end tell
+EOF

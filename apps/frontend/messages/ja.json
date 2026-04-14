@@ -419,6 +419,7 @@
       "placeholders": {
         "name": "山田 太郎",
         "title": "ソフトウェアエンジニア",
+        "customTagline": "転居可能 | 米国就労許可あり",
         "email": "taro@example.com",
         "phone": "+81 90-0000-0000",
         "location": "都市、国",
@@ -732,6 +733,7 @@
     "personalInfo": {
       "name": "氏名",
       "title": "職種",
+      "customTagline": "カスタムタグライン",
       "email": "メールアドレス",
       "phone": "電話番号",
       "location": "所在地",

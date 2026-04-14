@@ -138,6 +138,7 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
         )}
         {personalInfo && (
           <div className={`${baseStyles['resume-meta']} flex flex-wrap gap-x-3 gap-y-1 mt-2`}>
+            {renderContactDetail('CustomTagline', personalInfo.customTagline)}
             {renderContactDetail('Email', personalInfo.email, 'mailto:')}
             {renderContactDetail('Phone', personalInfo.phone, 'tel:')}
             {renderContactDetail('Location', personalInfo.location)}
@@ -350,9 +351,16 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
                     </h4>
                     <p className={baseStyles['resume-item-subtitle-sm']}>{edu.degree}</p>
                     {edu.description && (
-                      <p className={`${baseStyles['resume-text-xs']} ${baseStyles['resume-meta']}`}>
-                        {edu.description}
-                      </p>
+                      <ul
+                        className={`ml-4 ${baseStyles['resume-list']} ${baseStyles['resume-text-xs']} ${baseStyles['resume-meta']}`}
+                      >
+                        <li className="flex">
+                          <span className="mr-1.5 flex-shrink-0">•&nbsp;</span>
+                          <span>
+                            <SafeHtml html={edu.description} />
+                          </span>
+                        </li>
+                      </ul>
                     )}
                   </div>
                 ))}

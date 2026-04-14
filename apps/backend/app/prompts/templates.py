@@ -20,6 +20,7 @@ RESUME_SCHEMA_EXAMPLE = """{
   "personalInfo": {
     "name": "John Doe",
     "title": "Software Engineer",
+    "customTagline": "Open to relocate | U.S. work authorized",
     "email": "john@example.com",
     "phone": "+1-555-0100",
     "location": "San Francisco, CA",

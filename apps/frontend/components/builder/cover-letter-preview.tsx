@@ -7,6 +7,7 @@ import { useTranslations } from '@/lib/i18n';
 export interface CoverLetterPersonalInfo {
   name?: string;
   title?: string;
+  customTagline?: string;
   email?: string;
   phone?: string;
   location?: string;
@@ -64,6 +65,7 @@ export function CoverLetterPreview({
             {personalInfo.name || t('coverLetter.preview.defaultName')}
           </h1>
           <div className="mt-2 font-mono text-xs text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
+            {personalInfo.customTagline && <span>{personalInfo.customTagline}</span>}
             {personalInfo.email && <span>{personalInfo.email}</span>}
             {personalInfo.phone && <span>{personalInfo.phone}</span>}
             {personalInfo.location && <span>{personalInfo.location}</span>}

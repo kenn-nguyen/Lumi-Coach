@@ -57,9 +57,10 @@
 
 /* Date formatting - ensures dates never wrap and stay right-aligned */
 .resume-date {
-  font-family: var(--resume-font-mono);
-  font-size: calc(var(--font-size-base) * 0.75);
-  color: var(--resume-text-tertiary);
+  font-family: var(--body-font);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--resume-text-primary);
   white-space: nowrap;
   flex-shrink: 0;
   text-align: right;

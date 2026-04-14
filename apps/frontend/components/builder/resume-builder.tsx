@@ -61,6 +61,7 @@ const buildInitialData = (t: Translate): ResumeData => ({
   personalInfo: {
     name: t('builder.personalInfoForm.placeholders.name'),
     title: t('builder.personalInfoForm.placeholders.title'),
+    customTagline: t('builder.personalInfoForm.placeholders.customTagline'),
     email: t('builder.personalInfoForm.placeholders.email'),
     phone: t('builder.personalInfoForm.placeholders.phone'),
     location: t('builder.personalInfoForm.placeholders.location'),

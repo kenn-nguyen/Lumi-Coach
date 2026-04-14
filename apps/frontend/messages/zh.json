@@ -419,6 +419,7 @@
       "placeholders": {
         "name": "张三",
         "title": "软件工程师",
+        "customTagline": "可接受异地办公｜具备美国工作授权",
         "email": "zhangsan@example.com",
         "phone": "+86 138 0000 0000",
         "location": "城市，国家",
@@ -732,6 +733,7 @@
     "personalInfo": {
       "name": "姓名",
       "title": "职位名称",
+      "customTagline": "自定义标语",
       "email": "电子邮箱",
       "phone": "电话",
       "location": "所在地",

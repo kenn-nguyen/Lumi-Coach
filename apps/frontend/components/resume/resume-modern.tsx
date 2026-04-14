@@ -256,7 +256,16 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
                     <span>{edu.degree}</span>
                   </div>
                   {edu.description && (
-                    <p className={baseStyles['resume-text-sm']}>{edu.description}</p>
+                    <ul
+                      className={`ml-4 ${baseStyles['resume-list']} ${baseStyles['resume-text-sm']}`}
+                    >
+                      <li className="flex">
+                        <span className="mr-1.5 flex-shrink-0">•&nbsp;</span>
+                        <span>
+                          <SafeHtml html={edu.description} />
+                        </span>
+                      </li>
+                    </ul>
                   )}
                 </div>
               ))}
@@ -314,7 +323,14 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
           <div
             className={`flex flex-wrap justify-center gap-x-1 gap-y-1 ${baseStyles['resume-meta']}`}
           >
-            {renderContactDetail('Email', personalInfo.email, 'mailto:')}
+            {personalInfo.customTagline &&
+              renderContactDetail('CustomTagline', personalInfo.customTagline)}
+            {personalInfo.email && (
+              <>
+                {personalInfo.customTagline && <span className={baseStyles['text-muted']}>,</span>}
+                {renderContactDetail('Email', personalInfo.email, 'mailto:')}
+              </>
+            )}
             {personalInfo.phone && (
               <>
                 <span className={baseStyles['text-muted']}>,</span>

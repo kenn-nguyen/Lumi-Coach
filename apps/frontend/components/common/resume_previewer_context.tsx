@@ -5,6 +5,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 export interface PersonalInfo {
   name: string;
   title?: string;
+  customTagline?: string;
   email: string;
   phone: string;
   location: string;

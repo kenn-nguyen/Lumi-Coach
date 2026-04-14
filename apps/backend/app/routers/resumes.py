@@ -287,6 +287,42 @@ def _preserve_original_skills(
     return result
 
 
+def _build_resume_fetch_response(
+    resume: dict[str, Any],
+    request_id: str | None = None,
+) -> ResumeFetchResponse:
+    """Build a standard fetch-style response from a resume record."""
+    processing_status = resume.get("processing_status", "pending")
+    raw_resume = RawResume(
+        id=None,
+        content=resume["content"],
+        content_type=resume["content_type"],
+        created_at=resume["created_at"],
+        processing_status=processing_status,
+    )
+
+    processed_data = resume.get("processed_data")
+    if processed_data:
+        processed_data = normalize_resume_data(processed_data)
+
+    processed_resume = (
+        ResumeData.model_validate(processed_data) if processed_data else None
+    )
+
+    return ResumeFetchResponse(
+        request_id=request_id or str(uuid4()),
+        data=ResumeFetchData(
+            resume_id=resume["resume_id"],
+            raw_resume=raw_resume,
+            processed_resume=processed_resume,
+            cover_letter=resume.get("cover_letter"),
+            outreach_message=resume.get("outreach_message"),
+            parent_id=resume.get("parent_id"),
+            title=resume.get("title"),
+        ),
+    )
+
+
 def _protect_custom_sections(
     original_data: dict[str, Any] | None,
     improved_data: dict[str, Any],
@@ -598,41 +634,31 @@ async def get_resume(resume_id: str = Query(...)) -> ResumeFetchResponse:
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    # Get processing status (default to "pending" for old records)
-    processing_status = resume.get("processing_status", "pending")
+    return _build_resume_fetch_response(resume)
 
-    # Build response
-    raw_resume = RawResume(
-        id=None,  # TinyDB doesn't have numeric IDs like SQL
-        content=resume["content"],
-        content_type=resume["content_type"],
-        created_at=resume["created_at"],
-        processing_status=processing_status,
+
+@router.post("/{resume_id}/clone", response_model=ResumeFetchResponse)
+async def clone_resume_endpoint(resume_id: str) -> ResumeFetchResponse:
+    """Create a non-master child resume cloned from an existing resume."""
+    source_resume = db.get_resume(resume_id)
+    if not source_resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    cloned_resume = db.create_resume(
+        content=source_resume["content"],
+        content_type=source_resume.get("content_type", "md"),
+        filename=source_resume.get("filename"),
+        is_master=False,
+        parent_id=resume_id,
+        processed_data=copy.deepcopy(source_resume.get("processed_data")),
+        processing_status=source_resume.get("processing_status", "ready"),
+        cover_letter=source_resume.get("cover_letter"),
+        outreach_message=source_resume.get("outreach_message"),
+        title=source_resume.get("title"),
+        original_markdown=source_resume.get("original_markdown"),
     )
 
-    # Get processed data if available (no more on-demand parsing)
-    processed_data = resume.get("processed_data")
-
-    # Apply lazy migration - add section metadata to old resumes
-    if processed_data:
-        processed_data = normalize_resume_data(processed_data)
-
-    processed_resume = (
-        ResumeData.model_validate(processed_data) if processed_data else None
-    )
-
-    return ResumeFetchResponse(
-        request_id=str(uuid4()),
-        data=ResumeFetchData(
-            resume_id=resume_id,
-            raw_resume=raw_resume,
-            processed_resume=processed_resume,
-            cover_letter=resume.get("cover_letter"),
-            outreach_message=resume.get("outreach_message"),
-            parent_id=resume.get("parent_id"),
-            title=resume.get("title"),
-        ),
-    )
+    return _build_resume_fetch_response(cloned_resume)
 
 
 @router.get("/list", response_model=ResumeListResponse)
@@ -1320,29 +1346,7 @@ async def update_resume_endpoint(
 
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update resume")
-
-    raw_resume = RawResume(
-        id=None,
-        content=updated["content"],
-        content_type=updated["content_type"],
-        created_at=updated["created_at"],
-        processing_status=updated.get("processing_status", "pending"),
-    )
-
-    processed_resume = (
-        ResumeData.model_validate(updated.get("processed_data"))
-        if updated.get("processed_data")
-        else None
-    )
-
-    return ResumeFetchResponse(
-        request_id=str(uuid4()),
-        data=ResumeFetchData(
-            resume_id=resume_id,
-            raw_resume=raw_resume,
-            processed_resume=processed_resume,
-        ),
-    )
+    return _build_resume_fetch_response(updated)
 
 
 @router.get("/{resume_id}/pdf")
@@ -1354,11 +1358,11 @@ async def download_resume_pdf(
     marginBottom: int = Query(10, ge=5, le=25),
     marginLeft: int = Query(10, ge=5, le=25),
     marginRight: int = Query(10, ge=5, le=25),
-    sectionSpacing: int = Query(3, ge=1, le=5),
+    sectionSpacing: int = Query(2, ge=1, le=5),
     itemSpacing: int = Query(2, ge=1, le=5),
-    lineHeight: int = Query(3, ge=1, le=5),
-    fontSize: int = Query(3, ge=1, le=5),
-    headerScale: int = Query(3, ge=1, le=5),
+    lineHeight: int = Query(2, ge=1, le=5),
+    fontSize: int = Query(2, ge=1, le=5),
+    headerScale: int = Query(2, ge=1, le=5),
     headerFont: str = Query("serif", pattern="^(serif|sans-serif|mono)$"),
     bodyFont: str = Query("sans-serif", pattern="^(serif|sans-serif|mono)$"),
     compactMode: bool = Query(False),

@@ -105,6 +105,47 @@ class TestDeleteResume:
         assert resp.status_code == 404
 
 
+class TestCloneResume:
+    """POST /api/v1/resumes/{resume_id}/clone"""
+
+    @patch("app.routers.resumes.db")
+    async def test_clone_existing_resume(self, mock_db, client, mock_resume_record):
+        cloned_record = {
+            **mock_resume_record,
+            "resume_id": "res-clone-456",
+            "parent_id": "res-123",
+            "is_master": False,
+            "created_at": "2026-01-02T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+        }
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_db.create_resume.return_value = cloned_record
+
+        async with client:
+            resp = await client.post("/api/v1/resumes/res-123/clone")
+
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["resume_id"] == "res-clone-456"
+        assert body["parent_id"] == "res-123"
+        assert body["processed_resume"] is not None
+
+        mock_db.create_resume.assert_called_once()
+        kwargs = mock_db.create_resume.call_args.kwargs
+        assert kwargs["content"] == mock_resume_record["content"]
+        assert kwargs["parent_id"] == "res-123"
+        assert kwargs["is_master"] is False
+
+    @patch("app.routers.resumes.db")
+    async def test_clone_nonexistent_resume_returns_404(self, mock_db, client):
+        mock_db.get_resume.return_value = None
+
+        async with client:
+            resp = await client.post("/api/v1/resumes/nonexistent/clone")
+
+        assert resp.status_code == 404
+
+
 class TestUpdateTitle:
     """PATCH /api/v1/resumes/{resume_id}/title"""
 

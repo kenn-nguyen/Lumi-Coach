@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resume Matcher</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel__header">
+        <h1>Resume Admin Board</h1>
+        <p>Manage local extension assets and reopen generated resume previews.</p>
+      </header>
+
+      <details class="card card--foldable" id="assets-card">
+        <summary class="card__summary">
+          <h2>Assets</h2>
+          <span class="card__chevron" aria-hidden="true">⌄</span>
+        </summary>
+
+        <div class="asset-group">
+          <div class="asset-row">
+            <span class="asset-row__label">Master Resume Context</span>
+            <span id="master-resume-context-status" class="asset-row__value"></span>
+            <label class="button button--secondary asset-row__button" for="master-resume-context-input">Upload</label>
+            <input id="master-resume-context-input" class="asset-row__input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+          </div>
+
+          <div class="asset-row">
+            <span class="asset-row__label">Storyboard</span>
+            <span id="storyboard-status" class="asset-row__value"></span>
+            <label class="button button--secondary asset-row__button" for="storyboard-input">Upload</label>
+            <input id="storyboard-input" class="asset-row__input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+          </div>
+
+          <details class="asset-help">
+            <summary class="asset-help__summary">
+              <span>Prompt Files</span>
+              <span class="asset-help__chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <div class="asset-help__content meta">
+              <p><strong>Prompt 1</strong> reads the LinkedIn job description and extracts the hiring signals that matter.</p>
+              <p><strong>Prompt 2</strong> compresses that into a sharper writing brief so Prompt 3 does less guessing.</p>
+              <p><strong>Prompt 3</strong> writes the final resume JSON. Most quality problems happen here if the brief is vague or overloaded.</p>
+              <p>Optimize prompts by keeping instructions concrete, preserving the schema, and avoiding keyword stuffing. Tight prompts usually outperform longer prompts that repeat the same rule.</p>
+            </div>
+          </details>
+
+          <div class="asset-row">
+            <span class="asset-row__label">Prompt 1</span>
+            <span id="prompt1-template-status" class="asset-row__value"></span>
+            <label class="button button--secondary asset-row__button" for="prompt1-template-input">Upload</label>
+            <input id="prompt1-template-input" class="asset-row__input" type="file" accept=".txt,text/plain" />
+          </div>
+
+          <div class="asset-row">
+            <span class="asset-row__label">Prompt 2</span>
+            <span id="prompt2-template-status" class="asset-row__value"></span>
+            <label class="button button--secondary asset-row__button" for="prompt2-template-input">Upload</label>
+            <input id="prompt2-template-input" class="asset-row__input" type="file" accept=".txt,text/plain" />
+          </div>
+
+          <div class="asset-row">
+            <span class="asset-row__label">Prompt 3</span>
+            <span id="prompt3-template-status" class="asset-row__value"></span>
+            <label class="button button--secondary asset-row__button" for="prompt3-template-input">Upload</label>
+            <input id="prompt3-template-input" class="asset-row__input" type="file" accept=".txt,text/plain" />
+          </div>
+
+          <div class="asset-row asset-row--input">
+            <span class="asset-row__label">ChatGPT URL</span>
+            <input id="chatgpt-url-input" class="asset-row__text" type="url" placeholder="https://chatgpt.com/?temporary-chat=true" />
+            <button id="save-chatgpt-url-button" class="button asset-row__button" type="button">Save</button>
+          </div>
+
+          <div class="asset-row asset-row--input">
+            <span class="asset-row__label">Frontend App URL</span>
+            <input id="app-url-input" class="asset-row__text" type="url" placeholder="http://localhost:3000" />
+            <span class="asset-row__spacer" aria-hidden="true"></span>
+          </div>
+
+          <div class="asset-row asset-row--input">
+            <span class="asset-row__label">Backend API URL</span>
+            <input id="api-url-input" class="asset-row__text" type="url" placeholder="http://localhost:3000" />
+            <button id="save-runtime-urls-button" class="button asset-row__button" type="button">Save</button>
+          </div>
+        </div>
+      </details>
+
+      <section class="card">
+        <h2>History</h2>
+        <div class="history-toolbar">
+          <label class="field history-search">
+            <span class="sr-only">Search title</span>
+            <input id="history-search-input" type="search" placeholder="Search by job title" />
+          </label>
+          <details class="history-filters">
+            <summary class="history-filters__toggle" aria-label="History filters">⟐</summary>
+            <div class="history-filters__panel">
+              <label class="field field--compact">
+                <span>Sort by</span>
+                <select id="history-sort-field">
+                  <option value="generatedAt">Date submitted</option>
+                  <option value="company">Company</option>
+                </select>
+              </label>
+
+              <label class="field field--compact">
+                <span>Order</span>
+                <select id="history-sort-direction">
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </label>
+            </div>
+          </details>
+        </div>
+        <div id="history-list" class="history-list"></div>
+        <div class="history-pagination">
+          <button id="history-prev-page" class="button button--secondary" type="button">Previous</button>
+          <span id="history-page-indicator" class="meta"></span>
+          <label class="history-page-size" for="history-page-size">
+            <span>Show</span>
+            <select id="history-page-size">
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <button id="history-next-page" class="button button--secondary" type="button">Next</button>
+        </div>
+      </section>
+
+      <button id="reset-local-data-button" class="panel__reset" type="button">Reset local extension data</button>
+      <button id="reset-default-settings-button" class="panel__reset panel__reset--secondary" type="button">Reset to default settings</button>
+    </main>
+    <script type="module" src="./panel.js"></script>
+  </body>
+  </html>

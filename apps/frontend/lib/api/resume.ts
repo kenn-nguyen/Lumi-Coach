@@ -9,6 +9,7 @@ interface ProcessedResume {
   personalInfo?: {
     name?: string;
     title?: string;
+    customTagline?: string | null;
     email?: string;
     phone?: string;
     location?: string;

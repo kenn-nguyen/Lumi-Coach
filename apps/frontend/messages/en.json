@@ -419,6 +419,7 @@
       "placeholders": {
         "name": "John Doe",
         "title": "Software Engineer",
+        "customTagline": "Open to relocate | U.S. work authorized",
         "email": "john@example.com",
         "phone": "+1 (555) 000-0000",
         "location": "City, Country",
@@ -732,6 +733,7 @@
     "personalInfo": {
       "name": "Full Name",
       "title": "Job Title",
+      "customTagline": "Custom Tagline",
       "email": "Email",
       "phone": "Phone",
       "location": "Location",

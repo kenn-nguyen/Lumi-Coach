@@ -123,6 +123,7 @@ class PersonalInfo(BaseModel):
 
     name: str = ""
     title: str = ""
+    customTagline: str | None = None
     email: str = ""
     phone: str = ""
     location: str = ""

@@ -59,6 +59,21 @@ export const PersonalInfoForm: React.FC<PersonalInfoFormProps> = ({ data, onChan
         </div>
         <div className="space-y-2">
           <Label
+            htmlFor="customTagline"
+            className="font-mono text-xs uppercase tracking-wider text-gray-500"
+          >
+            {t('resume.personalInfo.customTagline')}
+          </Label>
+          <Input
+            id="customTagline"
+            value={data.customTagline || ''}
+            onChange={(e) => handleChange('customTagline', e.target.value)}
+            placeholder={t('builder.personalInfoForm.placeholders.customTagline')}
+            className="rounded-none border-black focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700 bg-transparent"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label
             htmlFor="email"
             className="font-mono text-xs uppercase tracking-wider text-gray-500"
           >

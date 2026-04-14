@@ -16,6 +16,7 @@ import baseStyles from '@/components/resume/styles/_base.module.css';
 export interface PersonalInfo {
   name?: string;
   title?: string;
+  customTagline?: string | null;
   email?: string;
   phone?: string;
   location?: string;

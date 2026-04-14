@@ -419,6 +419,7 @@
       "placeholders": {
         "name": "Juan Pérez",
         "title": "Ingeniero de software",
+        "customTagline": "Disponible para reubicación | Autorización de trabajo en EE. UU.",
         "email": "juan@example.com",
         "phone": "+34 600 000 000",
         "location": "Ciudad, País",
@@ -732,6 +733,7 @@
     "personalInfo": {
       "name": "Nombre Completo",
       "title": "Título del Puesto",
+      "customTagline": "Etiqueta Personalizada",
       "email": "Correo Electrónico",
       "phone": "Teléfono",
       "location": "Ubicación",

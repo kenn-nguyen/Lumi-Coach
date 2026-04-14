@@ -26,6 +26,7 @@ type PageProps = {
 
 interface PersonalInfo {
   name?: string;
+  customTagline?: string;
   email?: string;
   phone?: string;
   location?: string;

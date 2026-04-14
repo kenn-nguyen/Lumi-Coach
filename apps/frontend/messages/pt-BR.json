@@ -419,6 +419,7 @@
       "placeholders": {
         "name": "João Silva",
         "title": "Engenheiro de Software",
+        "customTagline": "Disponível para mudança | Autorizado a trabalhar nos EUA",
         "email": "joao@exemplo.com",
         "phone": "+55 (11) 99999-0000",
         "location": "São Paulo, Brasil",
@@ -732,6 +733,7 @@
     "personalInfo": {
       "name": "Nome Completo",
       "title": "Cargo",
+      "customTagline": "Tagline Personalizada",
       "email": "Email",
       "phone": "Telefone",
       "location": "Localização",
