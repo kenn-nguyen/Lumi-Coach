@@ -586,6 +586,14 @@ class ImproveResumeConfirmRequest(BaseModel):
     improvements: list[ImprovementSuggestion]
 
 
+class ExtensionResumeJobLinkRequest(BaseModel):
+    """Request to link an extension-generated tailored resume to stored job context."""
+
+    original_resume_id: str
+    tailored_resume_id: str
+    job_id: str
+
+
 # Config Models
 class LLMConfigRequest(BaseModel):
     """Request to update LLM configuration."""
@@ -704,6 +712,12 @@ class UpdateTitleRequest(BaseModel):
     """Request to update resume title."""
 
     title: str
+
+
+class UpdateJobDescriptionRequest(BaseModel):
+    """Request to update linked job description content."""
+
+    content: str
 
 
 class ResetDatabaseRequest(BaseModel):

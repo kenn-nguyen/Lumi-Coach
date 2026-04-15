@@ -1,5 +1,6 @@
 """Integration tests for resume CRUD endpoints."""
 
+import json
 from unittest.mock import patch, AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -106,6 +107,102 @@ class TestDeleteResume:
         assert resp.status_code == 404
 
 
+class TestUploadResume:
+    """POST /api/v1/resumes/upload"""
+
+    @patch("app.routers.resumes.db")
+    @patch("app.routers.resumes.parse_document", new_callable=AsyncMock)
+    async def test_upload_schema_valid_json_resume_skips_document_parsing(
+        self, mock_parse_document, mock_db, client, sample_resume
+    ):
+        mock_db.create_resume_atomic_master = AsyncMock(
+            return_value={
+                "resume_id": "res-json-123",
+                "is_master": True,
+            }
+        )
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/upload",
+                files={
+                    "file": (
+                        "resume.json",
+                        json.dumps(sample_resume),
+                        "application/json",
+                    )
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["resume_id"] == "res-json-123"
+        assert body["processing_status"] == "ready"
+        mock_parse_document.assert_not_called()
+        mock_db.create_resume_atomic_master.assert_awaited_once()
+        kwargs = mock_db.create_resume_atomic_master.await_args.kwargs
+        assert kwargs["content_type"] == "json"
+        assert kwargs["processed_data"] == sample_resume
+
+    @patch("app.routers.resumes.db")
+    @patch("app.routers.resumes.parse_document", new_callable=AsyncMock)
+    async def test_upload_wrapped_json_resume_preserves_generation_feedback(
+        self, mock_parse_document, mock_db, client, sample_resume
+    ):
+        feedback = {
+            "summary": "CLAUDE API: Strong product fit.",
+            "pros": ["Good leadership scope"],
+            "cons": ["Could use tighter metrics"],
+            "caveats": ["Verify claims before applying"],
+        }
+        mock_db.create_resume_atomic_master = AsyncMock(
+            return_value={
+                "resume_id": "res-json-wrapper-123",
+                "is_master": True,
+            }
+        )
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/upload",
+                files={
+                    "file": (
+                        "resume.json",
+                        json.dumps(
+                            {
+                                "resume_data": sample_resume,
+                                "generation_feedback": feedback,
+                            }
+                        ),
+                        "application/json",
+                    )
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_parse_document.assert_not_called()
+        kwargs = mock_db.create_resume_atomic_master.await_args.kwargs
+        assert kwargs["content_type"] == "json"
+        assert kwargs["processed_data"] == sample_resume
+        assert kwargs["generation_feedback"] == feedback
+
+    @patch("app.routers.resumes.db")
+    async def test_upload_invalid_json_resume_returns_422(self, mock_db, client):
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/upload",
+                files={
+                    "file": (
+                        "resume.json",
+                        '{"not_resume_data": true}',
+                        "application/json",
+                    )
+                },
+            )
+
+        assert resp.status_code == 422
+
+
 class TestUpdateResume:
     """PATCH /api/v1/resumes/{resume_id}"""
 
@@ -209,6 +306,135 @@ class TestCloneResume:
             resp = await client.post("/api/v1/resumes/nonexistent/clone")
 
         assert resp.status_code == 404
+
+
+class TestLinkJobContext:
+    """POST /api/v1/resumes/link-job-context"""
+
+    @patch("app.routers.resumes.db")
+    async def test_link_job_context_creates_improvement_record(
+        self, mock_db, client, mock_resume_record
+    ):
+        tailored_record = {
+            **mock_resume_record,
+            "resume_id": "tailored-456",
+            "parent_id": "res-123",
+            "is_master": False,
+        }
+        mock_db.get_resume.side_effect = [mock_resume_record, tailored_record]
+        mock_db.get_job.return_value = {"job_id": "job-789", "content": "JD"}
+        mock_db.get_improvement_by_tailored_resume.return_value = None
+        mock_db.create_improvement.return_value = {
+            "request_id": "req-1",
+            "original_resume_id": "res-123",
+            "tailored_resume_id": "tailored-456",
+            "job_id": "job-789",
+            "improvements": [],
+        }
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/link-job-context",
+                json={
+                    "original_resume_id": "res-123",
+                    "tailored_resume_id": "tailored-456",
+                    "job_id": "job-789",
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["job_id"] == "job-789"
+        assert body["data"]["improvements"] == []
+        mock_db.create_improvement.assert_called_once_with(
+            original_resume_id="res-123",
+            tailored_resume_id="tailored-456",
+            job_id="job-789",
+            improvements=[],
+        )
+
+    @patch("app.routers.resumes.db")
+    async def test_link_job_context_rejects_duplicate_link(
+        self, mock_db, client, mock_resume_record
+    ):
+        tailored_record = {
+            **mock_resume_record,
+            "resume_id": "tailored-456",
+            "parent_id": "res-123",
+            "is_master": False,
+        }
+        mock_db.get_resume.side_effect = [mock_resume_record, tailored_record]
+        mock_db.get_job.return_value = {"job_id": "job-789", "content": "JD"}
+        mock_db.get_improvement_by_tailored_resume.return_value = {
+            "request_id": "existing-req",
+            "tailored_resume_id": "tailored-456",
+            "job_id": "job-789",
+        }
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/link-job-context",
+                json={
+                    "original_resume_id": "res-123",
+                    "tailored_resume_id": "tailored-456",
+                    "job_id": "job-789",
+                },
+            )
+
+        assert resp.status_code == 409
+
+
+class TestUpdateJobDescription:
+    """PATCH /api/v1/resumes/{resume_id}/job-description"""
+
+    @patch("app.routers.resumes.db")
+    async def test_update_job_description_for_linked_tailored_resume(
+        self, mock_db, client, mock_resume_record
+    ):
+        tailored_record = {
+            **mock_resume_record,
+            "resume_id": "tailored-456",
+            "parent_id": "res-123",
+            "is_master": False,
+        }
+        mock_db.get_resume.return_value = tailored_record
+        mock_db.get_improvement_by_tailored_resume.return_value = {
+            "job_id": "job-789",
+            "tailored_resume_id": "tailored-456",
+        }
+        mock_db.get_job.return_value = {"job_id": "job-789", "content": "Old JD"}
+        mock_db.update_job.return_value = {"job_id": "job-789", "content": "New JD"}
+
+        async with client:
+            resp = await client.patch(
+                "/api/v1/resumes/tailored-456/job-description",
+                json={"content": "New JD"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "New JD"
+        mock_db.update_job.assert_called_once_with(
+            "job-789",
+            {
+                "content": "New JD",
+                "job_keywords": None,
+                "job_keywords_hash": None,
+            },
+        )
+
+    @patch("app.routers.resumes.db")
+    async def test_update_job_description_rejects_non_tailored_resume(
+        self, mock_db, client, mock_resume_record
+    ):
+        mock_db.get_resume.return_value = mock_resume_record
+
+        async with client:
+            resp = await client.patch(
+                "/api/v1/resumes/res-123/job-description",
+                json={"content": "New JD"},
+            )
+
+        assert resp.status_code == 400
 
 
 class TestUpdateTitle:

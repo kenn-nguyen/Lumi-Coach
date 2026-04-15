@@ -6,11 +6,14 @@ import { validateResumeData } from './validation.js';
 import {
   buildPreviewUrl,
   cloneResume,
+  enableContentGenerationFeatures,
   fetchResumeById,
+  linkResumeToJobContext,
   listResumes,
   openPreviewTab,
   patchResume,
   renameResume,
+  uploadJobDescription,
 } from './api.js';
 import { logError, logInfo } from './log.js';
 import {
@@ -66,6 +69,18 @@ function buildResumeTitle(jobTitle, company) {
     return `${normalizedCompany} - ${normalizedTitle}`;
   }
   return normalizedCompany || normalizedTitle || null;
+}
+
+function buildStoredJobDescription(jobSnapshot) {
+  const parts = [
+    jobSnapshot?.title ? `Title: ${jobSnapshot.title}` : null,
+    jobSnapshot?.company ? `Company: ${jobSnapshot.company}` : null,
+    jobSnapshot?.location ? `Location: ${jobSnapshot.location}` : null,
+    jobSnapshot?.sourceUrl ? `Source URL: ${jobSnapshot.sourceUrl}` : null,
+    null,
+    jobSnapshot?.rawText?.trim() || '',
+  ].filter((part) => part !== null);
+  return parts.join('\n').trim();
 }
 
 function prefixGenerationFeedbackSummary(feedback, profile) {
@@ -147,12 +162,29 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
     company: jobSnapshot.company,
     rawTextLength: jobSnapshot.rawText.length,
   });
+
+  logInfo('Orchestrator', 'Resolving base resume.');
+  const baseResumeId = await resolveBaseResumeId();
+  logInfo('Orchestrator', 'Resolved base resume for cloning.', { baseResumeId });
+  logInfo('Orchestrator', 'Uploading scraped job description for downstream app features.', {
+    baseResumeId,
+  });
+  const uploadedJobDescription = buildStoredJobDescription(jobSnapshot);
+  const jobUploadResponse = await uploadJobDescription(uploadedJobDescription, baseResumeId);
+  const jobId = jobUploadResponse?.job_id?.[0];
+  if (!jobId) {
+    throw new Error('Job upload response did not include a job id.');
+  }
   await setExtensionState({
     sessionId: crypto.randomUUID(),
     status: SESSION_STATUS.scraped,
     llmProfileId: activeLlmProfile.id,
     llmProfileLabel: activeLlmProfile.label,
     jobSnapshot,
+    jobId,
+    originalResumeId: baseResumeId,
+    tailoredResumeId: null,
+    jobContextLinked: false,
     prompt1Result: null,
     prompt2Result: null,
     prompt3Raw: null,
@@ -163,15 +195,13 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
     patchError: null,
   });
 
-  logInfo('Orchestrator', 'Resolving base resume.');
-  const baseResumeId = await resolveBaseResumeId();
-  logInfo('Orchestrator', 'Resolved base resume for cloning.', { baseResumeId });
   const cloneResponse = await cloneResume(baseResumeId);
   const resumeId = cloneResponse?.data?.resume_id;
   if (!resumeId) {
     throw new Error('Clone response did not include a resume id.');
   }
   logInfo('Orchestrator', 'Cloned base resume and created job-specific resume.', { baseResumeId, resumeId });
+  await setExtensionState({ selectedResumeId: resumeId, tailoredResumeId: resumeId });
   const fetchedResume = cloneResponse?.data ? cloneResponse : await fetchResumeById(resumeId);
   const currentResume = resolveCurrentResumeSource(masterResumeContextAsset, fetchedResume);
   const storyboard = ensureStoryboardContent(storyboardAsset);
@@ -195,7 +225,7 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
   }
   logInfo('Orchestrator', 'Parsing Prompt 1 output.');
   const prompt1Result = extractJsonFromText(prompt1Run.rawText);
-  await setExtensionState({ selectedResumeId: resumeId, prompt1Result, status: SESSION_STATUS.prompt1Done, resumeSource: currentResume });
+  await setExtensionState({ prompt1Result, status: SESSION_STATUS.prompt1Done, resumeSource: currentResume });
 
   logInfo('Orchestrator', 'Rendering Prompt 2.');
   const prompt2 = await renderPrompt2({ prompt1Json: prompt1Result }, activeLlmProfile);
@@ -285,6 +315,48 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
       status: 'patch_failed',
     });
     throw error;
+  }
+
+  try {
+    logInfo('Orchestrator', 'Linking generated resume to stored job context.', {
+      baseResumeId,
+      resumeId,
+      jobId,
+    });
+    await linkResumeToJobContext(baseResumeId, resumeId, jobId);
+    await setExtensionState({ jobContextLinked: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to link generated resume to job context.';
+    logError('Orchestrator', 'Job-context link failed after successful patch.', {
+      baseResumeId,
+      resumeId,
+      jobId,
+      message,
+    });
+    await setExtensionState({ patchError: message, status: SESSION_STATUS.error, jobContextLinked: false });
+    await upsertHistoryEntry({
+      jobKey: jobSnapshot.sourceUrl,
+      title: jobSnapshot.title,
+      company: jobSnapshot.company,
+      datePosted: jobSnapshot.datePosted ?? null,
+      generatedAt: new Date().toISOString(),
+      resumeId,
+      previewUrl: await buildPreviewUrl(resumeId),
+      status: 'job_context_link_failed',
+    });
+    throw error;
+  }
+
+  try {
+    logInfo('Orchestrator', 'Ensuring cover letter and outreach features are enabled.');
+    await enableContentGenerationFeatures();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to enable content-generation features.';
+    logError('Orchestrator', 'Feature enablement failed after successful job linkage.', {
+      resumeId,
+      jobId,
+      message,
+    });
   }
 
   const generatedResumeTitle = buildResumeTitle(jobSnapshot.title, jobSnapshot.company);

@@ -95,7 +95,7 @@
       "parsingFailed": "Currículo enviado, mas a análise de IA falhou. Você ainda pode personalizá-lo manualmente.",
       "failed": "Falha no upload.",
       "dropzoneTitle": "Clique ou Arraste o Arquivo",
-      "dropzoneSubtitle": "PDF, DOC, DOCX (Máximo 4MB)",
+      "dropzoneSubtitle": "PDF, DOC, DOCX, JSON (Máximo 4MB)",
       "tryDifferentFile": "Tentar outro arquivo",
       "parsingFailedKeepOpen": "A análise de IA falhou. Tente outro arquivo ou feche este diálogo."
     }
@@ -271,6 +271,11 @@
           "matchActionVerbs": "Combine verbos de ação dos requisitos da vaga"
         }
       },
+      "editorPlaceholder": "Cole ou edite a descrição da vaga aqui...",
+      "resetButton": "Redefinir",
+      "useForFutureGeneration": "Usar esta JD em gerações futuras",
+      "saveSuccess": "A descrição da vaga foi atualizada para gerações futuras.",
+      "saveFailed": "Falha ao atualizar a descrição da vaga: {error}",
       "stats": {
         "keywordsExtracted": "{count} palavras-chave extraídas",
         "matchesFound": "{count} correspondências encontradas",

@@ -95,7 +95,7 @@
       "parsingFailed": "简历已上传但AI解析失败。您仍可手动定制。",
       "failed": "上传失败。",
       "dropzoneTitle": "点击或拖拽文件",
-      "dropzoneSubtitle": "PDF、DOC、DOCX（最大 4MB）",
+      "dropzoneSubtitle": "PDF、DOC、DOCX、JSON（最大 4MB）",
       "tryDifferentFile": "尝试其他文件",
       "parsingFailedKeepOpen": "AI 解析失败。请尝试其他文件，或关闭此对话框。"
     }
@@ -271,6 +271,11 @@
           "matchActionVerbs": "对齐岗位要求中的行动动词"
         }
       },
+      "editorPlaceholder": "在这里粘贴或编辑职位描述...",
+      "resetButton": "重置",
+      "useForFutureGeneration": "将这份 JD 用于后续生成",
+      "saveSuccess": "职位描述已更新，后续生成将使用它。",
+      "saveFailed": "更新职位描述失败：{error}",
       "stats": {
         "keywordsExtracted": "已提取 {count} 个关键词",
         "matchesFound": "已匹配 {count} 处",

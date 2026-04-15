@@ -95,7 +95,7 @@
       "parsingFailed": "履歴書はアップロードされましたが、AI解析に失敗しました。手動でカスタマイズすることは可能です。",
       "failed": "アップロードに失敗しました。",
       "dropzoneTitle": "クリックまたはファイルをドラッグ",
-      "dropzoneSubtitle": "PDF、DOC、DOCX（最大 4MB）",
+      "dropzoneSubtitle": "PDF、DOC、DOCX、JSON（最大 4MB）",
       "tryDifferentFile": "別のファイルを試す",
       "parsingFailedKeepOpen": "AI 解析に失敗しました。別のファイルを試すか、このダイアログを閉じてください。"
     }
@@ -271,6 +271,11 @@
           "matchActionVerbs": "要件にある行動動詞に合わせる"
         }
       },
+      "editorPlaceholder": "ここに求人内容を貼り付けるか編集してください...",
+      "resetButton": "リセット",
+      "useForFutureGeneration": "今後の生成にこのJDを使う",
+      "saveSuccess": "求人内容が今後の生成用に更新されました。",
+      "saveFailed": "求人内容の更新に失敗しました: {error}",
       "stats": {
         "keywordsExtracted": "抽出キーワード数: {count}",
         "matchesFound": "一致数: {count}",

@@ -10,7 +10,12 @@ import { useTranslations } from '@/lib/i18n';
 
 interface JDComparisonViewProps {
   jobDescription: string;
+  storedJobDescription: string;
   resumeData: ResumeData;
+  onJobDescriptionChange: (value: string) => void;
+  onResetJobDescription: () => void;
+  onSaveJobDescription: () => void;
+  isSavingJobDescription: boolean;
 }
 
 /**
@@ -18,8 +23,20 @@ interface JDComparisonViewProps {
  * Left: JD (read-only)
  * Right: Resume with matching keywords highlighted
  */
-export function JDComparisonView({ jobDescription, resumeData }: JDComparisonViewProps) {
+export function JDComparisonView({
+  jobDescription,
+  storedJobDescription,
+  resumeData,
+  onJobDescriptionChange,
+  onResetJobDescription,
+  onSaveJobDescription,
+  isSavingJobDescription,
+}: JDComparisonViewProps) {
   const { t } = useTranslations();
+  const trimmedDraft = jobDescription.trim();
+  const trimmedStored = storedJobDescription.trim();
+  const canReset = trimmedDraft !== trimmedStored;
+  const canSave = Boolean(trimmedDraft) && trimmedDraft !== trimmedStored;
 
   // Extract keywords from JD
   const keywords = useMemo(() => extractKeywords(jobDescription), [jobDescription]);
@@ -99,7 +116,15 @@ export function JDComparisonView({ jobDescription, resumeData }: JDComparisonVie
       <div className="flex-1 grid grid-cols-2 min-h-0">
         {/* Left: JD */}
         <div className="border-r border-gray-200 overflow-hidden">
-          <JDDisplay content={jobDescription} />
+          <JDDisplay
+            content={jobDescription}
+            onChange={onJobDescriptionChange}
+            onReset={onResetJobDescription}
+            onSave={onSaveJobDescription}
+            canReset={canReset}
+            canSave={canSave}
+            isSaving={isSavingJobDescription}
+          />
         </div>
 
         {/* Right: Resume with highlights */}

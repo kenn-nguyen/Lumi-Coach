@@ -35,6 +35,7 @@ import {
   fetchResume,
   updateResume,
   updateCoverLetter,
+  updateJobDescription,
   updateOutreachMessage,
   generateCoverLetter,
   generateOutreachMessage,
@@ -155,7 +156,9 @@ const ResumeBuilderContent = () => {
   >(null);
 
   // JD comparison state
-  const [jobDescription, setJobDescription] = useState<string | null>(null);
+  const [storedJobDescription, setStoredJobDescription] = useState<string | null>(null);
+  const [draftJobDescription, setDraftJobDescription] = useState<string | null>(null);
+  const [isSavingJobDescription, setIsSavingJobDescription] = useState(false);
 
   // AI Regenerate wizard
   const regenerateWizard = useRegenerateWizard({
@@ -370,18 +373,21 @@ const ResumeBuilderContent = () => {
         try {
           const data = await fetchJobDescription(resumeId);
           if (!cancelled) {
-            setJobDescription(data.content);
+            setStoredJobDescription(data.content);
+            setDraftJobDescription(data.content);
           }
         } catch (err) {
           // JD might not be available for older resumes
           if (!cancelled) {
             console.warn('Could not fetch job description:', err);
-            setJobDescription(null);
+            setStoredJobDescription(null);
+            setDraftJobDescription(null);
           }
         }
       } else {
         // Clear job description when switching to non-tailored resume
-        setJobDescription(null);
+        setStoredJobDescription(null);
+        setDraftJobDescription(null);
       }
     };
 
@@ -390,6 +396,33 @@ const ResumeBuilderContent = () => {
       cancelled = true;
     };
   }, [isTailoredResume, resumeId]);
+
+  const handleResetJobDescription = useCallback(() => {
+    setDraftJobDescription(storedJobDescription);
+  }, [storedJobDescription]);
+
+  const handleSaveJobDescription = useCallback(async () => {
+    if (!resumeId || !draftJobDescription) {
+      return;
+    }
+
+    try {
+      setIsSavingJobDescription(true);
+      const updated = await updateJobDescription(resumeId, draftJobDescription);
+      setStoredJobDescription(updated.content);
+      setDraftJobDescription(updated.content);
+      showNotification(t('builder.jdMatch.saveSuccess'), 'success');
+    } catch (error) {
+      console.error('Failed to update job description:', error);
+      const message = error instanceof Error ? error.message : t('common.error');
+      showNotification(
+        t('builder.jdMatch.saveFailed', { error: message }),
+        'danger'
+      );
+    } finally {
+      setIsSavingJobDescription(false);
+    }
+  }, [draftJobDescription, resumeId, showNotification, t]);
 
   const handleUpdate = useCallback((newData: ResumeData) => {
     setResumeData(newData);
@@ -865,17 +898,17 @@ const ResumeBuilderContent = () => {
                   {
                     id: 'cover-letter',
                     label: t('builder.previewTabs.coverLetter'),
-                    disabled: !coverLetter,
+                    disabled: !isTailoredResume,
                   },
                   {
                     id: 'outreach',
                     label: t('builder.previewTabs.outreach'),
-                    disabled: !outreachMessage,
+                    disabled: !isTailoredResume,
                   },
                   {
                     id: 'jd-match',
                     label: t('builder.previewTabs.jdMatch'),
-                    disabled: !jobDescription,
+                    disabled: !draftJobDescription,
                   },
                 ]}
                 activeTab={activeTab}
@@ -928,8 +961,16 @@ const ResumeBuilderContent = () => {
                 ))}
 
               {/* JD Match Comparison */}
-              {activeTab === 'jd-match' && jobDescription && (
-                <JDComparisonView jobDescription={jobDescription} resumeData={resumeData} />
+              {activeTab === 'jd-match' && draftJobDescription && (
+                <JDComparisonView
+                  jobDescription={draftJobDescription}
+                  storedJobDescription={storedJobDescription ?? ''}
+                  resumeData={resumeData}
+                  onJobDescriptionChange={(value) => setDraftJobDescription(value)}
+                  onResetJobDescription={handleResetJobDescription}
+                  onSaveJobDescription={handleSaveJobDescription}
+                  isSavingJobDescription={isSavingJobDescription}
+                />
               )}
             </div>
           </div>

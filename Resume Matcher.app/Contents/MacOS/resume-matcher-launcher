@@ -12,7 +12,6 @@ fi
 
 osascript <<EOF
 tell application "Terminal"
-  activate
   do script "cd \"$ROOT_DIR\" && \"$LAUNCH_SCRIPT\""
 end tell
 EOF

@@ -95,7 +95,7 @@
       "parsingFailed": "Currículum subido pero el análisis de IA falló. Aún puedes personalizarlo manualmente.",
       "failed": "La subida falló.",
       "dropzoneTitle": "Haz clic o arrastra un archivo",
-      "dropzoneSubtitle": "PDF, DOC, DOCX (Máx. 4MB)",
+      "dropzoneSubtitle": "PDF, DOC, DOCX, JSON (Máx. 4MB)",
       "tryDifferentFile": "Probar otro archivo",
       "parsingFailedKeepOpen": "El análisis de IA falló. Prueba otro archivo o cierra este diálogo."
     }
@@ -271,6 +271,11 @@
           "matchActionVerbs": "Haz coincidir verbos de acción de los requisitos"
         }
       },
+      "editorPlaceholder": "Pega o edita aquí la descripción del puesto...",
+      "resetButton": "Restablecer",
+      "useForFutureGeneration": "Usar esta JD para futuras generaciones",
+      "saveSuccess": "La descripción del puesto se actualizó para futuras generaciones.",
+      "saveFailed": "No se pudo actualizar la descripción del puesto: {error}",
       "stats": {
         "keywordsExtracted": "{count} palabras clave extraídas",
         "matchesFound": "{count} coincidencias encontradas",

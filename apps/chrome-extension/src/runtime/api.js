@@ -1,5 +1,5 @@
 import { DEFAULT_API_ORIGIN, DEFAULT_APP_ORIGIN } from './constants.js';
-import { logError, logInfo } from './log.js';
+import { logError, logInfo, logWarn } from './log.js';
 import { getUserAssets } from './storage.js';
 
 function normalizeOrigin(value, fallback) {
@@ -110,6 +110,140 @@ export async function fetchResumeById(resumeId) {
   }
   const payload = await response.json();
   logInfo('ResumeApi', 'Fetch resume succeeded.', { resumeId });
+  return payload;
+}
+
+export async function uploadJobDescription(jobDescription, resumeId) {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/jobs/upload`;
+  logInfo('ResumeApi', 'Uploading job description.', {
+    endpoint,
+    resumeId,
+    contentLength: jobDescription?.length ?? 0,
+  });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_descriptions: [jobDescription],
+        resume_id: resumeId,
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError('ResumeApi', 'Job upload request failed before response.', {
+      endpoint,
+      resumeId,
+      error: message,
+    });
+    throw new Error(`Job upload request failed before response at ${endpoint}: ${message}`);
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logError('ResumeApi', 'Job upload returned a non-OK status.', {
+      endpoint,
+      resumeId,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(`Failed to upload job description (status ${response.status}): ${text}`);
+  }
+  const payload = await response.json();
+  const jobId = payload?.job_id?.[0] ?? null;
+  if (!jobId) {
+    throw new Error('Job upload response did not include a job id.');
+  }
+  logInfo('ResumeApi', 'Job upload succeeded.', { resumeId, jobId });
+  return payload;
+}
+
+export async function linkResumeToJobContext(originalResumeId, tailoredResumeId, jobId) {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/resumes/link-job-context`;
+  logInfo('ResumeApi', 'Linking tailored resume to job context.', {
+    endpoint,
+    originalResumeId,
+    tailoredResumeId,
+    jobId,
+  });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        original_resume_id: originalResumeId,
+        tailored_resume_id: tailoredResumeId,
+        job_id: jobId,
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError('ResumeApi', 'Job-context link request failed before response.', {
+      endpoint,
+      originalResumeId,
+      tailoredResumeId,
+      jobId,
+      error: message,
+    });
+    throw new Error(`Job-context link request failed before response at ${endpoint}: ${message}`);
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logError('ResumeApi', 'Job-context link returned a non-OK status.', {
+      endpoint,
+      originalResumeId,
+      tailoredResumeId,
+      jobId,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(`Failed to link job context (status ${response.status}): ${text}`);
+  }
+  const payload = await response.json();
+  logInfo('ResumeApi', 'Job-context link succeeded.', {
+    tailoredResumeId,
+    jobId,
+    requestId: payload?.request_id ?? null,
+  });
+  return payload;
+}
+
+export async function enableContentGenerationFeatures() {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/config/features`;
+  logInfo('ResumeApi', 'Enabling content-generation features.', { endpoint });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enable_cover_letter: true,
+        enable_outreach_message: true,
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logWarn('ResumeApi', 'Feature toggle request failed before response.', {
+      endpoint,
+      error: message,
+    });
+    throw new Error(`Feature toggle request failed before response at ${endpoint}: ${message}`);
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logWarn('ResumeApi', 'Feature toggle returned a non-OK status.', {
+      endpoint,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(`Failed to enable content-generation features (status ${response.status}): ${text}`);
+  }
+  const payload = await response.json();
+  logInfo('ResumeApi', 'Content-generation features enabled.', payload);
   return payload;
 }
 

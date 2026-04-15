@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import ValidationError
 
 from app.config_cache import get_content_language, load_config as _load_config
 from app.database import db
@@ -21,6 +22,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 from app.schemas import (
+    ExtensionResumeJobLinkRequest,
     GenerateContentResponse,
     GenerationFeedback,
     ImproveResumeConfirmRequest,
@@ -39,6 +41,7 @@ from app.schemas import (
     ResumeUpdateRequest,
     RawResume,
     UpdateCoverLetterRequest,
+    UpdateJobDescriptionRequest,
     UpdateOutreachMessageRequest,
     UpdateTitleRequest,
     normalize_resume_data,
@@ -547,22 +550,28 @@ ALLOWED_TYPES = {
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/json",
+    "text/json",
 }
 MAX_FILE_SIZE = 4 * 1024 * 1024  # 4MB
 
 
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
-    """Upload and process a resume file (PDF/DOCX).
+    """Upload and process a resume file (PDF/DOCX/JSON).
 
     Converts the file to Markdown and stores it in the database.
-    Optionally parses to structured JSON if LLM is configured.
+    For schema-valid JSON uploads, stores structured data directly.
     """
+    file_name = file.filename or "resume"
+    file_suffix = Path(file_name).suffix.lower()
+    is_json_upload = file_suffix == ".json" or file.content_type in {"application/json", "text/json"}
+
     # Validate file type
-    if file.content_type not in ALLOWED_TYPES:
+    if file.content_type not in ALLOWED_TYPES and not is_json_upload:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type: {file.content_type}. Allowed: PDF, DOC, DOCX",
+            detail=f"Invalid file type: {file.content_type}. Allowed: PDF, DOC, DOCX, JSON",
         )
 
     # Read and validate size
@@ -576,9 +585,62 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    if is_json_upload:
+        try:
+            json_content = content.decode("utf-8")
+        except UnicodeDecodeError as e:
+            logger.error("JSON resume decoding failed: %s", e)
+            raise HTTPException(
+                status_code=422,
+                detail="Failed to decode JSON file. Please ensure it is valid UTF-8 JSON.",
+            )
+
+        try:
+            parsed_json = json.loads(json_content)
+            generation_feedback = None
+            resume_payload = parsed_json
+            if isinstance(parsed_json, dict) and "resume_data" in parsed_json:
+                wrapped_payload = ResumeUpdateRequest.model_validate(parsed_json)
+                resume_payload = wrapped_payload.resume_data.model_dump()
+                generation_feedback = (
+                    wrapped_payload.generation_feedback.model_dump()
+                    if wrapped_payload.generation_feedback
+                    else None
+                )
+            processed_data = ResumeData.model_validate(resume_payload).model_dump()
+        except json.JSONDecodeError as e:
+            logger.error("JSON resume parsing failed: %s", e)
+            raise HTTPException(
+                status_code=422,
+                detail="Failed to parse JSON file. Please ensure it is valid ResumeData JSON.",
+            )
+        except ValidationError as e:
+            logger.error("JSON resume validation failed: %s", e)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Uploaded JSON does not match ResumeData schema: {e}",
+            )
+
+        resume = await db.create_resume_atomic_master(
+            content=json.dumps(processed_data, indent=2),
+            content_type="json",
+            filename=file_name,
+            processed_data=processed_data,
+            processing_status="ready",
+            generation_feedback=generation_feedback,
+        )
+
+        return ResumeUploadResponse(
+            message=f"File {file_name} uploaded successfully",
+            request_id=str(uuid4()),
+            resume_id=resume["resume_id"],
+            processing_status="ready",
+            is_master=resume.get("is_master", False),
+        )
+
     # Convert to markdown
     try:
-        markdown_content = await parse_document(content, file.filename or "resume.pdf")
+        markdown_content = await parse_document(content, file_name)
     except Exception as e:
         logger.error(f"Document parsing failed: {e}")
         raise HTTPException(
@@ -592,7 +654,7 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
     resume = await db.create_resume_atomic_master(
         content=markdown_content,
         content_type="md",
-        filename=file.filename,
+        filename=file_name,
         processed_data=None,
         processing_status="processing",
         original_markdown=markdown_content,
@@ -1371,6 +1433,52 @@ async def update_resume_endpoint(
     return _build_resume_fetch_response(updated)
 
 
+@router.post("/link-job-context")
+async def link_extension_generated_resume_to_job(
+    request: ExtensionResumeJobLinkRequest,
+) -> dict[str, Any]:
+    """Link an extension-generated tailored resume to a stored job context."""
+
+    original_resume = db.get_resume(request.original_resume_id)
+    if not original_resume:
+        raise HTTPException(status_code=404, detail="Original resume not found")
+
+    tailored_resume = db.get_resume(request.tailored_resume_id)
+    if not tailored_resume:
+        raise HTTPException(status_code=404, detail="Tailored resume not found")
+
+    job = db.get_job(request.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job description not found")
+
+    existing_improvement = db.get_improvement_by_tailored_resume(
+        request.tailored_resume_id
+    )
+    if existing_improvement:
+        raise HTTPException(
+            status_code=409,
+            detail="This tailored resume is already linked to a job context.",
+        )
+
+    improvement = db.create_improvement(
+        original_resume_id=request.original_resume_id,
+        tailored_resume_id=request.tailored_resume_id,
+        job_id=request.job_id,
+        improvements=[],
+    )
+
+    return {
+        "message": "Job context linked successfully",
+        "request_id": improvement["request_id"],
+        "data": {
+            "original_resume_id": request.original_resume_id,
+            "tailored_resume_id": request.tailored_resume_id,
+            "job_id": request.job_id,
+            "improvements": [],
+        },
+    }
+
+
 @router.get("/{resume_id}/pdf")
 async def download_resume_pdf(
     resume_id: str,
@@ -1539,6 +1647,58 @@ async def update_outreach_message(
 
     db.update_resume(resume_id, {"outreach_message": request.content})
     return {"message": "Outreach message updated successfully"}
+
+
+@router.patch("/{resume_id}/job-description")
+async def update_job_description_for_resume(
+    resume_id: str, request: UpdateJobDescriptionRequest
+) -> dict[str, Any]:
+    """Update the linked job description for a tailored resume."""
+    resume = db.get_resume(resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    if not resume.get("parent_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="Job description can only be updated for tailored resumes.",
+        )
+
+    improvement = db.get_improvement_by_tailored_resume(resume_id)
+    if not improvement:
+        raise HTTPException(
+            status_code=400,
+            detail="No job context found for this resume. "
+            "The resume may have been created before job tracking was implemented.",
+        )
+
+    job = db.get_job(improvement["job_id"])
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="The associated job description was not found.",
+        )
+
+    content = request.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Job description cannot be empty.")
+
+    updated_job = db.update_job(
+        improvement["job_id"],
+        {
+            "content": content,
+            "job_keywords": None,
+            "job_keywords_hash": None,
+        },
+    )
+    if not updated_job:
+        raise HTTPException(status_code=500, detail="Failed to update job description")
+
+    return {
+        "message": "Job description updated successfully",
+        "job_id": improvement["job_id"],
+        "content": updated_job["content"],
+    }
 
 
 @router.patch("/{resume_id}/title")

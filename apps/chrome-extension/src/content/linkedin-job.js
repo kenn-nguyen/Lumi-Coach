@@ -168,8 +168,8 @@ function injectStyles() {
       word-break: break-word;
       overflow: hidden;
       -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
       justify-self: end;
       align-self: start;
       box-sizing: border-box;

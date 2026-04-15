@@ -391,3 +391,17 @@ export async function fetchJobDescription(
   }
   return res.json();
 }
+
+export async function updateJobDescription(
+  resumeId: string,
+  content: string
+): Promise<{ job_id: string; content: string; message: string }> {
+  const res = await apiPatch(`/resumes/${encodeURIComponent(resumeId)}/job-description`, {
+    content,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to update job description (status ${res.status}): ${text}`);
+  }
+  return res.json();
+}

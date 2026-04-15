@@ -95,7 +95,7 @@
       "parsingFailed": "Resume uploaded but AI parsing failed. You can still tailor it manually.",
       "failed": "Upload failed.",
       "dropzoneTitle": "Click or Drag File",
-      "dropzoneSubtitle": "PDF, DOC, DOCX (Max 4MB)",
+      "dropzoneSubtitle": "PDF, DOC, DOCX, JSON (Max 4MB)",
       "tryDifferentFile": "Try Different File",
       "parsingFailedKeepOpen": "AI parsing failed. Try a different file or close this dialog."
     }
@@ -271,6 +271,11 @@
           "matchActionVerbs": "Match action verbs from the job requirements"
         }
       },
+      "editorPlaceholder": "Paste or edit the job description here...",
+      "resetButton": "Reset",
+      "useForFutureGeneration": "Use This JD For Future Generation",
+      "saveSuccess": "Job description updated for future generation.",
+      "saveFailed": "Failed to update job description: {error}",
       "stats": {
         "keywordsExtracted": "{count} keywords extracted",
         "matchesFound": "{count} matches found",
