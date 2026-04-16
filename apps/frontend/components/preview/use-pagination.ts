@@ -24,6 +24,23 @@ interface UsePaginationResult {
 }
 
 /**
+ * Preview pagination runs on screen, while final PDF pagination is done by
+ * Chromium's print engine. We keep the preview slightly conservative so it
+ * breaks a little earlier than raw on-screen measurement, but not so early
+ * that minor header changes create false extra pages.
+ */
+const MIN_PRINT_PREVIEW_CALIBRATION_PX: Record<PageSize, number> = {
+  A4: 8,
+  LETTER: 6,
+};
+
+/**
+ * Only rewind a page break before an unbreakable item if the page is already
+ * meaningfully full. This reduces jumpy repagination from small header edits.
+ */
+const MIN_PAGE_FILL_RATIO_BEFORE_REWIND = 0.68;
+
+/**
  * Custom hook for calculating page breaks based on content height.
  * Respects section boundaries to avoid splitting content mid-section.
  */
@@ -52,7 +69,16 @@ export function usePagination({
     // Wait for fonts to load before measuring
     document.fonts.ready.then(() => {
       const contentArea = getContentAreaPx(pageSize, margins);
-      const pageHeight = contentArea.height;
+      const computedStyle = window.getComputedStyle(container);
+      const fontSize = Number.parseFloat(computedStyle.fontSize || '0') || 12;
+      const parsedLineHeight = Number.parseFloat(computedStyle.lineHeight || '');
+      const effectiveLineHeight =
+        Number.isFinite(parsedLineHeight) && parsedLineHeight > 0 ? parsedLineHeight : fontSize * 1.5;
+      const calibrationPx = Math.max(
+        MIN_PRINT_PREVIEW_CALIBRATION_PX[pageSize],
+        effectiveLineHeight * 1.1
+      );
+      const pageHeight = Math.max(0, contentArea.height - calibrationPx);
       const contentHeight = container.scrollHeight;
 
       setTotalContentHeight(contentHeight);
@@ -134,7 +160,7 @@ export function usePagination({
             // But only if it doesn't push us back too far (at least 50% of page used)
             // This ensures we fill pages well before moving items
             const proposedBreak = bound.top;
-            if (proposedBreak > currentOffset + pageHeight * 0.5) {
+            if (proposedBreak > currentOffset + pageHeight * MIN_PAGE_FILL_RATIO_BEFORE_REWIND) {
               nextBreak = proposedBreak;
               break;
             }

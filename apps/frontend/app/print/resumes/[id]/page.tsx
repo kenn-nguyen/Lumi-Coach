@@ -1,4 +1,5 @@
-import Resume, { ResumeData } from '@/components/dashboard/resume-component';
+import { ResumeData } from '@/components/dashboard/resume-component';
+import { ResumePrintContent } from '@/components/preview/resume-print-content';
 import {
   type TemplateType,
   type PageSize,
@@ -243,15 +244,12 @@ export default async function PrintResumePage({ params, searchParams }: PageProp
   };
 
   return (
-    <div className="resume-print bg-white">
-      <Resume
-        resumeData={localizedResumeData}
-        template={settings.template}
-        settings={printSettings}
-        additionalSectionLabels={additionalSectionLabels}
-        sectionHeadings={sectionHeadings}
-        fallbackLabels={fallbackLabels}
-      />
-    </div>
+    <ResumePrintContent
+      resumeData={localizedResumeData}
+      settings={printSettings}
+      additionalSectionLabels={additionalSectionLabels}
+      sectionHeadings={sectionHeadings}
+      fallbackLabels={fallbackLabels}
+    />
   );
 }

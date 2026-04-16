@@ -3,9 +3,10 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Eye, EyeOff, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Resume, { type ResumeData } from '@/components/dashboard/resume-component';
+import { type ResumeData } from '@/components/dashboard/resume-component';
 import { type TemplateSettings } from '@/lib/types/template-settings';
 import { PageContainer } from './page-container';
+import { ResumePrintContent } from './resume-print-content';
 import { usePagination } from './use-pagination';
 import { PAGE_DIMENSIONS, mmToPx, getContentAreaPx } from '@/lib/constants/page-dimensions';
 import { useTranslations } from '@/lib/i18n';
@@ -218,9 +219,8 @@ export function PaginatedPreview({
           }}
           aria-hidden="true"
         >
-          <Resume
+          <ResumePrintContent
             resumeData={resumeData}
-            template={settings.template}
             settings={resumeSettings}
             additionalSectionLabels={additionalSectionLabels}
             sectionHeadings={sectionHeadings}
@@ -251,9 +251,8 @@ export function PaginatedPreview({
                 contentOffset={page.contentOffset}
                 contentEnd={page.contentEnd}
               >
-                <Resume
+                <ResumePrintContent
                   resumeData={resumeData}
-                  template={settings.template}
                   settings={resumeSettings}
                   additionalSectionLabels={additionalSectionLabels}
                   sectionHeadings={sectionHeadings}
