@@ -2,21 +2,23 @@
 
 import { SwissGrid } from '@/components/home/swiss-grid';
 import { ResumeUploadDialog } from '@/components/dashboard/resume-upload-dialog';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Card, CardTitle, CardDescription } from '@/components/ui/card';
 import Link from 'next/link';
 import { useTranslations } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 
 // Optimized Imports for Performance (No Barrel Imports)
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
 import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle';
-import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
+import Upload from 'lucide-react/dist/esm/icons/upload';
+import MoreHorizontal from 'lucide-react/dist/esm/icons/more-horizontal';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 
 import {
   fetchResume,
@@ -33,11 +35,15 @@ type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading
 export default function DashboardPage() {
   const { t, locale } = useTranslations();
   const [masterResumeId, setMasterResumeId] = useState<string | null>(null);
+  const [masterResumeItem, setMasterResumeItem] = useState<ResumeListItem | null>(null);
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>('loading');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [tailoredResumes, setTailoredResumes] = useState<ResumeListItem[]>([]);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
+  const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
   const router = useRouter();
 
   // Status cache for optimistic counter updates and LLM status check
@@ -53,6 +59,7 @@ export default function DashboardPage() {
   const loadRequestIdRef = useRef(0);
   // Lightweight in-memory cache for job snippets to avoid N+1 refetches
   const jobSnippetCacheRef = useRef<Record<string, string>>({});
+  const masterMenuRef = useRef<HTMLDivElement>(null);
 
   // Check if LLM is configured (API key is set)
   const isLlmConfigured = !statusLoading && systemStatus?.llm_configured;
@@ -111,10 +118,12 @@ export default function DashboardPage() {
       if (resolvedMasterId) {
         localStorage.setItem('master_resume_id', resolvedMasterId);
         setMasterResumeId(resolvedMasterId);
+        setMasterResumeItem(masterFromList ?? null);
         checkResumeStatus(resolvedMasterId);
       } else {
         localStorage.removeItem('master_resume_id');
         setMasterResumeId(null);
+        setMasterResumeItem(null);
       }
 
       const filtered = data.filter((r) => r.resume_id !== resolvedMasterId);
@@ -175,9 +184,21 @@ export default function DashboardPage() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadTailoredResumes, checkResumeStatus]);
 
+  useEffect(() => {
+    if (!isMasterMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (masterMenuRef.current && !masterMenuRef.current.contains(event.target as Node)) {
+        setIsMasterMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMasterMenuOpen]);
+
   const handleUploadComplete = (resumeId: string) => {
     localStorage.setItem('master_resume_id', resumeId);
     setMasterResumeId(resumeId);
+    setIsUploadDialogOpen(false);
     // Check status after upload completes
     checkResumeStatus(resumeId);
     // Update cached counters
@@ -211,6 +232,7 @@ export default function DashboardPage() {
 
   const handleDeleteAndReupload = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setIsMasterMenuOpen(false);
     setShowDeleteDialog(true);
   };
 
@@ -286,12 +308,98 @@ export default function DashboardPage() {
     return Math.abs(hash);
   };
 
-  const totalCards = 1 + tailoredResumes.length + 1;
-  const fillerCount = Math.max(0, (5 - (totalCards % 5)) % 5);
-  const extraFillerCount = 5;
-  // Use Tailwind classes for fillers now that we have them in config or use specific hex if needed
-  // Using the hex values from before to maintain exact look, or we could map them to variants
-  const fillerPalette = ['bg-[#E5E5E0]', 'bg-[#D8D8D2]', 'bg-[#CFCFC7]', 'bg-[#E0E0D8]'];
+  const getResumeTitle = useCallback(
+    (resume: ResumeListItem) =>
+      resume.title || resume.jobSnippet || resume.filename || t('dashboard.tailoredResume'),
+    [t]
+  );
+
+  const filteredTailoredResumes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = tailoredResumes.filter((resume) => {
+      if (!query) return true;
+      return [getResumeTitle(resume), resume.filename || '', resume.jobSnippet || '']
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+
+    filtered.sort((a, b) => {
+      if (sortBy === 'title') {
+        return getResumeTitle(a).localeCompare(getResumeTitle(b));
+      }
+      const aTime = new Date(a.updated_at || a.created_at).getTime();
+      const bTime = new Date(b.updated_at || b.created_at).getTime();
+      return bTime - aTime;
+    });
+
+    return filtered;
+  }, [getResumeTitle, searchQuery, sortBy, tailoredResumes]);
+
+  const handleExportJson = useCallback(
+    async (resumeId: string, fallbackTitle: string) => {
+      try {
+        const data = await fetchResume(resumeId);
+        let payload: unknown = data.processed_resume ?? {};
+        if (!data.processed_resume && data.raw_resume?.content) {
+          try {
+            payload = JSON.parse(data.raw_resume.content);
+          } catch {
+            payload = data.raw_resume.content;
+          }
+        }
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const safeTitle = (fallbackTitle || 'resume')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${safeTitle || 'resume'}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Failed to export resume JSON:', error);
+      }
+    },
+    []
+  );
+
+  const renderStatusPill = (status: ResumeListItem['processing_status'] | ProcessingStatus) => {
+    const baseClass =
+      'inline-flex items-center border border-black px-2 py-1 text-[10px] font-mono uppercase tracking-[0.18em]';
+    switch (status) {
+      case 'failed':
+        return <span className={cn(baseClass, 'bg-red-50 text-red-700')}>{status}</span>;
+      case 'processing':
+      case 'pending':
+        return <span className={cn(baseClass, 'bg-blue-50 text-blue-700')}>{status}</span>;
+      default:
+        return <span className={cn(baseClass, 'bg-[#E5E5E0] text-gray-500')}>{status}</span>;
+    }
+  };
+
+  const masterButtonLabel = masterResumeId
+    ? t('dashboard.masterResume')
+    : t('dashboard.addMasterResume');
+  const masterStatusText = masterResumeId ? getStatusDisplay().text : t('dashboard.uploadResume');
+  const masterStatusTone =
+    processingStatus === 'failed'
+      ? 'text-red-700'
+      : processingStatus === 'processing' || processingStatus === 'pending'
+        ? 'text-blue-700'
+        : 'text-gray-500';
+
+  const handleOpenMasterResume = () => {
+    if (!masterResumeId) {
+      setIsUploadDialogOpen(true);
+      return;
+    }
+    router.push(`/resumes/${masterResumeId}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -318,211 +426,241 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <SwissGrid>
-        {/* 1. Master Resume Logic */}
-        {!masterResumeId ? (
-          // LLM Not Configured or Upload State
-          !isLlmConfigured && !statusLoading ? (
-            <Link href="/settings" className="block h-full">
-              <Card
-                variant="interactive"
-                className="aspect-square h-full border-dashed border-warning bg-amber-50"
-              >
-                <div className="flex-1 flex flex-col justify-between">
-                  <div className="w-14 h-14 border-2 border-warning bg-white flex items-center justify-center mb-4">
-                    <AlertTriangle className="w-7 h-7 text-warning" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg uppercase text-amber-800 mb-2">
-                      {t('dashboard.setupRequiredTitle')}
-                    </CardTitle>
-                    <CardDescription className="text-amber-700 text-xs">
-                      {t('dashboard.setupRequiredMessage')}
-                    </CardDescription>
-                    <div className="flex items-center gap-2 mt-4 text-amber-700 group-hover:text-amber-900">
-                      <Settings className="w-4 h-4" />
-                      <span className="font-mono text-xs font-bold uppercase">
-                        {t('nav.goToSettings')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          ) : (
-            <ResumeUploadDialog
-              open={isUploadDialogOpen}
-              onOpenChange={setIsUploadDialogOpen}
-              onUploadComplete={handleUploadComplete}
-              trigger={
-                <Card
-                  variant="interactive"
-                  className="aspect-square h-full hover:bg-primary hover:text-canvas"
-                >
-                  <div className="flex-1 flex flex-col justify-between pointer-events-none">
-                    <div className="w-14 h-14 border-2 border-current flex items-center justify-center mb-4">
-                      <span className="text-2xl leading-none relative top-[-2px]">+</span>
-                    </div>
-                    <div>
-                      <CardTitle className="text-xl uppercase">
-                        {t('dashboard.initializeMasterResume')}
-                      </CardTitle>
-                      <CardDescription className="mt-2 opacity-60 group-hover:opacity-100 text-current">
-                        {'// '}
-                        {t('dashboard.initializeSequence')}
-                      </CardDescription>
-                    </div>
-                  </div>
-                </Card>
-              }
-            />
-          )
-        ) : (
-          // Master Resume Exists
-          <Card
-            variant="interactive"
-            className="aspect-square h-full"
-            onClick={() => router.push(`/resumes/${masterResumeId}`)}
-          >
-            <div className="flex-1 flex flex-col h-full">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-16 h-16 border-2 border-black bg-blue-700 text-white flex items-center justify-center">
-                  <span className="font-mono font-bold text-lg">M</span>
-                </div>
-                <div className="flex gap-1">
-                  {(processingStatus === 'failed' || processingStatus === 'processing') && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 hover:bg-blue-100 hover:text-blue-700 z-10 rounded-none relative"
-                        onClick={handleRetryProcessing}
-                        disabled={isRetrying}
-                        title={t('dashboard.retryProcessing')}
-                      >
-                        {isRetrying ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4" />
+      <SwissGrid
+        title={t('dashboard.myResumes')}
+        subtitle={t('dashboard.subtitle')}
+        headerActions={
+          <>
+            <div className="relative group" ref={masterMenuRef}>
+              {masterResumeId ? (
+                <div className="flex items-stretch">
+                  <Button
+                    variant="secondary"
+                    onClick={handleOpenMasterResume}
+                    className="h-10 min-w-[15rem] justify-start px-4 text-left"
+                  >
+                    <span
+                      className={cn(
+                        'flex h-5 w-5 items-center justify-center border border-black text-[9px] font-bold',
+                        processingStatus === 'failed'
+                          ? 'bg-red-50 text-red-700'
+                          : processingStatus === 'processing' || processingStatus === 'pending'
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'bg-blue-700 text-white'
+                      )}
+                    >
+                      {processingStatus === 'processing' || processingStatus === 'pending' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : processingStatus === 'failed' ? (
+                        '!'
+                      ) : (
+                        'M'
+                      )}
+                    </span>
+                    <span className="flex min-w-0 flex-col items-start">
+                      <span className="truncate">{masterButtonLabel}</span>
+                      <span
+                        className={cn(
+                          'font-mono text-[9px] uppercase tracking-[0.16em] leading-none',
+                          masterStatusTone
                         )}
-                      </Button>
-                    </>
-                  )}
+                      >
+                        {masterStatusText}
+                      </span>
+                    </span>
+                  </Button>
+                  <button
+                    type="button"
+                    aria-label={t('dashboard.masterResumeMenu')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setIsMasterMenuOpen((open) => !open);
+                    }}
+                    className={cn(
+                      'border border-black border-l-0 bg-[#E5E5E0] px-3 text-black shadow-[2px_2px_0px_0px_#000000] transition-all duration-150 hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none',
+                      'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100'
+                    )}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                  {isMasterMenuOpen ? (
+                    <div className="absolute right-0 top-full z-40 mt-2 min-w-[13rem] border border-black bg-canvas shadow-[4px_4px_0px_0px_#000000]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMasterMenuOpen(false);
+                          handleOpenMasterResume();
+                        }}
+                        className="flex w-full items-center justify-between border-b border-black px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-[#EAEAE2]"
+                      >
+                        <span>{t('dashboard.openMasterResume')}</span>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMasterMenuOpen(false);
+                          setIsUploadDialogOpen(true);
+                        }}
+                        className="flex w-full items-center justify-between border-b border-black px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-[#EAEAE2]"
+                      >
+                        <span>{t('dashboard.replaceMasterResume')}</span>
+                        <Upload className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!masterResumeId) return;
+                          setIsMasterMenuOpen(false);
+                          handleExportJson(
+                            masterResumeId,
+                            masterResumeItem?.title || t('dashboard.masterResume')
+                          );
+                        }}
+                        className="flex w-full items-center justify-between border-b border-black px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-[#EAEAE2]"
+                      >
+                        <span>{t('dashboard.exportJson')}</span>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteAndReupload}
+                        className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-wide text-red-700 hover:bg-red-50"
+                      >
+                        <span>{t('dashboard.removeMasterResume')}</span>
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-
-              <CardTitle className="text-lg group-hover:text-primary">
-                {t('dashboard.masterResume')}
-              </CardTitle>
-
-              <div
-                className={`text-xs font-mono mt-auto pt-4 flex flex-col gap-2 uppercase ${getStatusDisplay().color}`}
-              >
-                <div className="flex items-center gap-1">
-                  {getStatusDisplay().icon}
-                  {t('dashboard.statusLine', { status: getStatusDisplay().text })}
+              ) : (
+                <ResumeUploadDialog
+                  open={isUploadDialogOpen}
+                  onOpenChange={setIsUploadDialogOpen}
+                  onUploadComplete={handleUploadComplete}
+                  trigger={
+                    <Button variant="outline" className="h-10 min-w-[15rem] justify-start px-4">
+                      <span className="flex h-5 w-5 items-center justify-center border border-black bg-blue-700 text-white">
+                        <Plus className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="flex min-w-0 flex-col items-start">
+                        <span className="truncate">{masterButtonLabel}</span>
+                        <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">
+                          {masterStatusText}
+                        </span>
+                      </span>
+                    </Button>
+                  }
+                />
+              )}
+            </div>
+            <Button onClick={() => router.push('/tailor')} disabled={!isTailorEnabled}>
+              <Plus className="w-4 h-4" />
+              {t('dashboard.tailorResume')}
+            </Button>
+            <Link href="/settings">
+              <Button variant="outline" size="icon" aria-label={t('nav.settings')}>
+                <Settings className="w-4 h-4" />
+              </Button>
+            </Link>
+          </>
+        }
+      >
+        {masterResumeId ? (
+          <ResumeUploadDialog
+            open={isUploadDialogOpen}
+            onOpenChange={setIsUploadDialogOpen}
+            onUploadComplete={handleUploadComplete}
+            trigger={null}
+          />
+        ) : null}
+        <div className="space-y-6">
+          <div className="border border-black bg-canvas overflow-hidden flex min-h-[32rem] flex-col">
+            <div className="sticky top-0 z-10 border-b border-black bg-canvas px-6 py-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="font-serif text-3xl">{t('dashboard.tailoredResumes')}</h2>
+                  <p className="mt-2 font-mono text-xs uppercase tracking-wide text-gray-500">
+                    {filteredTailoredResumes.length} / {tailoredResumes.length} resumes
+                  </p>
                 </div>
-                {(processingStatus === 'failed' || processingStatus === 'processing') && (
-                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 rounded-none border-black"
-                      onClick={handleRetryProcessing}
-                      disabled={isRetrying}
-                    >
-                      {isRetrying
-                        ? t('dashboard.retryingProcessing')
-                        : t('dashboard.retryProcessing')}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 rounded-none border-red-600 text-red-600 hover:bg-red-50"
-                      onClick={handleDeleteAndReupload}
-                    >
-                      {t('dashboard.deleteAndReupload')}
-                    </Button>
-                  </div>
-                )}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('common.search')}
+                    className="h-10 min-w-[16rem] border border-black bg-canvas px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-blue-700"
+                  />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as 'updated' | 'title')}
+                    className="h-10 min-w-[12rem] border border-black bg-canvas px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-blue-700"
+                  >
+                    <option value="updated">{t('dashboard.sortUpdated')}</option>
+                    <option value="title">{t('dashboard.sortTitle')}</option>
+                  </select>
+                </div>
               </div>
             </div>
-          </Card>
-        )}
 
-        {/* 2. Tailored Resumes */}
-        {tailoredResumes.map((resume) => {
-          const title =
-            resume.title || resume.jobSnippet || resume.filename || t('dashboard.tailoredResume');
-          const color = cardPalette[hashTitle(title) % cardPalette.length];
-          return (
-            <Card
-              key={resume.resume_id}
-              variant="interactive"
-              className="aspect-square h-full bg-canvas"
-              onClick={() => router.push(`/resumes/${resume.resume_id}`)}
-            >
-              <div className="flex-1 flex flex-col">
-                <div className="flex justify-between items-start mb-6">
-                  <div
-                    className="w-12 h-12 border-2 border-black flex items-center justify-center"
-                    style={{ backgroundColor: color.bg, color: color.fg }}
-                  >
-                    <span className="font-mono font-bold">{getMonogram(title)}</span>
-                  </div>
-                  <span className="font-mono text-xs text-gray-500 uppercase">
-                    {resume.processing_status}
-                  </span>
-                </div>
-                <CardTitle className="text-lg">
-                  <span className="block font-serif text-base font-bold leading-tight mb-1 w-full line-clamp-2">
-                    {title}
-                  </span>
-                </CardTitle>
-                <CardDescription className="mt-auto pt-4 uppercase">
-                  {t('dashboard.edited', {
-                    date: formatDate(resume.updated_at || resume.created_at),
-                  })}{' '}
-                </CardDescription>
+            {filteredTailoredResumes.length === 0 ? (
+              <div className="px-6 py-12">
+                <p className="font-serif text-2xl">
+                  {tailoredResumes.length === 0
+                    ? t('dashboard.noResumes')
+                    : t('dashboard.noMatchingResumes')}
+                </p>
+                <p className="mt-2 font-mono text-sm text-gray-500 uppercase tracking-wide">
+                  {tailoredResumes.length === 0
+                    ? t('dashboard.noTailoredResumesDescription')
+                    : t('dashboard.tryDifferentSearch')}
+                </p>
               </div>
-            </Card>
-          );
-        })}
-
-        {/* 3. Create Tailored Resume */}
-        <Card className="aspect-square h-full" variant="default">
-          <div className="flex-1 flex flex-col items-center justify-center text-center h-full">
-            <Button
-              onClick={() => router.push('/tailor')}
-              disabled={!isTailorEnabled}
-              className="w-20 h-20 bg-blue-700 text-white border-2 border-black shadow-sw-default hover:bg-blue-800 hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all rounded-none"
-            >
-              <Plus className="w-8 h-8" />
-            </Button>
-            <p className="text-xs font-mono mt-4 uppercase text-green-700">
-              {t('dashboard.createResume')}
-            </p>
+            ) : (
+              <div className="flex-1 overflow-y-auto bg-black">
+                {filteredTailoredResumes.map((resume, index) => {
+                  const title = getResumeTitle(resume);
+                  const color = cardPalette[hashTitle(title) % cardPalette.length];
+                  return (
+                    <button
+                      key={resume.resume_id}
+                      type="button"
+                      onClick={() => router.push(`/resumes/${resume.resume_id}`)}
+                      className={cn(
+                        'flex w-full items-center gap-4 bg-canvas px-6 py-3 text-left transition-colors hover:bg-[#EAEAE2]',
+                        index > 0 && 'border-t border-black'
+                      )}
+                    >
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-black"
+                        style={{ backgroundColor: color.bg, color: color.fg }}
+                      >
+                        <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
+                      </div>
+                      <div className="min-w-0 flex-1 py-0.5">
+                        <h3 className="truncate font-serif text-[1.2rem] leading-tight">
+                          {title}
+                        </h3>
+                        <p className="mt-1 whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-gray-500">
+                          {t('dashboard.edited', {
+                            date: formatDate(resume.updated_at || resume.created_at),
+                          })}
+                        </p>
+                      </div>
+                      <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
+                        {renderStatusPill(resume.processing_status)}
+                        <span className="flex h-6 w-6 items-center justify-center border border-black bg-[#E5E5E0] text-black">
+                          <ChevronRight className="h-3 w-3" />
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </Card>
-
-        {/* 4. Fillers */}
-        {Array.from({ length: fillerCount }).map((_, index) => (
-          <Card
-            key={`filler-${index}`}
-            variant="ghost"
-            noPadding
-            className="hidden md:block bg-canvas aspect-square h-full opacity-50 pointer-events-none"
-          />
-        ))}
-
-        {Array.from({ length: extraFillerCount }).map((_, index) => (
-          <Card
-            key={`extra-filler-${index}`}
-            variant="ghost"
-            noPadding
-            className={`hidden md:block ${fillerPalette[index % fillerPalette.length]} aspect-square h-full opacity-70 pointer-events-none`}
-          />
-        ))}
+        </div>
 
         <ConfirmDialog
           open={showDeleteDialog}

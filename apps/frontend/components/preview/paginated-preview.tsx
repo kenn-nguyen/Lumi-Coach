@@ -13,6 +13,7 @@ import { useTranslations } from '@/lib/i18n';
 interface PaginatedPreviewProps {
   resumeData: ResumeData;
   settings: TemplateSettings;
+  onSettingsChange?: (settings: TemplateSettings) => void;
 }
 
 const MIN_ZOOM = 0.4;
@@ -23,7 +24,11 @@ const ZOOM_STEP = 0.1;
  * PaginatedPreview shows a WYSIWYG preview of the resume with actual page dimensions,
  * margin guides, and automatic pagination.
  */
-export function PaginatedPreview({ resumeData, settings }: PaginatedPreviewProps) {
+export function PaginatedPreview({
+  resumeData,
+  settings,
+  onSettingsChange,
+}: PaginatedPreviewProps) {
   const { t } = useTranslations();
   const measurementRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -101,6 +106,13 @@ export function PaginatedPreview({ resumeData, settings }: PaginatedPreviewProps
   };
 
   const toggleMargins = () => setShowMargins((s) => !s);
+  const toggleCompactMode = () => {
+    if (!onSettingsChange) return;
+    onSettingsChange({
+      ...settings,
+      compactMode: !settings.compactMode,
+    });
+  };
 
   // Get content area dimensions for the hidden measurement container
   const contentArea = getContentAreaPx(settings.pageSize, settings.margins);
@@ -147,8 +159,33 @@ export function PaginatedPreview({ resumeData, settings }: PaginatedPreviewProps
           </Button>
         </div>
 
-        {/* Page count */}
+        {/* Page count + fit toggle */}
         <div className="flex items-center gap-2 text-gray-600">
+          <label className="flex items-center gap-2 cursor-pointer text-black">
+            <span
+              className={`font-mono text-[10px] uppercase tracking-wide ${
+                !isCalculating && pages.length > 1 ? 'text-blue-700 font-bold' : ''
+              }`}
+            >
+              {t('preview.fitToOnePage')}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.compactMode}
+              aria-label={t('preview.fitToOnePage')}
+              onClick={toggleCompactMode}
+              className={`relative w-10 h-5 border-2 transition-all ${
+                settings.compactMode ? 'bg-blue-700 border-blue-700' : 'bg-white border-gray-400'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-3.5 h-3.5 bg-white border transition-all ${
+                  settings.compactMode ? 'left-5 border-blue-700' : 'left-0.5 border-gray-400'
+                }`}
+              />
+            </button>
+          </label>
           <FileText className="w-4 h-4" />
           <span className="font-mono text-xs uppercase">
             {isCalculating

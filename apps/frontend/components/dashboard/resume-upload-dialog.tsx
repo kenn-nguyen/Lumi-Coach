@@ -24,7 +24,7 @@ import { useTranslations } from '@/lib/i18n';
 import { retryProcessing } from '@/lib/api/resume';
 
 interface ResumeUploadDialogProps {
-  trigger?: React.ReactNode;
+  trigger?: React.ReactNode | null;
   onUploadComplete?: (resumeId: string) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -191,14 +191,16 @@ export function ResumeUploadDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button className="rounded-none border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all">
-            <UploadIcon className="w-4 h-4 mr-2" />
-            {t('dashboard.uploadResume')}
-          </Button>
-        )}
-      </DialogTrigger>
+      {trigger !== null ? (
+        <DialogTrigger asChild>
+          {trigger || (
+            <Button className="rounded-none border border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all">
+              <UploadIcon className="w-4 h-4 mr-2" />
+              {t('dashboard.uploadResume')}
+            </Button>
+          )}
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="sm:max-w-md bg-[#F0F0E8] border border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] p-0 gap-0 rounded-none">
         <DialogHeader className="p-6 border-b border-black bg-white">
           <DialogTitle className="font-serif text-2xl font-bold uppercase tracking-tight">
