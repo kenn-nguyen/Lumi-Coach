@@ -472,7 +472,7 @@ async function resolveBaseResumeId(storedResumeId) {
   const resumeList = await listResumes(true);
   const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
   if (!masterResume?.resume_id) {
-    throw new Error('No master resume was found in Resume Matcher. Upload one in the app first.');
+    throw new Error('No master resume was found in SOM Career Coach. Upload one in the app first.');
   }
   return masterResume.resume_id;
 }

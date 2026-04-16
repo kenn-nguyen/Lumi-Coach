@@ -35,6 +35,7 @@ type PageProps = {
     showContactIcons?: string;
     accentColor?: string;
     lang?: string;
+    authToken?: string;
   }>;
 };
 
@@ -77,9 +78,11 @@ function parseBoolean(value: string | undefined, defaultValue: boolean): boolean
   return defaultValue;
 }
 
-async function fetchResumeData(id: string): Promise<ResumeData> {
+async function fetchResumeData(id: string, authToken?: string): Promise<ResumeData> {
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
   const res = await fetch(`${API_BASE}/resumes?resume_id=${encodeURIComponent(id)}`, {
     cache: 'no-store',
+    headers,
   });
   if (!res.ok) {
     throw new Error(`Failed to load resume (status ${res.status}).`);
@@ -155,7 +158,7 @@ function parsePageSize(value: string | undefined): PageSize {
 export default async function PrintResumePage({ params, searchParams }: PageProps) {
   const resolvedParams = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const resumeData = await fetchResumeData(resolvedParams.id);
+  const resumeData = await fetchResumeData(resolvedParams.id, resolvedSearchParams?.authToken);
   const locale = resolveLocale(resolvedSearchParams?.lang);
   const t = (key: string, params?: Record<string, string | number>) =>
     translate(locale, key, params);

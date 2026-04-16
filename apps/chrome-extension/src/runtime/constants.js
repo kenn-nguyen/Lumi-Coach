@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   appOrigin: 'appOrigin',
   apiOrigin: 'apiOrigin',
   customFeatureEnabled: 'customFeatureEnabled',
+  extensionAuth: 'extensionAuth',
+  extensionPendingAction: 'extensionPendingAction',
   extensionSession: 'extensionSession',
   historyEntries: 'historyEntries',
   lastError: 'lastError',

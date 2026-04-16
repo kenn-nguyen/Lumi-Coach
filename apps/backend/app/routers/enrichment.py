@@ -7,7 +7,7 @@ import logging
 import re
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.config_cache import get_content_language
 from app.database import db
@@ -19,6 +19,7 @@ from app.prompts.enrichment import (
     REGENERATE_SKILLS_PROMPT,
 )
 from app.prompts.templates import get_language_name
+from app.security import require_current_user
 from app.schemas.enrichment import (
     AnalysisResponse,
     AnswerInput,
@@ -37,7 +38,11 @@ from app.schemas.enrichment import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/enrichment", tags=["Enrichment"])
+router = APIRouter(
+    prefix="/enrichment",
+    tags=["Enrichment"],
+    dependencies=[Depends(require_current_user)],
+)
 
 
 def _extract_item_from_resume(processed_data: dict, item_id: str) -> dict:

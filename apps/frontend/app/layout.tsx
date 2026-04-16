@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Geist, Space_Grotesk } from 'next/font/google';
+import { AuthSessionProvider } from '@/components/auth/auth-session-provider';
 import './(default)/css/globals.css';
 
 const spaceGrotesk = Space_Grotesk({
@@ -15,9 +16,9 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: 'Resume Matcher',
-  description: 'Build your resume with Resume Matcher',
-  applicationName: 'Resume Matcher',
+  title: 'SOM Career Coach',
+  description: 'Build your resume with SOM Career Coach',
+  applicationName: 'SOM Career Coach',
   keywords: ['resume', 'matcher', 'job', 'application'],
 };
 
@@ -27,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${geist.variable} ${spaceGrotesk.variable} antialiased bg-[#F0F0E8] text-gray-900 min-h-full`}
       >
-        {children}
+        <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>
     </html>
   );

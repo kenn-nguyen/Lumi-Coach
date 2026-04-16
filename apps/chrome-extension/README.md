@@ -9,7 +9,7 @@ Planned flow:
 - Produce `ResumeData` JSON
 - Create one job-specific `resume_id`
 - Patch the tailored JSON into that record
-- Open the resume preview page in Resume Matcher
+- Open the resume preview page in SOM Career Coach
 - Use the side panel as an admin board for assets, status, and history
 
 Key files:

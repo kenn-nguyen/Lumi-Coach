@@ -100,6 +100,12 @@
     "llmNotConfiguredMessage": "> API キーがありません。設定するまで履歴書のカスタマイズは無効です。",
     "setupRequiredTitle": "[ 設定が必要 ]",
     "setupRequiredMessage": "> 履歴書のカスタマイズを有効にするには、設定で API キーを構成してください。",
+    "chromeExtensionPrompt": {
+      "title": "Chrome 拡張機能の方が速いです",
+      "body": "求人ページから始めるなら、Chrome 拡張機能が最も速い方法です。",
+      "hideOption": "この案内を今後表示しない",
+      "continueInApp": "Web アプリで続行"
+    },
     "uploadDialog": {
       "success": "履歴書のアップロードに成功しました。",
       "successMaster": "履歴書がアップロードされ、マスターとして設定されました。",
@@ -430,7 +436,7 @@
           "website": "Webサイト"
         },
         "placeholders": {
-          "projectName": "Resume Matcher",
+          "projectName": "SOM Career Coach",
           "role": "作成者",
           "years": "2023年3月",
           "github": "github.com/username/project",

@@ -17,7 +17,7 @@ export function OutreachPreview({ content, className }: OutreachPreviewProps) {
   return (
     <div
       className={cn(
-        'bg-white border-2 border-black',
+        'bg-white border-2 border-black w-full max-w-4xl mx-auto',
         'shadow-[4px_4px_0px_0px_#000000]',
         'overflow-hidden',
         className

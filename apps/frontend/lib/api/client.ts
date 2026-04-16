@@ -6,6 +6,47 @@
 
 const DEFAULT_PUBLIC_API_URL = '/';
 const INTERNAL_API_ORIGIN = 'http://127.0.0.1:8000';
+const BACKEND_TOKEN_ENDPOINT = '/api/auth/backend-token';
+
+let cachedBackendToken: string | null = null;
+let cachedBackendTokenExpiry = 0;
+
+async function getBackendAuthToken(): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedBackendToken && cachedBackendTokenExpiry - 30 > now) {
+    return cachedBackendToken;
+  }
+
+  const response = await fetch(BACKEND_TOKEN_ENDPOINT, {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+
+  if (!response.ok) {
+    cachedBackendToken = null;
+    cachedBackendTokenExpiry = 0;
+    return null;
+  }
+
+  const payload = (await response.json()) as {
+    token?: string;
+    expiresAt?: number;
+  };
+
+  if (!payload.token || !payload.expiresAt) {
+    cachedBackendToken = null;
+    cachedBackendTokenExpiry = 0;
+    return null;
+  }
+
+  cachedBackendToken = payload.token;
+  cachedBackendTokenExpiry = payload.expiresAt;
+  return cachedBackendToken;
+}
 
 function normalizeApiUrl(value: string): string {
   const trimmed = value.trim();
@@ -62,7 +103,25 @@ export async function apiFetch(
   const timer = setTimeout(() => controller.abort(), timeout);
 
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    const headers = new Headers(options?.headers);
+    const isBackendAbsoluteUrl = isAbsoluteUrl && endpoint.startsWith(API_BASE);
+    const shouldAttachAuth =
+      normalizedEndpoint !== BACKEND_TOKEN_ENDPOINT &&
+      !headers.has('Authorization') &&
+      (!isAbsoluteUrl || isBackendAbsoluteUrl);
+
+    if (shouldAttachAuth) {
+      const token = await getBackendAuthToken();
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+    }
+
+    return await fetch(url, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timer);
   }

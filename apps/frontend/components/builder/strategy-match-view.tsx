@@ -70,7 +70,7 @@ export function StrategyMatchView({ prompt2Artifact, resumeData }: StrategyMatch
   const stats = useMemo(() => calculateMatchStats(resumeText, keywords), [resumeText, keywords]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-w-0">
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -104,12 +104,12 @@ export function StrategyMatchView({ prompt2Artifact, resumeData }: StrategyMatch
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-2 min-h-0">
-        <div className="border-r border-gray-200 overflow-hidden">
+      <div className="flex-1 grid grid-cols-2 min-h-0 min-w-0">
+        <div className="border-r border-gray-200 overflow-hidden min-w-0">
           <StrategyBriefDisplay strategyBrief={strategyBrief} />
         </div>
 
-        <div className="overflow-hidden">
+        <div className="overflow-hidden min-w-0">
           <HighlightedResumeView
             resumeData={resumeData}
             keywords={keywords}

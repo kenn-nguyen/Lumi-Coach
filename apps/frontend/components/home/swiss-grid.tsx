@@ -63,12 +63,12 @@ export const SwissGrid = ({
           <div className="flex items-center gap-2">
             <Image
               src="/logo.svg"
-              alt="Resume Matcher"
+              alt="SOM Career Coach"
               width={20}
               height={20}
               className="w-5 h-5"
             />
-            <span className="uppercase font-bold">Resume Matcher</span>
+            <span className="uppercase font-bold">SOM Career Coach</span>
           </div>
           {footerContent ? <div className="flex items-center gap-4">{footerContent}</div> : null}
         </div>

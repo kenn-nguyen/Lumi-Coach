@@ -4,7 +4,7 @@ Scope: these instructions apply to all work under `apps/chrome-extension`.
 
 ## Primary Rule
 
-Do not modify the existing Resume Matcher app outside `apps/chrome-extension`.
+Do not modify the existing SOM Career Coach app outside `apps/chrome-extension`.
 
 That means:
 - Do not edit `apps/frontend`
@@ -24,7 +24,7 @@ If integration with the main app becomes necessary:
 
 ## Extension Goal
 
-Build the Chrome extension as an isolated workspace that can later connect to Resume Matcher through existing APIs.
+Build the Chrome extension as an isolated workspace that can later connect to SOM Career Coach through existing APIs.
 
 Prefer:
 - extension-local scripts
@@ -42,7 +42,7 @@ Prefer:
 
 ## Safe Assumptions
 
-- The extension may call existing Resume Matcher APIs later, but should not require repo-side API changes unless explicitly approved.
+- The extension may call existing SOM Career Coach APIs later, but should not require repo-side API changes unless explicitly approved.
 - UI automation against external sites is brittle; isolate selectors and automation steps in dedicated files.
 
 ## Delivery

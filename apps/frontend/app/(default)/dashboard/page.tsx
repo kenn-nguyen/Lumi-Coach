@@ -2,10 +2,19 @@
 
 import { SwissGrid } from '@/components/home/swiss-grid';
 import { ResumeUploadDialog } from '@/components/dashboard/resume-upload-dialog';
+import { AccountControl } from '@/components/auth/account-control';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import Link from 'next/link';
 import { useTranslations } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -32,7 +41,11 @@ import { useStatusCache } from '@/lib/context/status-cache';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
 
+const TAILOR_PROMPT_COUNT_KEY = 'som_career_coach_tailor_prompt_count';
+const TAILOR_PROMPT_DISMISSED_KEY = 'som_career_coach_tailor_prompt_dismissed';
+
 export default function DashboardPage() {
+  const { status: authStatus } = useSession();
   const { t, locale } = useTranslations();
   const [masterResumeId, setMasterResumeId] = useState<string | null>(null);
   const [masterResumeItem, setMasterResumeItem] = useState<ResumeListItem | null>(null);
@@ -44,6 +57,10 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
   const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
+  const [showTailorPrompt, setShowTailorPrompt] = useState(false);
+  const [tailorPromptCount, setTailorPromptCount] = useState(0);
+  const [tailorPromptDismissed, setTailorPromptDismissed] = useState(false);
+  const [hideTailorPrompt, setHideTailorPrompt] = useState(false);
   const router = useRouter();
 
   // Status cache for optimistic counter updates and LLM status check
@@ -101,12 +118,20 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     const storedId = localStorage.getItem('master_resume_id');
     if (storedId) {
       setMasterResumeId(storedId);
       checkResumeStatus(storedId);
     }
-  }, [checkResumeStatus]);
+  }, [authStatus, checkResumeStatus]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedCount = Number(localStorage.getItem(TAILOR_PROMPT_COUNT_KEY) || '0');
+    setTailorPromptCount(Number.isFinite(savedCount) ? savedCount : 0);
+    setTailorPromptDismissed(localStorage.getItem(TAILOR_PROMPT_DISMISSED_KEY) === 'true');
+  }, []);
 
   const loadTailoredResumes = useCallback(async () => {
     try {
@@ -172,17 +197,19 @@ export default function DashboardPage() {
   }, [checkResumeStatus]);
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     loadTailoredResumes();
-  }, [loadTailoredResumes]);
+  }, [authStatus, loadTailoredResumes]);
 
   // Refresh list when window gains focus (e.g., returning from viewer after delete)
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     const handleFocus = () => {
       loadTailoredResumes();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [loadTailoredResumes, checkResumeStatus]);
+  }, [authStatus, loadTailoredResumes, checkResumeStatus]);
 
   useEffect(() => {
     if (!isMasterMenuOpen) return;
@@ -250,6 +277,44 @@ export default function DashboardPage() {
     } catch (err) {
       console.error('Failed to delete resume:', err);
     }
+  };
+
+  const persistTailorPromptPreference = useCallback(
+    (shouldHide: boolean) => {
+      if (!shouldHide || tailorPromptCount < 3) return;
+      localStorage.setItem(TAILOR_PROMPT_DISMISSED_KEY, 'true');
+      setTailorPromptDismissed(true);
+    },
+    [tailorPromptCount]
+  );
+
+  const handleTailorPromptOpenChange = (open: boolean) => {
+    if (!open) {
+      persistTailorPromptPreference(hideTailorPrompt);
+      setHideTailorPrompt(false);
+    }
+    setShowTailorPrompt(open);
+  };
+
+  const handleTailorResumeClick = () => {
+    if (!isTailorEnabled) return;
+    if (tailorPromptDismissed) {
+      router.push('/tailor');
+      return;
+    }
+
+    const nextCount = tailorPromptCount + 1;
+    setTailorPromptCount(nextCount);
+    localStorage.setItem(TAILOR_PROMPT_COUNT_KEY, String(nextCount));
+    setHideTailorPrompt(false);
+    setShowTailorPrompt(true);
+  };
+
+  const handleTailorPromptContinue = () => {
+    persistTailorPromptPreference(hideTailorPrompt);
+    setShowTailorPrompt(false);
+    setHideTailorPrompt(false);
+    router.push('/tailor');
   };
 
   const getStatusDisplay = () => {
@@ -554,10 +619,11 @@ export default function DashboardPage() {
                 />
               )}
             </div>
-            <Button onClick={() => router.push('/tailor')} disabled={!isTailorEnabled}>
+            <Button onClick={handleTailorResumeClick} disabled={!isTailorEnabled}>
               <Plus className="w-4 h-4" />
               {t('dashboard.tailorResume')}
             </Button>
+            <AccountControl />
             <Link href="/settings">
               <Button variant="outline" size="icon" aria-label={t('nav.settings')}>
                 <Settings className="w-4 h-4" />
@@ -618,7 +684,7 @@ export default function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto bg-black">
+              <div className="flex-1 overflow-y-auto bg-canvas">
                 {filteredTailoredResumes.map((resume, index) => {
                   const title = getResumeTitle(resume);
                   const color = cardPalette[hashTitle(title) % cardPalette.length];
@@ -672,6 +738,43 @@ export default function DashboardPage() {
           onConfirm={confirmDeleteAndReupload}
           variant="danger"
         />
+
+        <Dialog open={showTailorPrompt} onOpenChange={handleTailorPromptOpenChange}>
+          <DialogContent className="max-w-[32rem] p-0 gap-0">
+            <DialogHeader className="border-b border-black p-6 pb-4">
+              <DialogTitle className="font-serif text-2xl">
+                {t('dashboard.chromeExtensionPrompt.title')}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 p-6">
+              <p className="text-sm leading-relaxed text-black">
+                {t('dashboard.chromeExtensionPrompt.body')}
+              </p>
+
+              {tailorPromptCount >= 3 ? (
+                <label className="flex items-start gap-3 border border-black px-4 py-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={hideTailorPrompt}
+                    onChange={(event) => setHideTailorPrompt(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded-none border border-black accent-blue-700"
+                  />
+                  <span>{t('dashboard.chromeExtensionPrompt.hideOption')}</span>
+                </label>
+              ) : null}
+            </div>
+
+            <DialogFooter className="border-t border-black bg-[#E5E5E0] p-4 flex-row justify-end gap-3">
+              <Button variant="outline" onClick={() => handleTailorPromptOpenChange(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button onClick={handleTailorPromptContinue}>
+                {t('dashboard.chromeExtensionPrompt.continueInApp')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </SwissGrid>
     </div>
   );

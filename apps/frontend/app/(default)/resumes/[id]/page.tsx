@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -25,6 +26,7 @@ import { downloadBlobAsFile, openUrlInNewTab, sanitizeFilename } from '@/lib/uti
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
 export default function ResumeViewerPage() {
+  const { status: authStatus } = useSession();
   const { t } = useTranslations();
   const { uiLanguage } = useLanguage();
   const params = useParams();
@@ -55,7 +57,7 @@ export default function ResumeViewerPage() {
   }, [resumeData, t]);
 
   useEffect(() => {
-    if (!resumeId) return;
+    if (authStatus !== 'authenticated' || !resumeId) return;
 
     const loadResume = async () => {
       try {
@@ -100,7 +102,7 @@ export default function ResumeViewerPage() {
 
     loadResume();
     setIsMasterResume(localStorage.getItem('master_resume_id') === resumeId);
-  }, [resumeId, t]);
+  }, [authStatus, resumeId, t]);
 
   const handleRetryProcessing = async () => {
     if (!resumeId) return;

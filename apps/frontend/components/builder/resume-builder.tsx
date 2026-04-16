@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { type ResumeData } from '@/components/dashboard/resume-component';
@@ -53,6 +54,7 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/context/language-context';
 import { buildResumeFilename, downloadBlobAsFile, openUrlInNewTab } from '@/lib/utils/download';
 import type { RegenerateItemInput } from '@/lib/api/enrichment';
+import { AccountControl } from '@/components/auth/account-control';
 
 type TabId = 'resume' | 'cover-letter' | 'outreach' | 'jd-match' | 'ai-strategy-match';
 
@@ -87,6 +89,7 @@ const buildInitialData = (t: Translate): ResumeData => ({
 });
 
 const ResumeBuilderContent = () => {
+  const { status: authStatus } = useSession();
   const { t } = useTranslations();
   const { uiLanguage, contentLanguage } = useLanguage();
   const [notificationDialog, setNotificationDialog] = useState<{
@@ -146,6 +149,7 @@ const ResumeBuilderContent = () => {
   }, []);
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     if (resumeId || hasUnsavedChanges || improvedPreview) {
       return;
     }
@@ -155,7 +159,7 @@ const ResumeBuilderContent = () => {
     }
     setResumeData(initialData);
     setLastSavedData(initialData);
-  }, [initialData, resumeId, hasUnsavedChanges, improvedPreview]);
+  }, [authStatus, initialData, resumeId, hasUnsavedChanges, improvedPreview]);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabId>('resume');
@@ -769,7 +773,7 @@ const ResumeBuilderContent = () => {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 md:justify-end">
+            <div className="flex flex-wrap items-center gap-3 md:justify-end">
               {/* Resume tab actions */}
               {activeTab === 'resume' && (
                 <>
@@ -865,6 +869,10 @@ const ResumeBuilderContent = () => {
                   </Button>
                 </>
               )}
+
+              <div className="md:ml-2">
+                <AccountControl compact />
+              </div>
             </div>
           </div>
         </div>
@@ -879,7 +887,7 @@ const ResumeBuilderContent = () => {
         >
           {/* Left Panel: Editor */}
           <div
-            className="bg-[#F0F0E8] p-6 md:p-7 overflow-y-auto no-print"
+            className="bg-[#F0F0E8] p-6 md:p-7 overflow-y-auto no-print min-w-0 shrink-0"
             style={isDesktopSplit ? { width: `${editorWidthPercent}%` } : undefined}
           >
             <div className="max-w-3xl mx-auto space-y-6">
@@ -1063,7 +1071,7 @@ const ResumeBuilderContent = () => {
           </div>
 
           {/* Right Panel: Preview with Tabs */}
-          <div className="bg-[#E5E5E0] overflow-hidden flex flex-col no-print">
+          <div className="bg-[#E5E5E0] overflow-hidden flex flex-col flex-1 min-w-0 no-print">
             {/* Tabs Header */}
             <div className="px-6 pt-3 shrink-0 bg-[#E5E5E0]">
               <RetroTabs
@@ -1096,7 +1104,7 @@ const ResumeBuilderContent = () => {
             </div>
 
             {/* Preview Content */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto min-w-0">
               {/* Resume Preview */}
               {activeTab === 'resume' && (
                 <PaginatedPreview
@@ -1109,7 +1117,7 @@ const ResumeBuilderContent = () => {
               {/* Cover Letter Preview */}
               {activeTab === 'cover-letter' &&
                 (coverLetter && resumeData.personalInfo ? (
-                  <div className="p-6">
+                  <div className="p-6 min-w-0">
                     <CoverLetterPreview
                       content={coverLetter}
                       personalInfo={resumeData.personalInfo}
@@ -1128,7 +1136,7 @@ const ResumeBuilderContent = () => {
               {/* Outreach Preview */}
               {activeTab === 'outreach' &&
                 (outreachMessage ? (
-                  <div className="p-6">
+                  <div className="p-6 min-w-0">
                     <OutreachPreview content={outreachMessage} />
                   </div>
                 ) : (
@@ -1168,7 +1176,7 @@ const ResumeBuilderContent = () => {
           <span className="uppercase font-bold flex items-center gap-2">
             <Image
               src="/logo.svg"
-              alt="Resume Matcher"
+              alt="SOM Career Coach"
               width={20}
               height={20}
               className="w-5 h-5"

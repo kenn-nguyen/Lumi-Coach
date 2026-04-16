@@ -100,6 +100,12 @@
     "llmNotConfiguredMessage": "> 缺少 API 密钥。配置前将禁用简历定制功能。",
     "setupRequiredTitle": "[ 需要配置 ]",
     "setupRequiredMessage": "> 请在设置中配置 API 密钥以启用简历定制。",
+    "chromeExtensionPrompt": {
+      "title": "Chrome 扩展会更快",
+      "body": "如果你是从职位页面开始，Chrome 扩展是最快的定制方式。",
+      "hideOption": "不要再显示这个提醒",
+      "continueInApp": "继续使用网页应用"
+    },
     "uploadDialog": {
       "success": "简历上传成功。",
       "successMaster": "简历已上传并设为主简历。",
@@ -430,7 +436,7 @@
           "website": "网站"
         },
         "placeholders": {
-          "projectName": "Resume Matcher",
+          "projectName": "SOM Career Coach",
           "role": "作者",
           "years": "2023年3月",
           "github": "github.com/username/project",

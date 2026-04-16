@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import {
   fetchLanguageConfig,
   updateLanguageConfig,
@@ -24,6 +25,7 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const { status: authStatus } = useSession();
   const [contentLanguage, setContentLanguageState] = useState<SupportedLanguage>(defaultLocale);
   const [uiLanguage, setUiLanguageState] = useState<Locale>(defaultLocale);
   const [isLoading, setIsLoading] = useState(true);
@@ -44,11 +46,13 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
           setContentLanguageState(cachedContentLang as SupportedLanguage);
         }
 
-        // Then fetch content language from backend to ensure sync
-        const config = await fetchLanguageConfig();
-        if (config.content_language && locales.includes(config.content_language as Locale)) {
-          setContentLanguageState(config.content_language);
-          localStorage.setItem(CONTENT_STORAGE_KEY, config.content_language);
+        if (authStatus === 'authenticated') {
+          // Then fetch content language from backend to ensure sync
+          const config = await fetchLanguageConfig();
+          if (config.content_language && locales.includes(config.content_language as Locale)) {
+            setContentLanguageState(config.content_language);
+            localStorage.setItem(CONTENT_STORAGE_KEY, config.content_language);
+          }
         }
       } catch (error) {
         console.error('Failed to load language config:', error);
@@ -59,7 +63,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     };
 
     loadLanguages();
-  }, []);
+  }, [authStatus]);
 
   const setContentLanguage = useCallback(
     async (lang: SupportedLanguage) => {
@@ -74,8 +78,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         setContentLanguageState(lang);
         localStorage.setItem(CONTENT_STORAGE_KEY, lang);
 
-        // Persist to backend
-        await updateLanguageConfig({ content_language: lang });
+        // Persist to backend only once the protected session is available
+        if (authStatus === 'authenticated') {
+          await updateLanguageConfig({ content_language: lang });
+        }
       } catch (error) {
         console.error('Failed to update content language:', error);
         // Revert on error
@@ -83,7 +89,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(CONTENT_STORAGE_KEY, previousLang);
       }
     },
-    [contentLanguage]
+    [authStatus, contentLanguage]
   );
 
   const setUiLanguage = useCallback((lang: Locale) => {

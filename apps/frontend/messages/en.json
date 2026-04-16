@@ -100,6 +100,12 @@
     "llmNotConfiguredMessage": "> API keys are missing. Resume tailoring is disabled until configured in settings.",
     "setupRequiredTitle": "[ SETUP REQUIRED ]",
     "setupRequiredMessage": "> Configure API key in settings to enable resume tailoring.",
+    "chromeExtensionPrompt": {
+      "title": "Faster with the Chrome Extension",
+      "body": "If you're starting from a job page, the Chrome extension is the quickest way to tailor.",
+      "hideOption": "Don't show this reminder again",
+      "continueInApp": "Continue in Web App"
+    },
     "uploadDialog": {
       "success": "Resume uploaded successfully.",
       "successMaster": "Resume uploaded and set as master.",
@@ -430,7 +436,7 @@
           "website": "Website"
         },
         "placeholders": {
-          "projectName": "Resume Matcher",
+          "projectName": "SOM Career Coach",
           "role": "Creator",
           "years": "Mar 2023",
           "github": "github.com/username/project",

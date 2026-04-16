@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -95,6 +96,7 @@ const getHealthCheckMessage = (
 };
 
 export default function SettingsPage() {
+  const { status: authStatus } = useSession();
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
 
@@ -232,6 +234,7 @@ export default function SettingsPage() {
 
   // Load LLM config and feature config on mount
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     let cancelled = false;
 
     async function loadConfig() {
@@ -286,7 +289,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [authStatus, t]);
 
   // Handle provider change
   const handleProviderChange = (newProvider: LLMProvider) => {
@@ -1087,7 +1090,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2">
             <Image
               src="/logo.svg"
-              alt="Resume Matcher"
+              alt="SOM Career Coach"
               width={20}
               height={20}
               className="w-5 h-5"

@@ -94,6 +94,7 @@ export async function getUserAssets() {
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
+    STORAGE_KEYS.extensionAuth,
   ]);
   const llmSettings = mergeLlmSettings(
     data[STORAGE_KEYS.llmSettings],
@@ -122,7 +123,43 @@ export async function getUserAssets() {
     appOrigin: data[STORAGE_KEYS.appOrigin] ?? DEFAULT_APP_ORIGIN,
     apiOrigin: data[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
     customFeatureEnabled: data[STORAGE_KEYS.customFeatureEnabled] === true,
+    extensionAuth: data[STORAGE_KEYS.extensionAuth] ?? null,
   };
+}
+
+export async function getExtensionAuth() {
+  const data = await storageGet(STORAGE_KEYS.extensionAuth);
+  return data[STORAGE_KEYS.extensionAuth] ?? null;
+}
+
+export async function setExtensionAuth(auth) {
+  await storageSet({ [STORAGE_KEYS.extensionAuth]: auth });
+  return auth;
+}
+
+export async function clearExtensionAuth() {
+  await chrome.storage.local.remove(STORAGE_KEYS.extensionAuth);
+}
+
+export async function hasValidExtensionAuth() {
+  const auth = await getExtensionAuth();
+  if (!auth?.token || !auth?.expiresAt) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return Number(auth.expiresAt) - 30 > now;
+}
+
+export async function getPendingExtensionAction() {
+  const data = await storageGet(STORAGE_KEYS.extensionPendingAction);
+  return data[STORAGE_KEYS.extensionPendingAction] ?? null;
+}
+
+export async function setPendingExtensionAction(action) {
+  await storageSet({ [STORAGE_KEYS.extensionPendingAction]: action });
+  return action;
+}
+
+export async function clearPendingExtensionAction() {
+  await chrome.storage.local.remove(STORAGE_KEYS.extensionPendingAction);
 }
 
 function normalizeOrigin(value, fallback) {
@@ -296,6 +333,8 @@ export async function clearExtensionLocalData() {
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
+    STORAGE_KEYS.extensionAuth,
+    STORAGE_KEYS.extensionPendingAction,
     STORAGE_KEYS.extensionSession,
     STORAGE_KEYS.historyEntries,
     STORAGE_KEYS.lastError,
@@ -311,5 +350,6 @@ export async function resetExtensionSettingsToDefault() {
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
+    STORAGE_KEYS.extensionAuth,
   ]);
 }

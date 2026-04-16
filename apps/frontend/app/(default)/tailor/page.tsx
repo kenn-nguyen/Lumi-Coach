@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ import { DiffPreviewModal } from '@/components/tailor/diff-preview-modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function TailorPage() {
+  const { status: authStatus } = useSession();
   const { t } = useTranslations();
   const [jobDescription, setJobDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -79,15 +81,17 @@ export default function TailorPage() {
   const isLlmConfigured = !statusLoading && systemStatus?.llm_configured;
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     const storedId = localStorage.getItem('master_resume_id');
     if (!storedId) {
       router.push('/dashboard');
     } else {
       setMasterResumeId(storedId);
     }
-  }, [router]);
+  }, [authStatus, router]);
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
     let cancelled = false;
 
     const loadPromptConfig = async () => {
@@ -113,7 +117,7 @@ export default function TailorPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authStatus]);
 
   const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') e.stopPropagation();

@@ -7,13 +7,13 @@ import { useTranslations } from '@/lib/i18n';
 export interface CoverLetterPersonalInfo {
   name?: string;
   title?: string;
-  customTagline?: string;
+  customTagline?: string | null;
   email?: string;
   phone?: string;
   location?: string;
-  website?: string;
-  linkedin?: string;
-  github?: string;
+  website?: string | null;
+  linkedin?: string | null;
+  github?: string | null;
 }
 
 export interface CoverLetterPreviewProps {
@@ -46,7 +46,7 @@ export function CoverLetterPreview({
   return (
     <div
       className={cn(
-        'bg-white border-2 border-black',
+        'bg-white border-2 border-black w-full max-w-[210mm] mx-auto',
         'shadow-[4px_4px_0px_0px_#000000]',
         'overflow-hidden',
         className
@@ -55,9 +55,6 @@ export function CoverLetterPreview({
       {/* Letter Content */}
       <div
         className={cn('p-8 md:p-12', pageSize === 'A4' ? 'min-h-[297mm]' : 'min-h-[11in]')}
-        style={{
-          maxWidth: pageSize === 'A4' ? '210mm' : '8.5in',
-        }}
       >
         {/* Header - Personal Info */}
         <header className="mb-8 border-b-2 border-black pb-4">

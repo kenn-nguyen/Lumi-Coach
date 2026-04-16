@@ -9,9 +9,10 @@ import unicodedata
 from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any, NoReturn
+from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 
@@ -71,7 +72,18 @@ from app.services.cover_letter import (
     rewrite_resume_bullet,
     rewrite_resume_summary,
 )
+from app.security import (
+    AuthenticatedUser,
+    create_backend_access_token_for_user,
+    require_current_user,
+)
 from app.prompts import DEFAULT_IMPROVE_PROMPT_ID, IMPROVE_PROMPT_OPTIONS
+
+router = APIRouter(
+    prefix="/resumes",
+    tags=["Resumes"],
+    dependencies=[Depends(require_current_user)],
+)
 
 PRESERVED_PERSONAL_INFO_FIELDS = (
     "name",
@@ -643,9 +655,6 @@ async def _generate_auxiliary_messages(
                 outreach_message = result
 
     return cover_letter, outreach_message, title, warnings
-
-
-router = APIRouter(prefix="/resumes", tags=["Resumes"])
 
 ALLOWED_TYPES = {
     "application/pdf",
@@ -1636,6 +1645,7 @@ async def download_resume_pdf(
     showContactIcons: bool = Query(False),
     accentColor: str = Query("blue", pattern="^(blue|green|orange|red)$"),
     lang: str | None = Query(None, pattern="^[a-z]{2}(-[A-Z]{2})?$"),
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> Response:
     """Generate a PDF for a resume using headless Chromium.
 
@@ -1677,6 +1687,8 @@ async def download_resume_pdf(
         f"&showContactIcons={str(showContactIcons).lower()}"
         f"&accentColor={accentColor}"
     )
+    auth_token, _ = create_backend_access_token_for_user(current_user)
+    params = f"{params}&authToken={quote(auth_token, safe='')}"
     if lang:
         params = f"{params}&lang={lang}"
     url = f"{settings.frontend_base_url}/print/resumes/{resume_id}?{params}"
@@ -2129,6 +2141,7 @@ async def download_cover_letter_pdf(
     resume_id: str,
     pageSize: str = Query("A4", pattern="^(A4|LETTER)$"),
     lang: str | None = Query(None, pattern="^[a-z]{2}(-[A-Z]{2})?$"),
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> Response:
     """Generate a PDF for a cover letter using headless Chromium.
 
@@ -2148,7 +2161,11 @@ async def download_cover_letter_pdf(
         )
 
     # Build print URL (same pattern as resume PDF)
-    url = f"{settings.frontend_base_url}/print/cover-letter/{resume_id}?pageSize={pageSize}"
+    auth_token, _ = create_backend_access_token_for_user(current_user)
+    url = (
+        f"{settings.frontend_base_url}/print/cover-letter/{resume_id}"
+        f"?pageSize={pageSize}&authToken={quote(auth_token, safe='')}"
+    )
     if lang:
         url = f"{url}&lang={lang}"
 

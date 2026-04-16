@@ -77,7 +77,7 @@ export function JDComparisonView({
   const stats = useMemo(() => calculateMatchStats(resumeText, keywords), [resumeText, keywords]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-w-0">
       {/* Stats Bar */}
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
         <div className="flex items-center gap-4">
@@ -113,9 +113,9 @@ export function JDComparisonView({
       </div>
 
       {/* Split View */}
-      <div className="flex-1 grid grid-cols-2 min-h-0">
+      <div className="flex-1 grid grid-cols-2 min-h-0 min-w-0">
         {/* Left: JD */}
-        <div className="border-r border-gray-200 overflow-hidden">
+        <div className="border-r border-gray-200 overflow-hidden min-w-0">
           <JDDisplay
             content={jobDescription}
             onChange={onJobDescriptionChange}
@@ -128,7 +128,7 @@ export function JDComparisonView({
         </div>
 
         {/* Right: Resume with highlights */}
-        <div className="overflow-hidden">
+        <div className="overflow-hidden min-w-0">
           <HighlightedResumeView resumeData={resumeData} keywords={keywords} />
         </div>
       </div>

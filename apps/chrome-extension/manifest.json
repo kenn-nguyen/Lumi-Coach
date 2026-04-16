@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Resume Matcher Extension",
+  "name": "SOM Career Coach Extension",
   "version": "0.0.1",
-  "description": "Scrape LinkedIn jobs, run prompting, and push tailored JSON into Resume Matcher.",
+  "description": "Scrape LinkedIn jobs, run prompting, and push tailored JSON into SOM Career Coach.",
   "icons": {
     "16": "src/assets/icons/icon-16.png",
     "32": "src/assets/icons/icon-32.png",
@@ -49,12 +49,19 @@
     "default_path": "src/sidepanel/index.html"
   },
   "action": {
-    "default_title": "Resume Matcher",
+    "default_title": "SOM Career Coach",
     "default_icon": {
       "16": "src/assets/icons/icon-16.png",
       "32": "src/assets/icons/icon-32.png",
       "48": "src/assets/icons/icon-48.png"
     }
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:3000/*",
+      "http://127.0.0.1:3000/*",
+      "https://*.vercel.app/*"
+    ]
   },
   "web_accessible_resources": [
     {

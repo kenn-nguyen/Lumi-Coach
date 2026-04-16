@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -151,6 +151,13 @@ class Settings(BaseSettings):
     port: int = 8000
     log_level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
     frontend_base_url: str = "http://localhost:3000"
+    auth_shared_secret: str = Field(
+        default="change-me-in-production",
+        alias="BACKEND_AUTH_SHARED_SECRET",
+    )
+    auth_token_issuer: str = "resume-matcher-frontend"
+    auth_token_audience: str = "resume-matcher-backend"
+    auth_token_ttl_seconds: int = 900
 
     @field_validator("log_level", mode="before")
     @classmethod

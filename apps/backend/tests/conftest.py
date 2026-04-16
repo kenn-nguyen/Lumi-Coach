@@ -1,4 +1,4 @@
-"""Shared test fixtures for Resume Matcher backend tests."""
+"""Shared test fixtures for SOM Career Coach backend tests."""
 
 import copy
 

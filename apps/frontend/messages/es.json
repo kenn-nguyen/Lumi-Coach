@@ -100,6 +100,12 @@
     "llmNotConfiguredMessage": "> Faltan claves API. La personalización del currículum está deshabilitada hasta configurarlo en Ajustes.",
     "setupRequiredTitle": "[ CONFIGURACIÓN REQUERIDA ]",
     "setupRequiredMessage": "> Configura la clave API en Ajustes para habilitar la personalización del currículum.",
+    "chromeExtensionPrompt": {
+      "title": "Más rápido con la extensión de Chrome",
+      "body": "Si comienzas desde una página de empleo, la extensión de Chrome es la forma más rápida de personalizar.",
+      "hideOption": "No volver a mostrar este recordatorio",
+      "continueInApp": "Continuar en la aplicación web"
+    },
     "uploadDialog": {
       "success": "Currículum subido con éxito.",
       "successMaster": "Currículum subido y establecido como maestro.",
@@ -430,7 +436,7 @@
           "website": "Sitio web"
         },
         "placeholders": {
-          "projectName": "Resume Matcher",
+          "projectName": "SOM Career Coach",
           "role": "Creador",
           "years": "Mar 2023",
           "github": "github.com/usuario/proyecto",

@@ -11,6 +11,7 @@ const LOG_PREFIX = '[ResumeMatcherExt][LinkedInButton]';
 const VIEWPORT_PADDING = 20;
 
 let isRunning = false;
+let awaitingAuthResume = false;
 let urlObserver = null;
 let lastUrl = location.href;
 let pointerDragState = null;
@@ -503,7 +504,7 @@ function formatErrorText(message) {
   }
 
   if (/no master resume was found/i.test(normalized)) {
-    return 'Upload a master resume in Resume Matcher first.';
+    return 'Upload a master resume in SOM Career Coach first.';
   }
 
   return normalized;
@@ -657,7 +658,7 @@ function updateStatusFromLog(level, scope, message, data) {
   const progressMessage = getLlmProgressMessage(scope, message, data)
     ?? getProgressMessage(scope, message);
   if (!progressMessage) return;
-  setUiState(isRunning ? 'running' : 'idle', progressMessage);
+  setUiState(isRunning || awaitingAuthResume ? 'running' : 'idle', progressMessage);
 }
 
 async function handleGenerateClick() {
@@ -680,16 +681,25 @@ async function handleGenerateClick() {
       type: 'GENERATE_FOR_ACTIVE_JOB',
       payload: { prompt1CustomInstruction },
     });
+    if (response?.awaitingAuth) {
+      awaitingAuthResume = true;
+      setUiState('running', response.message || 'Finish signing in to SOM Career Coach.');
+      return;
+    }
     if (!response?.ok) {
       throw new Error(response?.error ?? 'Failed to generate tailored resume.');
     }
+    awaitingAuthResume = false;
     logInfo('Generate flow succeeded.', response.result ?? {});
     setUiState('success', 'Preview opened.');
   } catch (error) {
+    awaitingAuthResume = false;
     logError('Generate flow failed.', error);
     setUiState('error', formatErrorText(error instanceof Error ? error.message : 'Failed to generate tailored resume.'));
   } finally {
-    isRunning = false;
+    if (!awaitingAuthResume) {
+      isRunning = false;
+    }
     const root = document.getElementById(ROOT_ID);
     if (root?.dataset.state === 'success') {
       scheduleStatusClear();
@@ -721,6 +731,21 @@ function startUrlWatcher() {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'EXTENSION_RESUMED_GENERATION_RESULT') {
+    awaitingAuthResume = false;
+    isRunning = false;
+    if (message.payload?.ok) {
+      setUiState('success', 'Preview opened.');
+      scheduleStatusClear();
+    } else {
+      setUiState(
+        'error',
+        formatErrorText(message.payload?.error || 'Failed to generate tailored resume.')
+      );
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
   if (message?.type === 'LOG_EVENT') {
     const payload = message.payload ?? {};
     logRelayed(payload.level, payload.scope, payload.message, payload.data);

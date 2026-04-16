@@ -9,12 +9,12 @@ const nextConfig: NextConfig = {
     proxyTimeout: 240_000,
   },
   async rewrites() {
-    // Note: Next.js serves filesystem routes (app/api/) before rewrites.
-    // Do not create app/api/ routes or they will shadow the backend proxy.
+    // Only proxy backend API namespaces. Auth.js and other frontend route handlers
+    // also live under /api and must remain on the Next.js app.
     return [
       {
-        source: '/api/:path*',
-        destination: `${BACKEND_ORIGIN}/api/:path*`,
+        source: '/api/v1/:path*',
+        destination: `${BACKEND_ORIGIN}/api/v1/:path*`,
       },
       {
         source: '/docs',

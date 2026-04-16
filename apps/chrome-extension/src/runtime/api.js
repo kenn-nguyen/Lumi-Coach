@@ -1,6 +1,6 @@
 import { DEFAULT_API_ORIGIN, DEFAULT_APP_ORIGIN } from './constants.js';
 import { logError, logInfo, logWarn } from './log.js';
-import { getUserAssets } from './storage.js';
+import { clearExtensionAuth, getExtensionAuth, getUserAssets } from './storage.js';
 
 function normalizeOrigin(value, fallback) {
   const normalized = (value || fallback).trim().replace(/\/+$/, '');
@@ -27,13 +27,40 @@ function toAbsoluteUrl(url, appOrigin) {
   return url.startsWith('http://') || url.startsWith('https://') ? url : `${appOrigin}${url}`;
 }
 
+async function fetchWithAuth(endpoint, options = {}) {
+  const auth = await getExtensionAuth();
+  if (!auth?.token || !auth?.expiresAt) {
+    throw new Error('Connect the SOM Career Coach extension before continuing.');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (Number(auth.expiresAt) - 30 <= now) {
+    await clearExtensionAuth();
+    throw new Error('Extension session expired. Reconnect SOM Career Coach and try again.');
+  }
+
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${auth.token}`);
+
+  const response = await fetch(endpoint, {
+    ...options,
+    headers,
+  });
+
+  if (response.status === 401) {
+    await clearExtensionAuth();
+  }
+
+  return response;
+}
+
 export async function listResumes(includeMaster = false) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/list${includeMaster ? '?include_master=true' : ''}`;
   logInfo('ResumeApi', 'Listing resumes.', { endpoint, includeMaster });
   let response;
   try {
-    response = await fetch(endpoint);
+    response = await fetchWithAuth(endpoint);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logError('ResumeApi', 'List resumes request failed before response.', { endpoint, error: message });
@@ -59,7 +86,7 @@ export async function cloneResume(resumeId) {
   logInfo('ResumeApi', 'Cloning resume.', { resumeId, endpoint });
   let response;
   try {
-    response = await fetch(endpoint, { method: 'POST' });
+    response = await fetchWithAuth(endpoint, { method: 'POST' });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logError('ResumeApi', 'Clone request failed before response.', { resumeId, endpoint, error: message });
@@ -89,7 +116,7 @@ export async function fetchResumeById(resumeId) {
   logInfo('ResumeApi', 'Fetching resume by id.', { resumeId, endpoint });
   let response;
   try {
-    response = await fetch(endpoint);
+    response = await fetchWithAuth(endpoint);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logError('ResumeApi', 'Fetch resume request failed before response.', {
@@ -123,7 +150,7 @@ export async function uploadJobDescription(jobDescription, resumeId) {
   });
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAuth(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -170,7 +197,7 @@ export async function linkResumeToJobContext(originalResumeId, tailoredResumeId,
   });
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAuth(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -217,7 +244,7 @@ export async function enableContentGenerationFeatures() {
   logInfo('ResumeApi', 'Enabling content-generation features.', { endpoint });
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAuth(endpoint, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -253,7 +280,7 @@ export async function fetchFeatureConfig() {
   logInfo('ResumeApi', 'Fetching feature configuration.', { endpoint });
   let response;
   try {
-    response = await fetch(endpoint);
+    response = await fetchWithAuth(endpoint);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logWarn('ResumeApi', 'Feature configuration request failed before response.', {
@@ -297,7 +324,7 @@ export async function patchResume(
   });
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAuth(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestPayload),
@@ -329,7 +356,7 @@ export async function overwriteMasterResume(resumeData) {
   const resumeList = await listResumes(true);
   const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
   if (!masterResume?.resume_id) {
-    throw new Error('No master resume was found in Resume Matcher.');
+    throw new Error('No master resume was found in SOM Career Coach.');
   }
 
   const { apiBase } = await getRuntimeEndpoints();
@@ -343,7 +370,7 @@ export async function overwriteMasterResume(resumeData) {
 
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAuth(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestPayload),
@@ -379,7 +406,7 @@ export async function renameResume(resumeId, title) {
   logInfo('ResumeApi', 'Renaming resume.', { resumeId, endpoint, title });
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAuth(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
@@ -418,4 +445,10 @@ export async function openPreviewTab(previewUrl) {
   }
   const { appOrigin } = await getRuntimeEndpoints();
   await chrome.tabs.create({ url: toAbsoluteUrl(previewUrl, appOrigin) });
+}
+
+export async function openExtensionConnectTab(extensionId) {
+  const { appOrigin } = await getRuntimeEndpoints();
+  const url = `${appOrigin}/extension/connect?extensionId=${encodeURIComponent(extensionId)}`;
+  await chrome.tabs.create({ url });
 }

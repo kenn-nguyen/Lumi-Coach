@@ -83,7 +83,7 @@ The code should be easy to split later into separate replaceable components:
   ChatGPT web automation first, API-based provider later
 
 - resume backends
-  Resume Matcher first, other targets later if ever needed
+  SOM Career Coach first, other targets later if ever needed
 
 - validation and repair
   basic validation first, future Prompt 4 repair later
@@ -205,7 +205,7 @@ When coding in this extension, agents should follow these rules:
 
 ### API Discipline
 
-- Centralize Resume Matcher API calls in one module
+- Centralize SOM Career Coach API calls in one module
 - Keep request/response translation logic in one place
 - Never patch the app with unvalidated Prompt 3 output
 

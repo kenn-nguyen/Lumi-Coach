@@ -1,11 +1,16 @@
 """Job description management endpoints."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.database import db
 from app.schemas import JobUploadRequest, JobUploadResponse
+from app.security import require_current_user
 
-router = APIRouter(prefix="/jobs", tags=["Jobs"])
+router = APIRouter(
+    prefix="/jobs",
+    tags=["Jobs"],
+    dependencies=[Depends(require_current_user)],
+)
 
 
 @router.post("/upload", response_model=JobUploadResponse)

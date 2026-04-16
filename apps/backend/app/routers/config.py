@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app.config import settings
 from app.llm import check_llm_health, LLMConfig, resolve_api_key
@@ -33,8 +33,13 @@ from app.config import (
 )
 from app.config_cache import invalidate_config_cache
 from app.database import db
+from app.security import require_current_user
 
-router = APIRouter(prefix="/config", tags=["Configuration"])
+router = APIRouter(
+    prefix="/config",
+    tags=["Configuration"],
+    dependencies=[Depends(require_current_user)],
+)
 
 
 def _get_config_path() -> Path:
