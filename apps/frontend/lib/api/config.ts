@@ -140,11 +140,13 @@ export const PROVIDER_INFO: Record<
 export interface FeatureConfig {
   enable_cover_letter: boolean;
   enable_outreach_message: boolean;
+  preserve_generated_resume_facts: boolean;
 }
 
 export interface FeatureConfigUpdate {
   enable_cover_letter?: boolean;
   enable_outreach_message?: boolean;
+  preserve_generated_resume_facts?: boolean;
 }
 
 // Fetch feature configuration

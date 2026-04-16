@@ -9,14 +9,23 @@ import { useTranslations } from '@/lib/i18n';
 interface HighlightedResumeViewProps {
   resumeData: ResumeData;
   keywords: Set<string>;
+  title?: string;
+  subtitle?: string;
 }
 
 /**
  * Display resume content with matching keywords highlighted.
  * Shows all resume sections with visual highlighting of JD matches.
  */
-export function HighlightedResumeView({ resumeData, keywords }: HighlightedResumeViewProps) {
+export function HighlightedResumeView({
+  resumeData,
+  keywords,
+  title,
+  subtitle,
+}: HighlightedResumeViewProps) {
   const { t } = useTranslations();
+  const resolvedTitle = title ?? t('builder.jdMatch.yourResume');
+  const resolvedSubtitle = subtitle ?? t('builder.jdMatch.matchingKeywordsHighlighted');
 
   return (
     <div className="h-full flex flex-col">
@@ -24,10 +33,10 @@ export function HighlightedResumeView({ resumeData, keywords }: HighlightedResum
       <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50">
         <FileUser className="w-4 h-4 text-gray-600" />
         <h3 className="font-mono text-sm font-bold uppercase text-gray-700">
-          {t('builder.jdMatch.yourResume')}
+          {resolvedTitle}
         </h3>
         <span className="text-xs text-gray-500 ml-2">
-          {t('builder.jdMatch.matchingKeywordsHighlighted')}
+          {resolvedSubtitle}
         </span>
       </div>
 

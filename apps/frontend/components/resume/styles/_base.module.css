@@ -49,6 +49,12 @@
   color: var(--resume-text-tertiary);
 }
 
+.resume-contact-line {
+  font-family: var(--body-font);
+  font-size: calc(var(--font-size-base) * 0.82);
+  color: var(--resume-text-tertiary);
+}
+
 .resume-meta-sm {
   font-family: var(--resume-font-mono);
   font-size: calc(var(--font-size-base) * 0.75);

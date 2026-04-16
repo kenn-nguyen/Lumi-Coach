@@ -13,6 +13,7 @@ export const STORAGE_KEYS = {
   chatGptTargetUrl: 'chatGptTargetUrl',
   appOrigin: 'appOrigin',
   apiOrigin: 'apiOrigin',
+  customFeatureEnabled: 'customFeatureEnabled',
   extensionSession: 'extensionSession',
   historyEntries: 'historyEntries',
   lastError: 'lastError',

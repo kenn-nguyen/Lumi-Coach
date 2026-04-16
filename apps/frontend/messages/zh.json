@@ -175,7 +175,8 @@
       "resume": "简历",
       "coverLetter": "求职信",
       "outreach": "联系邮件",
-      "jdMatch": "JD 匹配"
+      "jdMatch": "JD 匹配",
+      "aiStrategyMatch": "AI STRATEGY"
     },
     "footer": {
       "moduleLabel": "简历编辑模块",
@@ -282,6 +283,41 @@
         "matchRateLabel": "匹配率："
       }
     },
+    "strategyMatch": {
+      "briefTitle": "AI Strategy Brief",
+      "resumeTitle": "Your Resume",
+      "resumeSubtitle": "(strategy keywords highlighted)",
+      "positioningThesis": "Positioning Thesis",
+      "recommendedTitle": "Recommended Title",
+      "summaryLead": "Summary Lead",
+      "aboutTitle": "About AI Strategy Match",
+      "aboutDescription": "This view shows how well the final resume reflects the Prompt 2 strategy brief. It tracks the positioning signals, phrases, and themes the AI recommended surfacing in the resume.",
+      "highlightedKeywordsTitle": "Strategy Signals",
+      "highlightedKeywordsDescription": "Highlighted words come from the saved Prompt 2 strategy brief, not the raw job description. This helps you verify whether the final resume follows the intended positioning plan.",
+      "tipsTitle": "Tips",
+      "empty": "No AI strategy brief is available for this resume.",
+      "sections": {
+        "topGoals": "Top Resume Goals",
+        "summaryFocus": "Summary Focus",
+        "signalsToSurface": "Signals To Surface",
+        "storylines": "Selected Storylines",
+        "experienceThemes": "Experience Themes",
+        "mirrorPhrases": "Mirror Phrases",
+        "finalSkills": "Final Skills"
+      },
+      "tips": {
+        "items": {
+          "followStorylines": "Check whether the strongest storylines are visible in your summary and bullets",
+          "mirrorPriorityPhrases": "Mirror the highest-value phrases naturally in the resume text",
+          "reinforceSkills": "Make sure the final skills list is reinforced by evidence in experience bullets"
+        }
+      },
+      "stats": {
+        "signalsTracked": "{count} strategy keywords tracked",
+        "matchesFound": "{count} matches found",
+        "coverageLabel": "Coverage:"
+      }
+    },
     "genericItemForm": {
       "itemLabel": "条目",
       "addItemLabel": "添加{label}",
@@ -306,9 +342,45 @@
       "addFirstItem": "添加第一条{label}"
     },
     "forms": {
+      "summary": {
+        "original": {
+          "button": "Show original summary",
+          "title": "Original summary",
+          "empty": "No original summary available."
+        },
+        "aiRewrite": {
+          "button": "Rewrite with AI",
+          "title": "AI rewrite",
+          "instructionLabel": "Instruction",
+          "instructionPlaceholder": "Example: make it tighter and emphasize AI/ML risk and payments leadership.",
+          "resultLabel": "Suggested summary",
+          "resultPlaceholder": "Your generated summary will appear here.",
+          "generate": "Generate",
+          "generating": "Generating...",
+          "use": "Use",
+          "cancel": "Cancel"
+        }
+      },
       "experience": {
         "addJob": "添加经历",
         "addFirstJob": "添加第一条经历",
+        "originalBullet": {
+          "button": "Show original bullet",
+          "title": "Original bullet",
+          "empty": "No original bullet available."
+        },
+        "aiRewrite": {
+          "button": "Rewrite with AI",
+          "title": "AI rewrite",
+          "instructionLabel": "Instruction",
+          "instructionPlaceholder": "Example: make it shorter and emphasize payments ownership.",
+          "resultLabel": "Suggested bullet",
+          "resultPlaceholder": "Your generated bullet will appear here.",
+          "generate": "Generate",
+          "generating": "Generating...",
+          "use": "Use",
+          "cancel": "Cancel"
+        },
         "fields": {
           "jobTitle": "职位名称",
           "company": "公司"
@@ -421,6 +493,8 @@
       "resetDefaults": "恢复默认设置"
     },
     "personalInfoForm": {
+      "refreshFromMaster": "Refresh from Master",
+      "refreshFromMasterTitle": "Refresh personal info from the master resume, except the job title",
       "placeholders": {
         "name": "张三",
         "title": "软件工程师",
@@ -437,7 +511,8 @@
       "editorPanel": "编辑面板",
       "coverLetterEditor": "求职信编辑",
       "outreachEditor": "联系邮件编辑",
-      "jdMatchAnalysis": "JD 匹配分析"
+      "jdMatchAnalysis": "JD 匹配分析",
+      "aiStrategyMatchAnalysis": "AI Strategy Match Analysis"
     },
     "alerts": {
       "saveNotAvailable": "仅在编辑现有简历时可保存。",
@@ -680,6 +755,10 @@
       "outreachMessage": {
         "label": "冷启动外联消息",
         "description": "生成用于 LinkedIn 或邮件的社交/外联消息"
+      },
+      "preserveFacts": {
+        "label": "Preserve Master Resume Facts",
+        "description": "Keep personal info except title, plus experience company names, job titles, and dates from your master resume in generated resumes."
       }
     },
     "promptSettings": {

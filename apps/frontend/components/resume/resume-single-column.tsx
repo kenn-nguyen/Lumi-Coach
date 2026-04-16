@@ -9,6 +9,7 @@ import { getSortedSections } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DynamicResumeSection } from './dynamic-resume-section';
 import { SafeHtml } from './safe-html';
+import { buildContactDisplay } from './contact-utils';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/swiss-single.module.css';
 
@@ -47,33 +48,26 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
   };
 
   // Helper function to render contact details
-  const renderContactDetail = (label: string, value?: string, hrefPrefix: string = '') => {
+  const renderContactDetail = (label: string, value?: string | null, hrefPrefix: string = '') => {
     if (!value) return null;
-
-    let finalHrefPrefix = hrefPrefix;
-    if (
-      ['Website', 'LinkedIn', 'GitHub'].includes(label) &&
-      !value.startsWith('http') &&
-      !value.startsWith('//')
-    ) {
-      finalHrefPrefix = 'https://';
-    }
-
-    const href = finalHrefPrefix + value;
-    const isLink =
-      finalHrefPrefix.startsWith('http') ||
-      finalHrefPrefix.startsWith('mailto:') ||
-      finalHrefPrefix.startsWith('tel:');
-
-    let displayText = value;
-    if (isLink && (label === 'LinkedIn' || label === 'GitHub' || label === 'Website')) {
-      displayText = value.replace(/^https?:\/\//, '').replace(/^www\./, '');
-    }
+    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(label, value, hrefPrefix);
 
     return (
       <span className="inline-flex items-center gap-1">
-        {showContactIcons && contactIcons[label]}
-        {isLink ? (
+        {showContactIcons && contactIcons[resolvedLabel]}
+        {socialSlug ? (
+          <>
+            <span style={{ color: 'var(--resume-text-primary)' }}>{resolvedLabel} : </span>
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${baseStyles['resume-link']} hover:underline`}
+            >
+              {socialSlug}
+            </a>
+          </>
+        ) : isLink ? (
           <a
             href={href}
             target="_blank"
@@ -311,7 +305,7 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
           {/* Title - Centered, below name */}
           {personalInfo.title && (
             <h2
-              className={`${baseStyles['resume-title']} ${baseStyles['resume-meta']} tracking-wide uppercase mb-3`}
+              className={`${baseStyles['resume-title']} ${baseStyles['resume-meta']} tracking-wide uppercase mb-1`}
             >
               {personalInfo.title}
             </h2>
@@ -319,43 +313,43 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
 
           {/* Contact - Own line, centered */}
           <div
-            className={`flex flex-wrap justify-center gap-x-1 gap-y-1 ${baseStyles['resume-meta']}`}
+            className={`flex flex-wrap justify-center gap-x-1 gap-y-1 ${baseStyles['resume-contact-line']}`}
           >
             {personalInfo.customTagline &&
               renderContactDetail('CustomTagline', personalInfo.customTagline)}
             {personalInfo.email && (
               <>
-                {personalInfo.customTagline && <span className={baseStyles['text-muted']}>,</span>}
+                {personalInfo.customTagline && <span className={baseStyles['text-muted']}>|</span>}
                 {renderContactDetail('Email', personalInfo.email, 'mailto:')}
               </>
             )}
             {personalInfo.phone && (
               <>
-                <span className={baseStyles['text-muted']}>,</span>
+                <span className={baseStyles['text-muted']}>|</span>
                 {renderContactDetail('Phone', personalInfo.phone, 'tel:')}
               </>
             )}
             {personalInfo.location && (
               <>
-                <span className={baseStyles['text-muted']}>,</span>
+                <span className={baseStyles['text-muted']}>|</span>
                 {renderContactDetail('Location', personalInfo.location)}
               </>
             )}
             {personalInfo.website && (
               <>
-                <span className={baseStyles['text-muted']}>,</span>
+                <span className={baseStyles['text-muted']}>|</span>
                 {renderContactDetail('Website', personalInfo.website)}
               </>
             )}
             {personalInfo.linkedin && (
               <>
-                <span className={baseStyles['text-muted']}>,</span>
+                <span className={baseStyles['text-muted']}>|</span>
                 {renderContactDetail('LinkedIn', personalInfo.linkedin)}
               </>
             )}
             {personalInfo.github && (
               <>
-                <span className={baseStyles['text-muted']}>,</span>
+                <span className={baseStyles['text-muted']}>|</span>
                 {renderContactDetail('GitHub', personalInfo.github)}
               </>
             )}

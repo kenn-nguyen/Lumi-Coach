@@ -409,6 +409,68 @@ Rules:
 
 Output the title only, nothing else."""
 
+BULLET_REWRITE_PROMPT = """Rewrite exactly one resume bullet.
+
+IMPORTANT: Write the rewritten bullet in {output_language}.
+
+Current bullet:
+{current_bullet}
+
+Original bullet from master resume:
+{original_bullet}
+
+Role context:
+- Title: {role_title}
+- Company: {role_company}
+- Years: {role_years}
+
+AI strategy brief:
+{strategy_context}
+
+User instruction:
+{user_instruction}
+
+Requirements:
+- Rewrite exactly one bullet only
+- Preserve all factual claims, metrics, scope, chronology, and ownership
+- Do not invent new responsibilities, technologies, employers, dates, or numbers
+- Keep it concise, impact-oriented, and ATS-readable
+- Typical length: 20-40 words unless the user instruction clearly asks otherwise
+- Prefer clear action + scope + outcome phrasing
+- Avoid generic filler and avoid repeating the job title or company name unnecessarily
+- Do NOT use em dash ("—") anywhere in the writing/output, even if it exists, remove it
+
+Return valid JSON only in this exact shape:
+{{"rewritten_bullet": "..."}}"""
+
+SUMMARY_REWRITE_PROMPT = """Rewrite exactly one resume summary.
+
+IMPORTANT: Write the rewritten summary in {output_language}.
+
+Current summary:
+{current_summary}
+
+Original summary from master resume:
+{original_summary}
+
+AI strategy brief:
+{strategy_context}
+
+User instruction:
+{user_instruction}
+
+Requirements:
+- Rewrite exactly one summary only
+- Preserve all factual claims, metrics, scope, chronology, and ownership
+- Do not invent new responsibilities, technologies, employers, dates, or numbers
+- Keep it concise, impact-oriented, and ATS-readable
+- Prefer 2-4 sentences unless the user instruction clearly asks otherwise
+- Keep the writing specific and readable, not generic or inflated
+- Do NOT use em dash ("—") anywhere in the writing/output, even if it exists, remove it
+
+Return valid JSON only in this exact shape:
+{{"rewritten_summary": "..."}}"""
+
 # Alias for backward compatibility
 RESUME_SCHEMA = RESUME_SCHEMA_EXAMPLE
 

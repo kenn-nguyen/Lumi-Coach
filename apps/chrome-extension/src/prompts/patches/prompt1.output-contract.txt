@@ -1,0 +1,41 @@
+Output contract:
+- Return valid JSON only.
+- Do not output markdown fences.
+- Do not output commentary, analysis, or text before or after the JSON object.
+- Start the response with `{` and end it with `}`.
+- Return exactly one JSON object matching the schema below.
+- Do not add extra top-level keys.
+- If a field is unknown, use the schema’s empty value (`""`, `[]`, `{}`, or `null` as appropriate).
+
+Return JSON in this exact shape:
+{
+  "role": "",
+  "seniority": "",
+  "domain": "",
+  "company_context": "",
+  "role_archetype": "",
+
+  "hard_filters": [],
+  "preferred_qualifications": [],
+
+  "recruiter_hooks": [],
+  "hiring_manager_proof": [],
+
+  "ats_terms": [],
+  "phrases_to_mirror": [],
+  "tools_platforms": [],
+  "domain_context": [],
+
+  "likely_interview_themes": [],
+
+  "deprioritize": [],
+  "do_not_fake": [],
+  "jd_notes": []
+}
+
+Additional output rules:
+- All scalar fields must be strings.
+- All list fields must contain short strings only.
+- Order list items from highest to lowest importance.
+- Do not invent requirements, tools, or domain context not supported by the JD.
+

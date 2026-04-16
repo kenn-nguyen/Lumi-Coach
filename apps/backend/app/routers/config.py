@@ -197,6 +197,9 @@ async def get_feature_config() -> FeatureConfigResponse:
     return FeatureConfigResponse(
         enable_cover_letter=stored.get("enable_cover_letter", False),
         enable_outreach_message=stored.get("enable_outreach_message", False),
+        preserve_generated_resume_facts=stored.get(
+            "preserve_generated_resume_facts", True
+        ),
     )
 
 
@@ -210,6 +213,10 @@ async def update_feature_config(request: FeatureConfigRequest) -> FeatureConfigR
         stored["enable_cover_letter"] = request.enable_cover_letter
     if request.enable_outreach_message is not None:
         stored["enable_outreach_message"] = request.enable_outreach_message
+    if request.preserve_generated_resume_facts is not None:
+        stored["preserve_generated_resume_facts"] = (
+            request.preserve_generated_resume_facts
+        )
 
     # Save config
     _save_config(stored)
@@ -217,6 +224,9 @@ async def update_feature_config(request: FeatureConfigRequest) -> FeatureConfigR
     return FeatureConfigResponse(
         enable_cover_letter=stored.get("enable_cover_letter", False),
         enable_outreach_message=stored.get("enable_outreach_message", False),
+        preserve_generated_resume_facts=stored.get(
+            "preserve_generated_resume_facts", True
+        ),
     )
 
 

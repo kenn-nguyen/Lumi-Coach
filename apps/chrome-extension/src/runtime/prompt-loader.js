@@ -33,6 +33,12 @@ const PATCH_PATHS = {
   },
 };
 
+const SHARED_APPEND_PATHS = {
+  prompt1: 'src/prompts/patches/prompt1.output-contract.txt',
+  prompt2: 'src/prompts/patches/prompt2.output-contract.txt',
+  prompt3: 'src/prompts/patches/prompt3.output-contract.txt',
+};
+
 const PLACEHOLDER_PATTERN = /\{\{([A-Z0-9_]+)\}\}/g;
 const templateCache = new Map();
 
@@ -75,6 +81,18 @@ async function loadPromptPatch(templateName, patchKey) {
   return (await patchResponse.text()).trim();
 }
 
+async function loadSharedAppendBlock(templateName) {
+  const sharedPath = SHARED_APPEND_PATHS[templateName];
+  if (!sharedPath) {
+    return '';
+  }
+  const response = await fetch(resolveExtensionAssetUrl(sharedPath));
+  if (!response.ok) {
+    throw new Error(`Failed to load shared prompt block at "${sharedPath}" (status ${response.status}).`);
+  }
+  return (await response.text()).trim();
+}
+
 export async function loadPromptTemplate(templateName, profile) {
   const assets = await getUserAssets();
   const patchKey = profile?.patchKey ?? '';
@@ -87,7 +105,9 @@ export async function loadPromptTemplate(templateName, profile) {
     ? overrideAsset.content
     : await fetchTemplateText(TEMPLATE_PATHS[templateName]);
   const patch = await loadPromptPatch(templateName, patchKey);
-  const merged = patch ? `${template.trim()}\n\n${patch}` : template;
+  const sharedAppend = await loadSharedAppendBlock(templateName);
+  const mergedParts = [template.trim(), patch, sharedAppend].filter(Boolean);
+  const merged = mergedParts.join('\n\n');
 
   templateCache.set(cacheKey, merged);
   return merged;
@@ -98,6 +118,42 @@ function normalizeText(value) {
   if (typeof value === 'string') return value.trim();
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return JSON.stringify(value, null, 2);
+}
+
+function stringifyJson(value) {
+  if (value == null) return '';
+  return JSON.stringify(value, null, 2);
+}
+
+function buildPromptReplacements(input = {}) {
+  const jobSnapshot = input.jobSnapshot ?? {};
+  const customInstruction = normalizeText(input.customInstruction);
+  const currentResume = typeof input.currentResume === 'string'
+    ? input.currentResume.trim()
+    : stringifyJson(input.currentResume);
+  const storyboard = typeof input.storyboard === 'string'
+    ? input.storyboard.trim()
+    : stringifyJson(input.storyboard);
+
+  return {
+    JOB_TITLE: normalizeText(input.jobTitle ?? jobSnapshot.title),
+    COMPANY: normalizeText(input.company ?? jobSnapshot.company),
+    LOCATION: normalizeText(input.location ?? jobSnapshot.location),
+    SOURCE_URL: normalizeText(input.sourceUrl ?? jobSnapshot.sourceUrl),
+    EXTRACTED_AT: normalizeText(input.extractedAt ?? jobSnapshot.extractedAt),
+    JOB_DESCRIPTION: normalizeText(input.jobDescriptionRawText ?? jobSnapshot.rawText),
+    JOB_SNAPSHOT_JSON: stringifyJson(jobSnapshot),
+    CUSTOM_INSTRUCTION: customInstruction,
+    CUSTOM_INSTRUCTION_BLOCK: customInstruction
+      ? `Additional instruction:\n${customInstruction}`
+      : '',
+    PROMPT1_JSON: stringifyJson(input.prompt1Json),
+    PROMPT2_JSON: stringifyJson(input.prompt2Json),
+    CURRENT_RESUME: currentResume,
+    MASTER_RESUME: currentResume,
+    STORYBOARD: storyboard,
+    SYSTEM_PROMPT: normalizeText(input.systemPrompt),
+  };
 }
 
 function renderTemplate(template, replacements) {
@@ -112,41 +168,24 @@ function renderTemplate(template, replacements) {
   return rendered.trim();
 }
 
-export async function renderPrompt1(input, profile) {
-  const template = await loadPromptTemplate('prompt1', profile);
-  const rendered = renderTemplate(template, {
-    JOB_TITLE: normalizeText(input.jobTitle),
-    COMPANY: normalizeText(input.company),
-    LOCATION: normalizeText(input.location),
-    SOURCE_URL: normalizeText(input.sourceUrl),
-    EXTRACTED_AT: normalizeText(input.extractedAt),
-    JOB_DESCRIPTION: normalizeText(input.jobDescriptionRawText),
-  });
+async function renderPrompt(templateName, input, profile) {
+  const template = await loadPromptTemplate(templateName, profile);
+  return renderTemplate(template, buildPromptReplacements(input));
+}
 
+export async function renderPrompt1(input, profile) {
+  const rendered = await renderPrompt('prompt1', input, profile);
   const customInstruction = normalizeText(input.customInstruction);
-  if (!customInstruction) {
+  if (!customInstruction || rendered.includes(customInstruction)) {
     return rendered;
   }
-
   return `${rendered}\n\nAdditional Prompt 1 instruction:\nTreat these user-provided keywords or concepts as extra screening signals to evaluate for importance, but do not force them into the output if the JD does not support them.\n${customInstruction}`;
 }
 
 export async function renderPrompt2(input, profile) {
-  const template = await loadPromptTemplate('prompt2', profile);
-  return renderTemplate(template, {
-    PROMPT1_JSON: JSON.stringify(input.prompt1Json),
-  });
+  return renderPrompt('prompt2', input, profile);
 }
 
 export async function renderPrompt3(input, profile) {
-  const template = await loadPromptTemplate('prompt3', profile);
-  return renderTemplate(template, {
-    PROMPT2_JSON: JSON.stringify(input.prompt2Json),
-    CURRENT_RESUME: typeof input.currentResume === 'string'
-      ? input.currentResume.trim()
-      : JSON.stringify(input.currentResume, null, 2),
-    STORYBOARD: typeof input.storyboard === 'string'
-      ? input.storyboard.trim()
-      : JSON.stringify(input.storyboard, null, 2),
-  });
+  return renderPrompt('prompt3', input, profile);
 }

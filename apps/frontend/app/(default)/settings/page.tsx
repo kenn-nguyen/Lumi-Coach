@@ -119,6 +119,7 @@ export default function SettingsPage() {
   // Feature config state
   const [enableCoverLetter, setEnableCoverLetter] = useState(false);
   const [enableOutreach, setEnableOutreach] = useState(false);
+  const [preserveGeneratedResumeFacts, setPreserveGeneratedResumeFacts] = useState(true);
   const [featureConfigLoading, setFeatureConfigLoading] = useState(false);
   const [promptConfigLoading, setPromptConfigLoading] = useState(false);
   const [promptOptions, setPromptOptions] = useState<PromptOption[]>([]);
@@ -263,6 +264,7 @@ export default function SettingsPage() {
         if (featureConfig) {
           setEnableCoverLetter(featureConfig.enable_cover_letter);
           setEnableOutreach(featureConfig.enable_outreach_message);
+          setPreserveGeneratedResumeFacts(featureConfig.preserve_generated_resume_facts);
         }
 
         if (promptConfig) {
@@ -377,7 +379,10 @@ export default function SettingsPage() {
 
   // Update feature config
   const handleFeatureConfigChange = async (
-    key: 'enable_cover_letter' | 'enable_outreach_message',
+    key:
+      | 'enable_cover_letter'
+      | 'enable_outreach_message'
+      | 'preserve_generated_resume_facts',
     value: boolean
   ) => {
     setFeatureConfigLoading(true);
@@ -385,13 +390,16 @@ export default function SettingsPage() {
       const updated = await updateFeatureConfig({ [key]: value });
       setEnableCoverLetter(updated.enable_cover_letter);
       setEnableOutreach(updated.enable_outreach_message);
+      setPreserveGeneratedResumeFacts(updated.preserve_generated_resume_facts);
     } catch (err) {
       console.error('Failed to update feature config', err);
       // Revert on error
       if (key === 'enable_cover_letter') {
         setEnableCoverLetter(!value);
-      } else {
+      } else if (key === 'enable_outreach_message') {
         setEnableOutreach(!value);
+      } else {
+        setPreserveGeneratedResumeFacts(!value);
       }
     } finally {
       setFeatureConfigLoading(false);
@@ -934,6 +942,16 @@ export default function SettingsPage() {
                   }}
                   label={t('settings.contentGeneration.outreachMessage.label')}
                   description={t('settings.contentGeneration.outreachMessage.description')}
+                  disabled={featureConfigLoading}
+                />
+                <ToggleSwitch
+                  checked={preserveGeneratedResumeFacts}
+                  onCheckedChange={(checked) => {
+                    setPreserveGeneratedResumeFacts(checked);
+                    handleFeatureConfigChange('preserve_generated_resume_facts', checked);
+                  }}
+                  label={t('settings.contentGeneration.preserveFacts.label')}
+                  description={t('settings.contentGeneration.preserveFacts.description')}
                   disabled={featureConfigLoading}
                 />
               </div>

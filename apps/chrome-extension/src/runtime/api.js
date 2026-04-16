@@ -247,17 +247,53 @@ export async function enableContentGenerationFeatures() {
   return payload;
 }
 
-export async function patchResume(resumeId, resumeData, generationFeedback = null) {
+export async function fetchFeatureConfig() {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/config/features`;
+  logInfo('ResumeApi', 'Fetching feature configuration.', { endpoint });
+  let response;
+  try {
+    response = await fetch(endpoint);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logWarn('ResumeApi', 'Feature configuration request failed before response.', {
+      endpoint,
+      error: message,
+    });
+    throw new Error(`Feature configuration request failed before response at ${endpoint}: ${message}`);
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logWarn('ResumeApi', 'Feature configuration returned a non-OK status.', {
+      endpoint,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(`Failed to fetch feature configuration (status ${response.status}): ${text}`);
+  }
+  const payload = await response.json();
+  logInfo('ResumeApi', 'Feature configuration fetched.', payload);
+  return payload;
+}
+
+export async function patchResume(
+  resumeId,
+  resumeData,
+  generationFeedback = null,
+  generationArtifacts = null
+) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}`;
   const requestPayload = {
     resume_data: resumeData,
     generation_feedback: generationFeedback,
+    generation_artifacts: generationArtifacts,
   };
   logInfo('ResumeApi', 'Patching resume.', {
     resumeId,
     endpoint,
     hasGenerationFeedback: Boolean(generationFeedback),
+    hasGenerationArtifacts: Boolean(generationArtifacts),
   });
   let response;
   try {
@@ -286,6 +322,54 @@ export async function patchResume(resumeId, resumeData, generationFeedback = nul
   }
   const payload = await response.json();
   logInfo('ResumeApi', 'Patch resume succeeded.', { resumeId });
+  return payload;
+}
+
+export async function overwriteMasterResume(resumeData) {
+  const resumeList = await listResumes(true);
+  const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
+  if (!masterResume?.resume_id) {
+    throw new Error('No master resume was found in Resume Matcher.');
+  }
+
+  const { apiBase } = await getRuntimeEndpoints();
+  const resumeId = masterResume.resume_id;
+  const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}`;
+  const requestPayload = { resume_data: resumeData };
+  logInfo('ResumeApi', 'Overwriting backend master resume.', {
+    resumeId,
+    endpoint,
+  });
+
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestPayload),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError('ResumeApi', 'Master overwrite request failed before response.', {
+      resumeId,
+      endpoint,
+      error: message,
+    });
+    throw new Error(`Master overwrite request failed before response at ${endpoint}: ${message}`);
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logError('ResumeApi', 'Master overwrite request returned a non-OK status.', {
+      resumeId,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(`Failed to overwrite master resume (status ${response.status}): ${text}`);
+  }
+
+  const payload = await response.json();
+  logInfo('ResumeApi', 'Backend master resume overwritten.', { resumeId });
   return payload;
 }
 

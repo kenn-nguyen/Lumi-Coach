@@ -93,6 +93,7 @@ export async function getUserAssets() {
     STORAGE_KEYS.chatGptTargetUrl,
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
+    STORAGE_KEYS.customFeatureEnabled,
   ]);
   const llmSettings = mergeLlmSettings(
     data[STORAGE_KEYS.llmSettings],
@@ -120,6 +121,7 @@ export async function getUserAssets() {
     llmSettings,
     appOrigin: data[STORAGE_KEYS.appOrigin] ?? DEFAULT_APP_ORIGIN,
     apiOrigin: data[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
+    customFeatureEnabled: data[STORAGE_KEYS.customFeatureEnabled] === true,
   };
 }
 
@@ -218,6 +220,12 @@ export async function setApiOrigin(url) {
   });
 }
 
+export async function setCustomFeatureEnabled(enabled) {
+  await storageSet({
+    [STORAGE_KEYS.customFeatureEnabled]: enabled === true,
+  });
+}
+
 export async function getExtensionState() {
   const data = await storageGet([STORAGE_KEYS.extensionSession, STORAGE_KEYS.lastError]);
   return (
@@ -287,6 +295,7 @@ export async function clearExtensionLocalData() {
     STORAGE_KEYS.chatGptTargetUrl,
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
+    STORAGE_KEYS.customFeatureEnabled,
     STORAGE_KEYS.extensionSession,
     STORAGE_KEYS.historyEntries,
     STORAGE_KEYS.lastError,
@@ -301,5 +310,6 @@ export async function resetExtensionSettingsToDefault() {
     STORAGE_KEYS.chatGptTargetUrl,
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
+    STORAGE_KEYS.customFeatureEnabled,
   ]);
 }

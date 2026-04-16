@@ -508,6 +508,23 @@ body {
   color: #4d4c48;
 }
 
+.panel__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 2px;
+  color: #7b7a75;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.panel__checkbox input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #1d1d1b;
+}
+
 .panel__reset--secondary {
   margin-top: -8px;
   color: #9a9890;

@@ -9,6 +9,7 @@ import { getSortedSections, getSectionMeta } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DynamicResumeSection } from './dynamic-resume-section';
 import { SafeHtml } from './safe-html';
+import { buildContactDisplay } from './contact-utils';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/modern-two-column.module.css';
 
@@ -84,33 +85,26 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
   };
 
   // Helper function to render contact details
-  const renderContactDetail = (label: string, value?: string, hrefPrefix: string = '') => {
+  const renderContactDetail = (label: string, value?: string | null, hrefPrefix: string = '') => {
     if (!value) return null;
-
-    let finalHrefPrefix = hrefPrefix;
-    if (
-      ['Website', 'LinkedIn', 'GitHub'].includes(label) &&
-      !value.startsWith('http') &&
-      !value.startsWith('//')
-    ) {
-      finalHrefPrefix = 'https://';
-    }
-
-    const href = finalHrefPrefix + value;
-    const isLink =
-      finalHrefPrefix.startsWith('http') ||
-      finalHrefPrefix.startsWith('mailto:') ||
-      finalHrefPrefix.startsWith('tel:');
-
-    let displayText = value;
-    if (isLink && (label === 'LinkedIn' || label === 'GitHub' || label === 'Website')) {
-      displayText = value.replace(/^https?:\/\//, '').replace(/^www\./, '');
-    }
+    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(label, value, hrefPrefix);
 
     return (
       <span className="inline-flex items-center gap-1">
-        {showContactIcons && contactIcons[label]}
-        {isLink ? (
+        {showContactIcons && contactIcons[resolvedLabel]}
+        {socialSlug ? (
+          <>
+            <span style={{ color: 'var(--resume-text-primary)' }}>{resolvedLabel} : </span>
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${baseStyles['resume-link']} hover:underline`}
+            >
+              {socialSlug}
+            </a>
+          </>
+        ) : isLink ? (
           <a
             href={href}
             target="_blank"
@@ -137,7 +131,7 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
           <div className={`${baseStyles['resume-title']} mt-1`}>{personalInfo.title}</div>
         )}
         {personalInfo && (
-          <div className={`${baseStyles['resume-meta']} flex flex-wrap gap-x-3 gap-y-1 mt-2`}>
+          <div className={`${baseStyles['resume-contact-line']} flex flex-wrap gap-x-3 gap-y-1 mt-1`}>
             {renderContactDetail('CustomTagline', personalInfo.customTagline)}
             {renderContactDetail('Email', personalInfo.email, 'mailto:')}
             {renderContactDetail('Phone', personalInfo.phone, 'tel:')}

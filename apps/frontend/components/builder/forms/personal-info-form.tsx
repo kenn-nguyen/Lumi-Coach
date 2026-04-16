@@ -1,17 +1,35 @@
 'use client';
 
 import React from 'react';
+import { RotateCcw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { PersonalInfo } from '@/components/dashboard/resume-component';
 import { useTranslations } from '@/lib/i18n';
 
 interface PersonalInfoFormProps {
   data: PersonalInfo;
+  masterPersonalInfo?: PersonalInfo | null;
   onChange: (data: PersonalInfo) => void;
 }
 
-export const PersonalInfoForm: React.FC<PersonalInfoFormProps> = ({ data, onChange }) => {
+const REFRESHABLE_PERSONAL_INFO_FIELDS: (keyof PersonalInfo)[] = [
+  'name',
+  'customTagline',
+  'email',
+  'phone',
+  'location',
+  'website',
+  'linkedin',
+  'github',
+];
+
+export const PersonalInfoForm: React.FC<PersonalInfoFormProps> = ({
+  data,
+  masterPersonalInfo,
+  onChange,
+}) => {
   const { t } = useTranslations();
 
   const handleChange = (field: keyof PersonalInfo, value: string) => {
@@ -21,11 +39,40 @@ export const PersonalInfoForm: React.FC<PersonalInfoFormProps> = ({ data, onChan
     });
   };
 
+  const handleRefreshFromMaster = () => {
+    if (!masterPersonalInfo) {
+      return;
+    }
+
+    const nextData: PersonalInfo = {
+      ...data,
+    };
+
+    for (const field of REFRESHABLE_PERSONAL_INFO_FIELDS) {
+      nextData[field] = masterPersonalInfo[field] ?? undefined;
+    }
+
+    onChange(nextData);
+  };
+
   return (
     <div className="space-y-4 border border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
-      <h3 className="font-serif text-xl font-bold border-b border-black pb-2 mb-4">
-        {t('builder.personalInfo')}
-      </h3>
+      <div className="mb-4 flex items-center justify-between gap-3 border-b border-black pb-2">
+        <h3 className="font-serif text-xl font-bold">{t('builder.personalInfo')}</h3>
+        {masterPersonalInfo ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshFromMaster}
+            title={t('builder.personalInfoForm.refreshFromMasterTitle')}
+            className="h-8 gap-1 rounded-none border-black px-2 font-mono text-[10px] uppercase tracking-wider"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            {t('builder.personalInfoForm.refreshFromMaster')}
+          </Button>
+        ) : null}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label

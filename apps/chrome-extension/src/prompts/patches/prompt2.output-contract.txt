@@ -1,0 +1,93 @@
+Output contract:
+- Return valid JSON only
+- Do not output markdown fences
+- Do not output commentary, analysis, or text before or after the JSON object
+- Start the response with `{` and end it with `}`
+- Return exactly one JSON object matching the schema below
+- Do not add extra top-level keys
+- If a field is unknown, use the schema’s empty value (`""`, `[]`, `{}`, or `null` as appropriate)
+
+Return JSON in this exact shape:
+{
+  "validated_role": "",
+  "validated_domain": "",
+  "positioning_thesis": "",
+  "top_resume_goals": [],
+
+  "recommended_title": "",
+  "summary_lead": "",
+  "summary_focus": [],
+  "summary_sentences": 2,
+  "voice": "",
+  "adjacent_framing": "",
+
+  "signal_map": [
+    {
+      "signal": "",
+      "support": "direct | adjacent | unsupported",
+      "evidence": [],
+      "surface_in": []
+    }
+  ],
+
+  "selected_storylines": [
+    {
+      "label": "",
+      "strength": "high | medium",
+      "angles": [],
+      "proof_points": [],
+      "anchor_role": "",
+      "anchor_bullet": "",
+      "guardrail": ""
+    }
+  ],
+
+  "experience_emphasis": [
+    {
+      "role": "",
+      "default_action": "keep | rewrite_all",
+      "themes_to_emphasize": [],
+      "proof_points": [],
+      "deemphasize": [],
+      "guardrail": ""
+    }
+  ],
+
+  "bullet_rewrite_instructions": [
+  {
+    "role": "",
+    "action": "rewrite | add",
+    "bullet_anchor": "",
+    "instruction": ""
+  }
+],
+
+  "education_notes": [
+    {
+      "institution": "",
+      "instruction": ""
+    }
+  ],
+
+  "final_skills_list": [],
+  "phrases_to_mirror": [],
+
+  "cannot_claim": [],
+  "skills_to_avoid": [],
+  "signals_to_avoid": [],
+  "gaps": []
+}
+
+Additional output rules:
+- `top_resume_goals` must contain exactly 3 ranked strings
+- `summary_sentences` must be `2` unless the prompt body explicitly says otherwise
+- `signal_map.support` must be exactly one of: `direct`, `adjacent`, `unsupported`
+- `selected_storylines.strength` must be exactly one of: `high`, `medium`
+- `selected_storylines` must contain 3-5 items, ordered by importance
+- `selected_storylines[0]` is the summary anchor storyline
+- every `selected_storylines` entry must include non-empty `anchor_role`, `anchor_bullet`, and `guardrail`
+- `experience_emphasis.default_action` must be exactly one of: `keep`, `rewrite_all`
+- every materially relevant recent role should appear in `experience_emphasis`
+- `bullet_rewrite_instructions` should include only bullets that need rewriting
+- do not emit `unsupported_signals` or any other field not present in this schema
+- keep arrays concise and ordered by importance

@@ -1,0 +1,122 @@
+Output contract:
+- Return valid JSON only.
+- Do not output markdown fences.
+- Do not output commentary, analysis, or text before or after the JSON object.
+- Start the response with `{` and end it with `}`.
+- Return exactly one JSON object matching the schema below.
+- Do not add extra top-level keys.
+- If a field is unknown, use the schema’s empty value (`""`, `[]`, `{}`, or `null` as appropriate).
+
+Return exactly one JSON object matching this schema:
+{
+  "resume_data": {
+    "personalInfo": {
+      "name": "",
+      "title": "",
+      "customTagline": null,
+      "email": "",
+      "phone": "",
+      "location": "",
+      "website": null,
+      "linkedin": null,
+      "github": null
+    },
+    "summary": "",
+    "workExperience": [
+      {
+        "id": 1,
+        "title": "",
+        "company": "",
+        "location": null,
+        "years": "",
+        "description": []
+      }
+    ],
+    "education": [
+      {
+        "id": 1,
+        "institution": "",
+        "degree": "",
+        "years": "",
+        "description": null
+      }
+    ],
+    "personalProjects": [
+      {
+        "id": 1,
+        "name": "",
+        "role": "",
+        "years": "",
+        "github": null,
+        "website": null,
+        "description": []
+      }
+    ],
+    "additional": {
+      "technicalSkills": [],
+      "languages": [],
+      "certificationsTraining": [],
+      "awards": []
+    },
+    "sectionMeta": [
+      {
+        "id": "",
+        "key": "",
+        "displayName": "",
+        "sectionType": "personalInfo",
+        "isDefault": true,
+        "isVisible": true,
+        "order": 0
+      }
+    ],
+    "customSections": {
+      "custom_1": {
+        "sectionType": "text",
+        "items": null,
+        "strings": null,
+        "text": ""
+      }
+    }
+  },
+  "generation_feedback": {
+    "summary": "",
+    "pros": [],
+    "cons": [],
+    "caveats": []
+  }
+}
+
+Additional schema rules:
+- `resume_data` is required.
+- `generation_feedback` is optional but recommended when there are concise user-facing notes worth showing.
+- Do not use the em dash character `—` anywhere in the JSON output. Use a normal hyphen `-` instead.
+- For resume bullet arrays such as experience bullets, project bullets, and custom-section bullets, do not end items with a period `.`.
+- If `generation_feedback` is present:
+  - `summary` should be one short sentence
+  - `pros`, `cons`, and `caveats` should contain short bullet-style strings only
+  - keep every item concise and user-facing
+- If there is no meaningful feedback, you may omit `generation_feedback` or return it with empty values.
+- Valid `sectionType` values are:
+  - `personalInfo`
+  - `text`
+  - `itemList`
+  - `stringList`
+- In `sectionMeta`, `personalInfo` is a built-in section and should normally remain first if present.
+- `sectionMeta.key` should match either a built-in field name such as `summary`, `workExperience`, `education`, `personalProjects`, `additional`, or a matching key inside `customSections`.
+- For built-in sections, preserve existing `id`, `key`, `displayName`, `sectionType`, `isDefault`, `isVisible`, and `order` whenever they already exist.
+- For custom sections, preserve existing keys and IDs whenever they already exist.
+- `customSections` entries must follow these rules:
+  - if `sectionType` is `text`, use `text` and leave `items` and `strings` null or absent
+  - if `sectionType` is `itemList`, use `items` and leave `text` and `strings` null or absent
+  - if `sectionType` is `stringList`, use `strings` and leave `text` and `items` null or absent
+- Each `itemList` entry inside `customSections` should follow this shape:
+  {
+    "id": 1,
+    "title": "",
+    "subtitle": null,
+    "location": null,
+    "years": "",
+    "description": []
+  }
+- Do not create new custom sections unless they are already present in the current resume or clearly required by supported source material.
+- If custom sections are absent from the current resume, prefer leaving `customSections` as `{}`.

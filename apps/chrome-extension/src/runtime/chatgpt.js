@@ -142,10 +142,10 @@ function normalizeResultForLogging(result) {
 }
 
 function injectedChatGptPromptEntry(prompt, options = {}) {
-  const responseIdleTimeoutMs = 25000;
-  const responseFirstTokenTimeoutMs = 60000;
+  const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 300000;
+  const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 300000;
   const composerWaitTimeoutMs = 45000;
-  const responseTimeoutMs = options.responseTimeoutMs ?? 120000;
+  const responseTimeoutMs = options.responseTimeoutMs ?? 600000;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? 15000;
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? 12000;
   const INPUT_SELECTORS = [
@@ -811,7 +811,9 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
   const promptLength = prompt.length;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? Math.min(30000, Math.max(15000, Math.ceil(promptLength / 3)));
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? Math.min(30000, Math.max(12000, Math.ceil(promptLength / 3)));
-  const responseTimeoutMs = options.responseTimeoutMs ?? 120000;
+  const responseTimeoutMs = options.responseTimeoutMs ?? 600000;
+  const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 300000;
+  const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 300000;
 
   let executionResults;
   try {
@@ -819,6 +821,8 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       promptLabel,
       tabId: session.tabId,
       responseTimeoutMs,
+      responseIdleTimeoutMs,
+      responseFirstTokenTimeoutMs,
     });
 
     let settled = false;
@@ -827,7 +831,7 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedChatGptPromptEntry,
-      args: [prompt, { responseTimeoutMs, composeReadyTimeoutMs, sendReadyTimeoutMs }],
+      args: [prompt, { responseTimeoutMs, responseIdleTimeoutMs, responseFirstTokenTimeoutMs, composeReadyTimeoutMs, sendReadyTimeoutMs }],
     });
     const progressPoll = setInterval(async () => {
       if (settled) return;
@@ -952,7 +956,9 @@ async function runChatGptPromptWithRetryInSession(prompt, session, options = {})
     disableRetry: true,
     composeReadyTimeoutMs: Math.min(45000, Math.max(options.composeReadyTimeoutMs ?? 0, Math.ceil(prompt.length / 2), 20000)),
     sendReadyTimeoutMs: Math.min(45000, Math.max(options.sendReadyTimeoutMs ?? 0, Math.ceil(prompt.length / 2), 18000)),
-    responseTimeoutMs: Math.min(240000, Math.max(options.responseTimeoutMs ?? 0, 180000)),
+    responseTimeoutMs: Math.min(900000, Math.max(options.responseTimeoutMs ?? 0, 720000)),
+    responseIdleTimeoutMs: Math.min(600000, Math.max(options.responseIdleTimeoutMs ?? 0, 300000)),
+    responseFirstTokenTimeoutMs: Math.min(600000, Math.max(options.responseFirstTokenTimeoutMs ?? 0, 300000)),
   });
   if (canUsePartialJson(retryResult)) {
     logInfo('ChatGptAutomation', 'Using parseable partial ChatGPT response after retry timeout.', {
@@ -1016,7 +1022,9 @@ export async function runChatGptPrompt(prompt, options = {}) {
           disableRetry: false,
           composeReadyTimeoutMs: Math.min(30000, Math.max(options.composeReadyTimeoutMs ?? 0, 12000)),
           sendReadyTimeoutMs: Math.min(30000, Math.max(options.sendReadyTimeoutMs ?? 0, 12000)),
-          responseTimeoutMs: Math.min(180000, Math.max(options.responseTimeoutMs ?? 0, 120000)),
+          responseTimeoutMs: Math.min(600000, Math.max(options.responseTimeoutMs ?? 0, 300000)),
+          responseIdleTimeoutMs: Math.min(420000, Math.max(options.responseIdleTimeoutMs ?? 0, 180000)),
+          responseFirstTokenTimeoutMs: Math.min(420000, Math.max(options.responseFirstTokenTimeoutMs ?? 0, 180000)),
         });
         if (result.status !== 'success') {
           return result;

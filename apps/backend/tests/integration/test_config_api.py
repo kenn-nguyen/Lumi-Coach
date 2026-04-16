@@ -88,6 +88,7 @@ class TestFeatureConfig:
         mock_load.return_value = {
             "enable_cover_letter": True,
             "enable_outreach_message": False,
+            "preserve_generated_resume_facts": True,
         }
         async with client:
             resp = await client.get("/api/v1/config/features")
@@ -95,6 +96,7 @@ class TestFeatureConfig:
         data = resp.json()
         assert data["enable_cover_letter"] is True
         assert data["enable_outreach_message"] is False
+        assert data["preserve_generated_resume_facts"] is True
 
     @patch("app.routers.config._save_config")
     @patch("app.routers.config._load_config")
@@ -103,9 +105,11 @@ class TestFeatureConfig:
         async with client:
             resp = await client.put("/api/v1/config/features", json={
                 "enable_cover_letter": True,
+                "preserve_generated_resume_facts": False,
             })
         assert resp.status_code == 200
         assert resp.json()["enable_cover_letter"] is True
+        assert resp.json()["preserve_generated_resume_facts"] is False
 
 
 class TestLanguageConfig:

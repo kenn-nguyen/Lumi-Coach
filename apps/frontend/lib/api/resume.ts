@@ -57,6 +57,11 @@ export interface GenerationFeedback {
   caveats?: string[];
 }
 
+export interface GenerationArtifacts {
+  prompt1?: Record<string, unknown> | null;
+  prompt2?: Record<string, unknown> | null;
+}
+
 interface ResumeResponse {
   request_id: string;
   data: {
@@ -70,6 +75,7 @@ interface ResumeResponse {
     };
     processed_resume: ProcessedResume | null;
     generation_feedback?: GenerationFeedback | null;
+    generation_artifacts?: GenerationArtifacts | null;
     cover_letter?: string | null;
     outreach_message?: string | null;
     parent_id?: string | null; // For determining if resume is tailored
@@ -214,14 +220,16 @@ export async function fetchResumeList(includeMaster = false): Promise<ResumeList
 export async function updateResume(
   resumeId: string,
   resumeData: ProcessedResume,
-  generationFeedback?: GenerationFeedback | null
+  generationFeedback?: GenerationFeedback | null,
+  generationArtifacts?: GenerationArtifacts | null
 ): Promise<ResumeResponse['data']> {
   const body =
-    generationFeedback === undefined
+    generationFeedback === undefined && generationArtifacts === undefined
       ? resumeData
       : {
           resume_data: resumeData,
           generation_feedback: generationFeedback,
+          generation_artifacts: generationArtifacts,
         };
   const res = await apiPatch(`/resumes/${encodeURIComponent(resumeId)}`, body);
   if (!res.ok) {
@@ -402,6 +410,49 @@ export async function updateJobDescription(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Failed to update job description (status ${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
+export interface RewriteBulletRequest {
+  current_bullet: string;
+  original_bullet?: string | null;
+  role_context: {
+    title?: string;
+    company?: string;
+    years?: string;
+  };
+  job_description?: string | null;
+  user_instruction?: string | null;
+}
+
+export async function rewriteExperienceBullet(
+  resumeId: string,
+  payload: RewriteBulletRequest
+): Promise<{ rewritten_bullet: string; message: string }> {
+  const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/rewrite-bullet`, payload);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to rewrite bullet (status ${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
+export interface RewriteSummaryRequest {
+  current_summary: string;
+  original_summary?: string | null;
+  job_description?: string | null;
+  user_instruction?: string | null;
+}
+
+export async function rewriteSummary(
+  resumeId: string,
+  payload: RewriteSummaryRequest
+): Promise<{ rewritten_summary: string; message: string }> {
+  const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/rewrite-summary`, payload);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to rewrite summary (status ${res.status}): ${text}`);
   }
   return res.json();
 }

@@ -6,6 +6,7 @@ import { validateResumeData } from './validation.js';
 import {
   buildPreviewUrl,
   cloneResume,
+  fetchFeatureConfig,
   enableContentGenerationFeatures,
   fetchResumeById,
   linkResumeToJobContext,
@@ -83,6 +84,334 @@ function buildStoredJobDescription(jobSnapshot) {
   return parts.join('\n').trim();
 }
 
+function logPromptDebug(label, stage, payload) {
+  logInfo('PromptDebug', `${label} ${stage}.`, {
+    label,
+    stage,
+    payload,
+  });
+}
+
+const PRESERVED_PERSONAL_INFO_FIELDS = [
+  'name',
+  'customTagline',
+  'email',
+  'phone',
+  'location',
+  'website',
+  'linkedin',
+  'github',
+];
+
+const PRESERVED_EXPERIENCE_FIELDS = ['title', 'company', 'years'];
+
+function preserveExperienceFacts(masterExperience, generatedExperience) {
+  if (!Array.isArray(masterExperience) || !Array.isArray(generatedExperience)) {
+    return generatedExperience;
+  }
+
+  const masterById = new Map(
+    masterExperience
+      .filter((item) => item && typeof item === 'object' && Number.isInteger(item.id))
+      .map((item) => [item.id, item])
+  );
+
+  return generatedExperience.map((item, index) => {
+    if (!item || typeof item !== 'object') {
+      return item;
+    }
+    let masterItem = Number.isInteger(item.id) ? masterById.get(item.id) : null;
+    if (!masterItem && index < masterExperience.length) {
+      const fallback = masterExperience[index];
+      if (fallback && typeof fallback === 'object') {
+        masterItem = fallback;
+      }
+    }
+    if (!masterItem || typeof masterItem !== 'object') {
+      return item;
+    }
+
+    const nextItem = { ...item };
+    PRESERVED_EXPERIENCE_FIELDS.forEach((field) => {
+      if (field in masterItem) {
+        nextItem[field] = masterItem[field];
+      }
+    });
+    return nextItem;
+  });
+}
+
+function preserveGeneratedResumeFacts(masterResumeData, generatedResumeData, enabled) {
+  if (!enabled || !masterResumeData || typeof masterResumeData !== 'object' || !generatedResumeData || typeof generatedResumeData !== 'object') {
+    return generatedResumeData;
+  }
+
+  const nextResume = { ...generatedResumeData };
+  const masterPersonalInfo = masterResumeData.personalInfo;
+  const generatedPersonalInfo = nextResume.personalInfo;
+  if (masterPersonalInfo && typeof masterPersonalInfo === 'object') {
+    const nextPersonalInfo = generatedPersonalInfo && typeof generatedPersonalInfo === 'object'
+      ? { ...generatedPersonalInfo }
+      : {};
+    PRESERVED_PERSONAL_INFO_FIELDS.forEach((field) => {
+      if (field in masterPersonalInfo) {
+        nextPersonalInfo[field] = masterPersonalInfo[field];
+      }
+    });
+    nextResume.personalInfo = nextPersonalInfo;
+  }
+
+  nextResume.workExperience = preserveExperienceFacts(
+    masterResumeData.workExperience,
+    generatedResumeData.workExperience
+  );
+
+  return nextResume;
+}
+
+function replaceEmDashCharacters(value) {
+  if (typeof value === 'string') {
+    return value.replace(/—/g, '-');
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceEmDashCharacters(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, replaceEmDashCharacters(nested)])
+    );
+  }
+  return value;
+}
+
+function stripBulletTerminalPeriod(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trimEnd();
+  if (!trimmed.endsWith('.')) {
+    return value;
+  }
+
+  return `${trimmed.slice(0, -1)}${value.slice(trimmed.length)}`;
+}
+
+function normalizeBulletStringArray(items) {
+  if (!Array.isArray(items)) {
+    return items;
+  }
+  return items.map((item) => stripBulletTerminalPeriod(item));
+}
+
+function normalizePrompt3ResumeData(resumeData) {
+  const normalized = replaceEmDashCharacters(resumeData);
+  if (!normalized || typeof normalized !== 'object') {
+    return normalized;
+  }
+
+  const nextResume = { ...normalized };
+
+  if (Array.isArray(nextResume.workExperience)) {
+    nextResume.workExperience = nextResume.workExperience.map((item) => ({
+      ...item,
+      description: normalizeBulletStringArray(item?.description),
+    }));
+  }
+
+  if (Array.isArray(nextResume.personalProjects)) {
+    nextResume.personalProjects = nextResume.personalProjects.map((item) => ({
+      ...item,
+      description: normalizeBulletStringArray(item?.description),
+    }));
+  }
+
+  if (nextResume.customSections && typeof nextResume.customSections === 'object') {
+    nextResume.customSections = Object.fromEntries(
+      Object.entries(nextResume.customSections).map(([key, section]) => {
+        if (
+          section &&
+          typeof section === 'object' &&
+          section.sectionType === 'itemList' &&
+          Array.isArray(section.items)
+        ) {
+          return [
+            key,
+            {
+              ...section,
+              items: section.items.map((item) => ({
+                ...item,
+                description: normalizeBulletStringArray(item?.description),
+              })),
+            },
+          ];
+        }
+        return [key, section];
+      })
+    );
+  }
+
+  return nextResume;
+}
+
+function normalizePrompt3Feedback(feedback) {
+  const normalized = replaceEmDashCharacters(feedback);
+  if (!normalized || typeof normalized !== 'object') {
+    return normalized;
+  }
+
+  return normalized;
+}
+
+function isKennNguyenName(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const normalized = value.toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return normalized.includes('kenn') && normalized.includes('nguyen');
+}
+
+function stripTrailingPeriodForCustomSuffix(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trimEnd();
+  return trimmed.endsWith('.') ? trimmed.slice(0, -1) : trimmed;
+}
+
+function findExperienceIndexByCompany(workExperience, matcher) {
+  if (!Array.isArray(workExperience)) {
+    return -1;
+  }
+
+  return workExperience.findIndex((item) => {
+    const company = typeof item?.company === 'string' ? item.company.toLowerCase() : '';
+    return matcher(company);
+  });
+}
+
+function appendUniqueBullet(workExperienceItem, bulletText) {
+  if (!workExperienceItem || typeof workExperienceItem !== 'object') {
+    return workExperienceItem;
+  }
+
+  const description = Array.isArray(workExperienceItem.description)
+    ? [...workExperienceItem.description]
+    : [];
+  if (!description.includes(bulletText)) {
+    description.push(bulletText);
+  }
+
+  return {
+    ...workExperienceItem,
+    description,
+  };
+}
+
+function appendSuffixToFirstBullet(workExperienceItem, suffix) {
+  if (!workExperienceItem || typeof workExperienceItem !== 'object') {
+    return workExperienceItem;
+  }
+
+  const description = Array.isArray(workExperienceItem.description)
+    ? [...workExperienceItem.description]
+    : [];
+  if (!description.length || typeof description[0] !== 'string') {
+    return workExperienceItem;
+  }
+
+  if (description[0].includes(suffix)) {
+    return workExperienceItem;
+  }
+
+  description[0] = `${stripTrailingPeriodForCustomSuffix(description[0])} ${suffix}`.trim();
+
+  return {
+    ...workExperienceItem,
+    description,
+  };
+}
+
+function applyKennNguyenCustomFeature(resumeData, enabled) {
+  if (!enabled || !resumeData || typeof resumeData !== 'object') {
+    return resumeData;
+  }
+
+  if (!isKennNguyenName(resumeData.personalInfo?.name)) {
+    return resumeData;
+  }
+
+  if (!Array.isArray(resumeData.workExperience) || resumeData.workExperience.length === 0) {
+    return resumeData;
+  }
+
+  const nextResume = {
+    ...resumeData,
+    workExperience: [...resumeData.workExperience],
+  };
+
+  const trustingSocialIndex = findExperienceIndexByCompany(
+    nextResume.workExperience,
+    (company) => company.includes('trusting social')
+  );
+  if (trustingSocialIndex >= 0) {
+    nextResume.workExperience[trustingSocialIndex] = appendUniqueBullet(
+      nextResume.workExperience[trustingSocialIndex],
+      '(Trusting Social is a Sequoia-backed, Series D startup, $400M+ valuation)'
+    );
+  }
+
+  const paypalIndex = findExperienceIndexByCompany(
+    nextResume.workExperience,
+    (company) => company.includes('paypal')
+  );
+  if (paypalIndex >= 0) {
+    nextResume.workExperience[paypalIndex] = appendSuffixToFirstBullet(
+      nextResume.workExperience[paypalIndex],
+      '- (Consulting project)'
+    );
+  }
+
+  const infineonIndex = findExperienceIndexByCompany(
+    nextResume.workExperience,
+    (company) => company.includes('infineon')
+  );
+  if (infineonIndex >= 0) {
+    nextResume.workExperience[infineonIndex] = appendSuffixToFirstBullet(
+      nextResume.workExperience[infineonIndex],
+      '- (Internship, Infineon is a top global semiconductor & IoT company with >50,000 employees)'
+    );
+  }
+
+  return nextResume;
+}
+
+function buildBasePromptContext({
+  jobSnapshot,
+  currentResume,
+  storyboard,
+  customInstruction,
+  systemPrompt,
+}) {
+  return {
+    jobSnapshot,
+    jobTitle: jobSnapshot?.title ?? '',
+    company: jobSnapshot?.company ?? '',
+    location: jobSnapshot?.location ?? '',
+    sourceUrl: jobSnapshot?.sourceUrl ?? '',
+    extractedAt: jobSnapshot?.extractedAt ?? '',
+    jobDescriptionRawText: jobSnapshot?.rawText ?? '',
+    currentResume,
+    storyboard,
+    customInstruction,
+    systemPrompt,
+    prompt1Json: null,
+    prompt2Json: null,
+  };
+}
+
 function prefixGenerationFeedbackSummary(feedback, profile) {
   if (!feedback || typeof feedback !== 'object') {
     return feedback;
@@ -132,6 +461,8 @@ function buildPrompt3RepairPrompt({ validationMessage, promptLabel, attempt }) {
     'Do not include markdown fences, commentary, or prose before or after the JSON.',
     'The top-level object must contain `resume_data`.',
     '`generation_feedback` is optional, but if present it must be valid JSON with `summary`, `pros`, `cons`, and `caveats`.',
+    'Do not use the em dash character `—`; use a normal hyphen `-` instead.',
+    'Do not end resume bullet strings with a period `.`.',
     'Do not return the empty schema template. Reuse the same resume content you already generated, but fix the JSON format and schema issues.',
     `This is repair attempt ${attempt}.`,
   ].join('\n');
@@ -149,7 +480,13 @@ async function resolveBaseResumeId(storedResumeId) {
 export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstruction = '') {
   logInfo('Orchestrator', 'Generate flow started.', { tabId });
   logInfo('Orchestrator', 'Loading local assets.');
-  const { masterResumeContextAsset, storyboardAsset, systemPromptTemplateAsset, llmSettings } = await getUserAssets();
+  const {
+    masterResumeContextAsset,
+    storyboardAsset,
+    systemPromptTemplateAsset,
+    llmSettings,
+    customFeatureEnabled,
+  } = await getUserAssets();
   const activeLlmProfile = getActiveLlmProfile(llmSettings);
   const systemPrompt = systemPromptTemplateAsset?.content?.trim() || '';
 
@@ -161,6 +498,9 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
     title: jobSnapshot.title,
     company: jobSnapshot.company,
     rawTextLength: jobSnapshot.rawText.length,
+  });
+  logInfo('LinkedInScrape', 'LinkedIn scrape output.', {
+    jobSnapshot,
   });
 
   logInfo('Orchestrator', 'Resolving base resume.');
@@ -203,19 +543,34 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
   logInfo('Orchestrator', 'Cloned base resume and created job-specific resume.', { baseResumeId, resumeId });
   await setExtensionState({ selectedResumeId: resumeId, tailoredResumeId: resumeId });
   const fetchedResume = cloneResponse?.data ? cloneResponse : await fetchResumeById(resumeId);
+  let featureConfig;
+  try {
+    featureConfig = await fetchFeatureConfig();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logInfo('Orchestrator', 'Falling back to default fact-preservation setting after feature-config fetch failed.', {
+      message,
+      preserveGeneratedResumeFacts: true,
+    });
+    featureConfig = { preserve_generated_resume_facts: true };
+  }
+  const preserveFactsEnabled = featureConfig?.preserve_generated_resume_facts !== false;
+  const masterResumeData =
+    fetchedResume?.data?.processed_resume ??
+    (cloneResponse?.data?.processed_resume ?? null);
   const currentResume = resolveCurrentResumeSource(masterResumeContextAsset, fetchedResume);
   const storyboard = ensureStoryboardContent(storyboardAsset);
+  const promptContext = buildBasePromptContext({
+    jobSnapshot,
+    currentResume,
+    storyboard,
+    customInstruction: prompt1CustomInstruction,
+    systemPrompt,
+  });
 
   logInfo('Orchestrator', 'Rendering Prompt 1.');
-  const prompt1 = await renderPrompt1({
-    jobTitle: jobSnapshot.title,
-    company: jobSnapshot.company,
-    location: jobSnapshot.location,
-    sourceUrl: jobSnapshot.sourceUrl,
-    extractedAt: jobSnapshot.extractedAt,
-    jobDescriptionRawText: jobSnapshot.rawText,
-    customInstruction: prompt1CustomInstruction,
-  }, activeLlmProfile);
+  const prompt1 = await renderPrompt1(promptContext, activeLlmProfile);
+  logPromptDebug('Prompt 1', 'input', prompt1);
 
   logInfo('Orchestrator', 'Running Prompt 1.');
   const prompt1Run = await runPrompt(prompt1, { profile: activeLlmProfile, promptLabel: 'Prompt 1', systemPrompt });
@@ -224,11 +579,14 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
     throw new Error(`Prompt 1 failed: ${prompt1Run.message}`);
   }
   logInfo('Orchestrator', 'Parsing Prompt 1 output.');
+  logPromptDebug('Prompt 1', 'output', prompt1Run.rawText);
   const prompt1Result = extractJsonFromText(prompt1Run.rawText);
+  promptContext.prompt1Json = prompt1Result;
   await setExtensionState({ prompt1Result, status: SESSION_STATUS.prompt1Done, resumeSource: currentResume });
 
   logInfo('Orchestrator', 'Rendering Prompt 2.');
-  const prompt2 = await renderPrompt2({ prompt1Json: prompt1Result }, activeLlmProfile);
+  const prompt2 = await renderPrompt2(promptContext, activeLlmProfile);
+  logPromptDebug('Prompt 2', 'input', prompt2);
   logInfo('Orchestrator', 'Running Prompt 2.');
   const prompt2Run = await runPrompt(prompt2, { profile: activeLlmProfile, promptLabel: 'Prompt 2', systemPrompt });
   if (prompt2Run.status !== 'success') {
@@ -236,15 +594,14 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
     throw new Error(`Prompt 2 failed: ${prompt2Run.message}`);
   }
   logInfo('Orchestrator', 'Parsing Prompt 2 output.');
+  logPromptDebug('Prompt 2', 'output', prompt2Run.rawText);
   const prompt2Result = extractJsonFromText(prompt2Run.rawText);
+  promptContext.prompt2Json = prompt2Result;
   await setExtensionState({ prompt2Result, status: SESSION_STATUS.prompt2Done });
 
   logInfo('Orchestrator', 'Rendering Prompt 3.');
-  const prompt3 = await renderPrompt3({
-    prompt2Json: prompt2Result,
-    currentResume,
-    storyboard,
-  }, activeLlmProfile);
+  const prompt3 = await renderPrompt3(promptContext, activeLlmProfile);
+  logPromptDebug('Prompt 3', 'input', prompt3);
   logInfo('Orchestrator', 'Running Prompt 3.');
   const prompt3Run = await runPrompt(prompt3, {
     profile: activeLlmProfile,
@@ -269,15 +626,32 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
   }
 
   logInfo('Orchestrator', 'Parsing Prompt 3 output.');
+  logPromptDebug('Prompt 3', 'output', prompt3Raw);
   const prompt3Result = extractPrompt3PayloadFromText(prompt3Raw);
-  const prompt3Parsed = prompt3Result.resumeData;
+  const normalizedPrompt3Resume = normalizePrompt3ResumeData(prompt3Result.resumeData);
+  const prompt3Parsed = applyKennNguyenCustomFeature(
+    preserveGeneratedResumeFacts(
+      masterResumeData,
+      normalizedPrompt3Resume,
+      preserveFactsEnabled
+    ),
+    customFeatureEnabled
+  );
+  if (customFeatureEnabled && isKennNguyenName(prompt3Parsed?.personalInfo?.name)) {
+    logInfo('Orchestrator', 'Applied custom feature adjustments for Kenn Nguyen.', {
+      resumeId,
+    });
+  }
   const prompt3Feedback = prefixGenerationFeedbackSummary(
-    prompt3Result.generationFeedback,
+    normalizePrompt3Feedback(prompt3Result.generationFeedback),
     activeLlmProfile
   );
   const patchPayload = {
     resume_data: prompt3Parsed,
     generation_feedback: prompt3Feedback,
+    generation_artifacts: {
+      prompt2: prompt2Result,
+    },
   };
   if (prompt3Result.usedLegacyShape) {
     logInfo('Orchestrator', 'Prompt 3 returned legacy ResumeData shape; continuing with wrapped patch payload.');
@@ -299,7 +673,9 @@ export async function generateResumeForLinkedInJob(tabId, prompt1CustomInstructi
 
   try {
     logInfo('Orchestrator', 'Patching generated resume.');
-    await patchResume(resumeId, prompt3Parsed, prompt3Feedback);
+    await patchResume(resumeId, prompt3Parsed, prompt3Feedback, {
+      prompt2: prompt2Result,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to patch resume.';
     logError('Orchestrator', 'Resume patch failed.', { resumeId, message });

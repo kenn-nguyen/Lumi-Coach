@@ -152,7 +152,7 @@ function injectStyles() {
     #${STATUS_ID} {
       display: none;
       width: fit-content;
-      max-width: min(372px, calc(100vw - 24px));
+      max-width: min(484px, calc(100vw - 24px));
       min-width: 0;
       padding: 9px 12px;
       border-radius: 12px;

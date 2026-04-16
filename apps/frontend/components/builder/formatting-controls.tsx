@@ -46,7 +46,7 @@ interface FormattingControlsProps {
  */
 export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings, onChange }) => {
   const { t } = useTranslations();
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const compactMultiplier = settings.compactMode ? COMPACT_MULTIPLIER : 1;
   const sectionGapRem =
     parseFloat(SECTION_SPACING_MAP[settings.spacing.section]) * compactMultiplier;

@@ -44,10 +44,23 @@ import { useTranslations } from '@/lib/i18n';
 
 interface ResumeFormProps {
   resumeData: ResumeData;
+  resumeId?: string | null;
+  linkedJobDescription?: string | null;
+  masterPersonalInfo?: PersonalInfo | null;
+  originalSummary?: string | null;
+  originalWorkExperience?: ResumeData['workExperience'];
   onUpdate: (data: ResumeData) => void;
 }
 
-export const ResumeForm: React.FC<ResumeFormProps> = ({ resumeData, onUpdate }) => {
+export const ResumeForm: React.FC<ResumeFormProps> = ({
+  resumeData,
+  resumeId,
+  linkedJobDescription,
+  masterPersonalInfo,
+  originalSummary,
+  originalWorkExperience,
+  onUpdate,
+}) => {
   const { t } = useTranslations();
 
   // Get section metadata, falling back to defaults
@@ -217,6 +230,7 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({ resumeData, onUpdate }) 
           return (
             <PersonalInfoForm
               data={resumeData.personalInfo || ({} as PersonalInfo)}
+              masterPersonalInfo={masterPersonalInfo}
               onChange={(data) => onUpdate({ ...resumeData, personalInfo: data })}
             />
           );
@@ -224,6 +238,9 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({ resumeData, onUpdate }) 
         case 'summary':
           return (
             <SummaryForm
+              resumeId={resumeId}
+              linkedJobDescription={linkedJobDescription}
+              originalValue={originalSummary}
               value={resumeData.summary || ''}
               onChange={(value) => onUpdate({ ...resumeData, summary: value })}
             />
@@ -233,6 +250,9 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({ resumeData, onUpdate }) 
           return (
             <ExperienceForm
               data={resumeData.workExperience || []}
+              resumeId={resumeId}
+              linkedJobDescription={linkedJobDescription}
+              originalData={originalWorkExperience || []}
               onChange={(data) => onUpdate({ ...resumeData, workExperience: data })}
             />
           );

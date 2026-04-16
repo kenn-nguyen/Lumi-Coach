@@ -175,7 +175,8 @@
       "resume": "CURRÍCULUM",
       "coverLetter": "CARTA",
       "outreach": "MENSAJE",
-      "jdMatch": "COINCIDENCIA JD"
+      "jdMatch": "COINCIDENCIA JD",
+      "aiStrategyMatch": "AI STRATEGY"
     },
     "footer": {
       "moduleLabel": "Módulo del constructor",
@@ -282,6 +283,41 @@
         "matchRateLabel": "Tasa de coincidencia:"
       }
     },
+    "strategyMatch": {
+      "briefTitle": "AI Strategy Brief",
+      "resumeTitle": "Your Resume",
+      "resumeSubtitle": "(strategy keywords highlighted)",
+      "positioningThesis": "Positioning Thesis",
+      "recommendedTitle": "Recommended Title",
+      "summaryLead": "Summary Lead",
+      "aboutTitle": "About AI Strategy Match",
+      "aboutDescription": "This view shows how well the final resume reflects the Prompt 2 strategy brief. It tracks the positioning signals, phrases, and themes the AI recommended surfacing in the resume.",
+      "highlightedKeywordsTitle": "Strategy Signals",
+      "highlightedKeywordsDescription": "Highlighted words come from the saved Prompt 2 strategy brief, not the raw job description. This helps you verify whether the final resume follows the intended positioning plan.",
+      "tipsTitle": "Tips",
+      "empty": "No AI strategy brief is available for this resume.",
+      "sections": {
+        "topGoals": "Top Resume Goals",
+        "summaryFocus": "Summary Focus",
+        "signalsToSurface": "Signals To Surface",
+        "storylines": "Selected Storylines",
+        "experienceThemes": "Experience Themes",
+        "mirrorPhrases": "Mirror Phrases",
+        "finalSkills": "Final Skills"
+      },
+      "tips": {
+        "items": {
+          "followStorylines": "Check whether the strongest storylines are visible in your summary and bullets",
+          "mirrorPriorityPhrases": "Mirror the highest-value phrases naturally in the resume text",
+          "reinforceSkills": "Make sure the final skills list is reinforced by evidence in experience bullets"
+        }
+      },
+      "stats": {
+        "signalsTracked": "{count} strategy keywords tracked",
+        "matchesFound": "{count} matches found",
+        "coverageLabel": "Coverage:"
+      }
+    },
     "genericItemForm": {
       "itemLabel": "Elemento",
       "addItemLabel": "Agregar {label}",
@@ -306,9 +342,45 @@
       "addFirstItem": "Agregar primer {label}"
     },
     "forms": {
+      "summary": {
+        "original": {
+          "button": "Show original summary",
+          "title": "Original summary",
+          "empty": "No original summary available."
+        },
+        "aiRewrite": {
+          "button": "Rewrite with AI",
+          "title": "AI rewrite",
+          "instructionLabel": "Instruction",
+          "instructionPlaceholder": "Example: make it tighter and emphasize AI/ML risk and payments leadership.",
+          "resultLabel": "Suggested summary",
+          "resultPlaceholder": "Your generated summary will appear here.",
+          "generate": "Generate",
+          "generating": "Generating...",
+          "use": "Use",
+          "cancel": "Cancel"
+        }
+      },
       "experience": {
         "addJob": "Agregar trabajo",
         "addFirstJob": "Agregar primer trabajo",
+        "originalBullet": {
+          "button": "Show original bullet",
+          "title": "Original bullet",
+          "empty": "No original bullet available."
+        },
+        "aiRewrite": {
+          "button": "Rewrite with AI",
+          "title": "AI rewrite",
+          "instructionLabel": "Instruction",
+          "instructionPlaceholder": "Example: make it shorter and emphasize payments ownership.",
+          "resultLabel": "Suggested bullet",
+          "resultPlaceholder": "Your generated bullet will appear here.",
+          "generate": "Generate",
+          "generating": "Generating...",
+          "use": "Use",
+          "cancel": "Cancel"
+        },
         "fields": {
           "jobTitle": "Puesto",
           "company": "Empresa"
@@ -421,6 +493,8 @@
       "resetDefaults": "Restablecer valores"
     },
     "personalInfoForm": {
+      "refreshFromMaster": "Refresh from Master",
+      "refreshFromMasterTitle": "Refresh personal info from the master resume, except the job title",
       "placeholders": {
         "name": "Juan Pérez",
         "title": "Ingeniero de software",
@@ -437,7 +511,8 @@
       "editorPanel": "Panel de edición",
       "coverLetterEditor": "Editor de carta",
       "outreachEditor": "Editor de mensaje",
-      "jdMatchAnalysis": "Análisis de coincidencia JD"
+      "jdMatchAnalysis": "Análisis de coincidencia JD",
+      "aiStrategyMatchAnalysis": "AI Strategy Match Analysis"
     },
     "alerts": {
       "saveNotAvailable": "Guardar solo está disponible al editar un currículum existente.",
@@ -680,6 +755,10 @@
       "outreachMessage": {
         "label": "Mensaje de acercamiento en frío",
         "description": "Genera un mensaje de networking para LinkedIn o correo electrónico"
+      },
+      "preserveFacts": {
+        "label": "Preserve Master Resume Facts",
+        "description": "Keep personal info except title, plus experience company names, job titles, and dates from your master resume in generated resumes."
       }
     },
     "promptSettings": {

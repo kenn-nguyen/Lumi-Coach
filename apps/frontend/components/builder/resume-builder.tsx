@@ -33,6 +33,7 @@ import {
   getResumePdfUrl,
   getCoverLetterPdfUrl,
   fetchResume,
+  type GenerationArtifacts,
   updateResume,
   updateCoverLetter,
   updateJobDescription,
@@ -42,6 +43,7 @@ import {
   fetchJobDescription,
 } from '@/lib/api/resume';
 import { JDComparisonView } from './jd-comparison-view';
+import { StrategyMatchView } from './strategy-match-view';
 import { RegenerateWizard } from './regenerate-wizard';
 import { useRegenerateWizard } from '@/hooks/use-regenerate-wizard';
 import { useTranslations } from '@/lib/i18n';
@@ -51,7 +53,7 @@ import { useLanguage } from '@/lib/context/language-context';
 import { buildResumeFilename, downloadBlobAsFile, openUrlInNewTab } from '@/lib/utils/download';
 import type { RegenerateItemInput } from '@/lib/api/enrichment';
 
-type TabId = 'resume' | 'cover-letter' | 'outreach' | 'jd-match';
+type TabId = 'resume' | 'cover-letter' | 'outreach' | 'jd-match' | 'ai-strategy-match';
 
 const STORAGE_KEY = 'resume_builder_draft';
 const SETTINGS_STORAGE_KEY = 'resume_builder_settings';
@@ -146,6 +148,8 @@ const ResumeBuilderContent = () => {
   const [isOutreachSaving, setIsOutreachSaving] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [resumeTitle, setResumeTitle] = useState<string | null>(null);
+  const [masterResumeData, setMasterResumeData] = useState<ResumeData | null>(null);
+  const [generationArtifacts, setGenerationArtifacts] = useState<GenerationArtifacts | null>(null);
 
   // On-demand generation state
   const [isTailoredResume, setIsTailoredResume] = useState(false);
@@ -174,6 +178,7 @@ const ResumeBuilderContent = () => {
         const data = await fetchResume(resumeId);
         // Update resume title for downloads
         setResumeTitle(data.title ?? null);
+        setGenerationArtifacts(data.generation_artifacts ?? null);
         if (data.processed_resume) {
           setResumeData(data.processed_resume as ResumeData);
           setLastSavedData(data.processed_resume as ResumeData);
@@ -292,8 +297,20 @@ const ResumeBuilderContent = () => {
           const data = await fetchResume(resumeId);
           // Track if this is a tailored resume (has parent_id)
           setIsTailoredResume(Boolean(data.parent_id));
+          if (data.parent_id) {
+            try {
+              const parentData = await fetchResume(data.parent_id);
+              setMasterResumeData((parentData.processed_resume as ResumeData) ?? null);
+            } catch (parentError) {
+              console.warn('Failed to load parent resume for original bullet lookup:', parentError);
+              setMasterResumeData(null);
+            }
+          } else {
+            setMasterResumeData(null);
+          }
           // Store resume title for downloads
           setResumeTitle(data.title ?? null);
+          setGenerationArtifacts(data.generation_artifacts ?? null);
           // Load cover letter and outreach message if available
           if (data.cover_letter) {
             setCoverLetter(data.cover_letter);
@@ -329,6 +346,8 @@ const ResumeBuilderContent = () => {
       if (improvedPreview) {
         setResumeData(improvedPreview);
         setLastSavedData(improvedPreview);
+        setMasterResumeData(null);
+        setGenerationArtifacts(null);
         // Also load cover letter and outreach if present
         if (improvedCoverLetter) {
           setCoverLetter(improvedCoverLetter);
@@ -349,6 +368,7 @@ const ResumeBuilderContent = () => {
           const parsed = JSON.parse(savedDraft);
           setResumeData(parsed);
           setLastSavedData(parsed);
+          setGenerationArtifacts(null);
           setHasUnsavedChanges(true); // Mark as unsaved since it's a draft
           setLoadingState('loaded');
           return;
@@ -358,6 +378,7 @@ const ResumeBuilderContent = () => {
       }
 
       // Fallback: Use initial data
+      setGenerationArtifacts(null);
       setLoadingState('loaded');
     };
 
@@ -446,6 +467,7 @@ const ResumeBuilderContent = () => {
       const nextData = (updated.processed_resume || resumeData) as ResumeData;
       setResumeData(nextData);
       setLastSavedData(nextData);
+      setGenerationArtifacts(updated.generation_artifacts ?? null);
       setHasUnsavedChanges(false);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextData));
     } catch (error) {
@@ -498,6 +520,29 @@ const ResumeBuilderContent = () => {
       showNotification(errorMessage, 'danger');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleExportJson = () => {
+    if (!resumeId) {
+      showNotification(t('builder.alerts.downloadNotAvailable'), 'warning');
+      return;
+    }
+
+    try {
+      const userName = resumeData.personalInfo?.name?.trim() || null;
+      const company = resumeTitle?.trim() || null;
+      const filename = buildResumeFilename(userName, company, resumeId, 'resume').replace(
+        /\.pdf$/i,
+        '.json'
+      );
+      const jsonBlob = new Blob([JSON.stringify(resumeData, null, 2)], {
+        type: 'application/json',
+      });
+      downloadBlobAsFile(jsonBlob, filename);
+    } catch (error) {
+      console.error('Failed to export resume JSON:', error);
+      showNotification(t('builder.alerts.downloadFailed'), 'danger');
     }
   };
 
@@ -691,6 +736,14 @@ const ResumeBuilderContent = () => {
                     {t('builder.regenerate.buttonLabel')}
                   </Button>
                   <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportJson}
+                    disabled={!resumeId}
+                  >
+                    Export JSON
+                  </Button>
+                  <Button
                     variant="warning"
                     size="sm"
                     onClick={handleReset}
@@ -790,6 +843,8 @@ const ResumeBuilderContent = () => {
                   {activeTab === 'cover-letter' && t('builder.leftPanel.coverLetterEditor')}
                   {activeTab === 'outreach' && t('builder.leftPanel.outreachEditor')}
                   {activeTab === 'jd-match' && t('builder.leftPanel.jdMatchAnalysis')}
+                  {activeTab === 'ai-strategy-match' &&
+                    t('builder.leftPanel.aiStrategyMatchAnalysis')}
                 </h2>
               </div>
 
@@ -797,7 +852,15 @@ const ResumeBuilderContent = () => {
               {activeTab === 'resume' && (
                 <>
                   <FormattingControls settings={templateSettings} onChange={handleSettingsChange} />
-                  <ResumeForm resumeData={resumeData} onUpdate={handleUpdate} />
+                  <ResumeForm
+                    resumeData={resumeData}
+                    resumeId={resumeId}
+                    linkedJobDescription={storedJobDescription ?? draftJobDescription ?? null}
+                    masterPersonalInfo={masterResumeData?.personalInfo ?? null}
+                    originalSummary={masterResumeData?.summary ?? null}
+                    originalWorkExperience={masterResumeData?.workExperience || []}
+                    onUpdate={handleUpdate}
+                  />
                 </>
               )}
 
@@ -885,6 +948,39 @@ const ResumeBuilderContent = () => {
                   </div>
                 </div>
               )}
+
+              {activeTab === 'ai-strategy-match' && (
+                <div className="space-y-4">
+                  <div className="border-2 border-black bg-white p-4">
+                    <h3 className="font-mono text-sm font-bold uppercase mb-2">
+                      {t('builder.strategyMatch.aboutTitle')}
+                    </h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {t('builder.strategyMatch.aboutDescription')}
+                    </p>
+                  </div>
+
+                  <div className="border-2 border-black bg-[#F0F0E8] p-4">
+                    <h3 className="font-mono text-sm font-bold uppercase mb-2">
+                      {t('builder.strategyMatch.highlightedKeywordsTitle')}
+                    </h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {t('builder.strategyMatch.highlightedKeywordsDescription')}
+                    </p>
+                  </div>
+
+                  <div className="border-2 border-black bg-white p-4">
+                    <h3 className="font-mono text-sm font-bold uppercase mb-2">
+                      {t('builder.strategyMatch.tipsTitle')}
+                    </h3>
+                    <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                      <li>{t('builder.strategyMatch.tips.items.followStorylines')}</li>
+                      <li>{t('builder.strategyMatch.tips.items.mirrorPriorityPhrases')}</li>
+                      <li>{t('builder.strategyMatch.tips.items.reinforceSkills')}</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -909,6 +1005,11 @@ const ResumeBuilderContent = () => {
                     id: 'jd-match',
                     label: t('builder.previewTabs.jdMatch'),
                     disabled: !draftJobDescription,
+                  },
+                  {
+                    id: 'ai-strategy-match',
+                    label: t('builder.previewTabs.aiStrategyMatch'),
+                    disabled: !generationArtifacts?.prompt2,
                   },
                 ]}
                 activeTab={activeTab}
@@ -970,6 +1071,13 @@ const ResumeBuilderContent = () => {
                   onResetJobDescription={handleResetJobDescription}
                   onSaveJobDescription={handleSaveJobDescription}
                   isSavingJobDescription={isSavingJobDescription}
+                />
+              )}
+
+              {activeTab === 'ai-strategy-match' && generationArtifacts?.prompt2 && (
+                <StrategyMatchView
+                  prompt2Artifact={generationArtifacts.prompt2}
+                  resumeData={resumeData}
                 />
               )}
             </div>

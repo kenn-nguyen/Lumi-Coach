@@ -25,6 +25,7 @@ from app.schemas import (
     ExtensionResumeJobLinkRequest,
     GenerateContentResponse,
     GenerationFeedback,
+    GenerationArtifacts,
     ImproveResumeConfirmRequest,
     ImproveResumeRequest,
     ImproveResumeResponse,
@@ -39,6 +40,10 @@ from app.schemas import (
     ResumeSummary,
     ResumeUploadResponse,
     ResumeUpdateRequest,
+    RewriteBulletRequest,
+    RewriteBulletResponse,
+    RewriteSummaryRequest,
+    RewriteSummaryResponse,
     RawResume,
     UpdateCoverLetterRequest,
     UpdateJobDescriptionRequest,
@@ -59,11 +64,52 @@ from app.services.improver import (
 from app.services.refiner import refine_resume, calculate_keyword_match
 from app.schemas.refinement import RefinementConfig
 from app.services.cover_letter import (
+    build_prompt2_strategy_context,
     generate_cover_letter,
     generate_outreach_message,
     generate_resume_title,
+    rewrite_resume_bullet,
+    rewrite_resume_summary,
 )
 from app.prompts import DEFAULT_IMPROVE_PROMPT_ID, IMPROVE_PROMPT_OPTIONS
+
+PRESERVED_PERSONAL_INFO_FIELDS = (
+    "name",
+    "customTagline",
+    "email",
+    "phone",
+    "location",
+    "website",
+    "linkedin",
+    "github",
+)
+PRESERVED_EXPERIENCE_FIELDS = ("title", "company", "years")
+
+
+def _resolve_rewrite_strategy_context(
+    resume: dict[str, Any], resume_id: str, *, role_title: str = "", role_company: str = ""
+) -> str | None:
+    generation_artifacts = resume.get("generation_artifacts")
+    prompt2_artifact = (
+        generation_artifacts.get("prompt2")
+        if isinstance(generation_artifacts, dict)
+        else None
+    )
+    strategy_context = build_prompt2_strategy_context(
+        prompt2_artifact,
+        role_title=role_title,
+        role_company=role_company,
+    )
+    if strategy_context:
+        return strategy_context
+
+    improvement = db.get_improvement_by_tailored_resume(resume_id)
+    if improvement:
+        job = db.get_job(improvement["job_id"])
+        if job:
+            return job.get("content")
+
+    return None
 
 
 def _get_default_prompt_id() -> str:
@@ -319,6 +365,12 @@ def _build_resume_fetch_response(
         if raw_generation_feedback
         else None
     )
+    raw_generation_artifacts = resume.get("generation_artifacts")
+    generation_artifacts = (
+        GenerationArtifacts.model_validate(raw_generation_artifacts)
+        if raw_generation_artifacts
+        else None
+    )
 
     return ResumeFetchResponse(
         request_id=request_id or str(uuid4()),
@@ -327,6 +379,7 @@ def _build_resume_fetch_response(
             raw_resume=raw_resume,
             processed_resume=processed_resume,
             generation_feedback=generation_feedback,
+            generation_artifacts=generation_artifacts,
             cover_letter=resume.get("cover_letter"),
             outreach_message=resume.get("outreach_message"),
             parent_id=resume.get("parent_id"),
@@ -405,19 +458,51 @@ def _protect_custom_sections(
     return result
 
 
-def _preserve_personal_info(
+def _preserve_experience_identity_fields(
+    original_items: list[Any], result_items: list[Any]
+) -> None:
+    original_by_id: dict[int, dict[str, Any]] = {}
+    for item in original_items:
+        if isinstance(item, dict) and isinstance(item.get("id"), int):
+            original_by_id[item["id"]] = item
+
+    for index, result_item in enumerate(result_items):
+        if not isinstance(result_item, dict):
+            continue
+
+        original_item = None
+        result_id = result_item.get("id")
+        if isinstance(result_id, int):
+            original_item = original_by_id.get(result_id)
+        if original_item is None and index < len(original_items):
+            candidate = original_items[index]
+            if isinstance(candidate, dict):
+                original_item = candidate
+        if not isinstance(original_item, dict):
+            continue
+
+        for field in PRESERVED_EXPERIENCE_FIELDS:
+            if field in original_item:
+                result_item[field] = copy.deepcopy(original_item[field])
+
+
+def _preserve_generated_resume_facts(
     original_data: dict[str, Any] | None,
     improved_data: dict[str, Any],
+    preserve_facts: bool,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Preserve personal info from original, return warnings if unable.
+    """Preserve protected factual fields from original, return warnings if unable.
 
     Uses deep copy to prevent mutation of original data.
     """
     warnings: list[str] = []
 
+    if not preserve_facts:
+        return improved_data, warnings
+
     if not original_data:
         warnings.append(
-            "Original resume data unavailable - personal info may be AI-generated"
+            "Original resume data unavailable - protected factual fields may be AI-generated"
         )
         return improved_data, warnings
 
@@ -426,9 +511,21 @@ def _preserve_personal_info(
         warnings.append("Original personal info missing or invalid")
         return improved_data, warnings
 
-    # SVC-001: Use deep copy to prevent any mutation of original data
     result = copy.deepcopy(improved_data)
-    result["personalInfo"] = copy.deepcopy(original_info)
+    result_info = result.get("personalInfo")
+    if not isinstance(result_info, dict):
+        result_info = {}
+        result["personalInfo"] = result_info
+
+    for field in PRESERVED_PERSONAL_INFO_FIELDS:
+        if field in original_info:
+            result_info[field] = copy.deepcopy(original_info[field])
+
+    original_experience = original_data.get("workExperience", [])
+    result_experience = result.get("workExperience", [])
+    if isinstance(original_experience, list) and isinstance(result_experience, list):
+        _preserve_experience_identity_fields(original_experience, result_experience)
+
     return result, warnings
 
 
@@ -457,7 +554,10 @@ def _calculate_diff_from_resume(
 def _validate_confirm_payload(
     original_data: dict[str, Any] | None,
     improved_data: dict[str, Any],
+    preserve_facts: bool,
 ) -> None:
+    if not preserve_facts:
+        return
     if not original_data:
         logger.warning(
             "Skipping confirm payload validation; structured resume data unavailable."
@@ -482,6 +582,7 @@ def _validate_confirm_payload(
     mismatches = [
         field
         for field in sorted(fields)
+        if field in PRESERVED_PERSONAL_INFO_FIELDS
         if _normalize_personal_info_value(original_info.get(field))
         != _normalize_personal_info_value(improved_info.get(field))
     ]
@@ -598,6 +699,7 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
         try:
             parsed_json = json.loads(json_content)
             generation_feedback = None
+            generation_artifacts = None
             resume_payload = parsed_json
             if isinstance(parsed_json, dict) and "resume_data" in parsed_json:
                 wrapped_payload = ResumeUpdateRequest.model_validate(parsed_json)
@@ -605,6 +707,11 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
                 generation_feedback = (
                     wrapped_payload.generation_feedback.model_dump()
                     if wrapped_payload.generation_feedback
+                    else None
+                )
+                generation_artifacts = (
+                    wrapped_payload.generation_artifacts.model_dump(exclude_none=True)
+                    if wrapped_payload.generation_artifacts
                     else None
                 )
             processed_data = ResumeData.model_validate(resume_payload).model_dump()
@@ -628,6 +735,7 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
             processed_data=processed_data,
             processing_status="ready",
             generation_feedback=generation_feedback,
+            generation_artifacts=generation_artifacts,
         )
 
         return ResumeUploadResponse(
@@ -813,6 +921,10 @@ async def _improve_preview_flow(
     prompt_id: str,
 ) -> ImproveResumeResponse:
     """Inner flow for improve/preview, extracted so it can be wrapped in wait_for."""
+    feature_config = _load_config()
+    preserve_generated_resume_facts = feature_config.get(
+        "preserve_generated_resume_facts", True
+    )
     job_keywords = job.get("job_keywords")
     job_keywords_hash = job.get("job_keywords_hash")
     content_hash = _hash_job_content(job["content"])
@@ -886,9 +998,10 @@ async def _improve_preview_flow(
         )
 
     # Safety nets (defense in depth — should rarely activate with diff-based flow)
-    improved_data, preserve_warnings = _preserve_personal_info(
+    improved_data, preserve_warnings = _preserve_generated_resume_facts(
         original_resume_data,
         improved_data,
+        preserve_generated_resume_facts,
     )
     response_warnings.extend(preserve_warnings)
 
@@ -955,6 +1068,10 @@ async def _improve_preview_flow(
         if refinement_attempted:
             response_warnings.append(f"Refinement failed: {str(e)}")
 
+    normalized_preview = ResumeData.model_validate(improved_data).model_dump()
+    normalized_preview = normalize_resume_data(normalized_preview)
+
+    improved_data = normalized_preview
     improved_text = json.dumps(improved_data, indent=2)
     preview_hash = _hash_improved_data(improved_data)
     preview_hashes = job.get("preview_hashes")
@@ -1032,6 +1149,9 @@ async def improve_resume_confirm_endpoint(
     feature_config = _load_config()
     enable_cover_letter = feature_config.get("enable_cover_letter", False)
     enable_outreach = feature_config.get("enable_outreach_message", False)
+    preserve_generated_resume_facts = feature_config.get(
+        "preserve_generated_resume_facts", True
+    )
     language = get_content_language()
 
     stage = "serialize_improved_data"
@@ -1042,7 +1162,11 @@ async def improve_resume_confirm_endpoint(
         # NOTE: This endpoint relies on preview-hash validation to ensure the payload matches a prior preview.
         # Stronger guarantees would require server-side preview storage or re-running the improvement.
         try:
-            _validate_confirm_payload(_get_original_resume_data(resume), improved_data)
+            _validate_confirm_payload(
+                _get_original_resume_data(resume),
+                improved_data,
+                preserve_generated_resume_facts,
+            )
         except ValueError as e:
             logger.warning("Resume confirm rejected: %s", e)
             raise HTTPException(
@@ -1176,6 +1300,9 @@ async def improve_resume_endpoint(
     feature_config = _load_config()
     enable_cover_letter = feature_config.get("enable_cover_letter", False)
     enable_outreach = feature_config.get("enable_outreach_message", False)
+    preserve_generated_resume_facts = feature_config.get(
+        "preserve_generated_resume_facts", True
+    )
     language = get_content_language()
 
     try:
@@ -1236,9 +1363,10 @@ async def improve_resume_endpoint(
             )
 
         # Safety nets (defense in depth)
-        improved_data, preserve_warnings = _preserve_personal_info(
+        improved_data, preserve_warnings = _preserve_generated_resume_facts(
             original_resume_data,
             improved_data,
+            preserve_generated_resume_facts,
         )
         response_warnings.extend(preserve_warnings)
 
@@ -1403,14 +1531,22 @@ async def update_resume_endpoint(
         raise HTTPException(status_code=404, detail="Resume not found")
 
     generation_feedback_update = existing.get("generation_feedback")
+    generation_artifacts_update = existing.get("generation_artifacts")
     if "resume_data" in payload:
         parsed_payload = ResumeUpdateRequest.model_validate(payload)
         resume_data = parsed_payload.resume_data
-        generation_feedback_update = (
-            parsed_payload.generation_feedback.model_dump()
-            if parsed_payload.generation_feedback
-            else None
-        )
+        if "generation_feedback" in payload:
+            generation_feedback_update = (
+                parsed_payload.generation_feedback.model_dump()
+                if parsed_payload.generation_feedback
+                else None
+            )
+        if "generation_artifacts" in payload:
+            generation_artifacts_update = (
+                parsed_payload.generation_artifacts.model_dump(exclude_none=True)
+                if parsed_payload.generation_artifacts
+                else None
+            )
     else:
         resume_data = ResumeData.model_validate(payload)
 
@@ -1425,6 +1561,7 @@ async def update_resume_endpoint(
             "processed_data": updated_data,
             "processing_status": "ready",
             "generation_feedback": generation_feedback_update,
+            "generation_artifacts": generation_artifacts_update,
         },
     )
 
@@ -1854,6 +1991,94 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
     return GenerateContentResponse(
         content=outreach_content,
         message="Outreach message generated successfully",
+    )
+
+
+@router.post("/{resume_id}/rewrite-bullet", response_model=RewriteBulletResponse)
+async def rewrite_bullet_endpoint(
+    resume_id: str, request: RewriteBulletRequest
+) -> RewriteBulletResponse:
+    """Generate a one-bullet rewrite suggestion without persisting it."""
+    resume = db.get_resume(resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    current_bullet = request.current_bullet.strip()
+    if not current_bullet:
+        raise HTTPException(status_code=400, detail="Current bullet is required.")
+
+    strategy_context = _resolve_rewrite_strategy_context(
+        resume,
+        resume_id,
+        role_title=request.role_context.title,
+        role_company=request.role_context.company,
+    )
+    if not strategy_context:
+        strategy_context = request.job_description
+
+    language = get_content_language()
+
+    try:
+        rewritten_bullet = await rewrite_resume_bullet(
+            current_bullet=current_bullet,
+            original_bullet=request.original_bullet,
+            role_title=request.role_context.title,
+            role_company=request.role_context.company,
+            role_years=request.role_context.years,
+            strategy_context=strategy_context,
+            user_instruction=request.user_instruction,
+            language=language,
+        )
+    except Exception as e:
+        logger.error(f"Bullet rewrite generation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to rewrite bullet. Please try again.",
+        )
+
+    return RewriteBulletResponse(
+        rewritten_bullet=rewritten_bullet,
+        message="Bullet rewritten successfully",
+    )
+
+
+@router.post("/{resume_id}/rewrite-summary", response_model=RewriteSummaryResponse)
+async def rewrite_summary_endpoint(
+    resume_id: str, request: RewriteSummaryRequest
+) -> RewriteSummaryResponse:
+    """Generate a summary rewrite suggestion without persisting it."""
+    resume = db.get_resume(resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    current_summary = request.current_summary.strip()
+    if not current_summary:
+        raise HTTPException(status_code=400, detail="Current summary is required.")
+
+    strategy_context = _resolve_rewrite_strategy_context(resume, resume_id)
+    if not strategy_context:
+        strategy_context = request.job_description
+
+    language = get_content_language()
+
+    try:
+        rewritten_summary = await rewrite_resume_summary(
+            current_summary=current_summary,
+            original_summary=request.original_summary,
+            strategy_context=strategy_context,
+            user_instruction=request.user_instruction,
+            language=language,
+        )
+    except Exception as e:
+        logger.error(f"Summary rewrite generation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to rewrite summary. Please try again.",
+        )
+
+    return RewriteSummaryResponse(
+        rewritten_summary=rewritten_summary,
+        message="Summary rewritten successfully",
     )
 
 

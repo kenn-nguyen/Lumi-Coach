@@ -408,11 +408,19 @@ class GenerationFeedback(BaseModel):
         return []
 
 
+class GenerationArtifacts(BaseModel):
+    """Optional internal generation artifacts stored alongside a resume."""
+
+    prompt1: dict[str, Any] | None = None
+    prompt2: dict[str, Any] | None = None
+
+
 class ResumeUpdateRequest(BaseModel):
     """Extended resume update payload with optional generation feedback."""
 
     resume_data: ResumeData
     generation_feedback: GenerationFeedback | None = None
+    generation_artifacts: GenerationArtifacts | None = None
 
 
 class ResumeFetchData(BaseModel):
@@ -422,6 +430,7 @@ class ResumeFetchData(BaseModel):
     raw_resume: RawResume
     processed_resume: ResumeData | None = None
     generation_feedback: GenerationFeedback | None = None
+    generation_artifacts: GenerationArtifacts | None = None
     cover_letter: str | None = None
     outreach_message: str | None = None
     parent_id: str | None = None  # For determining if resume is tailored
@@ -618,6 +627,7 @@ class FeatureConfigRequest(BaseModel):
 
     enable_cover_letter: bool | None = None
     enable_outreach_message: bool | None = None
+    preserve_generated_resume_facts: bool | None = None
 
 
 class FeatureConfigResponse(BaseModel):
@@ -625,6 +635,7 @@ class FeatureConfigResponse(BaseModel):
 
     enable_cover_letter: bool = False
     enable_outreach_message: bool = False
+    preserve_generated_resume_facts: bool = True
 
 
 class LanguageConfigRequest(BaseModel):
@@ -718,6 +729,49 @@ class UpdateJobDescriptionRequest(BaseModel):
     """Request to update linked job description content."""
 
     content: str
+
+
+class RewriteBulletRoleContext(BaseModel):
+    """Minimal role context for single-bullet rewriting."""
+
+    title: str = ""
+    company: str = ""
+    years: str = ""
+
+
+class RewriteBulletRequest(BaseModel):
+    """Request to generate a rewritten resume bullet suggestion."""
+
+    current_bullet: str
+    original_bullet: str | None = None
+    role_context: RewriteBulletRoleContext = Field(
+        default_factory=RewriteBulletRoleContext
+    )
+    job_description: str | None = None
+    user_instruction: str | None = None
+
+
+class RewriteBulletResponse(BaseModel):
+    """Response containing a single rewritten bullet suggestion."""
+
+    rewritten_bullet: str
+    message: str
+
+
+class RewriteSummaryRequest(BaseModel):
+    """Request to generate a rewritten resume summary suggestion."""
+
+    current_summary: str
+    original_summary: str | None = None
+    job_description: str | None = None
+    user_instruction: str | None = None
+
+
+class RewriteSummaryResponse(BaseModel):
+    """Response containing a rewritten resume summary suggestion."""
+
+    rewritten_summary: str
+    message: str
 
 
 class ResetDatabaseRequest(BaseModel):

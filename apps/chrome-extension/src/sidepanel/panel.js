@@ -1,3 +1,7 @@
+import { extractPrompt3PayloadFromText } from '../runtime/json.js';
+import { overwriteMasterResume } from '../runtime/api.js';
+import { validateResumeData } from '../runtime/validation.js';
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -19,6 +23,8 @@ const providerApiKeyRow = $('provider-api-key-row');
 const providerApiKeyInput = $('provider-api-key-input');
 const appUrlInput = $('app-url-input');
 const apiUrlInput = $('api-url-input');
+const customFeatureCheckbox = $('custom-feature-checkbox');
+const overwriteMasterResumeButton = $('overwrite-master-resume-button');
 const resetLocalDataButton = $('reset-local-data-button');
 const resetDefaultSettingsButton = $('reset-default-settings-button');
 const historyList = $('history-list');
@@ -62,6 +68,7 @@ const historyUiState = {
 let latestHistory = [];
 let latestLlmSettings = null;
 let latestPromptTemplateProfiles = null;
+let latestAssets = null;
 let providerSettingsSaveTimer = null;
 let runtimeUrlsSaveTimer = null;
 
@@ -89,10 +96,25 @@ function compareHistoryEntries(a, b, sortField, sortDirection) {
   return (leftTime - rightTime) * direction;
 }
 
+function formatHistoryTitle(entry) {
+  const title = typeof entry?.title === 'string' ? entry.title.trim() : '';
+  const company = typeof entry?.company === 'string' ? entry.company.trim() : '';
+
+  if (company && title) {
+    const normalizedPrefix = `${company.toLowerCase()} - `;
+    if (title.toLowerCase().startsWith(normalizedPrefix)) {
+      return title;
+    }
+    return `${company} - ${title}`;
+  }
+
+  return title || company || 'Untitled role';
+}
+
 function getVisibleHistory(history) {
   const search = historyUiState.search.trim().toLowerCase();
   const filtered = search
-    ? history.filter((entry) => (entry?.title || '').toLowerCase().includes(search))
+    ? history.filter((entry) => formatHistoryTitle(entry).toLowerCase().includes(search))
     : [...history];
 
   filtered.sort((left, right) =>
@@ -131,7 +153,7 @@ function renderHistory(history) {
     const item = document.createElement('article');
     item.className = 'history-item';
     item.innerHTML = `
-      <div class="history-item__title">${entry.title || 'Untitled role'}</div>
+      <div class="history-item__title">${formatHistoryTitle(entry)}</div>
       <div class="history-item__company">${entry.company || 'Unknown company'}</div>
       <div class="history-item__meta">Generated: ${formatDate(entry.generatedAt)}</div>
       ${entry.datePosted ? `<div class="history-item__meta">Posted: ${entry.datePosted}</div>` : ''}
@@ -363,6 +385,7 @@ function scheduleRuntimeUrlsSave() {
 }
 
 function renderAssets(assets) {
+  latestAssets = assets || null;
   const masterContext = assets?.masterResumeContextAsset;
   const storyboard = assets?.storyboardAsset;
   const activePromptProfile = getActivePromptTemplateProfile(assets);
@@ -379,6 +402,25 @@ function renderAssets(assets) {
   renderLlmProfile(assets?.llmSettings);
   appUrlInput.value = appUrl || '';
   apiUrlInput.value = apiUrl || '';
+  customFeatureCheckbox.checked = assets?.customFeatureEnabled === true;
+}
+
+function showPopup(message) {
+  window.alert(message);
+}
+
+function parseMasterResumeAssetToResumeData(asset) {
+  if (!asset?.content?.trim()) {
+    throw new Error('Upload a JSON master resume to the extension first.');
+  }
+
+  const parsedPayload = extractPrompt3PayloadFromText(asset.content);
+  const validationErrors = validateResumeData(parsedPayload.resumeData);
+  if (validationErrors.length > 0) {
+    throw new Error(`Invalid resume JSON: ${validationErrors.join(' | ')}`);
+  }
+
+  return parsedPayload.resumeData;
 }
 
 async function refresh() {
@@ -612,6 +654,33 @@ apiUrlInput.addEventListener('blur', () => {
     console.error('[ResumeMatcherExt][AdminBoard] Failed to autosave runtime URLs.', error);
     void refresh();
   });
+});
+
+customFeatureCheckbox.addEventListener('change', async () => {
+  const nextValue = customFeatureCheckbox.checked;
+  try {
+    const response = await sendMessage('SAVE_CUSTOM_FEATURE_ENABLED', { enabled: nextValue });
+    if (!response?.ok) {
+      throw new Error(response?.error ?? 'Failed to save custom feature setting.');
+    }
+  } catch (error) {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to save custom feature setting.', error);
+    customFeatureCheckbox.checked = !nextValue;
+  }
+});
+
+overwriteMasterResumeButton.addEventListener('click', async () => {
+  overwriteMasterResumeButton.disabled = true;
+  try {
+    const resumeData = parseMasterResumeAssetToResumeData(latestAssets?.masterResumeContextAsset);
+    await overwriteMasterResume(resumeData);
+    showPopup('Backend master resume overwritten successfully.');
+  } catch (error) {
+    console.error('[ResumeMatcherExt][AdminBoard] Failed to overwrite backend master resume.', error);
+    showPopup(error instanceof Error ? error.message : 'Failed to overwrite backend master resume.');
+  } finally {
+    overwriteMasterResumeButton.disabled = false;
+  }
 });
 
 resetLocalDataButton.addEventListener('click', async () => {

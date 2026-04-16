@@ -11,6 +11,7 @@ import {
   setApiOrigin,
   setAppOrigin,
   setChatGptTargetUrl,
+  setCustomFeatureEnabled,
   setLastError,
   setMasterResumeContextAsset,
   savePromptTemplateProfileSelection,
@@ -95,6 +96,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'SAVE_RUNTIME_URLS':
         await setAppOrigin(message.payload?.appUrl);
         await setApiOrigin(message.payload?.apiUrl);
+        return { ok: true };
+
+      case 'SAVE_CUSTOM_FEATURE_ENABLED':
+        await setCustomFeatureEnabled(message.payload?.enabled === true);
         return { ok: true };
 
       case 'RESET_LOCAL_DATA':
