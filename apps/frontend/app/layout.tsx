@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { Geist, Space_Grotesk } from 'next/font/google';
 import { AuthSessionProvider } from '@/components/auth/auth-session-provider';
 import { PostHogProvider } from '@/components/analytics/posthog-provider';
@@ -30,7 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className={`${geist.variable} ${spaceGrotesk.variable} antialiased bg-[#F0F0E8] text-gray-900 min-h-full`}
       >
         <AuthSessionProvider>
-          <PostHogProvider>{children}</PostHogProvider>
+          <Suspense fallback={children}>
+            <PostHogProvider>{children}</PostHogProvider>
+          </Suspense>
         </AuthSessionProvider>
       </body>
     </html>
