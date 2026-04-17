@@ -2,7 +2,14 @@ import { ImprovedResult } from '@/components/common/resume_previewer_context';
 import type { ResumeData } from '@/components/dashboard/resume-component';
 import { type TemplateSettings } from '@/lib/types/template-settings';
 import { type Locale } from '@/i18n/config';
-import { API_BASE, apiPost, apiPatch, apiDelete, apiFetch } from './client';
+import {
+  API_BASE,
+  apiDelete,
+  apiFetch,
+  apiPatch,
+  apiPost,
+  isApiRequestTimeoutError,
+} from './client';
 
 // Matches backend schemas/models.py ResumeData
 interface ProcessedResume {
@@ -282,7 +289,17 @@ export async function downloadResumePdf(
   locale?: Locale
 ): Promise<Blob> {
   const url = getResumePdfUrl(resumeId, settings, locale);
-  const res = await apiFetch(url);
+  let res: Response;
+  try {
+    res = await apiFetch(url);
+  } catch (error) {
+    if (isApiRequestTimeoutError(error)) {
+      throw new Error(
+        `Resume PDF generation timed out after ${Math.round(error.timeoutMs / 1000)} seconds. Please try again.`
+      );
+    }
+    throw error;
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Failed to download resume (status ${res.status}): ${text}`);
@@ -348,7 +365,17 @@ export async function downloadCoverLetterPdf(
   locale?: Locale
 ): Promise<Blob> {
   const url = getCoverLetterPdfUrl(resumeId, pageSize, locale);
-  const res = await apiFetch(url);
+  let res: Response;
+  try {
+    res = await apiFetch(url);
+  } catch (error) {
+    if (isApiRequestTimeoutError(error)) {
+      throw new Error(
+        `Cover letter PDF generation timed out after ${Math.round(error.timeoutMs / 1000)} seconds. Please try again.`
+      );
+    }
+    throw error;
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Failed to download cover letter (status ${res.status}): ${text}`);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { rewriteSummary } from '@/lib/api/resume';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,7 +17,6 @@ interface SummaryFormProps {
 }
 
 type PopoverType = 'original' | 'rewrite';
-type PopoverPlacement = 'above' | 'below';
 
 export const SummaryForm: React.FC<SummaryFormProps> = ({
   resumeId,
@@ -27,13 +26,13 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
   onChange,
 }) => {
   const { t } = useTranslations();
-  const [activePopover, setActivePopover] = useState<{
-    type: PopoverType;
-    placement: PopoverPlacement;
-  } | null>(null);
+  const [activePopover, setActivePopover] = useState<{ type: PopoverType } | null>(null);
   const [instruction, setInstruction] = useState('');
   const [generatedSummary, setGeneratedSummary] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const summaryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const instructionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const generatedSummaryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Explicitly allow Enter key to create newlines
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -42,40 +41,26 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
     }
   };
 
-  const getPopoverPlacement = (
-    event: React.MouseEvent<HTMLButtonElement>,
-    estimatedHeight: number
-  ): PopoverPlacement => {
-    if (typeof window === 'undefined') {
-      return 'below';
-    }
-
-    const row = (event.currentTarget as HTMLElement).closest('[data-summary-row]');
-    if (!(row instanceof HTMLElement)) {
-      return 'below';
-    }
-
-    const rect = row.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-
-    if (spaceBelow < estimatedHeight && spaceAbove > spaceBelow) {
-      return 'above';
-    }
-
-    return 'below';
+  const resizeTextarea = (element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    element.style.height = '0px';
+    element.style.height = `${element.scrollHeight}px`;
   };
 
-  const togglePopover = (
-    event: React.MouseEvent<HTMLButtonElement>,
-    type: PopoverType
-  ) => {
-    const estimatedHeight = type === 'rewrite' ? 360 : 180;
-    const placement = getPopoverPlacement(event, estimatedHeight);
+  useEffect(() => {
+    resizeTextarea(summaryTextareaRef.current);
+  }, [value]);
 
-    setActivePopover((current) =>
-      current?.type === type ? null : { type, placement }
-    );
+  useEffect(() => {
+    resizeTextarea(instructionTextareaRef.current);
+  }, [instruction]);
+
+  useEffect(() => {
+    resizeTextarea(generatedSummaryTextareaRef.current);
+  }, [generatedSummary]);
+
+  const togglePopover = (_event: React.MouseEvent<HTMLButtonElement>, type: PopoverType) => {
+    setActivePopover((current) => (current?.type === type ? null : { type }));
   };
 
   const handleGenerateRewrite = async () => {
@@ -111,8 +96,8 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
   const renderPopover = (type: PopoverType) => {
     if (type === 'original') {
       return (
-        <div className="border border-black bg-[#F0F0E8] p-3 shadow-[4px_4px_0_0_#000]">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="rounded-2xl border border-border bg-[rgba(255,253,248,0.96)] p-3 shadow-[0_18px_36px_rgba(15,23,42,0.12)]">
+          <div className="mb-1.5 flex items-center justify-between">
             <p className="font-mono text-[10px] uppercase tracking-wider text-gray-500">
               {t('builder.forms.summary.original.title')}
             </p>
@@ -133,8 +118,8 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
     }
 
     return (
-      <div className="border border-black bg-[#F0F0E8] p-3 shadow-[4px_4px_0_0_#000]">
-        <div className="mb-3 flex items-center justify-between">
+      <div className="rounded-2xl border border-border bg-[rgba(255,253,248,0.96)] p-3 shadow-[0_18px_36px_rgba(15,23,42,0.12)]">
+        <div className="mb-2 flex items-center justify-between">
           <p className="font-mono text-[10px] uppercase tracking-wider text-gray-500">
             {t('builder.forms.summary.aiRewrite.title')}
           </p>
@@ -148,12 +133,12 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
           </Button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <div className="space-y-1">
             <Label className="font-mono text-[10px] uppercase tracking-wider text-gray-500">
               {t('builder.forms.summary.original.title')}
             </Label>
-            <div className="min-h-[72px] whitespace-pre-wrap border border-black bg-white px-3 py-2 text-sm leading-5 text-black">
+            <div className="whitespace-pre-wrap rounded-xl border border-border bg-white px-3 py-2 text-sm leading-6 text-foreground shadow-xs">
               {originalValue?.trim() || t('builder.forms.summary.original.empty')}
             </div>
           </div>
@@ -163,10 +148,12 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
               {t('builder.forms.summary.aiRewrite.instructionLabel')}
             </Label>
             <Textarea
+              ref={instructionTextareaRef}
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
               placeholder={t('builder.forms.summary.aiRewrite.instructionPlaceholder')}
-              className="min-h-[76px] bg-white text-sm"
+              rows={1}
+              className="min-h-0 resize-none overflow-hidden rounded-xl border-border bg-white px-3 py-2 text-sm leading-6 shadow-xs focus-visible:border-primary focus-visible:ring-primary/25 focus-visible:ring-offset-0"
             />
           </div>
 
@@ -175,20 +162,22 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
               {t('builder.forms.summary.aiRewrite.resultLabel')}
             </Label>
             <Textarea
+              ref={generatedSummaryTextareaRef}
               value={generatedSummary}
               onChange={(e) => setGeneratedSummary(e.target.value)}
               placeholder={t('builder.forms.summary.aiRewrite.resultPlaceholder')}
-              className="min-h-[120px] bg-white text-sm"
+              rows={1}
+              className="min-h-0 resize-none overflow-hidden rounded-xl border-border bg-white px-3 py-2 text-sm leading-6 shadow-xs focus-visible:border-primary focus-visible:ring-primary/25 focus-visible:ring-offset-0"
             />
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
             <Button
               variant="outline"
               size="sm"
               onClick={handleGenerateRewrite}
               disabled={!resumeId || isGenerating || !value.trim()}
-              className="rounded-none border-black bg-white"
+              className="rounded-xl border-border bg-white"
             >
               {isGenerating ? (
                 <>
@@ -206,16 +195,16 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
               variant="outline"
               size="sm"
               onClick={() => setActivePopover(null)}
-              className="rounded-none border-black bg-white"
+              className="rounded-xl border-border bg-white"
             >
               {t('builder.forms.summary.aiRewrite.cancel')}
             </Button>
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={handleUseGeneratedSummary}
               disabled={!generatedSummary.trim()}
-              className="rounded-none border-black bg-black text-white hover:bg-white hover:text-black"
+              className="rounded-xl"
             >
               <Check className="mr-2 h-4 w-4" />
               {t('builder.forms.summary.aiRewrite.use')}
@@ -231,7 +220,6 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
   return (
     <div className="space-y-4">
       <div data-summary-row className="space-y-2">
-        {activePopover?.placement === 'above' ? popover : null}
         <div className="flex items-center justify-between gap-3">
           <Label
             htmlFor="summary"
@@ -246,7 +234,7 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
               onClick={(event) => togglePopover(event, 'rewrite')}
               disabled={!resumeId}
               title={t('builder.forms.summary.aiRewrite.button')}
-              className="h-[28px] w-8 text-muted-foreground hover:text-black"
+              className="h-8 w-8 rounded-full text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
             >
               <Sparkles className="w-3.5 h-3.5" />
             </Button>
@@ -256,7 +244,7 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
                 size="icon"
                 onClick={(event) => togglePopover(event, 'original')}
                 title={t('builder.forms.summary.original.button')}
-                className="h-[28px] w-8 text-muted-foreground hover:text-black"
+                className="h-8 w-8 rounded-full text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
               >
                 <Eye className="w-3.5 h-3.5" />
               </Button>
@@ -265,13 +253,14 @@ export const SummaryForm: React.FC<SummaryFormProps> = ({
         </div>
         <Textarea
           id="summary"
+          ref={summaryTextareaRef}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('builder.placeholders.summary')}
-          className="min-h-[150px] text-black rounded-none border-black focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700 bg-white"
+          className="min-h-[72px] resize-none overflow-hidden rounded-xl border-border bg-white text-foreground shadow-xs focus-visible:border-primary focus-visible:ring-primary/25 focus-visible:ring-offset-0"
         />
-        {activePopover?.placement === 'below' ? popover : null}
+        {popover}
       </div>
     </div>
   );

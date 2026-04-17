@@ -2,22 +2,26 @@
 
 import React from 'react';
 import { Editor } from '@tiptap/react';
-import { Bold, Italic, Underline, Link } from 'lucide-react';
+import { Bold, Italic, Underline, Link, X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
 
 interface RichTextToolbarProps {
   editor: Editor;
   onLinkClick: () => void;
+  onClose?: () => void;
 }
 
 /**
  * Rich Text Toolbar Component
  *
- * Swiss International Style formatting toolbar with B/I/U/Link buttons.
- * Active states shown with Hyper Blue background.
+ * Bright skin formatting toolbar for dense editing workflows.
  */
-export const RichTextToolbar: React.FC<RichTextToolbarProps> = ({ editor, onLinkClick }) => {
+export const RichTextToolbar: React.FC<RichTextToolbarProps> = ({
+  editor,
+  onLinkClick,
+  onClose,
+}) => {
   const tools = [
     {
       icon: Bold,
@@ -50,7 +54,7 @@ export const RichTextToolbar: React.FC<RichTextToolbarProps> = ({ editor, onLink
   ];
 
   return (
-    <div className="flex items-center gap-1 p-1 border border-black bg-[#E5E5E0]">
+    <div className="flex items-center gap-1 rounded-xl border border-border bg-[rgba(255,253,248,0.96)] p-1.5 shadow-xs">
       {tools.map((tool) => (
         <Button
           key={tool.label}
@@ -63,13 +67,28 @@ export const RichTextToolbar: React.FC<RichTextToolbarProps> = ({ editor, onLink
           }}
           title={`${tool.label} (${tool.shortcut})`}
           className={cn(
-            'h-7 w-7 rounded-none',
-            tool.isActive && 'bg-blue-700 text-white hover:bg-blue-800 hover:text-white'
+            'h-8 w-8 rounded-xl',
+            tool.isActive && 'bg-primary text-white hover:bg-[#173ce0] hover:text-white'
           )}
         >
           <tool.icon className="w-4 h-4" />
         </Button>
       ))}
+      {onClose ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={(e) => {
+            e.preventDefault();
+            onClose();
+          }}
+          title="Close formatting"
+          className="ml-auto h-8 w-8 rounded-xl text-muted-foreground hover:text-foreground"
+        >
+          <X className="w-4 h-4" />
+        </Button>
+      ) : null}
     </div>
   );
 };

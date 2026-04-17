@@ -27,16 +27,16 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#F0F0E8] px-6">
+    <main className="skin-page-brand min-h-screen flex items-center justify-center px-6">
       {extensionId ? <ExtensionLoginRequiredClient extensionId={extensionId} /> : null}
       <div className="w-full max-w-md">
-        <div className="border-2 border-black bg-[#E5E5E0] p-8 shadow-[8px_8px_0px_0px_#000000]">
+        <div className="rounded-[28px] border border-border bg-white/90 p-8 shadow-sw-card backdrop-blur-[10px]">
           <div className="space-y-2">
-            <p className="font-mono text-xs uppercase tracking-[0.12em] text-blue-700">
+            <p className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-primary">
               SOM Career Coach
             </p>
-            <h1 className="font-serif text-4xl text-black">Sign in</h1>
-            <p className="text-sm text-gray-600">
+            <h1 className="font-serif text-4xl tracking-[-0.04em] text-foreground">Sign in</h1>
+            <p className="text-sm text-muted-foreground">
               Continue with Google to access your resumes and generated documents.
             </p>
           </div>

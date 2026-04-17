@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Experience } from '@/components/dashboard/resume-component';
 import { rewriteExperienceBullet } from '@/lib/api/resume';
-import { Check, Eye, Loader2, Plus, Sparkles, Trash2, X } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  GripVertical,
+  Loader2,
+  MoreHorizontal,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+  Type,
+} from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 import {
   DndContext,
@@ -22,10 +35,13 @@ import {
 import {
   arrayMove,
   SortableContext,
+  useSortable,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { DraggableListItem } from '../draggable-list-item';
+import { cn } from '@/lib/utils';
+import { CSS } from '@dnd-kit/utilities';
 
 interface ExperienceFormProps {
   data: Experience[];
@@ -36,7 +52,46 @@ interface ExperienceFormProps {
 }
 
 type PopoverType = 'original' | 'rewrite';
-type PopoverPlacement = 'above' | 'below';
+const SortableBulletRow: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+  const [mounted, setMounted] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.65 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group/bullet">
+      {mounted ? (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="absolute -left-6 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-transparent bg-transparent text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover/bullet:opacity-100 group-focus-within/bullet:opacity-100 active:cursor-grabbing"
+          title="Drag to reorder point"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      ) : (
+        <div
+          aria-hidden="true"
+          className="absolute -left-6 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center opacity-0"
+        >
+          <GripVertical className="h-4 w-4 text-transparent" />
+        </div>
+      )}
+      {children}
+    </div>
+  );
+};
 
 export const ExperienceForm: React.FC<ExperienceFormProps> = ({
   data,
@@ -46,19 +101,56 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
   onChange,
 }) => {
   const { t } = useTranslations();
+  const builderEditableFieldClass =
+    'rounded-xl border-border bg-white focus-visible:border-primary focus-visible:ring-primary/25';
   const [activePopover, setActivePopover] = useState<{
     key: string;
     type: PopoverType;
-    placement: PopoverPlacement;
   } | null>(null);
   const [instructionByKey, setInstructionByKey] = useState<Record<string, string>>({});
   const [generatedBulletByKey, setGeneratedBulletByKey] = useState<Record<string, string>>({});
   const [isGeneratingByKey, setIsGeneratingByKey] = useState<Record<string, boolean>>({});
+  const [showFormattingByKey, setShowFormattingByKey] = useState<Record<string, boolean>>({});
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  const [collapsedDescriptionsById, setCollapsedDescriptionsById] = useState<Record<number, boolean>>(
+    {}
+  );
+  const instructionTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const generatedBulletTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   const originalExperienceById = useMemo(
     () => new Map((originalData || []).map((item) => [item.id, item])),
     [originalData]
   );
+
+  useEffect(() => {
+    if (!openMenuKey) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(`[data-bullet-menu-root="${openMenuKey}"]`)) {
+        return;
+      }
+      setOpenMenuKey(null);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [openMenuKey]);
+
+  const resizeTextarea = (element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    element.style.height = '0px';
+    element.style.height = `${element.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    Object.values(instructionTextareaRefs.current).forEach((element) => resizeTextarea(element));
+  }, [instructionByKey, activePopover]);
+
+  useEffect(() => {
+    Object.values(generatedBulletTextareaRefs.current).forEach((element) => resizeTextarea(element));
+  }, [generatedBulletByKey, activePopover]);
 
   const normalizeBulletText = (value: string): string =>
     value
@@ -259,6 +351,44 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
     );
   };
 
+  const handleDescriptionDragEnd = (id: number, event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) return;
+
+    const currentItem = data.find((item) => item.id === id);
+    if (!currentItem?.description) return;
+
+    const ids = currentItem.description.map((_, index) => `${id}:${index}`);
+    const oldIndex = ids.findIndex((value) => value === active.id);
+    const newIndex = ids.findIndex((value) => value === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    onChange(
+      data.map((item) =>
+        item.id === id
+          ? { ...item, description: arrayMove(item.description || [], oldIndex, newIndex) }
+          : item
+      )
+    );
+  };
+
+  const toggleDescriptionsCollapsed = (id: number) => {
+    setCollapsedDescriptionsById((current) => ({
+      ...current,
+      [id]: !current[id],
+    }));
+  };
+
+  const toggleFormatting = (key: string) => {
+    setShowFormattingByKey((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+    setOpenMenuKey(null);
+  };
+
   const handleRemoveDescription = (id: number, index: number) => {
     onChange(
       data.map((item) => {
@@ -287,40 +417,13 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
     return typeof originalBullet === 'string' && originalBullet.trim() ? originalBullet : null;
   };
 
-  const getPopoverPlacement = (
-    event: React.MouseEvent<HTMLButtonElement>,
-    estimatedHeight: number
-  ): PopoverPlacement => {
-    if (typeof window === 'undefined') {
-      return 'below';
-    }
-
-    const row = (event.currentTarget as HTMLElement).closest('[data-bullet-row]');
-    if (!(row instanceof HTMLElement)) {
-      return 'below';
-    }
-
-    const rect = row.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-
-    if (spaceBelow < estimatedHeight && spaceAbove > spaceBelow) {
-      return 'above';
-    }
-
-    return 'below';
-  };
-
   const togglePopover = (
-    event: React.MouseEvent<HTMLButtonElement>,
+    _event: React.MouseEvent<HTMLButtonElement>,
     key: string,
     type: PopoverType
   ) => {
-    const estimatedHeight = type === 'rewrite' ? 360 : 180;
-    const placement = getPopoverPlacement(event, estimatedHeight);
-
     setActivePopover((current) =>
-      current?.key === key && current.type === type ? null : { key, type, placement }
+      current?.key === key && current.type === type ? null : { key, type }
     );
   };
 
@@ -386,7 +489,7 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
   ) => {
     if (type === 'original') {
       return (
-        <div className="mr-10 border border-black bg-[#F0F0E8] p-3 shadow-[4px_4px_0_0_#000]">
+        <div className="mr-10 rounded-2xl border border-border bg-[rgba(255,253,248,0.96)] p-4 shadow-[0_18px_36px_rgba(15,23,42,0.12)]">
           <div className="mb-2 flex items-center justify-between">
             <p className="font-mono text-[10px] uppercase tracking-wider text-gray-500">
               {t('builder.forms.experience.originalBullet.title')}
@@ -411,7 +514,7 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
     const isGenerating = Boolean(isGeneratingByKey[key]);
 
     return (
-      <div className="mr-10 border border-black bg-[#F0F0E8] p-3 shadow-[4px_4px_0_0_#000]">
+      <div className="mr-10 rounded-2xl border border-border bg-[rgba(255,253,248,0.96)] p-4 shadow-[0_18px_36px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">
           <p className="font-mono text-[10px] uppercase tracking-wider text-gray-500">
             {t('builder.forms.experience.aiRewrite.title')}
@@ -431,7 +534,7 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
             <Label className="font-mono text-[10px] uppercase tracking-wider text-gray-500">
               {t('builder.forms.experience.originalBullet.title')}
             </Label>
-            <div className="min-h-[72px] border border-black bg-white px-3 py-2 text-sm leading-5 text-black">
+            <div className="min-h-[72px] rounded-xl border border-border bg-white px-3 py-2 text-sm leading-6 text-foreground shadow-xs">
               {originalBullet || t('builder.forms.experience.originalBullet.empty')}
             </div>
           </div>
@@ -441,10 +544,17 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
               {t('builder.forms.experience.aiRewrite.instructionLabel')}
             </Label>
             <Textarea
+              ref={(element) => {
+                instructionTextareaRefs.current[key] = element;
+              }}
               value={instructionByKey[key] || ''}
-              onChange={(e) => handleInstructionChange(key, e.target.value)}
+              onChange={(e) => {
+                resizeTextarea(e.currentTarget);
+                handleInstructionChange(key, e.target.value);
+              }}
               placeholder={t('builder.forms.experience.aiRewrite.instructionPlaceholder')}
-              className="min-h-[76px] bg-white text-sm"
+              rows={1}
+              className="min-h-0 resize-none overflow-hidden rounded-xl border-border bg-white px-3 py-2 text-sm leading-6 shadow-xs focus-visible:border-primary focus-visible:ring-primary/25 focus-visible:ring-offset-0"
             />
           </div>
 
@@ -453,10 +563,17 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
               {t('builder.forms.experience.aiRewrite.resultLabel')}
             </Label>
             <Textarea
+              ref={(element) => {
+                generatedBulletTextareaRefs.current[key] = element;
+              }}
               value={generatedBullet}
-              onChange={(e) => handleGeneratedBulletChange(key, e.target.value)}
+              onChange={(e) => {
+                resizeTextarea(e.currentTarget);
+                handleGeneratedBulletChange(key, e.target.value);
+              }}
               placeholder={t('builder.forms.experience.aiRewrite.resultPlaceholder')}
-              className="min-h-[92px] bg-white text-sm"
+              rows={1}
+              className="min-h-0 resize-none overflow-hidden rounded-xl border-border bg-white px-3 py-2 text-sm leading-6 shadow-xs focus-visible:border-primary focus-visible:ring-primary/25 focus-visible:ring-offset-0"
             />
           </div>
 
@@ -466,7 +583,7 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
               size="sm"
               onClick={() => handleGenerateRewrite(key, item, currentBullet, originalBullet)}
               disabled={!resumeId || isGenerating}
-              className="rounded-none border-black bg-white"
+              className="rounded-xl border-border bg-white"
             >
               {isGenerating ? (
                 <>
@@ -484,16 +601,16 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
               variant="outline"
               size="sm"
               onClick={() => setActivePopover(null)}
-              className="rounded-none border-black bg-white"
+              className="rounded-xl border-border bg-white"
             >
               {t('builder.forms.experience.aiRewrite.cancel')}
             </Button>
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={() => handleUseGeneratedBullet(item.id, bulletIndex, key)}
               disabled={!generatedBullet.trim()}
-              className="rounded-none border-black bg-black text-white hover:bg-white hover:text-black"
+              className="rounded-xl"
             >
               <Check className="mr-2 h-4 w-4" />
               {t('builder.forms.experience.aiRewrite.use')}
@@ -506,27 +623,16 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleAdd}
-          className="rounded-none border-black hover:bg-black hover:text-white transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" /> {t('builder.forms.experience.addJob')}
-        </Button>
-      </div>
-
       {data.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 border border-dashed border-black">
+        <div className="text-center py-12 rounded-2xl border border-dashed border-border bg-card/70">
           <p className="font-mono text-sm text-gray-500 mb-4">
             {t('builder.genericItemForm.noEntries', { label: t('resume.sections.experience') })}
           </p>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={handleAdd}
-            className="rounded-none border-black"
+            className="h-10 rounded-xl border border-dashed border-border bg-white px-4 text-sm text-foreground hover:bg-secondary/40"
           >
             <Plus className="w-4 h-4 mr-2" /> {t('builder.forms.experience.addFirstJob')}
           </Button>
@@ -540,7 +646,7 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
             <div className="space-y-8">
               {data.map((item, experienceIndex) => (
                 <DraggableListItem key={item.id} id={item.id}>
-                  <div className="p-6 border border-black bg-gray-50 relative group">
+                  <div className="relative group rounded-2xl border border-border bg-card/80 p-6 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -550,142 +656,211 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                       <Trash2 className="w-4 h-4" />
                     </Button>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 pr-8">
-                      <div className="space-y-2">
-                        <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                          {t('builder.forms.experience.fields.jobTitle')}
-                        </Label>
+                    <div className="mb-3 grid grid-cols-1 gap-3 pr-8 md:grid-cols-2">
+                      <div className="space-y-1">
                         <Input
                           value={item.title || ''}
                           onChange={(e) => handleChange(item.id, 'title', e.target.value)}
                           placeholder={t('builder.forms.experience.placeholders.jobTitle')}
-                          className="rounded-none border-black bg-white"
+                          className={cn(builderEditableFieldClass, 'font-semibold')}
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                          {t('builder.forms.experience.fields.company')}
-                        </Label>
-                        <Input
-                          value={item.company || ''}
-                          onChange={(e) => handleChange(item.id, 'company', e.target.value)}
-                          placeholder={t('builder.forms.experience.placeholders.company')}
-                          className="rounded-none border-black bg-white"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                          {t('builder.genericItemForm.fields.location')}
-                        </Label>
-                        <Input
-                          value={item.location || ''}
-                          onChange={(e) => handleChange(item.id, 'location', e.target.value)}
-                          placeholder={t('builder.forms.experience.placeholders.location')}
-                          className="rounded-none border-black bg-white"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                          {t('builder.genericItemForm.fields.years')}
-                        </Label>
+                      <div className="space-y-1">
                         <Input
                           value={item.years || ''}
                           onChange={(e) => handleChange(item.id, 'years', e.target.value)}
                           placeholder={t('builder.forms.experience.placeholders.years')}
-                          className="rounded-none border-black bg-white"
+                          className={cn(builderEditableFieldClass, 'font-semibold')}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Input
+                          value={item.company || ''}
+                          onChange={(e) => handleChange(item.id, 'company', e.target.value)}
+                          placeholder={t('builder.forms.experience.placeholders.company')}
+                          className={cn(builderEditableFieldClass, 'font-semibold')}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Input
+                          value={item.location || ''}
+                          onChange={(e) => handleChange(item.id, 'location', e.target.value)}
+                          placeholder={t('builder.forms.experience.placeholders.location')}
+                          className={cn(builderEditableFieldClass, 'font-semibold')}
                         />
                       </div>
                     </div>
 
                     <div className="space-y-3">
-                      <div className="flex justify-between items-center">
+                      <div className="flex items-center justify-between gap-3">
                         <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
                           {t('builder.genericItemForm.fields.descriptionPoints')}
                         </Label>
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleAddDescription(item.id)}
-                          className="h-6 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+                          onClick={() => toggleDescriptionsCollapsed(item.id)}
+                          className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground"
+                          title={
+                            collapsedDescriptionsById[item.id]
+                              ? 'Expand description points'
+                              : 'Collapse description points'
+                          }
                         >
-                          <Plus className="w-3 h-3 mr-1" />{' '}
-                          {t('builder.genericItemForm.actions.addPoint')}
+                          {collapsedDescriptionsById[item.id] ? (
+                            <ChevronRight className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
-                      {item.description?.map((desc, idx) => {
-                        const bulletPopoverKey = `${item.id}-${idx}`;
-                        const originalBullet = getOriginalBullet(item, experienceIndex, idx);
-                        const isActive = activePopover?.key === bulletPopoverKey;
-                        const activeType = isActive ? activePopover.type : null;
-                        const activePlacement = isActive ? activePopover.placement : 'below';
-                        const popover =
-                          isActive && activeType
-                            ? renderPopover(
-                                bulletPopoverKey,
-                                activeType,
-                                item,
-                                idx,
-                                desc,
-                                originalBullet
-                              )
-                            : null;
+                      {collapsedDescriptionsById[item.id] ? null : (
+                        <>
+                          <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={(event) => handleDescriptionDragEnd(item.id, event)}
+                          >
+                            <SortableContext
+                              items={(item.description || []).map((_, idx) => `${item.id}:${idx}`)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              {item.description?.map((desc, idx) => {
+                                const bulletPopoverKey = `${item.id}-${idx}`;
+                                const originalBullet = getOriginalBullet(item, experienceIndex, idx);
+                                const isActive = activePopover?.key === bulletPopoverKey;
+                                const activeType = isActive ? activePopover.type : null;
+                                const showFormatting = showFormattingByKey[bulletPopoverKey] ?? false;
+                                const popover =
+                                  isActive && activeType
+                                    ? renderPopover(
+                                        bulletPopoverKey,
+                                        activeType,
+                                        item,
+                                        idx,
+                                        desc,
+                                        originalBullet
+                                      )
+                                    : null;
 
-                        return (
-                          <div key={idx} data-bullet-row className="space-y-2">
-                            {isActive && activePlacement === 'above' ? popover : null}
-                            <div className="flex items-start gap-2">
-                              <div className="flex-1">
-                                <RichTextEditor
-                                  value={desc}
-                                  onChange={(html) => handleDescriptionChange(item.id, idx, html)}
-                                  placeholder={t('builder.forms.experience.placeholders.description')}
-                                  minHeight="60px"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1 pt-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={(event) =>
-                                    togglePopover(event, bulletPopoverKey, 'rewrite')
-                                  }
-                                  disabled={!resumeId}
-                                  title={t('builder.forms.experience.aiRewrite.button')}
-                                  className="h-[28px] w-8 text-muted-foreground hover:text-black"
-                                >
-                                  <Sparkles className="w-3.5 h-3.5" />
-                                </Button>
-                                {originalData && originalData.length > 0 ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={(event) =>
-                                      togglePopover(event, bulletPopoverKey, 'original')
-                                    }
-                                    title={t('builder.forms.experience.originalBullet.button')}
-                                    className="h-[28px] w-8 text-muted-foreground hover:text-black"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                  </Button>
-                                ) : null}
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleRemoveDescription(item.id, idx)}
-                                  className="h-[28px] w-8 text-muted-foreground hover:text-destructive"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </div>
-                            {isActive && activePlacement === 'below' ? popover : null}
-                          </div>
-                        );
-                      })}
+                                return (
+                                  <SortableBulletRow key={bulletPopoverKey} id={`${item.id}:${idx}`}>
+                                    <div data-bullet-row className="space-y-2">
+                                      <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                          <RichTextEditor
+                                            value={desc}
+                                            onChange={(html) =>
+                                              handleDescriptionChange(item.id, idx, html)
+                                            }
+                                            placeholder={t('builder.forms.experience.placeholders.description')}
+                                            minHeight="60px"
+                                            showToolbar={showFormatting}
+                                            onToolbarClose={() => toggleFormatting(bulletPopoverKey)}
+                                          />
+                                        </div>
+                                        <div
+                                          className="relative flex shrink-0 flex-col items-center justify-center gap-0.5 self-center"
+                                          data-bullet-menu-root={bulletPopoverKey}
+                                        >
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={(event) =>
+                                              togglePopover(event, bulletPopoverKey, 'rewrite')
+                                            }
+                                            disabled={!resumeId}
+                                            title={t('builder.forms.experience.aiRewrite.button')}
+                                            className="h-8 w-8 rounded-full border-transparent bg-transparent px-0 text-xs font-semibold text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground"
+                                          >
+                                            <Sparkles className="h-3.5 w-3.5" />
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() =>
+                                              setOpenMenuKey((current) =>
+                                                current === bulletPopoverKey ? null : bulletPopoverKey
+                                              )
+                                            }
+                                            title="More actions"
+                                            className="h-8 w-8 rounded-full border-transparent bg-transparent px-0 text-xs font-semibold text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground"
+                                          >
+                                            <MoreHorizontal className="h-3.5 w-3.5" />
+                                          </Button>
+                                          {openMenuKey === bulletPopoverKey ? (
+                                            <div className="absolute right-full top-8 z-20 mr-2 min-w-[164px] overflow-hidden rounded-2xl border border-border bg-white shadow-[0_16px_36px_rgba(15,23,42,0.12)]">
+                                              {originalData && originalData.length > 0 ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={(event) => {
+                                                    setOpenMenuKey(null);
+                                                    togglePopover(event, bulletPopoverKey, 'original');
+                                                  }}
+                                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-secondary/60"
+                                                >
+                                                  <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                                                  <span>View original</span>
+                                                </button>
+                                              ) : null}
+                                              <button
+                                                type="button"
+                                                onClick={() => toggleFormatting(bulletPopoverKey)}
+                                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-secondary/60"
+                                              >
+                                                <Type
+                                                  className={cn(
+                                                    'h-3.5 w-3.5 text-muted-foreground',
+                                                    showFormatting && 'text-primary'
+                                                  )}
+                                                />
+                                                <span>Format</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenMenuKey(null);
+                                                  handleRemoveDescription(item.id, idx);
+                                                }}
+                                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/5"
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                                <span>Delete</span>
+                                              </button>
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                      {popover}
+                                    </div>
+                                  </SortableBulletRow>
+                                );
+                              })}
+                            </SortableContext>
+                          </DndContext>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleAddDescription(item.id)}
+                            className="mt-1 h-auto w-auto justify-start rounded-none border-none bg-transparent px-0 py-0 text-xs font-semibold text-blue-700 shadow-none hover:bg-transparent hover:text-blue-800"
+                          >
+                            <Plus className="w-3 h-3 mr-1" /> {t('builder.genericItemForm.actions.addPoint')}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </DraggableListItem>
               ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleAdd}
+                className="h-10 w-full justify-center rounded-xl border border-dashed border-border bg-white text-sm text-foreground hover:bg-secondary/40"
+              >
+                <Plus className="w-4 h-4 mr-2" /> {t('builder.forms.experience.addJob')}
+              </Button>
             </div>
           </SortableContext>
         </DndContext>

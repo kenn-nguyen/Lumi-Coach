@@ -93,6 +93,8 @@ export interface SectionMeta {
   sectionType: SectionType; // Type of section
   isDefault: boolean; // True for built-in sections
   isVisible: boolean; // Whether to show in resume
+  pendingRemoval?: boolean; // Staged for deletion until next save
+  visibilityBeforeRemoval?: boolean; // Remember visibility for undo before save
   order: number; // Display order (0 = first after personalInfo)
 }
 

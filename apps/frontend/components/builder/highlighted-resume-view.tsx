@@ -28,14 +28,14 @@ export function HighlightedResumeView({
   const resolvedSubtitle = subtitle ?? t('builder.jdMatch.matchingKeywordsHighlighted');
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-[#fcfaf4]">
       {/* Header */}
-      <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50">
-        <FileUser className="w-4 h-4 text-gray-600" />
+      <div className="flex min-h-[72px] items-center gap-2 border-b border-[#ddd5c4] bg-[#f6f1e6] px-4 py-3">
+        <FileUser className="w-4 h-4 text-gray-600 shrink-0" />
         <h3 className="font-mono text-sm font-bold uppercase text-gray-700">
           {resolvedTitle}
         </h3>
-        <span className="text-xs text-gray-500 ml-2">
+        <span className="ml-2 text-sm text-gray-500">
           {resolvedSubtitle}
         </span>
       </div>
@@ -198,9 +198,9 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border border-gray-200 bg-white rounded-none">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-gray-50">
-        {icon}
+    <div className="overflow-hidden rounded-[18px] border border-[#ddd5c4] bg-white">
+      <div className="flex items-center gap-2 border-b border-[#e6dfd1] bg-[#f6f1e6] px-3 py-2">
+        <span className="text-gray-600">{icon}</span>
         <span className="font-mono text-xs font-bold uppercase text-gray-600">{title}</span>
       </div>
       <div className="p-3">{children}</div>
@@ -218,7 +218,10 @@ function HighlightedText({ text, keywords }: { text: string; keywords: Set<strin
     <span>
       {segments.map((segment, i) =>
         segment.isMatch ? (
-          <mark key={i} className="bg-yellow-200 text-black px-0.5">
+          <mark
+            key={i}
+            className="rounded-[4px] bg-[#ffeb7a] px-0.5 text-black ring-1 ring-[#f2da57]/50"
+          >
             {segment.text}
           </mark>
         ) : (
@@ -237,8 +240,10 @@ function SkillTag({ text, keywords }: { text: string; keywords: Set<string> }) {
 
   return (
     <span
-      className={`inline-block px-2 py-0.5 text-xs ${
-        isMatch ? 'bg-yellow-200 text-black font-medium' : 'bg-[#F0F0E8] text-gray-600'
+      className={`inline-block rounded-full px-2 py-1 text-xs ${
+        isMatch
+          ? 'bg-[#ffeb7a] text-black font-medium ring-1 ring-[#f2da57]/60'
+          : 'bg-[#f6f1e6] text-gray-600 ring-1 ring-[#ddd5c4]'
       }`}
     >
       {text}

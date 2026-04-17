@@ -41,8 +41,9 @@ import { useStatusCache } from '@/lib/context/status-cache';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
 
-const TAILOR_PROMPT_COUNT_KEY = 'som_career_coach_tailor_prompt_count';
-const TAILOR_PROMPT_DISMISSED_KEY = 'som_career_coach_tailor_prompt_dismissed';
+const LEGACY_TAILOR_PROMPT_COUNT_KEY = 'som_career_coach_tailor_prompt_count';
+const LEGACY_TAILOR_PROMPT_DISMISSED_KEY = 'som_career_coach_tailor_prompt_dismissed';
+const TAILOR_PROMPT_HIDDEN_KEY = 'som_career_coach_tailor_prompt_hidden_explicit';
 
 export default function DashboardPage() {
   const { status: authStatus } = useSession();
@@ -58,7 +59,6 @@ export default function DashboardPage() {
   const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
   const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
   const [showTailorPrompt, setShowTailorPrompt] = useState(false);
-  const [tailorPromptCount, setTailorPromptCount] = useState(0);
   const [tailorPromptDismissed, setTailorPromptDismissed] = useState(false);
   const [hideTailorPrompt, setHideTailorPrompt] = useState(false);
   const router = useRouter();
@@ -121,9 +121,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const savedCount = Number(localStorage.getItem(TAILOR_PROMPT_COUNT_KEY) || '0');
-    setTailorPromptCount(Number.isFinite(savedCount) ? savedCount : 0);
-    setTailorPromptDismissed(localStorage.getItem(TAILOR_PROMPT_DISMISSED_KEY) === 'true');
+    localStorage.removeItem(LEGACY_TAILOR_PROMPT_COUNT_KEY);
+    localStorage.removeItem(LEGACY_TAILOR_PROMPT_DISMISSED_KEY);
+    setTailorPromptDismissed(localStorage.getItem(TAILOR_PROMPT_HIDDEN_KEY) === 'true');
   }, []);
 
   const loadTailoredResumes = useCallback(async () => {
@@ -283,11 +283,15 @@ export default function DashboardPage() {
 
   const persistTailorPromptPreference = useCallback(
     (shouldHide: boolean) => {
-      if (!shouldHide || tailorPromptCount < 3) return;
-      localStorage.setItem(TAILOR_PROMPT_DISMISSED_KEY, 'true');
-      setTailorPromptDismissed(true);
+      if (shouldHide) {
+        localStorage.setItem(TAILOR_PROMPT_HIDDEN_KEY, 'true');
+        setTailorPromptDismissed(true);
+        return;
+      }
+      localStorage.removeItem(TAILOR_PROMPT_HIDDEN_KEY);
+      setTailorPromptDismissed(false);
     },
-    [tailorPromptCount]
+    []
   );
 
   const handleTailorPromptOpenChange = (open: boolean) => {
@@ -305,9 +309,6 @@ export default function DashboardPage() {
       return;
     }
 
-    const nextCount = tailorPromptCount + 1;
-    setTailorPromptCount(nextCount);
-    localStorage.setItem(TAILOR_PROMPT_COUNT_KEY, String(nextCount));
     setHideTailorPrompt(false);
     setShowTailorPrompt(true);
   };
@@ -437,7 +438,7 @@ export default function DashboardPage() {
 
   const renderStatusPill = (status: ResumeListItem['processing_status'] | ProcessingStatus) => {
     const baseClass =
-      'inline-flex items-center border border-black px-2 py-1 text-[10px] font-mono uppercase tracking-[0.18em]';
+      'inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em]';
     switch (status) {
       case 'failed':
         return <span className={cn(baseClass, 'bg-red-50 text-red-700')}>{status}</span>;
@@ -445,7 +446,7 @@ export default function DashboardPage() {
       case 'pending':
         return <span className={cn(baseClass, 'bg-blue-50 text-blue-700')}>{status}</span>;
       default:
-        return <span className={cn(baseClass, 'bg-[#E5E5E0] text-gray-500')}>{status}</span>;
+        return <span className={cn(baseClass, 'bg-secondary text-muted-foreground')}>{status}</span>;
     }
   };
 
@@ -472,7 +473,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Configuration Warning Banner */}
       {masterResumeId && !isLlmConfigured && !statusLoading && (
-        <div className="border-2 border-warning bg-amber-50 p-4 shadow-sw-default mb-6 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sw-sm">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-warning" />
             <div>
@@ -495,7 +496,6 @@ export default function DashboardPage() {
 
       <SwissGrid
         title={t('dashboard.myResumes')}
-        subtitle={t('dashboard.subtitle')}
         headerActions={
           <>
             <div className="relative group" ref={masterMenuRef}>
@@ -508,7 +508,7 @@ export default function DashboardPage() {
                   >
                     <span
                       className={cn(
-                        'flex h-5 w-5 items-center justify-center border border-black text-[9px] font-bold',
+                        'flex h-5 w-5 items-center justify-center rounded-full border border-border text-[9px] font-bold',
                         processingStatus === 'failed'
                           ? 'bg-red-50 text-red-700'
                           : processingStatus === 'processing' || processingStatus === 'pending'
@@ -544,21 +544,21 @@ export default function DashboardPage() {
                       setIsMasterMenuOpen((open) => !open);
                     }}
                     className={cn(
-                      'border border-black border-l-0 bg-[#E5E5E0] px-3 text-black shadow-[2px_2px_0px_0px_#000000] transition-all duration-150 hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none',
+                      'rounded-r-xl border border-border border-l-0 bg-secondary px-3 text-foreground shadow-xs transition-colors hover:bg-muted',
                       'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100'
                     )}
                   >
                     <MoreHorizontal className="h-4 w-4" />
                   </button>
                   {isMasterMenuOpen ? (
-                    <div className="absolute right-0 top-full z-40 mt-2 min-w-[13rem] border border-black bg-canvas shadow-[4px_4px_0px_0px_#000000]">
+                    <div className="absolute right-0 top-full z-40 mt-2 min-w-[13rem] overflow-hidden rounded-2xl border border-border bg-card shadow-sw-default">
                       <button
                         type="button"
                         onClick={() => {
                           setIsMasterMenuOpen(false);
                           handleOpenMasterResume();
                         }}
-                        className="flex w-full items-center justify-between border-b border-black px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-[#EAEAE2]"
+                        className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
                       >
                         <span>{t('dashboard.openMasterResume')}</span>
                         <ChevronRight className="h-3.5 w-3.5" />
@@ -569,7 +569,7 @@ export default function DashboardPage() {
                           setIsMasterMenuOpen(false);
                           setIsUploadDialogOpen(true);
                         }}
-                        className="flex w-full items-center justify-between border-b border-black px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-[#EAEAE2]"
+                        className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
                       >
                         <span>{t('dashboard.replaceMasterResume')}</span>
                         <Upload className="h-3.5 w-3.5" />
@@ -584,7 +584,7 @@ export default function DashboardPage() {
                             masterResumeItem?.title || t('dashboard.masterResume')
                           );
                         }}
-                        className="flex w-full items-center justify-between border-b border-black px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-[#EAEAE2]"
+                        className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
                       >
                         <span>{t('dashboard.exportJson')}</span>
                         <ChevronRight className="h-3.5 w-3.5" />
@@ -607,7 +607,7 @@ export default function DashboardPage() {
                   onUploadComplete={handleUploadComplete}
                   trigger={
                     <Button variant="outline" className="h-10 min-w-[15rem] justify-start px-4">
-                      <span className="flex h-5 w-5 items-center justify-center border border-black bg-blue-700 text-white">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/10 bg-primary text-white">
                         <Plus className="h-3.5 w-3.5" />
                       </span>
                       <span className="flex min-w-0 flex-col items-start">
@@ -643,8 +643,8 @@ export default function DashboardPage() {
           />
         ) : null}
         <div className="space-y-6">
-          <div className="border border-black bg-canvas overflow-hidden flex min-h-[32rem] flex-col">
-            <div className="sticky top-0 z-10 border-b border-black bg-canvas px-6 py-4">
+          <div className="skin-card flex min-h-[32rem] flex-col overflow-hidden rounded-[24px]">
+            <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h2 className="font-serif text-3xl">{t('dashboard.tailoredResumes')}</h2>
@@ -658,12 +658,12 @@ export default function DashboardPage() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('common.search')}
-                    className="h-10 min-w-[16rem] border border-black bg-canvas px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-blue-700"
+                    className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
                   />
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as 'updated' | 'title')}
-                    className="h-10 min-w-[12rem] border border-black bg-canvas px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-blue-700"
+                    className="h-10 min-w-[12rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
                   >
                     <option value="updated">{t('dashboard.sortUpdated')}</option>
                     <option value="title">{t('dashboard.sortTitle')}</option>
@@ -686,7 +686,7 @@ export default function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto bg-canvas">
+              <div className="flex-1 overflow-y-auto bg-card">
                 {filteredTailoredResumes.map((resume, index) => {
                   const title = getResumeTitle(resume);
                   const color = cardPalette[hashTitle(title) % cardPalette.length];
@@ -696,12 +696,12 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => router.push(`/resumes/${resume.resume_id}`)}
                       className={cn(
-                        'flex w-full items-center gap-4 bg-canvas px-6 py-3 text-left transition-colors hover:bg-[#EAEAE2]',
-                        index > 0 && 'border-t border-black'
+                        'flex w-full items-center gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80',
+                        index > 0 && 'border-t border-border'
                       )}
                     >
                       <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-black"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border"
                         style={{ backgroundColor: color.bg, color: color.fg }}
                       >
                         <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
@@ -718,7 +718,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
                         {renderStatusPill(resume.processing_status)}
-                        <span className="flex h-6 w-6 items-center justify-center border border-black bg-[#E5E5E0] text-black">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                           <ChevronRight className="h-3 w-3" />
                         </span>
                       </div>
@@ -743,7 +743,7 @@ export default function DashboardPage() {
 
         <Dialog open={showTailorPrompt} onOpenChange={handleTailorPromptOpenChange}>
           <DialogContent className="max-w-[32rem] p-0 gap-0">
-            <DialogHeader className="border-b border-black p-6 pb-4">
+            <DialogHeader className="border-b border-border p-6 pb-4">
               <DialogTitle className="font-serif text-2xl">
                 {t('dashboard.chromeExtensionPrompt.title')}
               </DialogTitle>
@@ -754,20 +754,18 @@ export default function DashboardPage() {
                 {t('dashboard.chromeExtensionPrompt.body')}
               </p>
 
-              {tailorPromptCount >= 3 ? (
-                <label className="flex items-start gap-3 border border-black px-4 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={hideTailorPrompt}
-                    onChange={(event) => setHideTailorPrompt(event.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded-none border border-black accent-blue-700"
-                  />
-                  <span>{t('dashboard.chromeExtensionPrompt.hideOption')}</span>
-                </label>
-              ) : null}
+              <label className="flex items-start gap-3 rounded-2xl border border-border px-4 py-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={hideTailorPrompt}
+                  onChange={(event) => setHideTailorPrompt(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded-sm border border-border accent-blue-700"
+                />
+                <span>{t('dashboard.chromeExtensionPrompt.hideOption')}</span>
+              </label>
             </div>
 
-            <DialogFooter className="border-t border-black bg-[#E5E5E0] p-4 flex-row justify-end gap-3">
+            <DialogFooter className="flex-row justify-end gap-3 border-t border-border bg-secondary/60 p-4">
               <Button variant="outline" onClick={() => handleTailorPromptOpenChange(false)}>
                 {t('common.cancel')}
               </Button>

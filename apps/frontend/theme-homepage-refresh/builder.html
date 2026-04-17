@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Builder Theme Preview</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="./preview-shared.css" />
+    <style>
+      .builder-shell { min-height: calc(100vh - 64px); display:flex; flex-direction:column; border-radius:30px; overflow:hidden; }
+      .builder-header-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      .builder-workspace { display:grid; grid-template-columns: 47% 12px 1fr; gap:0; flex:1; min-height:0; background:var(--thr-border-soft); }
+      .builder-editor,
+      .builder-preview { min-height:0; }
+      .builder-editor { background:#f7f3e8; padding:18px 20px 24px; overflow:auto; }
+      .builder-preview { background:#f1eee4; display:flex; flex-direction:column; }
+      .builder-divider { background:#ebe7dc; position:relative; }
+      .builder-divider::after { content:""; position:absolute; inset:0; margin:auto; width:3px; height:68px; border-radius:999px; background:rgba(18,24,38,0.18); }
+      .builder-column-header {
+        display:flex;
+        justify-content:space-between;
+        gap:14px;
+        align-items:center;
+        padding:4px 0 16px;
+        margin-bottom:18px;
+        border-bottom:1px solid rgba(18, 24, 38, 0.12);
+      }
+      .builder-column-title {
+        display:flex;
+        align-items:center;
+        gap:12px;
+        font-size:13px;
+        font-weight:700;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+      }
+      .builder-column-title::before {
+        content:"";
+        width:14px;
+        height:14px;
+        background:#2453ff;
+      }
+      .builder-meta-actions { display:flex; gap:10px; align-items:center; color:#63708d; }
+      .builder-meta-actions span {
+        display:inline-flex;
+        width:28px;
+        height:28px;
+        align-items:center;
+        justify-content:center;
+        border-radius:999px;
+        border:1px solid rgba(18, 24, 38, 0.08);
+        background:rgba(255,255,255,0.56);
+      }
+      .editor-top-row {
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        align-items:center;
+        margin-bottom:18px;
+      }
+      .editor-fold {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        padding:16px 18px;
+        border:1px solid rgba(18, 24, 38, 0.14);
+        background:#fcfbf7;
+        box-shadow:0 1px 0 rgba(255,255,255,0.7) inset;
+      }
+      .editor-fold strong {
+        font-size:12px;
+        letter-spacing:.14em;
+        text-transform:uppercase;
+      }
+      .editor-panel {
+        margin-top:16px;
+        padding:22px 24px 24px;
+        border:1px solid rgba(18, 24, 38, 0.14);
+        background:#fffdf8;
+      }
+      .editor-panel-header {
+        display:flex;
+        justify-content:space-between;
+        gap:16px;
+        align-items:center;
+        padding-bottom:12px;
+        margin-bottom:18px;
+        border-bottom:1px solid rgba(18, 24, 38, 0.12);
+      }
+      .editor-panel-header h2 {
+        margin:0;
+        font-family:"Iowan Old Style", "Times New Roman", serif;
+        font-size:26px;
+        letter-spacing:-0.03em;
+      }
+      .editor-grid {
+        display:grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap:14px 18px;
+      }
+      .field-group label,
+      .list-label {
+        display:block;
+        margin-bottom:8px;
+        font-size:12px;
+        font-weight:700;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        color:#6f7c99;
+      }
+      .editor-input {
+        width:100%;
+        box-sizing:border-box;
+        padding:13px 14px;
+        border:1px solid rgba(18, 24, 38, 0.18);
+        background:#fffdfa;
+        color:#1c2434;
+        font:inherit;
+      }
+      .editor-input::placeholder { color:#8b94aa; }
+      .editor-section {
+        margin-top:18px;
+        padding:22px 24px;
+        border:1px solid rgba(18, 24, 38, 0.14);
+        background:#fffdf8;
+      }
+      .editor-section-header {
+        display:flex;
+        justify-content:space-between;
+        gap:14px;
+        align-items:center;
+        padding-bottom:14px;
+        margin-bottom:18px;
+        border-bottom:1px solid rgba(18, 24, 38, 0.12);
+      }
+      .editor-section-header h3 {
+        margin:0;
+        font-family:"Iowan Old Style", "Times New Roman", serif;
+        font-size:28px;
+        letter-spacing:-0.035em;
+      }
+      .editor-section-actions,
+      .editor-item-actions {
+        display:flex;
+        gap:8px;
+        align-items:center;
+        color:#6b7690;
+      }
+      .editor-item-actions span {
+        display:inline-flex;
+        width:24px;
+        height:24px;
+        align-items:center;
+        justify-content:center;
+      }
+      .editor-action {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:10px;
+        padding:12px 16px;
+        border:1px solid rgba(18, 24, 38, 0.16);
+        background:#fffdfa;
+        color:#182032;
+        font-size:13px;
+        font-weight:700;
+        text-decoration:none;
+      }
+      .editor-job-card {
+        padding:18px 20px 20px;
+        border:1px solid rgba(18, 24, 38, 0.12);
+        background:#fdfbf5;
+      }
+      .editor-job-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:14px 18px;
+      }
+      .bullet-list {
+        margin-top:18px;
+        display:flex;
+        flex-direction:column;
+        gap:12px;
+      }
+      .bullet-item {
+        border:1px solid rgba(18, 24, 38, 0.1);
+        background:#fbf7ec;
+      }
+      .bullet-toolbar {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:12px;
+        padding:10px 14px;
+        border-bottom:1px solid rgba(18, 24, 38, 0.08);
+        color:#5e6982;
+        font-size:13px;
+      }
+      .bullet-toolbar-left,
+      .bullet-toolbar-right {
+        display:flex;
+        gap:16px;
+        align-items:center;
+      }
+      .bullet-body {
+        padding:14px 16px;
+        line-height:1.55;
+        color:#1f2937;
+      }
+      .preview-top { padding:18px 24px 0; }
+      .preview-tabs {
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px;
+      }
+      .preview-tab {
+        padding:10px 20px;
+        border-radius:999px;
+        border:1px solid rgba(18, 24, 38, 0.12);
+        background:#fbf9f3;
+        color:#68748d;
+        font-size:12px;
+        letter-spacing:.1em;
+        text-transform:uppercase;
+      }
+      .preview-tab.active {
+        background:rgba(36, 83, 255, 0.08);
+        color:#1d2640;
+        border-color:rgba(36, 83, 255, 0.14);
+      }
+      .preview-toolbar {
+        display:flex;
+        justify-content:space-between;
+        gap:16px;
+        align-items:center;
+        padding:14px 24px;
+        border-top:1px solid rgba(18, 24, 38, 0.08);
+        border-bottom:1px solid rgba(18, 24, 38, 0.08);
+        background:rgba(255, 255, 255, 0.42);
+        color:#68748d;
+        font-size:13px;
+      }
+      .preview-toolbar-left,
+      .preview-toolbar-right {
+        display:flex;
+        gap:18px;
+        align-items:center;
+      }
+      .preview-toolbar strong { color:#202938; font-weight:700; }
+      .preview-inner { flex:1; overflow:auto; padding:22px 26px 26px; }
+      .preview-stage {
+        min-height:760px;
+        padding:30px 26px;
+        background:
+          linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+          #e7e3d8;
+        background-size:22px 22px, 22px 22px, auto;
+      }
+      .paper {
+        width:min(760px, 100%);
+        margin:0 auto;
+        padding:38px;
+        min-height:680px;
+        border-radius:6px;
+        box-shadow:0 24px 50px rgba(15, 23, 42, 0.08);
+      }
+      .paper h2 { margin:0; font-size:42px; letter-spacing:-.05em; text-align:center; }
+      .paper-meta {
+        margin-top:10px;
+        text-align:center;
+        color:#5a6478;
+        line-height:1.5;
+      }
+      .paper-section {
+        margin-top:18px;
+        padding-top:10px;
+        border-top:1px solid rgba(15, 23, 42, 0.18);
+      }
+      .paper-section-label {
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        color:#4c5f93;
+      }
+      .paper p { margin:8px 0 0; line-height:1.6; }
+      @media (max-width: 980px) {
+        .builder-workspace { grid-template-columns:1fr; }
+        .builder-divider { display:none; }
+        .editor-grid,
+        .editor-job-grid { grid-template-columns:1fr; }
+      }
+    </style>
+  </head>
+  <body class="thr-preview-page thr-mode-work">
+    <div class="thr-shell builder-shell">
+      <div class="thr-topbar">
+        <div>
+          <a class="thr-pill-action" href="./dashboard.html" style="margin-bottom:8px;">Back To Dashboard</a>
+          <h1 class="thr-brand-title">Resume Builder</h1>
+        </div>
+        <div class="builder-header-actions">
+          <a class="thr-pill-action" href="#">Export JSON</a>
+          <a class="thr-pill-action" href="#">Reset</a>
+          <a class="thr-pill-action thr-pill-action--primary" href="#">Save</a>
+          <a class="thr-pill-action" href="#">Download</a>
+          <a class="thr-pill-action" href="#">Smart Home</a>
+        </div>
+      </div>
+      <div class="builder-workspace">
+        <div class="builder-editor">
+          <div class="builder-column-header">
+            <div class="builder-column-title">
+              Editor Panel
+            </div>
+            <div class="builder-meta-actions">
+              <span>&#8942;</span>
+            </div>
+          </div>
+          <div class="editor-top-row">
+            <div class="editor-fold">
+              <strong>Template &amp; Formatting</strong>
+              <span style="color:#69758f;">&#709;</span>
+            </div>
+            <a class="thr-pill-action" href="#">AI Regenerate</a>
+          </div>
+          <div class="editor-panel">
+            <div class="editor-panel-header">
+              <h2>Personal Information</h2>
+              <a class="editor-action" href="#">Refresh From Master</a>
+            </div>
+            <div class="editor-grid">
+              <div class="field-group">
+                <label>Full Name</label>
+                <input class="editor-input" value="Kenn Nguyen" readonly />
+              </div>
+              <div class="field-group">
+                <label>Job Title</label>
+                <input class="editor-input" value="Senior Product Manager, Payment Authentication and Risk Platforms" readonly />
+              </div>
+              <div class="field-group">
+                <label>Custom Tagline</label>
+                <input class="editor-input" value="Yale SOM '26" readonly />
+              </div>
+              <div class="field-group">
+                <label>Email</label>
+                <input class="editor-input" value="kenn.nguyen@aya.yale.edu" readonly />
+              </div>
+              <div class="field-group">
+                <label>Phone</label>
+                <input class="editor-input" value="(203) 508-4327" readonly />
+              </div>
+              <div class="field-group">
+                <label>Location</label>
+                <input class="editor-input" value="Bay Area, CA" readonly />
+              </div>
+              <div class="field-group">
+                <label>Website</label>
+                <input class="editor-input" placeholder="portfolio.com" readonly />
+              </div>
+              <div class="field-group">
+                <label>LinkedIn</label>
+                <input class="editor-input" value="kenn-nguyen" readonly />
+              </div>
+            </div>
+          </div>
+          <div class="editor-section">
+            <div class="editor-section-header">
+              <h3>Experience</h3>
+              <div class="editor-section-actions">
+                <span>&#128065;</span>
+                <span>&#709;</span>
+                <span>&#709;</span>
+                <span style="color:#c3523e;">&#128465;</span>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+              <a class="editor-action" href="#">Add Job</a>
+            </div>
+            <div class="editor-job-card">
+              <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;">
+                <div class="editor-job-grid" style="flex:1;">
+                  <div class="field-group">
+                    <label>Job Title</label>
+                    <input class="editor-input" value="Associate Director of Product" readonly />
+                  </div>
+                  <div class="field-group">
+                    <label>Company</label>
+                    <input class="editor-input" value="Trusting Social" readonly />
+                  </div>
+                  <div class="field-group">
+                    <label>Location</label>
+                    <input class="editor-input" value="APAC &amp; Mexico" readonly />
+                  </div>
+                  <div class="field-group">
+                    <label>Years</label>
+                    <input class="editor-input" value="01/2024 - 08/2025" readonly />
+                  </div>
+                </div>
+                <div class="editor-item-actions">
+                  <span style="color:#c3523e;">&#128465;</span>
+                </div>
+              </div>
+              <div class="bullet-list">
+                <div class="list-label" style="display:flex;justify-content:space-between;align-items:center;">
+                  <span>Description Points</span>
+                  <span style="color:#2453ff;">Add Point</span>
+                </div>
+                <div class="bullet-item">
+                  <div class="bullet-toolbar">
+                    <div class="bullet-toolbar-left">
+                      <span>B</span>
+                      <span><em>I</em></span>
+                      <span>U</span>
+                      <span>&#128279;</span>
+                    </div>
+                    <div class="bullet-toolbar-right">
+                      <span>AI</span>
+                      <span>&#128065;</span>
+                      <span>&#128465;</span>
+                    </div>
+                  </div>
+                  <div class="bullet-body">Scaled a 0-to-1 payment authentication product to production deployment at 9 tier-1 banks within 12 months, rolling it out to 20M+ active users by defining core API requirements, sequencing launches, and prioritizing high-impact money-transfer journeys.</div>
+                </div>
+                <div class="bullet-item">
+                  <div class="bullet-toolbar">
+                    <div class="bullet-toolbar-left">
+                      <span>B</span>
+                      <span><em>I</em></span>
+                      <span>U</span>
+                      <span>&#128279;</span>
+                    </div>
+                    <div class="bullet-toolbar-right">
+                      <span>AI</span>
+                      <span>&#128065;</span>
+                      <span>&#128465;</span>
+                    </div>
+                  </div>
+                  <div class="bullet-body">Drove ~4x transaction volume growth for an Identity &amp; Risk platform by launching localized AI/ML fraud models and a risk decisioning engine that captured market-specific fraud patterns across APAC and Mexico.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="builder-divider"></div>
+        <div class="builder-preview">
+          <div class="preview-top">
+            <div class="preview-tabs">
+              <span class="preview-tab active">Resume</span>
+              <span class="preview-tab">Cover Letter</span>
+              <span class="preview-tab">Outreach Mail</span>
+              <span class="preview-tab">JD Match</span>
+              <span class="preview-tab">AI Strategy</span>
+            </div>
+          </div>
+          <div class="preview-toolbar">
+            <div class="preview-toolbar-left">
+              <span>&#128269;</span>
+              <span>75%</span>
+              <span>&#128269;</span>
+              <strong>Margins</strong>
+            </div>
+            <div class="preview-toolbar-right">
+              <span style="color:#2453ff;font-weight:700;letter-spacing:.12em;text-transform:uppercase;">Fit To 1 Page</span>
+              <span>2 Pages</span>
+            </div>
+          </div>
+          <div class="preview-inner">
+            <div class="preview-stage">
+              <div class="thr-builder-paper paper">
+                <h2>Kenn Nguyen</h2>
+                <div class="paper-meta">
+                  Senior Product Manager, Payment Authentication and Risk Platforms<br />
+                  Yale SOM '26 | kenn.nguyen@aya.yale.edu | (203) 508-4327 | Bay Area, CA | LinkedIn / GitHub
+                </div>
+                <div class="paper-section">
+                  <div class="paper-section-label">Summary</div>
+                  <p>Regulated-fintech infrastructure PM who ships high-stakes products across payment authentication, identity, fraud, and onboarding in multi-country environments. Scaled payment authentication and risk platforms across APAC and Mexico by leading API productization, bank rollouts, and data-driven trade-offs that improved approval, conversion, and cost-to-serve.</p>
+                </div>
+                <div class="paper-section">
+                  <div class="paper-section-label">Experience</div>
+                  <p><strong>Associate Director of Product</strong> · Trusting Social · 01/2024 - 08/2025</p>
+                  <p>Scaled a 0-to-1 payment authentication product to production deployment at 9 tier-1 banks within 12 months, rolling it out to 20M+ active users by defining core API requirements, sequencing launches, and prioritizing high-impact money-transfer journeys.</p>
+                  <p>Drove ~4x transaction volume growth for an Identity &amp; Risk platform by launching localized AI/ML fraud models and a risk decisioning engine that captured market-specific fraud patterns across APAC and Mexico.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+  </html>

@@ -20,12 +20,16 @@ interface RichTextEditorProps {
   className?: string;
   /** Minimum height of the editor */
   minHeight?: string;
+  /** Whether to show the formatting toolbar */
+  showToolbar?: boolean;
+  /** Optional handler to close the formatting toolbar */
+  onToolbarClose?: () => void;
 }
 
 /**
  * Rich Text Editor Component
  *
- * Swiss International Style WYSIWYG editor with formatting toolbar.
+ * Bright-skin WYSIWYG editor with formatting toolbar.
  * Supports bold, italic, underline, and links.
  *
  * Uses Tiptap (ProseMirror) under the hood for reliable editing.
@@ -36,6 +40,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'Enter text...',
   className,
   minHeight = '60px',
+  showToolbar = true,
+  onToolbarClose,
 }) => {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -135,13 +141,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // Show loading state during SSR
   if (!isMounted) {
-    return (
+      return (
       <div className={cn('space-y-1', className)}>
-        <div className="flex items-center gap-1 p-1 border border-black bg-[#E5E5E0] h-9" />
+        {showToolbar ? (
+          <div className="h-10 rounded-xl border border-border bg-white p-1 shadow-xs" />
+        ) : null}
         <div
           className={cn(
-            'w-full border border-black bg-white',
-            'px-3 py-2 text-sm text-gray-400 rounded-none'
+            'w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-muted-foreground shadow-xs'
           )}
           style={{ minHeight }}
         >
@@ -157,12 +164,17 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   return (
     <div className={cn('space-y-1', className)}>
-      <RichTextToolbar editor={editor} onLinkClick={handleLinkClick} />
+      {showToolbar ? (
+        <RichTextToolbar
+          editor={editor}
+          onLinkClick={handleLinkClick}
+          onClose={onToolbarClose}
+        />
+      ) : null}
       <div
         className={cn(
-          'w-full border border-black bg-white',
-          'px-3 py-2 text-sm text-black rounded-none',
-          'focus-within:ring-1 focus-within:ring-blue-700',
+          'w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground shadow-xs',
+          'focus-within:ring-2 focus-within:ring-primary/25',
           '[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[36px]',
           '[&_.ProseMirror_p]:m-0',
           '[&_.ProseMirror_a]:text-blue-700 [&_.ProseMirror_a]:underline'

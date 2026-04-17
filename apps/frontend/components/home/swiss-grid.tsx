@@ -27,24 +27,21 @@ export const SwissGrid = ({
 
   return (
     <div
-      className="h-screen w-full flex justify-center items-start py-12 px-4 md:px-8 overflow-hidden bg-[#F0F0E8]"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(29, 78, 216, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(29, 78, 216, 0.1) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-      }}
+      className="skin-page-brand flex h-screen w-full items-start justify-center overflow-hidden px-4 py-12 md:px-8"
     >
-      <div className="w-full max-w-[86rem] max-h-full border border-black bg-[#F0F0E8] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden">
-        <div className="border-b border-black px-8 py-5 md:px-10 md:py-6 shrink-0 bg-[#F0F0E8] relative z-30">
+      <div className="skin-shell flex max-h-full w-full max-w-[86rem] flex-col overflow-hidden rounded-[28px]">
+        <div className="relative z-30 shrink-0 border-b border-border bg-white/60 px-8 py-5 md:px-10 md:py-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="font-serif text-4xl md:text-5xl text-black tracking-tight leading-[0.95] uppercase">
+              <h1 className="font-serif text-4xl leading-[0.95] tracking-[-0.04em] text-foreground md:text-5xl">
                 {title || t('nav.dashboard')}
               </h1>
-              <p className="mt-3 text-xs md:text-sm font-mono text-blue-700 uppercase tracking-wide max-w-xl font-bold">
-                {'// '}
-                {subtitle || t('dashboard.selectModule')}
-              </p>
+              {subtitle ? (
+                <p className="mt-3 max-w-xl font-mono text-xs font-bold uppercase tracking-[0.16em] text-primary md:text-sm">
+                  {'// '}
+                  {subtitle}
+                </p>
+              ) : null}
             </div>
             {headerActions ? (
               <div className="flex flex-wrap items-center gap-3 lg:justify-end">{headerActions}</div>
@@ -60,7 +57,7 @@ export const SwissGrid = ({
           </div>
         </div>
 
-        <div className="p-4 bg-[#F0F0E8] flex justify-between items-center font-mono text-xs text-blue-700 border-t border-black shrink-0 relative z-30">
+        <div className="relative z-30 flex shrink-0 items-center justify-between border-t border-border bg-white/50 p-4 font-mono text-xs text-primary">
           <Link href="/" className="flex items-center gap-2 uppercase font-bold hover:underline">
             <Image
               src="/logo.svg"

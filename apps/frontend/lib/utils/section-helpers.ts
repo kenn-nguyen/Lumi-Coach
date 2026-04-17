@@ -136,7 +136,7 @@ export function getSectionMeta(resumeData: ResumeData): SectionMeta[] {
  */
 export function getSortedSections(resumeData: ResumeData): SectionMeta[] {
   return [...getSectionMeta(resumeData)]
-    .filter((s) => s.isVisible)
+    .filter((s) => s.isVisible && !s.pendingRemoval)
     .sort((a, b) => a.order - b.order);
 }
 
@@ -145,6 +145,38 @@ export function getSortedSections(resumeData: ResumeData): SectionMeta[] {
  */
 export function getAllSections(resumeData: ResumeData): SectionMeta[] {
   return [...getSectionMeta(resumeData)].sort((a, b) => a.order - b.order);
+}
+
+/**
+ * Permanently remove sections that were staged for deletion.
+ * Default-section content is left intact in the payload, but becomes unreachable
+ * once the section metadata entry is removed. Custom sections are fully removed.
+ */
+export function commitPendingSectionRemovals(resumeData: ResumeData): ResumeData {
+  const currentSections = getSectionMeta(resumeData);
+  const pendingSections = currentSections.filter((section) => section.pendingRemoval);
+
+  if (pendingSections.length === 0) {
+    return resumeData;
+  }
+
+  const nextSectionMeta = currentSections
+    .filter((section) => !section.pendingRemoval)
+    .map(({ pendingRemoval, visibilityBeforeRemoval, ...section }) => section);
+
+  const pendingCustomKeys = new Set(
+    pendingSections.filter((section) => !section.isDefault).map((section) => section.key)
+  );
+
+  const nextCustomSections = Object.fromEntries(
+    Object.entries(resumeData.customSections || {}).filter(([key]) => !pendingCustomKeys.has(key))
+  );
+
+  return {
+    ...resumeData,
+    sectionMeta: nextSectionMeta,
+    customSections: nextCustomSections,
+  };
 }
 
 /**

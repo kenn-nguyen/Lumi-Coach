@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -41,6 +41,8 @@ import {
   DEFAULT_SECTION_META,
 } from '@/lib/utils/section-helpers';
 import { useTranslations } from '@/lib/i18n';
+import { Button } from '@/components/ui/button';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ResumeFormProps {
   resumeData: ResumeData;
@@ -62,6 +64,14 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
   onUpdate,
 }) => {
   const { t } = useTranslations();
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  const toggleSectionCollapsed = (sectionId: string) => {
+    setCollapsedSections((current) => ({
+      ...current,
+      [sectionId]: !current[sectionId],
+    }));
+  };
 
   // Get section metadata, falling back to defaults
   const allSections = getSectionMeta(resumeData);
@@ -75,6 +85,13 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
       ...resumeData,
       sectionMeta: sections,
     });
+  };
+
+  const updateSection = (sectionId: string, updater: (section: SectionMeta) => SectionMeta) => {
+    const updatedSections = allSections.map((section) =>
+      section.id === sectionId ? updater(section) : section
+    );
+    handleSectionMetaUpdate(updatedSections);
   };
 
   // Handle adding a new custom section
@@ -114,32 +131,29 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
 
   // Handler for section delete
   const handleDelete = (sectionId: string) => {
-    const section = allSections.find((s) => s.id === sectionId);
-    if (!section) return;
+    updateSection(sectionId, (section) => ({
+      ...section,
+      pendingRemoval: true,
+      visibilityBeforeRemoval: section.isVisible,
+      isVisible: false,
+    }));
+  };
 
-    if (section.isDefault) {
-      // For default sections, just hide them
-      handleToggleVisibility(sectionId);
-    } else {
-      // For custom sections, remove from both sectionMeta and customSections
-      const updatedSections = allSections.filter((s) => s.id !== sectionId);
-      const updatedCustomSections = { ...resumeData.customSections };
-      delete updatedCustomSections[section.key];
-
-      onUpdate({
-        ...resumeData,
-        sectionMeta: updatedSections,
-        customSections: updatedCustomSections,
-      });
-    }
+  const handleUndoDelete = (sectionId: string) => {
+    updateSection(sectionId, (section) => ({
+      ...section,
+      pendingRemoval: false,
+      isVisible: section.visibilityBeforeRemoval ?? true,
+      visibilityBeforeRemoval: undefined,
+    }));
   };
 
   // Handler for section visibility toggle
   const handleToggleVisibility = (sectionId: string) => {
-    const updatedSections = allSections.map((s) =>
-      s.id === sectionId ? { ...s, isVisible: !s.isVisible } : s
-    );
-    handleSectionMetaUpdate(updatedSections);
+    updateSection(sectionId, (section) => ({
+      ...section,
+      isVisible: !section.isVisible,
+    }));
   };
 
   // Handler for moving section up
@@ -298,6 +312,20 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
       return renderContent();
     }
 
+    const isCollapsed = collapsedSections[section.id] ?? false;
+    const headerActions = (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-full text-gray-500 hover:bg-secondary/60 hover:text-gray-700"
+        onClick={() => toggleSectionCollapsed(section.id)}
+        title={isCollapsed ? `Expand ${section.displayName}` : `Collapse ${section.displayName}`}
+      >
+        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </Button>
+    );
+
     // Other default sections get SectionHeader with visibility/reorder controls
     // The form components provide their own container styling
     return (
@@ -305,14 +333,16 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
         section={section}
         onRename={(name) => handleRename(section.id, name)}
         onDelete={() => handleDelete(section.id)}
+        onUndoDelete={() => handleUndoDelete(section.id)}
         onMoveUp={() => handleMoveUp(section.id)}
         onMoveDown={() => handleMoveDown(section.id)}
         onToggleVisibility={() => handleToggleVisibility(section.id)}
         isFirst={isFirst}
         isLast={isLast}
         canDelete={true}
+        headerActions={headerActions}
       >
-        {renderContent()}
+        {isCollapsed || section.pendingRemoval ? null : renderContent()}
       </SectionHeader>
     );
   };
@@ -378,19 +408,35 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
       }
     };
 
+    const isCollapsed = collapsedSections[section.id] ?? false;
+    const headerActions = (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-full text-gray-500 hover:bg-secondary/60 hover:text-gray-700"
+        onClick={() => toggleSectionCollapsed(section.id)}
+        title={isCollapsed ? `Expand ${section.displayName}` : `Collapse ${section.displayName}`}
+      >
+        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </Button>
+    );
+
     return (
       <SectionHeader
         section={section}
         onRename={(name) => handleRename(section.id, name)}
         onDelete={() => handleDelete(section.id)}
+        onUndoDelete={() => handleUndoDelete(section.id)}
         onMoveUp={() => handleMoveUp(section.id)}
         onMoveDown={() => handleMoveDown(section.id)}
         onToggleVisibility={() => handleToggleVisibility(section.id)}
         isFirst={isFirst}
         isLast={isLast}
         canDelete={true}
+        headerActions={headerActions}
       >
-        {renderContent()}
+        {isCollapsed || section.pendingRemoval ? null : renderContent()}
       </SectionHeader>
     );
   };

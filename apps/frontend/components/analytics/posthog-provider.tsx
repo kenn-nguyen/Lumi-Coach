@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Script from 'next/script';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { captureEvent } from '@/lib/analytics/posthog';
+import { captureEvent, POSTHOG_EVENTS, registerAnalyticsContext } from '@/lib/analytics/posthog';
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim() ?? '';
 const POSTHOG_HOST = (process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || 'https://us.i.posthog.com').replace(/\/$/, '');
@@ -26,7 +26,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loaded || !POSTHOG_KEY) return;
-    captureEvent('$pageview', { $current_url: currentPath });
+    captureEvent(POSTHOG_EVENTS.PAGEVIEW, { $current_url: currentPath });
   }, [currentPath, loaded]);
 
   useEffect(() => {
@@ -62,6 +62,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
             capture_pageview: false,
             person_profiles: 'identified_only',
           });
+          registerAnalyticsContext();
           setLoaded(true);
         }}
       />

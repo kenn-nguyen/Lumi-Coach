@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
@@ -21,9 +21,14 @@ interface DraggableListItemProps {
  * - Swiss International Style aesthetic (square corners, high contrast)
  */
 export const DraggableListItem: React.FC<DraggableListItemProps> = ({ id, children }) => {
+  const [mounted, setMounted] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -32,19 +37,28 @@ export const DraggableListItem: React.FC<DraggableListItemProps> = ({ id, childr
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="relative">
+    <div ref={setNodeRef} style={style} className="group/item relative">
       {/* Drag Handle */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute left-0 top-0 h-full w-4 flex items-start justify-center cursor-grab active:cursor-grabbing z-10"
-        title="Drag to reorder"
-      >
-        <GripVertical className="w-4 h-4 text-gray-400 hover:text-gray-700 transition-colors" />
-      </div>
+      {mounted ? (
+        <div
+          {...attributes}
+          {...listeners}
+          className="absolute -left-4 top-2 z-10 flex h-5 w-5 items-center justify-center cursor-grab opacity-0 transition-opacity group-hover/item:opacity-100 group-focus-within/item:opacity-100 active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4 text-gray-400 transition-colors hover:text-gray-700" />
+        </div>
+      ) : (
+        <div
+          aria-hidden="true"
+          className="absolute -left-4 top-2 z-10 flex h-5 w-5 items-center justify-center opacity-0"
+        >
+          <GripVertical className="h-4 w-4 text-transparent" />
+        </div>
+      )}
 
-      {/* List Item Content - add left padding to make room for drag handle */}
-      <div className="pl-4">{children}</div>
+      {/* List Item Content */}
+      <div>{children}</div>
     </div>
   );
 };

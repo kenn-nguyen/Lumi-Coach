@@ -46,11 +46,11 @@ export const GenericListForm: React.FC<GenericListFormProps> = ({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3 rounded-2xl border border-border bg-card/80 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
       <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
         {finalLabel}
       </Label>
-      <p className="font-mono text-xs text-blue-700 border-l-2 border-blue-700 pl-3 mb-2">
+      <p className="rounded-xl border border-border bg-card/70 px-3 py-2 font-mono text-xs text-blue-700">
         {t('builder.additionalForm.instructions')}
       </p>
       <Textarea
@@ -58,7 +58,7 @@ export const GenericListForm: React.FC<GenericListFormProps> = ({
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={finalPlaceholder}
-        className="min-h-[150px] text-black rounded-none border-black bg-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700"
+        className="min-h-[150px] rounded-xl border-border bg-white text-foreground shadow-xs focus-visible:border-primary focus-visible:ring-primary/25 focus-visible:ring-offset-0"
       />
     </div>
   );

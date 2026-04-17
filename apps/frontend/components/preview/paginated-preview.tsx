@@ -3,6 +3,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Eye, EyeOff, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ToggleSwitch } from '@/components/ui/toggle-switch';
 import { type ResumeData } from '@/components/dashboard/resume-component';
 import { type TemplateSettings } from '@/lib/types/template-settings';
 import { PageContainer } from './page-container';
@@ -20,6 +21,7 @@ interface PaginatedPreviewProps {
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
+const DEFAULT_AUTO_ZOOM = 1;
 
 /**
  * PaginatedPreview shows a WYSIWYG preview of the resume with actual page dimensions,
@@ -33,7 +35,7 @@ export function PaginatedPreview({
   const { t } = useTranslations();
   const measurementRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(0.6);
+  const [zoom, setZoom] = useState(DEFAULT_AUTO_ZOOM);
   const [showMargins, setShowMargins] = useState(false);
   const [autoZoom, setAutoZoom] = useState(true);
   const resumeSettings: TemplateSettings = {
@@ -84,7 +86,7 @@ export function PaginatedPreview({
     const containerWidth = containerRef.current.clientWidth - 48; // Padding
     const pageWidthPx = mmToPx(PAGE_DIMENSIONS[settings.pageSize].width);
     const optimalZoom = Math.min(containerWidth / pageWidthPx, MAX_ZOOM);
-    setZoom(Math.max(MIN_ZOOM, Math.min(optimalZoom, 0.75))); // Cap at 75% for usability
+    setZoom(Math.max(MIN_ZOOM, Math.min(optimalZoom, DEFAULT_AUTO_ZOOM)));
   }, [settings.pageSize, autoZoom]);
 
   // Auto-zoom on mount and when page size changes
@@ -107,11 +109,11 @@ export function PaginatedPreview({
   };
 
   const toggleMargins = () => setShowMargins((s) => !s);
-  const toggleCompactMode = () => {
+  const toggleCompactMode = (nextChecked?: boolean) => {
     if (!onSettingsChange) return;
     onSettingsChange({
       ...settings,
-      compactMode: !settings.compactMode,
+      compactMode: typeof nextChecked === 'boolean' ? nextChecked : !settings.compactMode,
     });
   };
 
@@ -121,7 +123,7 @@ export function PaginatedPreview({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Controls bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-300 bg-[#E5E5E0] shrink-0">
+      <div className="flex items-center justify-between border-b border-border bg-[#ece6d8] px-4 py-2 shrink-0">
         <div className="flex items-center gap-2">
           {/* Zoom controls */}
           <Button
@@ -146,7 +148,7 @@ export function PaginatedPreview({
             <ZoomIn className="w-4 h-4" />
           </Button>
 
-          <div className="w-px h-5 bg-gray-400 mx-2" />
+          <div className="mx-2 h-5 w-px bg-[#bcb3a3]" />
 
           {/* Margin toggle */}
           <Button
@@ -162,31 +164,13 @@ export function PaginatedPreview({
 
         {/* Page count + fit toggle */}
         <div className="flex items-center gap-2 text-gray-600">
-          <label className="flex items-center gap-2 cursor-pointer text-black">
-            <span
-              className={`font-mono text-[10px] uppercase tracking-wide ${
-                !isCalculating && pages.length > 1 ? 'text-blue-700 font-bold' : ''
-              }`}
-            >
-              {t('preview.fitToOnePage')}
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.compactMode}
-              aria-label={t('preview.fitToOnePage')}
-              onClick={toggleCompactMode}
-              className={`relative w-10 h-5 border-2 transition-all ${
-                settings.compactMode ? 'bg-blue-700 border-blue-700' : 'bg-white border-gray-400'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 w-3.5 h-3.5 bg-white border transition-all ${
-                  settings.compactMode ? 'left-5 border-blue-700' : 'left-0.5 border-gray-400'
-                }`}
-              />
-            </button>
-          </label>
+          <ToggleSwitch
+            checked={settings.compactMode}
+            onCheckedChange={toggleCompactMode}
+            label={t('preview.fitToOnePage')}
+            display="inline"
+            className={!isCalculating && pages.length > 1 ? '[&_span:last-child]:text-blue-700 [&_span:last-child]:font-bold' : ''}
+          />
           <FileText className="w-4 h-4" />
           <span className="font-mono text-xs uppercase">
             {isCalculating
@@ -201,10 +185,10 @@ export function PaginatedPreview({
       {/* Scrollable preview area */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto bg-[#D5D5D0] p-6"
+        className="flex-1 overflow-auto bg-[#ddd6c7] p-6"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px)',
+            'linear-gradient(rgba(82,63,29,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(82,63,29,0.05) 1px, transparent 1px)',
           backgroundSize: '20px 20px',
         }}
       >

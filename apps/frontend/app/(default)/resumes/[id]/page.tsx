@@ -186,6 +186,11 @@ export default function ResumeViewerPage() {
         }
         return;
       }
+      const errorMessage =
+        err instanceof Error && err.message
+          ? `${t('builder.alerts.downloadFailed')}: ${err.message}`
+          : t('builder.alerts.downloadFailed');
+      alert(errorMessage);
     } finally {
       setIsDownloading(false);
     }
@@ -237,13 +242,19 @@ export default function ResumeViewerPage() {
     },
   ].filter((row) => row.items.length > 0);
 
+  const displayFeedbackSummary = useMemo(() => {
+    const rawSummary = generationFeedback?.summary?.trim();
+    if (!rawSummary) return null;
+    return rawSummary.replace(/^[A-Z0-9][A-Z0-9 _-]{2,}:\s+/, '');
+  }, [generationFeedback?.summary]);
+
   const hasGenerationFeedback = Boolean(
-    generationFeedback?.summary?.trim() || feedbackRows.length > 0
+    displayFeedbackSummary || feedbackRows.length > 0
   );
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F0F0E8]">
+      <div className="skin-page-work flex min-h-screen flex-col items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-blue-700 mb-4" />
         <p className="font-mono text-sm font-bold uppercase text-blue-700">
           {t('resumeViewer.loading')}
@@ -257,7 +268,7 @@ export default function ResumeViewerPage() {
     const isFailed = processingStatus === 'failed';
 
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F0F0E8] p-4">
+      <div className="skin-page-work flex min-h-screen flex-col items-center justify-center p-4">
         <div
           className={`border p-6 text-center max-w-md shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] ${
             isProcessing
@@ -311,7 +322,7 @@ export default function ResumeViewerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F0F0E8] py-12 px-4 md:px-8 overflow-y-auto">
+    <div className="skin-page-work min-h-screen overflow-y-auto px-4 py-12 md:px-8">
       <div className="max-w-7xl mx-auto">
         {/* Header Actions */}
         <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 no-print">
@@ -351,7 +362,7 @@ export default function ResumeViewerPage() {
                 autoFocus
                 maxLength={80}
                 placeholder={t('resumeViewer.titlePlaceholder')}
-                className="font-serif text-2xl font-bold border-b-2 border-black bg-transparent outline-none w-full max-w-xl px-0 py-1"
+                className="w-full max-w-xl border-b border-border bg-transparent px-0 py-1 font-serif text-2xl font-bold tracking-[-0.04em] outline-none"
               />
             ) : (
               <button
@@ -362,7 +373,7 @@ export default function ResumeViewerPage() {
                 className="group flex items-center gap-2 cursor-pointer bg-transparent border-none p-0"
               >
                 <h2
-                  className={`font-serif text-2xl font-bold border-b-2 border-transparent group-hover:border-black transition-colors ${!resumeTitle ? 'text-gray-400' : ''}`}
+                  className={`border-b border-transparent font-serif text-2xl font-bold tracking-[-0.04em] transition-colors group-hover:border-border ${!resumeTitle ? 'text-gray-400' : ''}`}
                 >
                   {resumeTitle || t('resumeViewer.titlePlaceholder')}
                 </h2>
@@ -375,22 +386,27 @@ export default function ResumeViewerPage() {
         )}
 
         {hasGenerationFeedback && (
-          <div className="mb-6 no-print">
-            <div className="border-2 border-black bg-white px-5 py-3 shadow-[4px_4px_0px_0px_#000000]">
-              {generationFeedback?.summary?.trim() && (
-                <div className="mb-2 grid gap-1 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
-                  <p className="font-sans text-sm font-bold text-black">
+          <div className="mb-6 flex justify-center no-print">
+            <div className="w-full max-w-[250mm] rounded-2xl border border-border bg-white px-5 py-4 shadow-sw-default">
+              {displayFeedbackSummary && (
+                <div className="mb-3 grid gap-1.5 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
+                  <p className="pt-0.5 text-xs font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     {t('resumeViewer.feedback.summaryLabel')}
                   </p>
-                  <p className="text-sm leading-5 text-black">
-                    {generationFeedback.summary.trim()}
+                  <p className="text-sm leading-6 text-foreground">
+                    {displayFeedbackSummary}
                   </p>
                 </div>
               )}
-              <div className="space-y-1.5 text-sm leading-5 text-black">
+              <div className="space-y-2 text-sm leading-5 text-foreground">
                 {feedbackRows.map((row) => (
-                  <div key={row.key} className="grid gap-1 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
-                    <p className="font-bold">{row.label}</p>
+                  <div
+                    key={row.key}
+                    className="grid gap-1.5 md:grid-cols-[88px_minmax(0,1fr)] md:items-start"
+                  >
+                    <p className="pt-0.5 text-xs font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                      {row.label}
+                    </p>
                     <ul className="list-disc pl-5 space-y-0.5">
                       {row.items.map((item, index) => (
                         <li key={`${row.key}-${index}`}>{item}</li>
@@ -405,7 +421,7 @@ export default function ResumeViewerPage() {
 
         {/* Resume Viewer */}
         <div className="flex justify-center pb-4">
-          <div className="resume-print w-full max-w-[250mm] shadow-[8px_8px_0px_0px_#000000] border-2 border-black bg-white">
+          <div className="resume-print w-full max-w-[min(250mm,100%)] overflow-hidden rounded-[24px] border border-border bg-white shadow-sw-card">
             <Resume
               resumeData={localizedResumeData || resumeData}
               additionalSectionLabels={{

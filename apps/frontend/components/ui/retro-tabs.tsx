@@ -3,19 +3,9 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-/**
- * Swiss International Style Tabs Component
- *
- * Design Principles:
- * - Square corners (rounded-none) - Brutalist aesthetic
- * - Hard shadows on active tab
- * - Black borders for high contrast
- * - Monospace uppercase text
- */
-
 export interface Tab {
   id: string;
-  label: string;
+  label: React.ReactNode;
   disabled?: boolean;
 }
 
@@ -24,6 +14,7 @@ export interface RetroTabsProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
   className?: string;
+  variant?: 'default' | 'folder';
 }
 
 export const RetroTabs: React.FC<RetroTabsProps> = ({
@@ -31,9 +22,17 @@ export const RetroTabs: React.FC<RetroTabsProps> = ({
   activeTab,
   onTabChange,
   className,
+  variant = 'default',
 }) => {
   return (
-    <div className={cn('flex gap-0 border-b border-black', className)}>
+    <div
+      className={cn(
+        variant === 'folder'
+          ? 'flex flex-nowrap items-start gap-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+          : 'flex flex-wrap gap-2',
+        className
+      )}
+    >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         const isDisabled = tab.disabled;
@@ -44,17 +43,29 @@ export const RetroTabs: React.FC<RetroTabsProps> = ({
             onClick={() => !isDisabled && onTabChange(tab.id)}
             disabled={isDisabled}
             className={cn(
-              'px-4 py-2 font-mono text-xs uppercase tracking-wider transition-all',
-              'border border-b-0 border-black -mb-px',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2',
-              isActive && [
-                'bg-white text-black font-bold',
-                'shadow-[2px_-2px_0px_0px_rgba(0,0,0,0.1)]',
-                'border-b-white',
-              ],
-              !isActive &&
-                !isDisabled && ['bg-[#E5E5E0] text-gray-600 hover:bg-[#D8D8D2] hover:text-black'],
-              isDisabled && ['bg-gray-100 text-gray-300 cursor-not-allowed opacity-50']
+              'inline-flex items-center gap-2 text-xs font-medium tracking-[0.08em] transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2',
+              variant === 'folder' &&
+                'relative rounded-t-[18px] rounded-b-[8px] border px-4 py-2.5 shadow-[0_3px_10px_rgba(15,23,42,0.04)]',
+              variant !== 'folder' && 'rounded-xl border px-4 py-2',
+              variant === 'folder' &&
+                isActive &&
+                'border-border bg-[rgba(243,247,255,0.98)] text-foreground shadow-[0_10px_18px_rgba(37,99,235,0.10)]',
+              variant === 'folder' &&
+                !isActive &&
+                !isDisabled &&
+                '-ml-px border-border bg-[rgba(255,252,246,0.92)] text-muted-foreground hover:bg-[rgba(255,255,255,0.96)]',
+              variant === 'folder' &&
+                isDisabled &&
+                '-ml-px cursor-not-allowed border-border/60 bg-secondary/50 text-muted-foreground/60',
+              variant !== 'folder' && isActive && 'border-primary/15 bg-accent text-foreground shadow-xs',
+              variant !== 'folder' &&
+                !isActive &&
+                !isDisabled &&
+                'border-border bg-card text-muted-foreground hover:bg-secondary',
+              variant !== 'folder' &&
+                isDisabled &&
+                'cursor-not-allowed border-border/60 bg-secondary/60 text-muted-foreground/60'
             )}
           >
             {tab.label}

@@ -45,14 +45,10 @@ import {
   Sparkles,
   Clock,
   Settings2,
-  Globe,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
-import { useLanguage } from '@/lib/context/language-context';
 import { useTranslations } from '@/lib/i18n';
-import type { SupportedLanguage } from '@/lib/api/config';
-import type { Locale } from '@/i18n/config';
 
 type Status = 'idle' | 'loading' | 'saving' | 'saved' | 'error' | 'testing';
 
@@ -66,9 +62,9 @@ const PROVIDERS: LLMProvider[] = [
 ];
 
 const SEGMENTED_BUTTON_BASE =
-  'border border-black font-mono transition-all duration-150 ease-out shadow-[2px_2px_0px_0px_#000000] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none disabled:cursor-not-allowed disabled:opacity-50';
-const SEGMENTED_BUTTON_ACTIVE = 'bg-blue-700 text-white border-black hover:bg-blue-800';
-const SEGMENTED_BUTTON_INACTIVE = 'bg-white text-black hover:bg-[#E5E5E0]';
+  'rounded-xl border border-border font-mono transition-colors duration-150 ease-out shadow-xs disabled:cursor-not-allowed disabled:opacity-50';
+const SEGMENTED_BUTTON_ACTIVE = 'bg-primary text-white border-primary/20 hover:bg-[color:#173ce0]';
+const SEGMENTED_BUTTON_INACTIVE = 'bg-card text-foreground hover:bg-secondary';
 
 const unwrapCodeBlock = (value?: string | null): string | null => {
   if (!value) return null;
@@ -133,17 +129,6 @@ export default function SettingsPage() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessDialogMessage] = useState({ title: '', description: '' });
   const [isResetting, setIsResetting] = useState(false);
-
-  // Language settings
-  const {
-    contentLanguage,
-    uiLanguage,
-    setContentLanguage,
-    setUiLanguage,
-    languageNames,
-    supportedLanguages,
-    isLoading: languageLoading,
-  } = useLanguage();
 
   // Translations
   const { t } = useTranslations();
@@ -511,25 +496,14 @@ export default function SettingsPage() {
   const requiresApiKey = providerInfo.requiresKey ?? true;
 
   return (
-    <div
-      className="flex flex-col items-center justify-start p-6 md:p-12 min-h-screen overflow-y-auto"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(29, 78, 216, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(29, 78, 216, 0.05) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-      }}
-    >
-      <div className="w-full max-w-4xl border border-black bg-[#F0F0E8] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)]">
+    <div className="skin-page-work flex min-h-screen flex-col items-center justify-start overflow-y-auto p-6 md:p-12">
+      <div className="w-full max-w-4xl overflow-hidden rounded-[28px] border border-border bg-[rgba(250,248,242,0.96)] shadow-sw-card">
         {/* Header */}
-        <div className="border-b border-black p-8 bg-white flex justify-between items-start">
+        <div className="flex items-start justify-between border-b border-border bg-white/70 p-8">
           <div>
-            <h1 className="font-serif text-3xl font-bold tracking-tight uppercase">
+            <h1 className="font-serif text-3xl font-bold tracking-[-0.04em]">
               {t('settings.title')}
             </h1>
-            <p className="font-mono text-xs text-gray-500 mt-2 uppercase tracking-wider">
-              {'// '}
-              {t('settings.subtitle')}
-            </p>
           </div>
           <Link href="/dashboard">
             <Button variant="outline" size="sm">
@@ -542,7 +516,7 @@ export default function SettingsPage() {
         <div className="p-8 space-y-10">
           {/* API Key Not Configured Warning */}
           {!statusLoading && systemStatus && !systemStatus.llm_configured && (
-            <div className="border-2 border-amber-500 bg-amber-50 p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sw-sm">
               <div className="flex items-start gap-3">
                 <div className="w-3 h-3 bg-amber-500 mt-1 shrink-0"></div>
                 <div className="flex-1">
@@ -559,7 +533,7 @@ export default function SettingsPage() {
 
           {/* System Status Panel */}
           <section className="space-y-4">
-            <div className="flex items-center justify-between border-b border-black/10 pb-2">
+            <div className="flex items-center justify-between border-b border-border/80 pb-2">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4" />
@@ -611,7 +585,7 @@ export default function SettingsPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {/* LLM Status */}
-                <div className="border border-black bg-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sw-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Server className="w-4 h-4 text-gray-500" />
                     <span className="font-mono text-xs uppercase text-gray-500">
@@ -633,7 +607,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Database Status */}
-                <div className="border border-black bg-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sw-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Database className="w-4 h-4 text-gray-500" />
                     <span className="font-mono text-xs uppercase text-gray-500">
@@ -649,7 +623,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Resumes Count */}
-                <div className="border border-black bg-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sw-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 text-gray-500" />
                     <span className="font-mono text-xs uppercase text-gray-500">
@@ -662,7 +636,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Jobs Count */}
-                <div className="border border-black bg-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sw-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Briefcase className="w-4 h-4 text-gray-500" />
                     <span className="font-mono text-xs uppercase text-gray-500">
@@ -679,7 +653,7 @@ export default function SettingsPage() {
             {/* Additional Stats Row */}
             {systemStatus && (
               <div className="grid grid-cols-2 gap-4">
-                <div className="border border-black bg-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sw-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Sparkles className="w-4 h-4 text-gray-500" />
                     <span className="font-mono text-xs uppercase text-gray-500">
@@ -690,7 +664,7 @@ export default function SettingsPage() {
                     {systemStatus.database_stats.total_improvements}
                   </span>
                 </div>
-                <div className="border border-black bg-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sw-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 text-gray-500" />
                     <span className="font-mono text-xs uppercase text-gray-500">
@@ -721,7 +695,7 @@ export default function SettingsPage() {
 
           {/* LLM Configuration */}
           <section className="space-y-6">
-            <div className="flex items-center gap-2 border-b border-black/10 pb-2">
+            <div className="flex items-center gap-2 border-b border-border/80 pb-2">
               <Key className="w-4 h-4" />
               <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
                 {t('settings.llmConfigurationTitle')}
@@ -900,7 +874,7 @@ export default function SettingsPage() {
                           <p className="font-mono text-[10px] uppercase tracking-wider text-gray-600">
                             {item.label}
                           </p>
-                          <pre className="mt-1 whitespace-pre-wrap rounded-none border border-black bg-white p-3 text-xs text-gray-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]">
+                          <pre className="mt-1 whitespace-pre-wrap rounded-2xl border border-border bg-white p-3 text-xs text-gray-800 shadow-sw-sm">
                             {item.value}
                           </pre>
                         </div>
@@ -914,7 +888,7 @@ export default function SettingsPage() {
 
           {/* Content Generation Section */}
           <section className="space-y-6">
-            <div className="flex items-center gap-2 border-b border-black/10 pb-2">
+            <div className="flex items-center gap-2 border-b border-border/80 pb-2">
               <Settings2 className="w-4 h-4" />
               <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
                 {t('settings.contentGeneration.title')}
@@ -972,68 +946,6 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          {/* Language Settings Section */}
-          <section className="space-y-6">
-            <div className="flex items-center gap-2 border-b border-black/10 pb-2">
-              <Globe className="w-4 h-4" />
-              <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
-                {t('settings.uiLanguage')} & {t('settings.contentLanguage')}
-              </h2>
-            </div>
-
-            {/* UI Language */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
-                  {t('settings.uiLanguage')}
-                </h3>
-                <p className="text-sm text-gray-600 mb-3">{t('settings.uiLanguageDescription')}</p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {supportedLanguages.map((lang) => (
-                    <button
-                      key={`ui-${lang}`}
-                      onClick={() => setUiLanguage(lang as Locale)}
-                      disabled={languageLoading}
-                      className={`px-4 py-3 text-sm ${SEGMENTED_BUTTON_BASE} ${uiLanguage === lang ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE}`}
-                    >
-                      {languageNames[lang]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Content Language */}
-            <div className="space-y-4 pt-4 border-t border-gray-200">
-              <div>
-                <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
-                  {t('settings.contentLanguage')}
-                </h3>
-                <p className="text-sm text-gray-600 mb-3">
-                  {t('settings.contentLanguageDescription')}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {supportedLanguages.map((lang) => (
-                    <button
-                      key={`content-${lang}`}
-                      onClick={() => setContentLanguage(lang as SupportedLanguage)}
-                      disabled={languageLoading}
-                      className={`px-4 py-3 text-sm ${SEGMENTED_BUTTON_BASE} ${contentLanguage === lang ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE}`}
-                    >
-                      {languageNames[lang]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
           {/* Danger Zone */}
           <section className="space-y-6">
             <div className="flex items-center gap-2 border-b border-red-200 pb-2">
@@ -1086,7 +998,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Footer */}
-        <div className="bg-[#E5E5E0] p-4 border-t border-black flex justify-between items-center">
+        <div className="flex items-center justify-between border-t border-border bg-white/50 p-4">
           <div className="flex items-center gap-2">
             <Image
               src="/logo.svg"

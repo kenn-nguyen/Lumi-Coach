@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { captureEvent } from '@/lib/analytics/posthog';
+import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 type ConnectStatus = 'connecting' | 'success' | 'error';
 
@@ -16,7 +16,7 @@ export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientPr
 
   useEffect(() => {
     let cancelled = false;
-    captureEvent('extension_connect_started', {
+    captureEvent(POSTHOG_EVENTS.EXTENSION_CONNECT_STARTED, {
       extension_id_present: Boolean(extensionId),
     });
 
@@ -24,7 +24,7 @@ export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientPr
       if (!extensionId) {
         setStatus('error');
         setMessage('Missing extension identifier.');
-        captureEvent('extension_connect_failed', {
+        captureEvent(POSTHOG_EVENTS.EXTENSION_CONNECT_FAILED, {
           reason: 'missing_extension_identifier',
         });
         return;
@@ -72,13 +72,13 @@ export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientPr
         if (cancelled) return;
         setStatus('success');
         setMessage('Connected. Returning you to LinkedIn…');
-        captureEvent('extension_connect_succeeded');
+        captureEvent(POSTHOG_EVENTS.EXTENSION_CONNECT_SUCCEEDED);
       } catch (error) {
         if (cancelled) return;
         setStatus('error');
         const resolvedMessage = error instanceof Error ? error.message : 'Failed to connect extension.';
         setMessage(resolvedMessage);
-        captureEvent('extension_connect_failed', {
+        captureEvent(POSTHOG_EVENTS.EXTENSION_CONNECT_FAILED, {
           reason: resolvedMessage,
         });
       }
@@ -92,14 +92,16 @@ export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientPr
   }, [extensionId]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#F0F0E8] px-6">
-      <div className="w-full max-w-md border-2 border-black bg-[#E5E5E0] p-8 shadow-[8px_8px_0px_0px_#000000]">
+    <main className="skin-page-brand min-h-screen flex items-center justify-center px-6">
+      <div className="w-full max-w-md rounded-[28px] border border-border bg-white/90 p-8 shadow-sw-card backdrop-blur-[10px]">
         <div className="space-y-2">
-          <p className="font-mono text-xs uppercase tracking-[0.12em] text-blue-700">
+          <p className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-primary">
             SOM Career Coach
           </p>
-          <h1 className="font-serif text-4xl text-black">Connect Extension</h1>
-          <p className="text-sm text-gray-700">{message}</p>
+          <h1 className="font-serif text-4xl tracking-[-0.04em] text-foreground">
+            Connect Extension
+          </h1>
+          <p className="text-sm text-muted-foreground">{message}</p>
         </div>
 
         <div className="mt-8 flex gap-3">

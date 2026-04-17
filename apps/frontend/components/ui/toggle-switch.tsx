@@ -3,15 +3,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-/**
- * Swiss International Style Toggle Switch Component
- *
- * Design Principles:
- * - Square corners (rounded-none on container, pill shape for toggle)
- * - High contrast states
- * - Clear label and description
- */
-
 export interface ToggleSwitchProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
@@ -19,6 +10,7 @@ export interface ToggleSwitchProps {
   description?: string;
   disabled?: boolean;
   className?: string;
+  display?: 'card' | 'inline';
 }
 
 export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
@@ -28,53 +20,68 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   description,
   disabled = false,
   className,
+  display = 'card',
 }) => {
   const labelId = React.useId();
 
-  const handleToggle = () => {
-    if (!disabled) {
-      onCheckedChange(!checked);
-    }
-  };
+  const toggleButton = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-labelledby={labelId}
+      disabled={disabled}
+      onClick={() => !disabled && onCheckedChange(!checked)}
+      className={cn(
+        'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2',
+        checked
+          ? 'border-primary/15 bg-primary'
+          : 'border-[#cfc7b8] bg-[#f3eee3]',
+        disabled && 'opacity-50'
+      )}
+    >
+      <span
+        className={cn(
+          'pointer-events-none block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200',
+          checked ? 'translate-x-6 border border-primary/10' : 'translate-x-1 border border-[#bcae96]'
+        )}
+      />
+    </button>
+  );
+
+  if (display === 'inline') {
+    return (
+      <label
+        className={cn(
+          'flex items-center gap-2',
+          disabled && 'cursor-not-allowed opacity-50',
+          className
+        )}
+      >
+        {toggleButton}
+        <span id={labelId} className="font-mono text-xs text-gray-700">
+          {label}
+        </span>
+      </label>
+    );
+  }
 
   return (
     <div
       className={cn(
-        'flex items-center justify-between p-4 border border-black bg-white',
-        'shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]',
-        disabled && 'opacity-50 cursor-not-allowed',
+        'flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-xs',
+        disabled && 'cursor-not-allowed opacity-50',
         className
       )}
     >
-      <div className="flex-1 mr-4">
-        <div id={labelId} className="font-mono text-sm font-bold uppercase tracking-wider">
+      <div className="mr-4 flex-1">
+        <div id={labelId} className="font-semibold text-foreground">
           {label}
         </div>
-        {description && <div className="font-sans text-xs text-gray-500 mt-1">{description}</div>}
+        {description && <div className="mt-1 text-sm text-muted-foreground">{description}</div>}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-labelledby={labelId}
-        disabled={disabled}
-        onClick={handleToggle}
-        className={cn(
-          'relative inline-flex h-6 w-12 shrink-0 cursor-pointer items-center',
-          'border-2 border-black transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2',
-          'disabled:cursor-not-allowed',
-          checked ? 'bg-blue-700' : 'bg-gray-200'
-        )}
-      >
-        <span
-          className={cn(
-            'pointer-events-none block h-4 w-4 bg-white border border-black shadow-sm',
-            'transition-transform duration-200',
-            checked ? 'translate-x-6' : 'translate-x-1'
-          )}
-        />
-      </button>
+      {toggleButton}
     </div>
   );
 };

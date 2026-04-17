@@ -173,6 +173,52 @@ export default function TailorPage() {
     return null;
   };
 
+  const getPreviewErrorMessage = (error: unknown) => {
+    const errorMessage = error instanceof Error ? error.message : '';
+    const lower = errorMessage.toLowerCase();
+
+    if (
+      lower.includes('api key') ||
+      lower.includes('unauthorized') ||
+      lower.includes('authentication') ||
+      errorMessage.includes('401')
+    ) {
+      return t('tailor.errors.apiKeyError');
+    }
+
+    if (lower.includes('rate limit') || errorMessage.includes('429')) {
+      return t('tailor.errors.rateLimit');
+    }
+
+    if (lower.includes('timed out') || errorMessage.includes('504')) {
+      return errorMessage || t('tailor.errors.failedToPreview');
+    }
+
+    const detailMatch = errorMessage.match(/detail['"]?\s*:\s*['"]([^'"]+)['"]/i);
+    if (detailMatch?.[1]) {
+      return detailMatch[1];
+    }
+
+    const jsonMatch = errorMessage.match(/\{.*\}$/s);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]) as { detail?: string };
+        if (parsed.detail) {
+          return parsed.detail;
+        }
+      } catch {
+        // Fall through to plain-text extraction below.
+      }
+    }
+
+    const improveFailureMatch = errorMessage.match(/^Improve failed with status \d+:\s*(.+)$/s);
+    if (improveFailureMatch?.[1]) {
+      return improveFailureMatch[1].trim();
+    }
+
+    return t('tailor.errors.failedToPreview');
+  };
+
   const runGenerate = async (resumeId: string, description: string) => {
     try {
       // 1. Upload Job Description
@@ -201,23 +247,7 @@ export default function TailorPage() {
       setShowDiffModal(true);
     } catch (err) {
       console.error(err);
-      // Check for common error patterns
-      const errorMessage = err instanceof Error ? err.message : '';
-      if (
-        errorMessage.toLowerCase().includes('api key') ||
-        errorMessage.toLowerCase().includes('unauthorized') ||
-        errorMessage.toLowerCase().includes('authentication') ||
-        errorMessage.includes('401')
-      ) {
-        setError(t('tailor.errors.apiKeyError'));
-      } else if (
-        errorMessage.toLowerCase().includes('rate limit') ||
-        errorMessage.includes('429')
-      ) {
-        setError(t('tailor.errors.rateLimit'));
-      } else {
-        setError(t('tailor.errors.failedToPreview'));
-      }
+      setError(getPreviewErrorMessage(err));
     }
   };
 
@@ -326,15 +356,8 @@ export default function TailorPage() {
   };
 
   return (
-    <div
-      className="min-h-screen w-full bg-[#F6F5EE] flex flex-col items-center justify-center p-4 md:p-8 font-sans"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(29, 78, 216, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(29, 78, 216, 0.1) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-      }}
-    >
-      <div className="w-full max-w-4xl bg-white border border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)] p-8 md:p-12 lg:p-14 relative">
+    <div className="skin-page-work flex min-h-screen w-full flex-col items-center justify-center p-4 font-sans md:p-8">
+      <div className="w-full max-w-4xl rounded-[28px] border border-border bg-card p-8 shadow-sw-card md:p-12 lg:p-14 relative">
         {/* Back Button */}
         <Button variant="link" className="absolute top-4 left-4" onClick={() => router.back()}>
           <ArrowLeft className="w-4 h-4" />
@@ -342,25 +365,21 @@ export default function TailorPage() {
         </Button>
 
         <div className="mb-8 mt-4 text-center">
-          <h1 className="font-serif text-4xl font-bold uppercase tracking-tight mb-2">
+          <h1 className="font-serif text-4xl font-bold tracking-[-0.05em] mb-2">
             {t('tailor.heroTitle')}
           </h1>
-          <p className="font-mono text-sm text-blue-700 font-bold uppercase">
-            {'// '}
-            {t('tailor.pasteJobDescriptionBelow')}
-          </p>
         </div>
 
         {/* LLM Not Configured Warning */}
         {!statusLoading && !isLlmConfigured && (
-          <div className="mb-6 border-2 border-amber-500 bg-amber-50 p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sw-sm">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-mono text-sm font-bold uppercase tracking-wider text-amber-800">
+                <p className="font-mono text-sm font-bold uppercase tracking-[0.16em] text-amber-800">
                   {t('tailor.setupRequiredTitle')}
                 </p>
-                <p className="font-mono text-xs text-amber-700 mt-1">
+                <p className="mt-1 text-xs text-amber-700">
                   {t('tailor.noApiKeyMessage')}
                 </p>
                 <Link
@@ -368,7 +387,7 @@ export default function TailorPage() {
                   className="inline-flex items-center gap-2 mt-3 text-amber-700 hover:text-amber-900 transition-colors"
                 >
                   <Settings className="w-4 h-4" />
-                  <span className="font-mono text-xs font-bold uppercase underline">
+                  <span className="font-mono text-xs font-bold uppercase underline tracking-[0.14em]">
                     {t('tailor.configureApiKey')}
                   </span>
                 </Link>
@@ -417,19 +436,19 @@ export default function TailorPage() {
           <div className="relative">
             <Textarea
               placeholder={t('tailor.jobDescriptionPlaceholder')}
-              className="min-h-[300px] font-mono text-sm bg-[#F0F0E8] border-2 border-black focus:ring-0 focus:border-blue-700 resize-none p-4 rounded-none"
+              className="min-h-[300px] resize-none rounded-2xl border-border bg-input p-4 font-mono text-sm shadow-xs focus:ring-2 focus:ring-primary/25"
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               onKeyDown={handleTextareaKeyDown}
               disabled={isLoading}
             />
-            <div className="absolute bottom-2 right-2 text-xs font-mono text-gray-400 pointer-events-none">
+            <div className="pointer-events-none absolute bottom-3 right-3 text-xs font-mono text-muted-foreground">
               {t('tailor.charactersCount', { count: jobDescription.length })}
             </div>
           </div>
 
           {error && (
-            <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-mono flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <span>!</span> {error}
             </div>
           )}

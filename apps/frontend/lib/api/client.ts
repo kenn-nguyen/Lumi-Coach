@@ -11,6 +11,20 @@ const BACKEND_TOKEN_ENDPOINT = '/api/auth/backend-token';
 let cachedBackendToken: string | null = null;
 let cachedBackendTokenExpiry = 0;
 
+export class ApiRequestTimeoutError extends Error {
+  timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`);
+    this.name = 'ApiRequestTimeoutError';
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export function isApiRequestTimeoutError(error: unknown): error is ApiRequestTimeoutError {
+  return error instanceof ApiRequestTimeoutError;
+}
+
 async function getBackendAuthToken(): Promise<string | null> {
   if (typeof window === 'undefined') {
     return null;
@@ -100,7 +114,8 @@ export async function apiFetch(
   // Matches the backend's 240s hard limit (resumes.py wait_for timeout)
   const timeout = timeoutMs ?? 240_000;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  const timeoutError = new ApiRequestTimeoutError(timeout);
+  const timer = setTimeout(() => controller.abort(timeoutError), timeout);
 
   try {
     const headers = new Headers(options?.headers);
@@ -117,11 +132,18 @@ export async function apiFetch(
       }
     }
 
-    return await fetch(url, {
-      ...options,
-      headers,
-      signal: controller.signal,
-    });
+    try {
+      return await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted && controller.signal.reason === timeoutError) {
+        throw timeoutError;
+      }
+      throw error;
+    }
   } finally {
     clearTimeout(timer);
   }

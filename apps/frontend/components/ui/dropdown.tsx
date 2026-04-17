@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, Check } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 
 export interface DropdownOption {
@@ -32,11 +32,9 @@ export function Dropdown({
   const { t } = useTranslations();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const selectedOption = options.find((opt) => opt.id === value);
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -56,70 +54,66 @@ export function Dropdown({
   };
 
   return (
-    <div className={`space-y-1 ${className}`} ref={containerRef}>
+    <div className={`space-y-1.5 ${className}`} ref={containerRef}>
       {label && (
-        <label className="font-mono text-xs font-bold uppercase tracking-wider text-gray-700 block">
+        <label className="block font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           {label}
         </label>
       )}
 
-      {description && <p className="text-sm text-gray-600">{description}</p>}
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
 
       <div className="relative">
-        {/* Trigger Button */}
         <button
-          ref={buttonRef}
           type="button"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => setIsOpen((open) => !open)}
           disabled={disabled}
-          className="w-full flex items-center justify-between border border-black bg-white px-4 py-3 font-mono text-sm transition-all duration-150 ease-out shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-none hover:translate-y-[2px] hover:translate-x-[2px] disabled:opacity-50 disabled:cursor-not-allowed rounded-none"
+          className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-xs transition-colors duration-150 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <div className="flex-1 text-left min-w-0">
+          <div className="min-w-0 flex-1 text-left">
             {selectedOption ? (
               <div>
-                <div className="font-bold text-black truncate">{selectedOption.label}</div>
+                <div className="truncate font-semibold text-foreground">{selectedOption.label}</div>
                 {selectedOption.description && (
-                  <div className="text-xs text-gray-500 mt-1 font-normal truncate">
+                  <div className="mt-1 truncate text-xs text-muted-foreground">
                     {selectedOption.description}
                   </div>
                 )}
               </div>
             ) : (
-              <span className="text-gray-400">{t('common.selectOption')}</span>
+              <span className="text-muted-foreground">{t('common.selectOption')}</span>
             )}
           </div>
           <ChevronDown
-            className={`w-4 h-4 transition-transform duration-200 ml-2 shrink-0 ${
+            className={`ml-2 h-4 w-4 shrink-0 transition-transform duration-200 ${
               isOpen ? 'rotate-180' : ''
             }`}
           />
         </button>
 
-        {/* Dropdown Menu */}
         {isOpen && (
-          <div className="absolute top-full left-0 right-0 mt-1 z-50 border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] rounded-none">
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-border bg-card p-2 shadow-sw-default">
             <div className="max-h-64 overflow-y-auto">
-              {options.map((option, index) => (
-                <React.Fragment key={option.id}>
-                  <button
-                    onClick={() => handleSelect(option.id)}
-                    className={`w-full px-4 py-3 text-left font-mono transition-colors duration-150 border border-black ${
-                      option.id === value
-                        ? 'bg-green-700 text-white'
-                        : 'bg-white text-black hover:bg-gray-50'
-                    } ${index > 0 ? '-mt-[1px]' : ''} active:bg-gray-100`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <div className="font-bold text-sm">{option.label}</div>
-                        {option.description && (
-                          <div className="text-xs mt-1 opacity-80">{option.description}</div>
-                        )}
+              {options.map((option) => (
+                <button
+                  key={option.id}
+                  onClick={() => handleSelect(option.id)}
+                  className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors ${
+                    option.id === value
+                      ? 'bg-accent text-foreground'
+                      : 'text-foreground hover:bg-secondary/70'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold">{option.label}</div>
+                    {option.description && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {option.description}
                       </div>
-                      {option.id === value && <div className="text-lg font-bold mt-0.5">✓</div>}
-                    </div>
-                  </button>
-                </React.Fragment>
+                    )}
+                  </div>
+                  {option.id === value ? <Check className="mt-0.5 h-4 w-4 text-primary" /> : null}
+                </button>
               ))}
             </div>
           </div>

@@ -15,10 +15,7 @@ interface LinkDialogProps {
 /**
  * Link Dialog Component
  *
- * Swiss International Style modal for adding/editing links.
- * - Hard shadow (no blur)
- * - Square corners
- * - Monospace labels
+ * Bright-skin modal for adding/editing links.
  */
 export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
   const [url, setUrl] = useState('');
@@ -112,12 +109,12 @@ export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
   return (
     <div className="fixed inset-0 z-50">
       {/* Overlay */}
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="fixed inset-0 bg-[rgba(18,24,38,0.32)] backdrop-blur-[2px]" onClick={onClose} />
 
       {/* Dialog */}
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <div
-          className="relative w-full max-w-md border-2 border-black bg-white shadow-[4px_4px_0px_0px_#000000] p-6"
+          className="relative w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-sw-card"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Close button */}
@@ -129,7 +126,7 @@ export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
           </button>
 
           {/* Title */}
-          <h3 className="font-mono text-xs uppercase tracking-wider mb-4 text-gray-600">
+          <h3 className="mb-4 font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
             [ {hasExistingLink ? 'EDIT LINK' : 'ADD LINK'} ]
           </h3>
 
@@ -144,7 +141,6 @@ export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Link text"
-                className="rounded-none border-black bg-white"
                 autoFocus
               />
             </div>
@@ -159,7 +155,6 @@ export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com"
-                className="rounded-none border-black bg-white"
               />
             </div>
 

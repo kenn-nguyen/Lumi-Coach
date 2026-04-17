@@ -6,15 +6,6 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslations } from '@/lib/i18n';
 
-/**
- * Swiss International Style Dialog Component
- *
- * Native implementation without external dependencies.
- * - Square corners (rounded-none) - Brutalist aesthetic
- * - Black borders and hard shadows
- * - Canvas background (#F0F0E8)
- */
-
 interface DialogContextValue {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -98,7 +89,6 @@ const DialogContent: React.FC<DialogContentProps> = ({ children, className }) =>
   const { open, onOpenChange } = useDialogContext();
   const { t } = useTranslations();
 
-  // Handle escape key
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && open) {
@@ -110,13 +100,8 @@ const DialogContent: React.FC<DialogContentProps> = ({ children, className }) =>
     return () => document.removeEventListener('keydown', handleEscape);
   }, [open, onOpenChange]);
 
-  // Prevent body scroll when dialog is open
   React.useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    document.body.style.overflow = open ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
@@ -126,18 +111,11 @@ const DialogContent: React.FC<DialogContentProps> = ({ children, className }) =>
 
   return createPortal(
     <div className="fixed inset-0 z-50">
-      {/* Overlay */}
-      <div
-        className="fixed inset-0 bg-black/50 animate-in fade-in-0"
-        onClick={() => onOpenChange(false)}
-      />
-      {/* Content */}
+      <div className="fixed inset-0 bg-[rgba(18,24,38,0.32)] backdrop-blur-[2px]" onClick={() => onOpenChange(false)} />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <div
           className={cn(
-            'relative w-full max-w-lg',
-            'border border-black bg-[#F0F0E8] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)]',
-            'rounded-none',
+            'relative w-full max-w-lg overflow-hidden rounded-3xl border border-border bg-card shadow-sw-card',
             'animate-in fade-in-0 zoom-in-95 duration-200',
             className
           )}
@@ -146,7 +124,7 @@ const DialogContent: React.FC<DialogContentProps> = ({ children, className }) =>
           {children}
           <button
             onClick={() => onOpenChange(false)}
-            className="absolute right-4 top-4 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:ring-offset-2"
+            className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-2"
           >
             <X className="h-5 w-5" />
             <span className="sr-only">{t('common.close')}</span>
@@ -158,23 +136,21 @@ const DialogContent: React.FC<DialogContentProps> = ({ children, className }) =>
   );
 };
 
-interface DialogHeaderProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-const DialogHeader: React.FC<DialogHeaderProps> = ({ className, children, ...props }) => (
+const DialogHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
+  className,
+  children,
+  ...props
+}) => (
   <div className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)} {...props}>
     {children}
   </div>
 );
 
-interface DialogFooterProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-const DialogFooter: React.FC<DialogFooterProps> = ({ className, children, ...props }) => (
+const DialogFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
+  className,
+  children,
+  ...props
+}) => (
   <div
     className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2', className)}
     {...props}
@@ -183,30 +159,24 @@ const DialogFooter: React.FC<DialogFooterProps> = ({ className, children, ...pro
   </div>
 );
 
-interface DialogTitleProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-const DialogTitle: React.FC<DialogTitleProps> = ({ className, children, ...props }) => (
+const DialogTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({
+  className,
+  children,
+  ...props
+}) => (
   <h2
-    className={cn('font-serif text-lg font-bold leading-none tracking-tight', className)}
+    className={cn('font-serif text-2xl font-semibold leading-none tracking-[-0.04em]', className)}
     {...props}
   >
     {children}
   </h2>
 );
 
-interface DialogDescriptionProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-const DialogDescription: React.FC<DialogDescriptionProps> = ({ className, children, ...props }) => (
-  <p className={cn('text-sm text-gray-600', className)} {...props}>
-    {children}
-  </p>
-);
+const DialogDescription: React.FC<React.HTMLAttributes<HTMLParagraphElement>> = ({
+  className,
+  children,
+  ...props
+}) => <p className={cn('text-sm text-muted-foreground', className)} {...props}>{children}</p>;
 
 export {
   Dialog,

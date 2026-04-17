@@ -17,6 +17,7 @@ import { RetroTabs } from '@/components/ui/retro-tabs';
 import { ConfirmDialog, type ConfirmDialogProps } from '@/components/ui/confirm-dialog';
 import {
   Download,
+  DownloadIcon,
   Save,
   AlertTriangle,
   ArrowLeft,
@@ -49,18 +50,31 @@ import { RegenerateWizard } from './regenerate-wizard';
 import { useRegenerateWizard } from '@/hooks/use-regenerate-wizard';
 import { useTranslations } from '@/lib/i18n';
 import { type TemplateSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/lib/types/template-settings';
-import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
+import { commitPendingSectionRemovals, withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/context/language-context';
 import { buildResumeFilename, downloadBlobAsFile, openUrlInNewTab } from '@/lib/utils/download';
 import type { RegenerateItemInput } from '@/lib/api/enrichment';
-import { AccountControl } from '@/components/auth/account-control';
 
 type TabId = 'resume' | 'cover-letter' | 'outreach' | 'jd-match' | 'ai-strategy-match';
 
 const STORAGE_KEY = 'resume_builder_draft';
 const SETTINGS_STORAGE_KEY = 'resume_builder_settings';
 const SPLIT_STORAGE_KEY = 'resume_builder_editor_width';
+
+const DEFAULT_EDITOR_WIDTH_BY_TAB: Record<TabId, number> = {
+  resume: 47,
+  'cover-letter': 46,
+  outreach: 44,
+  'jd-match': 25,
+  'ai-strategy-match': 25,
+};
+
+const clampEditorWidth = (value: number) => Math.min(60, Math.max(25, value));
+
+const loadInitialEditorWidthByTab = (): Record<TabId, number> => {
+  return { ...DEFAULT_EDITOR_WIDTH_BY_TAB };
+};
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -130,14 +144,14 @@ const ResumeBuilderContent = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const resumeId = searchParams.get('id');
+  const [activeTab, setActiveTab] = useState<TabId>('resume');
   const workspaceRef = useRef<HTMLDivElement>(null);
-  const [editorWidthPercent, setEditorWidthPercent] = useState<number>(() => {
-    if (typeof window === 'undefined') return 48;
-    const saved = Number.parseFloat(window.localStorage.getItem(SPLIT_STORAGE_KEY) || '');
-    return Number.isFinite(saved) ? Math.min(60, Math.max(32, saved)) : 48;
-  });
+  const [editorWidthByTab, setEditorWidthByTab] = useState<Record<TabId, number>>(
+    loadInitialEditorWidthByTab
+  );
   const [isResizingPanels, setIsResizingPanels] = useState(false);
   const [isDesktopSplit, setIsDesktopSplit] = useState(false);
+  const editorWidthPercent = editorWidthByTab[activeTab];
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -160,9 +174,6 @@ const ResumeBuilderContent = () => {
     setResumeData(initialData);
     setLastSavedData(initialData);
   }, [authStatus, initialData, resumeId, hasUnsavedChanges, improvedPreview]);
-
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabId>('resume');
 
   // Cover letter & outreach state
   const [coverLetter, setCoverLetter] = useState('');
@@ -274,6 +285,15 @@ const ResumeBuilderContent = () => {
     [resumeData, t]
   );
 
+  const builderHeaderButtonClass =
+    'h-9 rounded-full border border-border/80 bg-white/88 px-4 py-0 text-sm font-semibold leading-none shadow-[0_4px_12px_rgba(15,23,42,0.06)] hover:bg-white';
+  const builderHeaderPrimaryButtonClass =
+    'h-9 rounded-full border border-[#2453ff]/15 bg-[#2453ff] px-4 py-0 text-sm font-semibold leading-none text-white shadow-[0_10px_20px_rgba(36,83,255,0.18)] hover:bg-[#1f49ec]';
+  const builderHeaderDownloadButtonClass =
+    'h-9 rounded-full border border-[#1f7a57]/16 bg-[#1f7a57] px-4 py-0 text-sm font-semibold leading-none text-white shadow-[0_10px_20px_rgba(31,122,87,0.18)] hover:bg-[#17684a]';
+  const builderHeaderResetButtonClass =
+    'h-9 rounded-full border border-[#d7bf98] bg-[#fff8ec] px-4 py-0 text-sm font-semibold leading-none text-[#9a5a12] shadow-[0_4px_12px_rgba(15,23,42,0.04)] hover:bg-[#fdf0d9]';
+
   // Load template settings from localStorage on mount
   useEffect(() => {
     const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -299,8 +319,8 @@ const ResumeBuilderContent = () => {
   }, [templateSettings]);
 
   useEffect(() => {
-    localStorage.setItem(SPLIT_STORAGE_KEY, String(editorWidthPercent));
-  }, [editorWidthPercent]);
+    localStorage.removeItem(SPLIT_STORAGE_KEY);
+  }, []);
 
   useEffect(() => {
     if (!isResizingPanels) return;
@@ -310,7 +330,10 @@ const ResumeBuilderContent = () => {
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const nextPercent = ((event.clientX - rect.left) / rect.width) * 100;
-      setEditorWidthPercent(Math.min(60, Math.max(32, nextPercent)));
+      setEditorWidthByTab((current) => ({
+        ...current,
+        [activeTab]: clampEditorWidth(nextPercent),
+      }));
     };
 
     const handleMouseUp = () => {
@@ -328,7 +351,7 @@ const ResumeBuilderContent = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isResizingPanels]);
+  }, [activeTab, isResizingPanels]);
 
   // Warn user before leaving with unsaved changes
   useEffect(() => {
@@ -518,8 +541,9 @@ const ResumeBuilderContent = () => {
     }
     try {
       setIsSaving(true);
-      const updated = await updateResume(resumeId, resumeData);
-      const nextData = (updated.processed_resume || resumeData) as ResumeData;
+      const dataToSave = commitPendingSectionRemovals(resumeData);
+      const updated = await updateResume(resumeId, dataToSave);
+      const nextData = (updated.processed_resume || dataToSave) as ResumeData;
       setResumeData(nextData);
       setLastSavedData(nextData);
       setGenerationArtifacts(updated.generation_artifacts ?? null);
@@ -737,18 +761,11 @@ const ResumeBuilderContent = () => {
   };
 
   return (
-    <div
-      className="h-screen w-full bg-[#F0F0E8] flex justify-center items-center p-4 md:p-8"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(29, 78, 216, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(29, 78, 216, 0.1) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-      }}
-    >
+    <div className="skin-page-work flex h-screen w-full items-center justify-center p-4 md:p-8">
       {/* Main Container */}
-      <div className="w-full h-full max-w-[90%] md:max-w-[95%] xl:max-w-[1800px] border border-black bg-[#F0F0E8] shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)] flex flex-col">
+      <div className="flex h-full w-full max-w-[90%] flex-col overflow-hidden rounded-[28px] border border-border bg-[rgba(250,248,242,0.96)] shadow-sw-card md:max-w-[95%] xl:max-w-[1800px]">
         {/* Header Section */}
-        <div className="border-b border-black px-6 py-4 md:px-8 md:py-4 bg-[#F0F0E8] no-print">
+        <div className="no-print border-b border-border bg-white/60 px-6 py-4 md:px-8 md:py-4">
           {/* Top Row: Back button and Actions */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
             <div>
@@ -760,12 +777,12 @@ const ResumeBuilderContent = () => {
                 <ArrowLeft className="w-4 h-4" />
                 {t('nav.backToDashboard')}
               </Button>
-              <h1 className="font-serif text-3xl md:text-[2.75rem] text-black tracking-tight leading-[0.95] uppercase">
+              <h1 className="font-serif text-3xl leading-[0.95] tracking-[-0.04em] text-foreground md:text-[2.75rem]">
                 {t('nav.builder')}
               </h1>
               <div className="mt-2 flex items-center gap-3">
                 {hasUnsavedChanges && (
-                  <span className="flex items-center gap-1 text-xs font-mono text-amber-600 bg-amber-50 px-2 py-1 border border-amber-200">
+                  <span className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-mono text-amber-700">
                     <AlertTriangle className="w-3 h-3" />
                     {t('builder.unsavedDraft')}
                   </span>
@@ -774,40 +791,18 @@ const ResumeBuilderContent = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 md:justify-end">
-              {/* Resume tab actions */}
+              {/* Resume output action */}
               {activeTab === 'resume' && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleExportJson}
-                    disabled={!resumeId}
-                  >
-                    Export JSON
-                  </Button>
-                  <Button
-                    variant="warning"
-                    size="sm"
-                    onClick={handleReset}
-                    disabled={!hasUnsavedChanges}
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    {t('common.reset')}
-                  </Button>
-                  <Button size="sm" onClick={handleSave} disabled={!resumeId || isSaving}>
-                    <Save className="w-4 h-4" />
-                    {isSaving ? t('common.saving') : t('common.save')}
-                  </Button>
-                  <Button
-                    variant="success"
-                    size="sm"
-                    onClick={handleDownload}
-                    disabled={!resumeId || isDownloading}
-                  >
-                    <Download className="w-4 h-4" />
-                    {isDownloading ? t('common.generating') : t('common.download')}
-                  </Button>
-                </>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownload}
+                  disabled={!resumeId || isDownloading}
+                  className={builderHeaderDownloadButtonClass}
+                >
+                  <Download className="w-4 h-4" />
+                  {isDownloading ? t('common.generating') : t('common.download')}
+                </Button>
               )}
 
               {/* Cover letter tab actions */}
@@ -870,9 +865,6 @@ const ResumeBuilderContent = () => {
                 </>
               )}
 
-              <div className="md:ml-2">
-                <AccountControl compact />
-              </div>
             </div>
           </div>
         </div>
@@ -880,21 +872,18 @@ const ResumeBuilderContent = () => {
         {/* Content Grid */}
         <div
           ref={workspaceRef}
-          className={cn(
-            'flex flex-col lg:flex-row bg-black gap-[1px] flex-1 min-h-0',
-            isResizingPanels && 'select-none'
-          )}
+          className={cn('flex flex-1 min-h-0 flex-col gap-px bg-border lg:flex-row', isResizingPanels && 'select-none')}
         >
           {/* Left Panel: Editor */}
           <div
-            className="bg-[#F0F0E8] p-6 md:p-7 overflow-y-auto no-print min-w-0 shrink-0"
+            className="no-print min-w-0 shrink-0 overflow-y-auto bg-[#f8f5ed] p-6 md:p-7"
             style={isDesktopSplit ? { width: `${editorWidthPercent}%` } : undefined}
           >
             <div className="max-w-3xl mx-auto space-y-6">
-              <div className="flex items-center justify-between gap-3 border-b-2 border-black pb-2">
+              <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-blue-700"></div>
-                  <h2 className="font-mono text-base font-bold uppercase tracking-wider">
+                  <h2 className="font-mono text-base font-bold uppercase tracking-[0.16em] text-foreground">
                     {activeTab === 'resume' && t('builder.leftPanel.editorPanel')}
                     {activeTab === 'cover-letter' && t('builder.leftPanel.coverLetterEditor')}
                     {activeTab === 'outreach' && t('builder.leftPanel.outreachEditor')}
@@ -904,15 +893,50 @@ const ResumeBuilderContent = () => {
                   </h2>
                 </div>
                 {activeTab === 'resume' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => regenerateWizard.startRegenerate()}
-                    disabled={!resumeId}
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    {t('builder.regenerate.buttonLabel')}
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => regenerateWizard.startRegenerate()}
+                      disabled={!resumeId}
+                      className={builderHeaderButtonClass}
+                      title="Regenerate"
+                      aria-label="Regenerate"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportJson}
+                      disabled={!resumeId}
+                      className={builderHeaderButtonClass}
+                      title="Export JSON"
+                      aria-label="Export JSON"
+                    >
+                      <DownloadIcon className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleReset}
+                      disabled={!hasUnsavedChanges}
+                      className={builderHeaderResetButtonClass}
+                      title={t('common.reset')}
+                      aria-label={t('common.reset')}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={!resumeId || isSaving}
+                      className={builderHeaderPrimaryButtonClass}
+                    >
+                      <Save className="w-4 h-4" />
+                      {isSaving ? t('common.saving') : t('common.save')}
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -971,7 +995,7 @@ const ResumeBuilderContent = () => {
               {/* JD Match Info Panel */}
               {activeTab === 'jd-match' && (
                 <div className="space-y-4">
-                  <div className="border-2 border-black bg-white p-4">
+                  <div className="rounded-2xl border border-border bg-white p-4 shadow-xs">
                     <h3 className="font-mono text-sm font-bold uppercase mb-2">
                       {t('builder.jdMatch.aboutTitle')}
                     </h3>
@@ -980,7 +1004,7 @@ const ResumeBuilderContent = () => {
                     </p>
                   </div>
 
-                  <div className="border-2 border-black bg-[#F0F0E8] p-4">
+                  <div className="rounded-2xl border border-border bg-secondary/60 p-4 shadow-xs">
                     <h3 className="font-mono text-sm font-bold uppercase mb-2">
                       {t('builder.jdMatch.highlightedKeywordsTitle')}
                     </h3>
@@ -1004,7 +1028,7 @@ const ResumeBuilderContent = () => {
                     </p>
                   </div>
 
-                  <div className="border-2 border-black bg-white p-4">
+                  <div className="rounded-2xl border border-border bg-white p-4 shadow-xs">
                     <h3 className="font-mono text-sm font-bold uppercase mb-2">
                       {t('builder.jdMatch.tipsTitle')}
                     </h3>
@@ -1019,7 +1043,7 @@ const ResumeBuilderContent = () => {
 
               {activeTab === 'ai-strategy-match' && (
                 <div className="space-y-4">
-                  <div className="border-2 border-black bg-white p-4">
+                  <div className="rounded-2xl border border-border bg-white p-4 shadow-xs">
                     <h3 className="font-mono text-sm font-bold uppercase mb-2">
                       {t('builder.strategyMatch.aboutTitle')}
                     </h3>
@@ -1028,7 +1052,7 @@ const ResumeBuilderContent = () => {
                     </p>
                   </div>
 
-                  <div className="border-2 border-black bg-[#F0F0E8] p-4">
+                  <div className="rounded-2xl border border-border bg-secondary/60 p-4 shadow-xs">
                     <h3 className="font-mono text-sm font-bold uppercase mb-2">
                       {t('builder.strategyMatch.highlightedKeywordsTitle')}
                     </h3>
@@ -1037,7 +1061,7 @@ const ResumeBuilderContent = () => {
                     </p>
                   </div>
 
-                  <div className="border-2 border-black bg-white p-4">
+                  <div className="rounded-2xl border border-border bg-white p-4 shadow-xs">
                     <h3 className="font-mono text-sm font-bold uppercase mb-2">
                       {t('builder.strategyMatch.tipsTitle')}
                     </h3>
@@ -1053,7 +1077,7 @@ const ResumeBuilderContent = () => {
           </div>
 
           <div
-            className="relative hidden lg:flex w-3 shrink-0 cursor-col-resize items-center justify-center bg-[#E5E5E0] no-print"
+            className="relative hidden w-3 shrink-0 cursor-col-resize items-center justify-center bg-secondary no-print lg:flex"
             onMouseDown={() => setIsResizingPanels(true)}
             role="separator"
             aria-orientation="vertical"
@@ -1071,36 +1095,44 @@ const ResumeBuilderContent = () => {
           </div>
 
           {/* Right Panel: Preview with Tabs */}
-          <div className="bg-[#E5E5E0] overflow-hidden flex flex-col flex-1 min-w-0 no-print">
+          <div className="no-print flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f3efe4]">
             {/* Tabs Header */}
-            <div className="px-6 pt-3 shrink-0 bg-[#E5E5E0]">
-              <RetroTabs
-                tabs={[
-                  { id: 'resume', label: t('builder.previewTabs.resume') },
-                  {
-                    id: 'cover-letter',
-                    label: t('builder.previewTabs.coverLetter'),
-                    disabled: !isTailoredResume,
-                  },
-                  {
-                    id: 'outreach',
-                    label: t('builder.previewTabs.outreach'),
-                    disabled: !isTailoredResume,
-                  },
-                  {
-                    id: 'jd-match',
-                    label: t('builder.previewTabs.jdMatch'),
-                    disabled: !draftJobDescription,
-                  },
-                  {
-                    id: 'ai-strategy-match',
-                    label: t('builder.previewTabs.aiStrategyMatch'),
-                    disabled: !generationArtifacts?.prompt2,
-                  },
-                ]}
-                activeTab={activeTab}
-                onTabChange={(id) => setActiveTab(id as TabId)}
-              />
+            <div className="shrink-0 bg-[#f3efe4] px-6 pt-3">
+              <div className="flex items-center justify-between gap-3">
+                <RetroTabs
+                  tabs={[
+                    { id: 'resume', label: t('builder.previewTabs.resume') },
+                    {
+                      id: 'cover-letter',
+                      label: t('builder.previewTabs.coverLetter'),
+                      disabled: !isTailoredResume,
+                    },
+                    {
+                      id: 'outreach',
+                      label: t('builder.previewTabs.outreach'),
+                      disabled: !isTailoredResume,
+                    },
+                    {
+                      id: 'jd-match',
+                      label: t('builder.previewTabs.jdMatch'),
+                      disabled: !draftJobDescription,
+                    },
+                    {
+                      id: 'ai-strategy-match',
+                      label: (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                          <span>{t('builder.previewTabs.aiStrategyMatch')}</span>
+                        </>
+                      ),
+                      disabled: !generationArtifacts?.prompt2,
+                    },
+                  ]}
+                  activeTab={activeTab}
+                  onTabChange={(id) => setActiveTab(id as TabId)}
+                  variant="folder"
+                />
+              </div>
             </div>
 
             {/* Preview Content */}
@@ -1165,6 +1197,7 @@ const ResumeBuilderContent = () => {
                 <StrategyMatchView
                   prompt2Artifact={generationArtifacts.prompt2}
                   resumeData={resumeData}
+                  resumeId={resumeId}
                 />
               )}
             </div>
@@ -1172,8 +1205,8 @@ const ResumeBuilderContent = () => {
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-[#F0F0E8] flex justify-between items-center font-mono text-xs text-blue-700 border-t border-black no-print">
-          <span className="uppercase font-bold flex items-center gap-2">
+        <div className="no-print flex items-center justify-between border-t border-border bg-white/50 p-4 font-mono text-xs text-primary">
+          <span className="flex items-center gap-2 font-bold uppercase tracking-[0.14em]">
             <Image
               src="/logo.svg"
               alt="SOM Career Coach"

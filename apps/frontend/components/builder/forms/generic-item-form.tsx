@@ -45,6 +45,8 @@ export const GenericItemForm: React.FC<GenericItemFormProps> = ({
   descriptionPlaceholder,
 }) => {
   const { t } = useTranslations();
+  const builderEditableFieldClass =
+    'rounded-xl border-border bg-white focus-visible:border-primary focus-visible:ring-primary/25';
 
   const finalItemLabel = itemLabel ?? t('builder.genericItemForm.itemLabel');
   const finalAddLabel =
@@ -128,20 +130,12 @@ export const GenericItemForm: React.FC<GenericItemFormProps> = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleAdd}
-          className="rounded-none border-black hover:bg-black hover:text-white transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" /> {finalAddLabel}
-        </Button>
-      </div>
-
       <div className="space-y-8">
         {items.map((item) => (
-          <div key={item.id} className="p-6 border border-black bg-gray-50 relative group">
+          <div
+            key={item.id}
+            className="relative group rounded-2xl border border-border bg-card/80 p-6 shadow-[0_8px_24px_rgba(15,23,42,0.05)]"
+          >
             <Button
               variant="ghost"
               size="icon"
@@ -151,72 +145,70 @@ export const GenericItemForm: React.FC<GenericItemFormProps> = ({
               <Trash2 className="w-4 h-4" />
             </Button>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 pr-8">
+            <div className="mb-3 grid grid-cols-1 md:grid-cols-2 gap-3 pr-8">
               <div className="space-y-2">
-                <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                  {t('builder.genericItemForm.fields.title')}
-                </Label>
                 <Input
                   value={item.title || ''}
                   onChange={(e) => handleChange(item.id, 'title', e.target.value)}
                   placeholder={finalTitlePlaceholder}
-                  className="rounded-none border-black bg-white"
+                  className={cn(builderEditableFieldClass, 'font-semibold')}
                 />
               </div>
-              {showSubtitle && (
+              {showYears ? (
                 <div className="space-y-2">
-                  <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                    {t('builder.genericItemForm.fields.organization')}
-                  </Label>
-                  <Input
-                    value={item.subtitle || ''}
-                    onChange={(e) => handleChange(item.id, 'subtitle', e.target.value)}
-                    placeholder={finalSubtitlePlaceholder}
-                    className="rounded-none border-black bg-white"
-                  />
-                </div>
-              )}
-              {showLocation && (
-                <div className="space-y-2">
-                  <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                    {t('builder.genericItemForm.fields.location')}
-                  </Label>
-                  <Input
-                    value={item.location || ''}
-                    onChange={(e) => handleChange(item.id, 'location', e.target.value)}
-                    placeholder={finalLocationPlaceholder}
-                    className="rounded-none border-black bg-white"
-                  />
-                </div>
-              )}
-              {showYears && (
-                <div className="space-y-2">
-                  <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-                    {t('builder.genericItemForm.fields.years')}
-                  </Label>
                   <Input
                     value={item.years || ''}
                     onChange={(e) => handleChange(item.id, 'years', e.target.value)}
                     placeholder={finalYearsPlaceholder}
-                    className="rounded-none border-black bg-white"
+                    className={cn(builderEditableFieldClass, 'font-semibold')}
                   />
                 </div>
-              )}
+              ) : showSubtitle ? (
+                <div className="space-y-2">
+                  <Input
+                    value={item.subtitle || ''}
+                    onChange={(e) => handleChange(item.id, 'subtitle', e.target.value)}
+                    placeholder={finalSubtitlePlaceholder}
+                    className={cn(builderEditableFieldClass, 'font-semibold')}
+                  />
+                </div>
+              ) : showLocation ? (
+                <div className="space-y-2">
+                  <Input
+                    value={item.location || ''}
+                    onChange={(e) => handleChange(item.id, 'location', e.target.value)}
+                    placeholder={finalLocationPlaceholder}
+                    className={cn(builderEditableFieldClass, 'font-normal')}
+                  />
+                </div>
+              ) : null}
+              {showYears && showSubtitle ? (
+                <div className="space-y-2">
+                  <Input
+                    value={item.subtitle || ''}
+                    onChange={(e) => handleChange(item.id, 'subtitle', e.target.value)}
+                    placeholder={finalSubtitlePlaceholder}
+                    className={cn(builderEditableFieldClass, 'font-normal')}
+                  />
+                </div>
+              ) : null}
+              {showLocation && (showYears || showSubtitle) ? (
+                <div className="space-y-2">
+                  <Input
+                    value={item.location || ''}
+                    onChange={(e) => handleChange(item.id, 'location', e.target.value)}
+                    placeholder={finalLocationPlaceholder}
+                    className={cn(builderEditableFieldClass, 'font-normal')}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
+              <div className="flex items-center">
                 <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
                   {t('builder.genericItemForm.fields.descriptionPoints')}
                 </Label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleAddDescription(item.id)}
-                  className="h-6 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50"
-                >
-                  <Plus className="w-3 h-3 mr-1" /> {t('builder.genericItemForm.actions.addPoint')}
-                </Button>
               </div>
               {item.description?.map((desc, idx) => (
                 <div key={idx} className="flex gap-2">
@@ -238,25 +230,43 @@ export const GenericItemForm: React.FC<GenericItemFormProps> = ({
                   </Button>
                 </div>
               ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleAddDescription(item.id)}
+                className="mt-1 h-auto w-auto justify-start rounded-none border-none bg-transparent px-0 py-0 text-xs font-semibold text-blue-700 shadow-none hover:bg-transparent hover:text-blue-800"
+              >
+                <Plus className="w-3 h-3 mr-1" /> {t('builder.genericItemForm.actions.addPoint')}
+              </Button>
             </div>
           </div>
         ))}
 
         {items.length === 0 && (
-          <div className="text-center py-12 bg-gray-50 border border-dashed border-black">
+          <div className="text-center py-12 rounded-2xl border border-dashed border-border bg-card/70">
             <p className="font-mono text-sm text-gray-500 mb-4">
               {t('builder.genericItemForm.noEntries', { label: finalItemLabel })}
             </p>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={handleAdd}
-              className="rounded-none border-black"
+              className="h-10 rounded-xl border border-dashed border-border bg-white px-4 text-sm text-foreground hover:bg-secondary/40"
             >
               <Plus className="w-4 h-4 mr-2" />{' '}
               {t('builder.genericItemForm.addFirstItem', { label: finalItemLabel })}
             </Button>
           </div>
+        )}
+        {items.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleAdd}
+            className="h-10 w-full justify-center rounded-xl border border-dashed border-border bg-white text-sm text-foreground hover:bg-secondary/40"
+          >
+            <Plus className="w-4 h-4 mr-2" /> {finalAddLabel}
+          </Button>
         )}
       </div>
     </div>

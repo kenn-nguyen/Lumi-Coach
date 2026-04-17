@@ -181,13 +181,15 @@
       "renameSection": "Rename section",
       "customTag": "Custom",
       "hiddenFromPdfTag": "Hidden from PDF",
+      "pendingRemovalTag": "Will be removed on save",
       "hideSection": "Hide section",
       "showSection": "Show section",
       "moveUp": "Move up",
       "moveDown": "Move down",
       "deleteSection": "Delete section",
-      "deleteTitle": "Delete Section",
-      "deleteDescription": "Are you sure you want to delete \"{name}\"? This action cannot be undone."
+      "undoRemove": "Undo",
+      "deleteTitle": "Remove Section",
+      "deleteDescription": "\"{name}\" will be removed when you save. You can undo this before saving."
     },
     "previewTabs": {
       "resume": "RESUME",
@@ -369,9 +371,9 @@
         "aiRewrite": {
           "button": "Rewrite with AI",
           "title": "AI rewrite",
-          "instructionLabel": "Instruction",
+          "instructionLabel": "What should change?",
           "instructionPlaceholder": "Example: make it tighter and emphasize AI/ML risk and payments leadership.",
-          "resultLabel": "Suggested summary",
+          "resultLabel": "Draft summary",
           "resultPlaceholder": "Your generated summary will appear here.",
           "generate": "Generate",
           "generating": "Generating...",
@@ -390,9 +392,9 @@
         "aiRewrite": {
           "button": "Rewrite with AI",
           "title": "AI rewrite",
-          "instructionLabel": "Instruction",
+          "instructionLabel": "What should change?",
           "instructionPlaceholder": "Example: make it shorter and emphasize payments ownership.",
-          "resultLabel": "Suggested bullet",
+          "resultLabel": "Draft bullet",
           "resultPlaceholder": "Your generated bullet will appear here.",
           "generate": "Generate",
           "generating": "Generating...",
@@ -404,10 +406,10 @@
           "company": "Company"
         },
         "placeholders": {
-          "jobTitle": "Senior Developer",
-          "company": "Tech Corp",
-          "location": "Remote / City",
-          "years": "Jan 2020 - Present",
+          "jobTitle": "Job title",
+          "company": "Company",
+          "location": "Location",
+          "years": "Dates",
           "description": "Describe your achievement..."
         }
       },
@@ -436,17 +438,17 @@
           "website": "Website"
         },
         "placeholders": {
-          "projectName": "SOM Career Coach",
-          "role": "Creator",
-          "years": "Mar 2023",
-          "github": "github.com/username/project",
-          "website": "https://project-demo.com",
-          "description": "Project detail..."
+          "projectName": "Project name",
+          "role": "Role",
+          "years": "Dates",
+          "github": "GitHub URL",
+          "website": "Website URL",
+          "description": "Project details"
         }
       }
     },
     "formatting": {
-      "panelTitle": "Template & Formatting",
+      "panelTitle": "Page Setup and Formatting",
       "template": "Template",
       "templates": {
         "swissSingle": {
@@ -485,11 +487,11 @@
       "spacingSection": "Section",
       "spacingItems": "Items",
       "spacingLines": "Lines",
-      "fontSize": "Font Size",
-      "baseFontSize": "Base",
-      "headerScale": "Headers",
-      "headerFontFamily": "Headers",
-      "bodyFontFamily": "Body",
+      "fontSize": "Typography",
+      "baseFontSize": "Base size",
+      "headerScale": "Header scale",
+      "headerFontFamily": "Header font",
+      "bodyFontFamily": "Body font",
       "fontNames": {
         "serif": "Serif",
         "sans": "Sans",
@@ -514,15 +516,15 @@
       "refreshFromMaster": "Refresh from Master",
       "refreshFromMasterTitle": "Refresh personal info from the master resume, except the job title",
       "placeholders": {
-        "name": "John Doe",
-        "title": "Software Engineer",
-        "customTagline": "Open to relocate | U.S. work authorized",
-        "email": "john@example.com",
-        "phone": "+1 (555) 000-0000",
-        "location": "City, Country",
-        "website": "portfolio.com",
-        "linkedin": "linkedin.com/in/john",
-        "github": "github.com/john"
+        "name": "Full name",
+        "title": "Job title",
+        "customTagline": "Custom tagline",
+        "email": "Email",
+        "phone": "Phone",
+        "location": "Location",
+        "website": "Website",
+        "linkedin": "LinkedIn: slug",
+        "github": "GitHub: slug"
       }
     },
     "leftPanel": {

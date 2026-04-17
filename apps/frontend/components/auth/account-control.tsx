@@ -6,12 +6,17 @@ import User from 'lucide-react/dist/esm/icons/user';
 import LogOut from 'lucide-react/dist/esm/icons/log-out';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import { cn } from '@/lib/utils';
-import { captureEvent } from '@/lib/analytics/posthog';
+import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 export function AccountControl({ compact = false }: { compact?: boolean }) {
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -34,6 +39,18 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
       .join('');
   }, [user?.email, user?.name]);
 
+  if (!mounted) {
+    return (
+      <div
+        aria-hidden="true"
+        className={cn(
+          'rounded-full border border-transparent opacity-0',
+          compact ? 'h-11 w-[168px]' : 'h-10 w-[160px]'
+        )}
+      />
+    );
+  }
+
   if (!user) return null;
 
   return (
@@ -42,39 +59,44 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'inline-flex items-center gap-2 border border-black bg-[#E5E5E0] px-3 text-black shadow-[2px_2px_0px_0px_#000000] transition-all hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none',
-          compact ? 'h-9' : 'h-10'
+          'inline-flex items-center gap-2 rounded-full border border-border bg-card text-sm font-semibold leading-none text-foreground shadow-xs transition-colors hover:bg-secondary',
+          compact ? 'h-11 px-4' : 'h-10 px-3'
         )}
       >
-        <span className="flex h-5 w-5 items-center justify-center border border-black bg-blue-700 text-[10px] font-bold text-white">
+        <span
+          className={cn(
+            'flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white',
+            compact ? 'h-7 w-7' : 'h-6 w-6'
+          )}
+        >
           {initials || <User className="h-3 w-3" />}
         </span>
-        <span className="hidden max-w-[12rem] truncate font-mono text-xs uppercase tracking-[0.08em] md:inline">
+        <span className="hidden max-w-[12rem] truncate md:inline">
           {user.name || user.email}
         </span>
         <ChevronDown className="h-3.5 w-3.5" />
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-full z-50 mt-2 min-w-[16rem] border border-black bg-[#F0F0E8] shadow-[4px_4px_0px_0px_#000000]">
-          <div className="border-b border-black px-4 py-3">
-            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-gray-500">
+        <div className="absolute right-0 top-full z-50 mt-2 min-w-[16rem] overflow-hidden rounded-2xl border border-border bg-card shadow-sw-default">
+          <div className="border-b border-border px-4 py-3">
+            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
               Signed in
             </p>
-            <p className="mt-1 truncate font-serif text-base text-black">
+            <p className="mt-1 truncate font-serif text-base text-foreground">
               {user.name || 'User'}
             </p>
             {user.email ? (
-              <p className="truncate font-mono text-[11px] text-gray-600">{user.email}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
             ) : null}
           </div>
           <button
             type="button"
             onClick={() => {
-              captureEvent('sign_out_clicked');
+              captureEvent(POSTHOG_EVENTS.AUTH_SIGN_OUT_CLICKED);
               signOut({ callbackUrl: '/sign-in' });
             }}
-            className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-[0.12em] hover:bg-[#E5E5E0]"
+            className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-secondary"
           >
             <span>Sign out</span>
             <LogOut className="h-3.5 w-3.5" />

@@ -13,6 +13,8 @@ interface AdditionalFormProps {
 
 export const AdditionalForm: React.FC<AdditionalFormProps> = ({ data, onChange }) => {
   const { t } = useTranslations();
+  const builderTextareaClass =
+    'min-h-[120px] rounded-xl border-border bg-white text-black shadow-xs focus-visible:border-primary focus-visible:ring-primary/25';
 
   // Helper to handle array conversions (text -> string[])
   const handleArrayChange = (field: keyof AdditionalInfo, value: string) => {
@@ -38,12 +40,14 @@ export const AdditionalForm: React.FC<AdditionalFormProps> = ({ data, onChange }
 
   return (
     <div className="space-y-6">
-      <p className="font-mono text-xs text-blue-700 border-l-2 border-blue-700 pl-3">
-        {t('builder.additionalForm.instructions')}
-      </p>
+      <div className="rounded-2xl border border-border bg-card/70 px-4 py-3">
+        <p className="font-mono text-xs text-blue-700">
+          {t('builder.additionalForm.instructions')}
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
+        <div className="space-y-2 rounded-2xl border border-border bg-card/80 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
           <Label
             htmlFor="technicalSkills"
             className="font-mono text-xs uppercase tracking-wider text-gray-500"
@@ -56,10 +60,10 @@ export const AdditionalForm: React.FC<AdditionalFormProps> = ({ data, onChange }
             onChange={(e) => handleArrayChange('technicalSkills', e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('builder.additionalForm.placeholders.technicalSkills')}
-            className="min-h-[120px] text-black rounded-none border-black bg-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700"
+            className={builderTextareaClass}
           />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 rounded-2xl border border-border bg-card/80 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
           <Label
             htmlFor="languages"
             className="font-mono text-xs uppercase tracking-wider text-gray-500"
@@ -72,10 +76,10 @@ export const AdditionalForm: React.FC<AdditionalFormProps> = ({ data, onChange }
             onChange={(e) => handleArrayChange('languages', e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('builder.additionalForm.placeholders.languages')}
-            className="min-h-[120px] text-black rounded-none border-black bg-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700"
+            className={builderTextareaClass}
           />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 rounded-2xl border border-border bg-card/80 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
           <Label
             htmlFor="certifications"
             className="font-mono text-xs uppercase tracking-wider text-gray-500"
@@ -88,10 +92,10 @@ export const AdditionalForm: React.FC<AdditionalFormProps> = ({ data, onChange }
             onChange={(e) => handleArrayChange('certificationsTraining', e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('builder.additionalForm.placeholders.certifications')}
-            className="min-h-[120px] text-black rounded-none border-black bg-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700"
+            className={builderTextareaClass}
           />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 rounded-2xl border border-border bg-card/80 p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
           <Label
             htmlFor="awards"
             className="font-mono text-xs uppercase tracking-wider text-gray-500"
@@ -104,7 +108,7 @@ export const AdditionalForm: React.FC<AdditionalFormProps> = ({ data, onChange }
             onChange={(e) => handleArrayChange('awards', e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('builder.additionalForm.placeholders.awards')}
-            className="min-h-[120px] text-black rounded-none border-black bg-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700"
+            className={builderTextareaClass}
           />
         </div>
       </div>

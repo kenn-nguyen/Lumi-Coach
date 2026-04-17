@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Viewer Theme Preview</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="./preview-shared.css" />
+    <style>
+      .viewer-shell { width:min(1280px,calc(100vw - 48px)); margin:0 auto; }
+      .viewer-actions { display:flex; gap:12px; flex-wrap:wrap; }
+      .viewer-top { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; margin-bottom:28px; }
+      .viewer-title { margin:0 0 20px; font-family:"Iowan Old Style","Times New Roman",serif; font-size:36px; letter-spacing:-0.04em; }
+      .viewer-feedback { margin-bottom:24px; padding:18px 20px; border:1px solid var(--thr-border-soft); background:white; box-shadow:var(--thr-shadow-sm); }
+      .viewer-paper-wrap { display:flex; justify-content:center; padding-bottom:16px; }
+      .viewer-paper { width:min(250mm,100%); min-height:760px; padding:38px; border:1px solid rgba(18,24,38,0.14); background:#fff; box-shadow:var(--thr-shadow-md); }
+      .viewer-paper h2 { margin:0; font-size:42px; letter-spacing:-0.05em; }
+    </style>
+  </head>
+  <body class="thr-preview-page thr-mode-work">
+    <div class="viewer-shell">
+      <div class="viewer-top">
+        <a class="thr-pill-action" href="./dashboard.html">Back To Dashboard</a>
+        <div class="viewer-actions">
+          <a class="thr-pill-action" href="#">Enhance Resume</a>
+          <a class="thr-pill-action" href="#">Edit</a>
+          <a class="thr-pill-action thr-pill-action--primary" href="#">Download Resume</a>
+        </div>
+      </div>
+
+      <h1 class="viewer-title" style="background:none;color:var(--thr-text-primary);-webkit-background-clip:initial;background-clip:initial;max-width:none;font-size:40px;">Product Manager @ Ramp</h1>
+
+      <div class="viewer-feedback">
+        <div class="thr-mono" style="margin-bottom:8px;">Generation Feedback</div>
+        <div style="display:grid;gap:8px;">
+          <div><strong style="display:inline;color:var(--thr-text-primary);text-transform:none;letter-spacing:0;">Summary:</strong> Strong ownership framing and relevant product execution signal for a growth-stage PM role.</div>
+          <div><strong style="display:inline;color:var(--thr-text-primary);text-transform:none;letter-spacing:0;">Pros:</strong> Clear story, cross-functional leadership, solid operating language.</div>
+          <div><strong style="display:inline;color:var(--thr-text-primary);text-transform:none;letter-spacing:0;">Caveats:</strong> Could still use denser fintech terminology and sharper quantified outcomes.</div>
+        </div>
+      </div>
+
+      <div class="viewer-paper-wrap">
+        <div class="viewer-paper">
+          <h2>Kenn Nguyen</h2>
+          <p style="margin-top:8px;color:#4a5568;">Product Manager · San Francisco, CA · LinkedIn / Portfolio</p>
+          <div style="margin-top:22px;border-top:1px solid rgba(15,23,42,0.08);padding-top:14px;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#4c5f93;font-weight:700;">Summary</div>
+            <p style="line-height:1.8;">Product manager with experience improving onboarding, operating leverage, and cross-functional product execution in ambiguous environments.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+  </html>
