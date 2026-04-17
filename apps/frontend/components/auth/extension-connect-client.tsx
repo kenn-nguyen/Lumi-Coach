@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { captureEvent } from '@/lib/analytics/posthog';
 
 type ConnectStatus = 'connecting' | 'success' | 'error';
 
@@ -15,11 +16,17 @@ export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientPr
 
   useEffect(() => {
     let cancelled = false;
+    captureEvent('extension_connect_started', {
+      extension_id_present: Boolean(extensionId),
+    });
 
     const connect = async () => {
       if (!extensionId) {
         setStatus('error');
         setMessage('Missing extension identifier.');
+        captureEvent('extension_connect_failed', {
+          reason: 'missing_extension_identifier',
+        });
         return;
       }
 
@@ -65,10 +72,15 @@ export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientPr
         if (cancelled) return;
         setStatus('success');
         setMessage('Connected. Returning you to LinkedIn…');
+        captureEvent('extension_connect_succeeded');
       } catch (error) {
         if (cancelled) return;
         setStatus('error');
-        setMessage(error instanceof Error ? error.message : 'Failed to connect extension.');
+        const resolvedMessage = error instanceof Error ? error.message : 'Failed to connect extension.';
+        setMessage(resolvedMessage);
+        captureEvent('extension_connect_failed', {
+          reason: resolvedMessage,
+        });
       }
     };
 

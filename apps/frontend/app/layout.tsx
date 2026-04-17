@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Space_Grotesk } from 'next/font/google';
 import { AuthSessionProvider } from '@/components/auth/auth-session-provider';
+import { PostHogProvider } from '@/components/analytics/posthog-provider';
 import './(default)/css/globals.css';
 
 const spaceGrotesk = Space_Grotesk({
@@ -28,7 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${geist.variable} ${spaceGrotesk.variable} antialiased bg-[#F0F0E8] text-gray-900 min-h-full`}
       >
-        <AuthSessionProvider>{children}</AuthSessionProvider>
+        <AuthSessionProvider>
+          <PostHogProvider>{children}</PostHogProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );

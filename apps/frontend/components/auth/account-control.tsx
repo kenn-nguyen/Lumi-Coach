@@ -6,6 +6,7 @@ import User from 'lucide-react/dist/esm/icons/user';
 import LogOut from 'lucide-react/dist/esm/icons/log-out';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import { cn } from '@/lib/utils';
+import { captureEvent } from '@/lib/analytics/posthog';
 
 export function AccountControl({ compact = false }: { compact?: boolean }) {
   const { data: session } = useSession();
@@ -69,7 +70,10 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
           </div>
           <button
             type="button"
-            onClick={() => signOut({ callbackUrl: '/sign-in' })}
+            onClick={() => {
+              captureEvent('sign_out_clicked');
+              signOut({ callbackUrl: '/sign-in' });
+            }}
             className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-[0.12em] hover:bg-[#E5E5E0]"
           >
             <span>Sign out</span>

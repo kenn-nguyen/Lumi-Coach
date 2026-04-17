@@ -1,5 +1,5 @@
-export const DEFAULT_APP_ORIGIN = 'http://localhost:3000';
-export const DEFAULT_API_ORIGIN = 'http://localhost:3000';
+export const DEFAULT_APP_ORIGIN = 'https://som-career-coach-iota.vercel.app';
+export const DEFAULT_API_ORIGIN = 'https://som-career-coach.onrender.com';
 export const DEFAULT_CHATGPT_TARGET_URL = 'https://chatgpt.com/?temporary-chat=true';
 
 export const STORAGE_KEYS = {
