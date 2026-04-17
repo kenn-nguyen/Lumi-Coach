@@ -49,10 +49,7 @@ function toResumeSource(resumePayload) {
 }
 
 function ensureStoryboardContent(storyboardAsset) {
-  if (!storyboardAsset?.content?.trim()) {
-    throw new Error('Upload a storyboard before generating a tailored resume.');
-  }
-  return storyboardAsset.content.trim();
+  return storyboardAsset?.content?.trim() ?? '';
 }
 
 function resolveCurrentResumeSource(masterResumeContextAsset, fetchedResume) {

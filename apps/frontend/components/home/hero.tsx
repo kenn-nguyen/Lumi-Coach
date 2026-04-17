@@ -1,52 +1,50 @@
-'use client';
-
-import React from 'react';
 import Link from 'next/link';
-import { useTranslations } from '@/lib/i18n';
+import { Inter } from 'next/font/google';
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['300', '500', '700'],
+});
 
 export default function Hero() {
-  const { t } = useTranslations();
-
-  const buttonClass =
-    'group relative border border-black bg-transparent px-8 py-3 font-mono text-sm font-bold uppercase text-blue-700 transition-all duration-200 ease-in-out hover:bg-blue-700 hover:text-[#F0F0E8] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[4px_4px_0px_0px_#000000] active:translate-x-0 active:translate-y-0 active:shadow-none cursor-pointer';
-
   return (
     <section
-      className="h-screen w-full p-4 md:p-12 lg:p-24 bg-[#F0F0E8]"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(29, 78, 216, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(29, 78, 216, 0.1) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-      }}
+      className={`relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#0f172a] ${inter.className}`}
     >
-      <div className="flex h-full w-full flex-col items-center justify-center border border-black text-blue-700 bg-[#F0F0E8] shadow-[12px_12px_0px_0px_rgba(0,0,0,0.1)]">
-        <h1 className="mb-12 text-center font-mono text-6xl font-bold uppercase leading-none tracking-tighter md:text-8xl lg:text-9xl selection:bg-blue-700 selection:text-white">
-          {t('home.brandLine1')}
+      <div
+        aria-hidden="true"
+        className="absolute -left-[5%] -top-[5%] h-[110%] w-[110%] scale-[1.02] bg-cover bg-center brightness-40 blur-[12px]"
+        style={{
+          backgroundImage:
+            "url('https://i0.wp.com/www.sparkadmissions.com/wp-content/uploads/2020/03/Yale_Acceptance_Rate.jpg')",
+        }}
+      />
+
+      <div className="relative z-10 w-[min(90%,650px)] rounded-[24px] border border-white/10 bg-white/3 px-8 py-16 text-center shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-[20px] md:px-12">
+        <h1 className="mb-6 text-[clamp(2.25rem,6vw,3rem)] font-bold leading-[1.1] tracking-[-0.03em] text-white">
+          <span className="bg-[linear-gradient(135deg,#ffffff_0%,#a5b4fc_100%)] bg-clip-text text-transparent">
+            Your Unfair AI
+          </span>
           <br />
-          {t('home.brandLine2')}
+          Career Advantage.
         </h1>
 
-        <div className="flex flex-col gap-4 md:flex-row md:gap-12">
-          <a
-            href="https://github.com/srbhr/Resume-Matcher"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonClass}
-          >
-            GitHub
-          </a>
-          <a
-            href="https://resumematcher.fyi"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonClass}
-          >
-            {t('home.docs')}
-          </a>
-          <Link href="/dashboard" className={buttonClass}>
-            {t('home.launchApp')}
-          </Link>
-        </div>
+        <p className="mb-10 px-0 text-base leading-8 font-light text-slate-400 md:px-4 md:text-lg">
+          One platform to <strong className="font-medium text-slate-200">tailor resumes</strong>,{' '}
+          <strong className="font-medium text-slate-200">generate AI edits</strong>, and{' '}
+          <strong className="font-medium text-slate-200">strategize your next move</strong>.
+        </p>
+
+        <Link
+          href="/dashboard"
+          className="inline-block rounded-full bg-white px-10 py-4 text-lg font-medium text-[#0f172a] no-underline shadow-[0_4px_15px_rgba(255,255,255,0.1)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-[0_8px_25px_rgba(255,255,255,0.25)]"
+        >
+          Launch SOM Career Coach
+        </Link>
+
+        <span className="mt-6 block text-sm font-medium uppercase tracking-[0.05em] text-slate-500">
+          Built exclusively for SOM Students.
+        </span>
       </div>
     </section>
   );

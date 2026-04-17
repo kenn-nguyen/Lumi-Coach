@@ -72,6 +72,8 @@ let latestAssets = null;
 let providerSettingsSaveTimer = null;
 let runtimeUrlsSaveTimer = null;
 
+const TEXT_RESUME_ALLOWED_EXTENSIONS = new Set(['txt', 'md', 'json']);
+
 async function sendMessage(type, payload) {
   return chrome.runtime.sendMessage({ type, payload });
 }
@@ -409,9 +411,31 @@ function showPopup(message) {
   window.alert(message);
 }
 
+function getFileExtension(filename) {
+  const normalized = typeof filename === 'string' ? filename.trim().toLowerCase() : '';
+  const lastDotIndex = normalized.lastIndexOf('.');
+  if (lastDotIndex < 0 || lastDotIndex === normalized.length - 1) {
+    return '';
+  }
+  return normalized.slice(lastDotIndex + 1);
+}
+
+function isAllowedTextResumeFile(file) {
+  return TEXT_RESUME_ALLOWED_EXTENSIONS.has(getFileExtension(file?.name || ''));
+}
+
+function validateMasterResumeContextFile(file) {
+  if (!file) return false;
+  if (isAllowedTextResumeFile(file)) {
+    return true;
+  }
+  showPopup('Upload your resume as a .txt, .md, or .json file. PDF and DOCX are not supported in the extension admin.');
+  return false;
+}
+
 function parseMasterResumeAssetToResumeData(asset) {
   if (!asset?.content?.trim()) {
-    throw new Error('Upload a JSON master resume to the extension first.');
+    throw new Error('Upload a JSON resume to the extension first if you want to overwrite the backend master resume.');
   }
 
   const parsedPayload = extractPrompt3PayloadFromText(asset.content);
@@ -457,6 +481,10 @@ async function saveTextAsset(file, saveType, payloadBuilder, statusNode, errorMe
 
 masterResumeContextInput.addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
+  if (!validateMasterResumeContextFile(file)) {
+    masterResumeContextInput.value = '';
+    return;
+  }
   await saveTextAsset(
     file,
     'SAVE_MASTER_RESUME_CONTEXT',

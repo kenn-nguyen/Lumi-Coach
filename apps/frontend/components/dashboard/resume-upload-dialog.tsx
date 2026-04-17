@@ -25,7 +25,7 @@ import { retryProcessing } from '@/lib/api/resume';
 
 interface ResumeUploadDialogProps {
   trigger?: React.ReactNode | null;
-  onUploadComplete?: (resumeId: string) => void;
+  onUploadComplete?: (payload: { resumeId: string; isMaster: boolean }) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -67,10 +67,12 @@ export function ResumeUploadDialog({
 
   const handleUploadSuccess = ({
     resumeId,
+    isMaster,
     fileId,
     message,
   }: {
     resumeId: string;
+    isMaster: boolean;
     fileId?: string;
     message: string;
   }) => {
@@ -79,7 +81,7 @@ export function ResumeUploadDialog({
 
     // Defer parent state update to avoid setState during render
     setTimeout(() => {
-      onUploadComplete?.(resumeId);
+      onUploadComplete?.({ resumeId, isMaster });
     }, 0);
 
     // Close dialog after a short delay to show success state
@@ -131,6 +133,7 @@ export function ResumeUploadDialog({
         }
         handleUploadSuccess({
           resumeId: data.resume_id,
+          isMaster: data.is_master === true,
           fileId: uploadedFile.id,
           message: successMessage,
         });
@@ -178,6 +181,7 @@ export function ResumeUploadDialog({
 
       handleUploadSuccess({
         resumeId: resumeIdToRetry,
+        isMaster: true,
         fileId: fileIdToRemove,
         message: t('dashboard.retrySuccess'),
       });

@@ -23,10 +23,10 @@ async function openPopupWindow(targetUrl) {
         url: targetUrl,
         type: 'popup',
         focused: false,
-        width: 5,
-        height: 5,
-        top: 0,
-        left: 0,
+        width: 980,
+        height: 900,
+        top: 40,
+        left: 40,
       },
       (createdWindow) => {
         const runtimeError = getRuntimeError();
@@ -149,7 +149,11 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? 15000;
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? 12000;
   const INPUT_SELECTORS = [
+    'div#prompt-textarea.ProseMirror[contenteditable="true"][role="textbox"]',
+    '[data-composer-surface="true"] div#prompt-textarea[contenteditable="true"]',
+    '.wcDTda_prosemirror-parent div#prompt-textarea[contenteditable="true"]',
     'textarea#prompt-textarea',
+    'textarea[name="prompt-textarea"]',
     'textarea[placeholder*="Message"]',
     'textarea[placeholder*="Ask"]',
     'textarea[data-testid="prompt-textarea"]',
@@ -208,8 +212,10 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
 
   function findVisibleElement(selectors) {
     for (const selector of selectors) {
-      const node = document.querySelector(selector);
-      if (isVisible(node)) return node;
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (isVisible(node)) return node;
+      }
     }
     return null;
   }

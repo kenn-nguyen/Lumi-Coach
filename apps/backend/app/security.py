@@ -140,14 +140,20 @@ async def require_current_user(
         picture=str(payload.get("picture") or "") or None,
     )
 
-    db.upsert_user(
+    stored_user = db.upsert_user(
         user_id=user.user_id,
         email=user.email,
         name=user.name,
         picture=user.picture,
     )
-    _current_user_id.set(user.user_id)
-    return user
+    resolved_user = AuthenticatedUser(
+        user_id=str(stored_user["user_id"]),
+        email=str(stored_user["email"]),
+        name=stored_user.get("name"),
+        picture=stored_user.get("picture"),
+    )
+    _current_user_id.set(resolved_user.user_id)
+    return resolved_user
 
 
 def get_current_user_id() -> str | None:

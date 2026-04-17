@@ -1,64 +1,128 @@
-"""TinyDB database layer for JSON storage."""
+"""PostgreSQL database layer for SOM Career Coach."""
+
+from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from tinydb import Query, TinyDB
-from tinydb.table import Table
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, create_engine, delete
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class UserModel(Base):
+    __tablename__ = "users"
+
+    user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    picture: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class ResumeModel(Base):
+    __tablename__ = "resumes"
+
+    resume_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(255), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(32), default="md")
+    filename: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_master: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    processed_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    processing_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outreach_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generation_feedback: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    generation_artifacts: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class JobModel(Base):
+    __tablename__ = "jobs"
+
+    job_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(255), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    resume_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class ImprovementModel(Base):
+    __tablename__ = "improvements"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(255), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    original_resume_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    tailored_resume_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    improvements: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class Database:
-    """TinyDB wrapper for SOM Career Coach data."""
+    """PostgreSQL-backed repository for SOM Career Coach data."""
 
     _master_resume_lock = asyncio.Lock()
 
-    def __init__(self, db_path: Path | None = None):
-        self.db_path = db_path or settings.db_path
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db: TinyDB | None = None
+    def __init__(self, database_url: str | None = None):
+        self.database_url = database_url or settings.database_url
+        self._engine = create_engine(
+            self.database_url,
+            future=True,
+            pool_pre_ping=True,
+        )
+        self._session_factory = sessionmaker(
+            bind=self._engine,
+            autoflush=False,
+            autocommit=False,
+            expire_on_commit=False,
+            future=True,
+        )
 
-    @property
-    def db(self) -> TinyDB:
-        """Lazy initialization of TinyDB instance."""
-        if self._db is None:
-            self._db = TinyDB(self.db_path)
-        return self._db
-
-    @property
-    def resumes(self) -> Table:
-        """Resumes table."""
-        return self.db.table("resumes")
-
-    @property
-    def jobs(self) -> Table:
-        """Job descriptions table."""
-        return self.db.table("jobs")
-
-    @property
-    def users(self) -> Table:
-        """Users table."""
-        return self.db.table("users")
-
-    @property
-    def improvements(self) -> Table:
-        """Improvement results table."""
-        return self.db.table("improvements")
+    def init_schema(self) -> None:
+        Base.metadata.create_all(self._engine)
 
     def close(self) -> None:
-        """Close database connection."""
-        if self._db is not None:
-            self._db.close()
-            self._db = None
+        self._engine.dispose()
 
-    # Resume operations
+    def _session(self) -> Session:
+        return self._session_factory()
+
     def _resolve_user_scope(self, user_id: str | None = None) -> str | None:
         if user_id:
             return user_id
@@ -69,6 +133,62 @@ class Database:
         except Exception:
             return None
 
+    @staticmethod
+    def _to_iso(value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+    def _serialize_user(self, user: UserModel) -> dict[str, Any]:
+        return {
+            "user_id": user.user_id,
+            "email": user.email,
+            "name": user.name,
+            "picture": user.picture,
+            "created_at": self._to_iso(user.created_at),
+            "updated_at": self._to_iso(user.updated_at),
+        }
+
+    def _serialize_resume(self, resume: ResumeModel) -> dict[str, Any]:
+        return {
+            "resume_id": resume.resume_id,
+            "user_id": resume.user_id,
+            "content": resume.content,
+            "content_type": resume.content_type,
+            "filename": resume.filename,
+            "is_master": resume.is_master,
+            "parent_id": resume.parent_id,
+            "processed_data": resume.processed_data,
+            "processing_status": resume.processing_status,
+            "cover_letter": resume.cover_letter,
+            "outreach_message": resume.outreach_message,
+            "generation_feedback": resume.generation_feedback,
+            "generation_artifacts": resume.generation_artifacts,
+            "title": resume.title,
+            "original_markdown": resume.original_markdown,
+            "created_at": self._to_iso(resume.created_at),
+            "updated_at": self._to_iso(resume.updated_at),
+        }
+
+    def _serialize_job(self, job: JobModel) -> dict[str, Any]:
+        return {
+            "job_id": job.job_id,
+            "user_id": job.user_id,
+            "content": job.content,
+            "resume_id": job.resume_id,
+            "created_at": self._to_iso(job.created_at),
+            "updated_at": self._to_iso(job.updated_at),
+        }
+
+    def _serialize_improvement(self, improvement: ImprovementModel) -> dict[str, Any]:
+        return {
+            "request_id": improvement.request_id,
+            "user_id": improvement.user_id,
+            "original_resume_id": improvement.original_resume_id,
+            "tailored_resume_id": improvement.tailored_resume_id,
+            "job_id": improvement.job_id,
+            "improvements": improvement.improvements,
+            "created_at": self._to_iso(improvement.created_at),
+        }
+
     def upsert_user(
         self,
         *,
@@ -77,51 +197,29 @@ class Database:
         name: str | None = None,
         picture: str | None = None,
     ) -> dict[str, Any]:
-        """Create or update a signed-in user record."""
-        User = Query()
-        now = datetime.now(timezone.utc).isoformat()
-        existing = self.users.search(User.user_id == user_id)
-        if existing:
-            self.users.update(
-                {
-                    "email": email,
-                    "name": name,
-                    "picture": picture,
-                    "updated_at": now,
-                },
-                User.user_id == user_id,
-            )
-            return self.users.search(User.user_id == user_id)[0]
-
-        doc = {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
-            "picture": picture,
-            "created_at": now,
-            "updated_at": now,
-        }
-        self.users.insert(doc)
-        return doc
-
-    def clear_unowned_records(self) -> dict[str, int]:
-        """Delete legacy records that have no owner.
-
-        This is intended as a pre-production cleanup step after auth has been
-        introduced. It preserves any data already associated with a signed-in
-        user and removes only ownerless legacy records.
-        """
-        Resume = Query()
-        Job = Query()
-        Improvement = Query()
-        resumes_removed = self.resumes.remove(~Resume.user_id.exists())
-        jobs_removed = self.jobs.remove(~Job.user_id.exists())
-        improvements_removed = self.improvements.remove(~Improvement.user_id.exists())
-        return {
-            "resumes": len(resumes_removed),
-            "jobs": len(jobs_removed),
-            "improvements": len(improvements_removed),
-        }
+        with self._session() as session:
+            user = session.get(UserModel, user_id)
+            if user is None:
+                user = session.query(UserModel).filter(UserModel.email == email).first()
+            if user is None:
+                user = UserModel(
+                    user_id=user_id,
+                    email=email,
+                    name=name,
+                    picture=picture,
+                )
+                session.add(user)
+            else:
+                # Keep the existing stored user_id when this email has already been
+                # seen before. Auth.js can hand us a different transient subject for
+                # the same Google account, but app data ownership must remain stable.
+                user.email = email
+                user.name = name
+                user.picture = picture
+                user.updated_at = _utcnow()
+            session.commit()
+            session.refresh(user)
+            return self._serialize_user(user)
 
     def create_resume(
         self,
@@ -140,36 +238,29 @@ class Database:
         original_markdown: str | None = None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Create a new resume entry.
-
-        processing_status: "pending", "processing", "ready", "failed"
-        """
-        resume_id = str(uuid4())
-        now = datetime.now(timezone.utc).isoformat()
         resolved_user_id = self._resolve_user_scope(user_id)
-
-        doc: dict[str, Any] = {
-            "resume_id": resume_id,
-            "user_id": resolved_user_id,
-            "content": content,
-            "content_type": content_type,
-            "filename": filename,
-            "is_master": is_master,
-            "parent_id": parent_id,
-            "processed_data": processed_data,
-            "processing_status": processing_status,
-            "cover_letter": cover_letter,
-            "outreach_message": outreach_message,
-            "generation_feedback": generation_feedback,
-            "generation_artifacts": generation_artifacts,
-            "title": title,
-            "created_at": now,
-            "updated_at": now,
-        }
-        if original_markdown is not None:
-            doc["original_markdown"] = original_markdown
-        self.resumes.insert(doc)
-        return doc
+        with self._session() as session:
+            resume = ResumeModel(
+                resume_id=str(uuid4()),
+                user_id=resolved_user_id,
+                content=content,
+                content_type=content_type,
+                filename=filename,
+                is_master=is_master,
+                parent_id=parent_id,
+                processed_data=processed_data,
+                processing_status=processing_status,
+                cover_letter=cover_letter,
+                outreach_message=outreach_message,
+                generation_feedback=generation_feedback,
+                generation_artifacts=generation_artifacts,
+                title=title,
+                original_markdown=original_markdown,
+            )
+            session.add(resume)
+            session.commit()
+            session.refresh(resume)
+            return self._serialize_resume(resume)
 
     async def create_resume_atomic_master(
         self,
@@ -185,25 +276,16 @@ class Database:
         original_markdown: str | None = None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Create a new resume with atomic master assignment.
-
-        Uses an asyncio.Lock to prevent race conditions when multiple uploads
-        happen concurrently and both try to become master. This avoids blocking
-        the FastAPI event loop unlike threading.Lock.
-        """
         async with self._master_resume_lock:
             resolved_user_id = self._resolve_user_scope(user_id)
             current_master = self.get_master_resume(resolved_user_id)
             is_master = current_master is None
 
-            # Recovery behavior: if the current master is stuck in failed or
-            # processing state, promote the next upload to become the new master.
             if current_master and current_master.get("processing_status") in ("failed", "processing"):
-                Resume = Query()
-                self.resumes.update(
+                self.update_resume(
+                    current_master["resume_id"],
                     {"is_master": False},
-                    (Resume.resume_id == current_master["resume_id"])
-                    & (Resume.user_id == resolved_user_id),
+                    resolved_user_id,
                 )
                 is_master = True
 
@@ -223,138 +305,127 @@ class Database:
             )
 
     def get_resume(self, resume_id: str, user_id: str | None = None) -> dict[str, Any] | None:
-        """Get resume by ID."""
-        Resume = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
-        query = Resume.resume_id == resume_id
-        if resolved_user_id is not None:
-            query = query & (Resume.user_id == resolved_user_id)
-        result = self.resumes.search(query)
-        return result[0] if result else None
+        with self._session() as session:
+            resume = session.get(ResumeModel, resume_id)
+            if resume is None:
+                return None
+            if resolved_user_id is not None and resume.user_id != resolved_user_id:
+                return None
+            return self._serialize_resume(resume)
 
     def get_master_resume(self, user_id: str | None = None) -> dict[str, Any] | None:
-        """Get the master resume if exists."""
-        Resume = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
-        query = Resume.is_master == True
-        if resolved_user_id is not None:
-            query = query & (Resume.user_id == resolved_user_id)
-        result = self.resumes.search(query)
-        return result[0] if result else None
+        with self._session() as session:
+            query = session.query(ResumeModel).filter(ResumeModel.is_master.is_(True))
+            if resolved_user_id is not None:
+                query = query.filter(ResumeModel.user_id == resolved_user_id)
+            resume = query.order_by(ResumeModel.created_at.desc()).first()
+            return self._serialize_resume(resume) if resume else None
 
     def update_resume(
         self, resume_id: str, updates: dict[str, Any], user_id: str | None = None
     ) -> dict[str, Any]:
-        """Update resume by ID.
-
-        Raises:
-            ValueError: If resume not found.
-        """
-        Resume = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
-        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-        query = Resume.resume_id == resume_id
-        if resolved_user_id is not None:
-            query = query & (Resume.user_id == resolved_user_id)
-        updated_count = self.resumes.update(updates, query)
+        with self._session() as session:
+            resume = session.get(ResumeModel, resume_id)
+            if resume is None or (
+                resolved_user_id is not None and resume.user_id != resolved_user_id
+            ):
+                raise ValueError(f"Resume not found: {resume_id}")
 
-        if not updated_count:
-            raise ValueError(f"Resume not found: {resume_id}")
-
-        result = self.get_resume(resume_id, resolved_user_id)
-        if not result:
-            raise ValueError(f"Resume disappeared after update: {resume_id}")
-
-        return result
+            for key, value in updates.items():
+                if hasattr(resume, key):
+                    setattr(resume, key, value)
+            resume.updated_at = _utcnow()
+            session.commit()
+            session.refresh(resume)
+            return self._serialize_resume(resume)
 
     def delete_resume(self, resume_id: str, user_id: str | None = None) -> bool:
-        """Delete resume by ID."""
-        Resume = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
-        query = Resume.resume_id == resume_id
-        if resolved_user_id is not None:
-            query = query & (Resume.user_id == resolved_user_id)
-        removed = self.resumes.remove(query)
-        return len(removed) > 0
+        with self._session() as session:
+            resume = session.get(ResumeModel, resume_id)
+            if resume is None or (
+                resolved_user_id is not None and resume.user_id != resolved_user_id
+            ):
+                return False
+            session.delete(resume)
+            session.commit()
+            return True
 
     def list_resumes(self, user_id: str | None = None) -> list[dict[str, Any]]:
-        """List all resumes."""
         resolved_user_id = self._resolve_user_scope(user_id)
-        if resolved_user_id is None:
-            return list(self.resumes.all())
-        Resume = Query()
-        return list(self.resumes.search(Resume.user_id == resolved_user_id))
+        with self._session() as session:
+            query = session.query(ResumeModel)
+            if resolved_user_id is not None:
+                query = query.filter(ResumeModel.user_id == resolved_user_id)
+            resumes = query.order_by(ResumeModel.updated_at.desc()).all()
+            return [self._serialize_resume(resume) for resume in resumes]
 
     def set_master_resume(self, resume_id: str, user_id: str | None = None) -> bool:
-        """Set a resume as the master, unsetting any existing master.
-
-        Returns False if the resume doesn't exist.
-        """
-        Resume = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
+        with self._session() as session:
+            target = session.get(ResumeModel, resume_id)
+            if target is None or (
+                resolved_user_id is not None and target.user_id != resolved_user_id
+            ):
+                logger.warning("Cannot set master: resume %s not found", resume_id)
+                return False
 
-        # First verify the target resume exists
-        target_query = Resume.resume_id == resume_id
-        if resolved_user_id is not None:
-            target_query = target_query & (Resume.user_id == resolved_user_id)
-        target = self.resumes.search(target_query)
-        if not target:
-            logger.warning("Cannot set master: resume %s not found", resume_id)
-            return False
+            query = session.query(ResumeModel).filter(ResumeModel.is_master.is_(True))
+            if resolved_user_id is not None:
+                query = query.filter(ResumeModel.user_id == resolved_user_id)
+            for resume in query.all():
+                resume.is_master = False
 
-        # Unset current master
-        master_query = Resume.is_master == True
-        if resolved_user_id is not None:
-            master_query = master_query & (Resume.user_id == resolved_user_id)
-        self.resumes.update({"is_master": False}, master_query)
-        # Set new master
-        updated = self.resumes.update({"is_master": True}, target_query)
-        return len(updated) > 0
+            target.is_master = True
+            target.updated_at = _utcnow()
+            session.commit()
+            return True
 
-    # Job operations
     def create_job(
         self, content: str, resume_id: str | None = None, user_id: str | None = None
     ) -> dict[str, Any]:
-        """Create a new job description entry."""
-        job_id = str(uuid4())
-        now = datetime.now(timezone.utc).isoformat()
         resolved_user_id = self._resolve_user_scope(user_id)
-
-        doc = {
-            "job_id": job_id,
-            "user_id": resolved_user_id,
-            "content": content,
-            "resume_id": resume_id,
-            "created_at": now,
-        }
-        self.jobs.insert(doc)
-        return doc
+        with self._session() as session:
+            job = JobModel(
+                job_id=str(uuid4()),
+                user_id=resolved_user_id,
+                content=content,
+                resume_id=resume_id,
+            )
+            session.add(job)
+            session.commit()
+            session.refresh(job)
+            return self._serialize_job(job)
 
     def get_job(self, job_id: str, user_id: str | None = None) -> dict[str, Any] | None:
-        """Get job by ID."""
-        Job = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
-        query = Job.job_id == job_id
-        if resolved_user_id is not None:
-            query = query & (Job.user_id == resolved_user_id)
-        result = self.jobs.search(query)
-        return result[0] if result else None
+        with self._session() as session:
+            job = session.get(JobModel, job_id)
+            if job is None:
+                return None
+            if resolved_user_id is not None and job.user_id != resolved_user_id:
+                return None
+            return self._serialize_job(job)
 
     def update_job(
         self, job_id: str, updates: dict[str, Any], user_id: str | None = None
     ) -> dict[str, Any] | None:
-        """Update a job by ID."""
-        Job = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
-        query = Job.job_id == job_id
-        if resolved_user_id is not None:
-            query = query & (Job.user_id == resolved_user_id)
-        updated = self.jobs.update(updates, query)
-        if not updated:
-            return None
-        return self.get_job(job_id, resolved_user_id)
+        with self._session() as session:
+            job = session.get(JobModel, job_id)
+            if job is None or (resolved_user_id is not None and job.user_id != resolved_user_id):
+                return None
+            for key, value in updates.items():
+                if hasattr(job, key):
+                    setattr(job, key, value)
+            job.updated_at = _utcnow()
+            session.commit()
+            session.refresh(job)
+            return self._serialize_job(job)
 
-    # Improvement operations
     def create_improvement(
         self,
         original_resume_id: str,
@@ -363,65 +434,64 @@ class Database:
         improvements: list[dict[str, Any]],
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Create an improvement result entry."""
-        request_id = str(uuid4())
-        now = datetime.now(timezone.utc).isoformat()
         resolved_user_id = self._resolve_user_scope(user_id)
-
-        doc = {
-            "request_id": request_id,
-            "user_id": resolved_user_id,
-            "original_resume_id": original_resume_id,
-            "tailored_resume_id": tailored_resume_id,
-            "job_id": job_id,
-            "improvements": improvements,
-            "created_at": now,
-        }
-        self.improvements.insert(doc)
-        return doc
+        with self._session() as session:
+            improvement = ImprovementModel(
+                request_id=str(uuid4()),
+                user_id=resolved_user_id,
+                original_resume_id=original_resume_id,
+                tailored_resume_id=tailored_resume_id,
+                job_id=job_id,
+                improvements=improvements,
+            )
+            session.add(improvement)
+            session.commit()
+            session.refresh(improvement)
+            return self._serialize_improvement(improvement)
 
     def get_improvement_by_tailored_resume(
         self, tailored_resume_id: str, user_id: str | None = None
     ) -> dict[str, Any] | None:
-        """Get improvement record by tailored resume ID.
-
-        This is used to retrieve the job context for on-demand
-        cover letter and outreach message generation.
-        """
-        Improvement = Query()
         resolved_user_id = self._resolve_user_scope(user_id)
-        query = Improvement.tailored_resume_id == tailored_resume_id
-        if resolved_user_id is not None:
-            query = query & (Improvement.user_id == resolved_user_id)
-        result = self.improvements.search(query)
-        return result[0] if result else None
+        with self._session() as session:
+            query = session.query(ImprovementModel).filter(
+                ImprovementModel.tailored_resume_id == tailored_resume_id
+            )
+            if resolved_user_id is not None:
+                query = query.filter(ImprovementModel.user_id == resolved_user_id)
+            improvement = query.order_by(ImprovementModel.created_at.desc()).first()
+            return self._serialize_improvement(improvement) if improvement else None
 
-    # Stats
     def get_stats(self) -> dict[str, Any]:
-        """Get database statistics."""
-        return {
-            "total_resumes": len(self.resumes),
-            "total_jobs": len(self.jobs),
-            "total_improvements": len(self.improvements),
-            "has_master_resume": self.get_master_resume() is not None,
-        }
+        with self._session() as session:
+            total_resumes = session.query(ResumeModel).count()
+            total_jobs = session.query(JobModel).count()
+            total_improvements = session.query(ImprovementModel).count()
+            has_master_resume = (
+                session.query(ResumeModel)
+                .filter(ResumeModel.is_master.is_(True))
+                .first()
+                is not None
+            )
+            return {
+                "total_resumes": total_resumes,
+                "total_jobs": total_jobs,
+                "total_improvements": total_improvements,
+                "has_master_resume": has_master_resume,
+            }
 
     def reset_database(self) -> None:
-        """Reset the database by truncating all tables and clearing uploads."""
-        # Truncate tables
-        self.resumes.truncate()
-        self.jobs.truncate()
-        self.improvements.truncate()
-        self.users.truncate()
+        with self._session() as session:
+            session.execute(delete(ImprovementModel))
+            session.execute(delete(JobModel))
+            session.execute(delete(ResumeModel))
+            session.execute(delete(UserModel))
+            session.commit()
 
-        # Clear uploads directory
         uploads_dir = settings.data_dir / "uploads"
         if uploads_dir.exists():
-            import shutil
-
             shutil.rmtree(uploads_dir)
             uploads_dir.mkdir(parents=True, exist_ok=True)
 
 
-# Global database instance
 db = Database()

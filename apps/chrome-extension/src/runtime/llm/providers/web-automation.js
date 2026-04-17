@@ -178,8 +178,10 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
 
   function findVisibleElement(selectors) {
     for (const selector of selectors) {
-      const node = document.querySelector(selector);
-      if (isVisible(node)) return node;
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (isVisible(node)) return node;
+      }
     }
     return null;
   }

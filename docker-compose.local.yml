@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: som-career-coach-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: som_career_coach
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - som-career-coach-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d som_career_coach"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  som-career-coach-postgres-data:

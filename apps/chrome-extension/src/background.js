@@ -1,7 +1,7 @@
 import { generateResumeForLinkedInJob, saveStoryboardAsset } from './runtime/orchestrator.js';
 import { logError, logInfo, setLogRelayTabId } from './runtime/log.js';
 import { clearPromptTemplateCache } from './runtime/prompt-loader.js';
-import { openExtensionConnectTab, openPreviewTab } from './runtime/api.js';
+import { openExtensionConnectTab, openPreviewTab, verifyWebsiteSession } from './runtime/api.js';
 import {
   clearExtensionAuth,
   clearPendingExtensionAction,
@@ -27,21 +27,110 @@ import {
 
 async function ensureExtensionAuthForAction(pendingAction) {
   const hasAuth = await hasValidExtensionAuth();
-  if (hasAuth) return { connected: true };
+  if (!hasAuth) {
+    await setPendingExtensionAction(pendingAction);
+    return {
+      connected: false,
+      message: 'Connect SOM Career Coach to continue.',
+    };
+  }
+
+  const websiteSession = await verifyWebsiteSession();
+  if (websiteSession?.authenticated) {
+    return { connected: true };
+  }
 
   await setPendingExtensionAction(pendingAction);
-  await openExtensionConnectTab(chrome.runtime.id);
-  return { connected: false };
+  return {
+    connected: false,
+    message: 'You are signed out of SOM Career Coach. Sign in to continue.',
+  };
 }
 
-async function resumePendingExtensionAction() {
+function getStoryboardRecommendationMessage() {
+  return 'A storyboard helps produce better results. Continue without it?';
+}
+
+async function hasStoryboardAsset() {
+  const { storyboardAsset } = await getUserAssets();
+  return Boolean(storyboardAsset?.content?.trim());
+}
+
+async function hasMasterResumeContextAsset() {
+  const { masterResumeContextAsset } = await getUserAssets();
+  return Boolean(masterResumeContextAsset?.content?.trim());
+}
+
+function getMissingMasterResumeContextMessage() {
+  return 'Upload your resume to the extension first as a .txt, .md, or .json file. PDF and DOCX are not supported here.';
+}
+
+function isReconnectRequiredError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /connect the som career coach extension before continuing/i.test(message) ||
+    /extension session expired\. reconnect som career coach and try again\./i.test(message) ||
+    /missing bearer token/i.test(message) ||
+    /expired bearer token/i.test(message)
+  );
+}
+
+async function focusSourceTab(tabId) {
+  if (!tabId) return;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (typeof tab.windowId === 'number') {
+      await chrome.windows.update(tab.windowId, { focused: true });
+    }
+    await chrome.tabs.update(tabId, { active: true });
+  } catch {
+    // Ignore missing or stale tabs.
+  }
+}
+
+async function resumePendingExtensionAction(options = {}) {
   const pendingAction = await getPendingExtensionAction();
   if (!pendingAction) return;
 
-  await clearPendingExtensionAction();
-
   if (pendingAction.type === 'generate_active_job') {
     const tabId = pendingAction.tabId ?? null;
+    const authGate = await ensureExtensionAuthForAction(pendingAction);
+    if (!authGate.connected) {
+      if (tabId) {
+        chrome.tabs.sendMessage(tabId, {
+          type: 'EXTENSION_AUTH_REQUIRED',
+          payload: {
+            message: authGate.message || 'Sign in to SOM Career Coach to continue.',
+          },
+        }).catch(() => {});
+      }
+      return;
+    }
+    if (!(await hasMasterResumeContextAsset())) {
+      const errorMessage = getMissingMasterResumeContextMessage();
+      if (tabId) {
+        chrome.tabs.sendMessage(tabId, {
+          type: 'EXTENSION_RESUMED_GENERATION_RESULT',
+          payload: {
+            ok: false,
+            error: errorMessage,
+          },
+        }).catch(() => {});
+      }
+      await clearPendingExtensionAction();
+      throw new Error(errorMessage);
+    }
+    if (!options.allowWithoutStoryboard && !(await hasStoryboardAsset())) {
+      if (tabId) {
+        chrome.tabs.sendMessage(tabId, {
+          type: 'EXTENSION_STORYBOARD_RECOMMENDATION',
+          payload: { message: getStoryboardRecommendationMessage() },
+        }).catch(() => {});
+      }
+      return;
+    }
+
+    await clearPendingExtensionAction();
     setLogRelayTabId(tabId);
     try {
       await generateResumeForLinkedInJob(
@@ -167,24 +256,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true };
 
       case 'GENERATE_FOR_ACTIVE_JOB': {
-        setLogRelayTabId(message.payload?.tabId ?? sender?.tab?.id ?? null);
-        const authGate = await ensureExtensionAuthForAction({
+        const pendingAction = {
           type: 'generate_active_job',
           tabId: message.payload?.tabId ?? sender?.tab?.id ?? null,
           prompt1CustomInstruction: message.payload?.prompt1CustomInstruction ?? '',
-        });
+        };
+        setLogRelayTabId(message.payload?.tabId ?? sender?.tab?.id ?? null);
+        if (!(await hasMasterResumeContextAsset())) {
+          throw new Error(getMissingMasterResumeContextMessage());
+        }
+        const authGate = await ensureExtensionAuthForAction(pendingAction);
         if (!authGate.connected) {
           return {
             ok: true,
             awaitingAuth: true,
-            message: 'Finish signing in to SOM Career Coach in the opened tab.',
+            message: authGate.message || 'Connect SOM Career Coach to continue.',
           };
         }
-        const result = await generateResumeForLinkedInJob(
-          message.payload?.tabId ?? sender?.tab?.id,
-          message.payload?.prompt1CustomInstruction ?? ''
-        );
-        return { ok: true, result };
+        if (!message.payload?.allowWithoutStoryboard && !(await hasStoryboardAsset())) {
+          await setPendingExtensionAction(pendingAction);
+          return {
+            ok: true,
+            awaitingStoryboard: true,
+            message: getStoryboardRecommendationMessage(),
+          };
+        }
+        try {
+          const result = await generateResumeForLinkedInJob(
+            message.payload?.tabId ?? sender?.tab?.id,
+            message.payload?.prompt1CustomInstruction ?? ''
+          );
+          return { ok: true, result };
+        } catch (error) {
+          if (isReconnectRequiredError(error)) {
+            await setPendingExtensionAction(pendingAction);
+            return {
+              ok: true,
+              awaitingAuth: true,
+              message: 'Reconnect SOM Career Coach to continue.',
+            };
+          }
+          throw error;
+        }
+      }
+
+      case 'CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD':
+        await resumePendingExtensionAction({ allowWithoutStoryboard: true });
+        return { ok: true };
+
+      case 'CLEAR_PENDING_EXTENSION_ACTION':
+        await clearPendingExtensionAction();
+        return { ok: true };
+
+      case 'OPEN_EXTENSION_CONNECT': {
+        const sourceTabId = message.payload?.tabId ?? sender?.tab?.id ?? null;
+        await openExtensionConnectTab(chrome.runtime.id, sourceTabId);
+        return { ok: true };
       }
 
       case 'OPEN_PREVIEW': {
@@ -219,6 +346,8 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
 
     switch (message?.type) {
       case 'SOM_EXTENSION_CONNECT_COMPLETE':
+        const pendingAction = await getPendingExtensionAction();
+        const sourceTabId = pendingAction?.tabId ?? null;
         await setExtensionAuth({
           token: message.payload?.token,
           expiresAt: message.payload?.expiresAt,
@@ -229,7 +358,15 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
         if (sender?.tab?.id) {
           chrome.tabs.remove(sender.tab.id).catch(() => {});
         }
+        await focusSourceTab(sourceTabId);
         await resumePendingExtensionAction();
+        return;
+
+      case 'SOM_EXTENSION_LOGIN_REQUIRED':
+        if (sender?.tab?.id) {
+          await focusSourceTab(sender.tab.id);
+        }
+        sendResponse({ ok: true });
         return;
 
       default:

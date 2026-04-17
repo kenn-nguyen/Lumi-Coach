@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useTranslations } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -60,7 +61,7 @@ export const SwissGrid = ({
         </div>
 
         <div className="p-4 bg-[#F0F0E8] flex justify-between items-center font-mono text-xs text-blue-700 border-t border-black shrink-0 relative z-30">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2 uppercase font-bold hover:underline">
             <Image
               src="/logo.svg"
               alt="SOM Career Coach"
@@ -68,8 +69,8 @@ export const SwissGrid = ({
               height={20}
               className="w-5 h-5"
             />
-            <span className="uppercase font-bold">SOM Career Coach</span>
-          </div>
+            <span>SOM Career Coach</span>
+          </Link>
           {footerContent ? <div className="flex items-center gap-4">{footerContent}</div> : null}
         </div>
       </div>

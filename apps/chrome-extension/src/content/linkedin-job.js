@@ -1,9 +1,20 @@
 const ROOT_ID = 'resume-matcher-floating-action';
 const BUTTON_ID = 'resume-matcher-generate-button';
 const STATUS_ID = 'resume-matcher-generate-status';
+const STATUS_SUMMARY_ID = 'resume-matcher-status-summary';
+const STATUS_TOGGLE_ID = 'resume-matcher-status-toggle';
+const STATUS_DETAIL_ID = 'resume-matcher-status-detail';
 const PROMPT1_DETAILS_ID = 'resume-matcher-prompt1-details';
 const PROMPT1_SUMMARY_ID = 'resume-matcher-prompt1-summary';
 const PROMPT1_TEXTAREA_ID = 'resume-matcher-prompt1-textarea';
+const AUTH_PROMPT_ID = 'resume-matcher-auth-prompt';
+const AUTH_PROMPT_TEXT_ID = 'resume-matcher-auth-prompt-text';
+const AUTH_PROMPT_CONTINUE_ID = 'resume-matcher-auth-prompt-continue';
+const AUTH_PROMPT_CANCEL_ID = 'resume-matcher-auth-prompt-cancel';
+const STORYBOARD_PROMPT_ID = 'resume-matcher-storyboard-prompt';
+const STORYBOARD_PROMPT_TEXT_ID = 'resume-matcher-storyboard-prompt-text';
+const STORYBOARD_PROMPT_CONTINUE_ID = 'resume-matcher-storyboard-prompt-continue';
+const STORYBOARD_PROMPT_CANCEL_ID = 'resume-matcher-storyboard-prompt-cancel';
 const STYLE_ID = 'resume-matcher-floating-style';
 const STORAGE_KEY = 'resumeMatcherFloatingButtonTopOffset';
 const ICON_PATH = 'src/assets/lightning-bolt.gif';
@@ -12,6 +23,7 @@ const VIEWPORT_PADDING = 20;
 
 let isRunning = false;
 let awaitingAuthResume = false;
+let awaitingStoryboardResume = false;
 let urlObserver = null;
 let lastUrl = location.href;
 let pointerDragState = null;
@@ -91,7 +103,7 @@ function injectStyles() {
   style.textContent = `
     #${ROOT_ID} {
       position: fixed;
-      right: 8px;
+      right: calc(env(safe-area-inset-right, 0px) + 24px);
       top: 50vh;
       z-index: 2147483647;
       display: grid;
@@ -100,7 +112,8 @@ function injectStyles() {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       touch-action: none;
       user-select: none;
-      width: 132px;
+      width: 96px;
+      overflow: visible;
     }
 
     #${BUTTON_ID} {
@@ -111,7 +124,7 @@ function injectStyles() {
       position: relative;
       overflow: hidden;
       isolation: isolate;
-      background: rgba(255, 248, 240, 0.98);
+      background: #ffffff;
       box-shadow:
         0 0 0 4px rgba(251, 146, 60, 0.08),
         0 14px 30px rgba(180, 83, 9, 0.16),
@@ -128,8 +141,7 @@ function injectStyles() {
       position: absolute;
       inset: 0;
       border-radius: inherit;
-      background: linear-gradient(180deg, rgba(251, 146, 60, 0.2) 0%, rgba(249, 115, 22, 0.28) 100%);
-      mix-blend-mode: multiply;
+      background: rgba(249, 115, 22, 0.22);
       pointer-events: none;
       z-index: 1;
     }
@@ -151,9 +163,13 @@ function injectStyles() {
     }
 
     #${STATUS_ID} {
+      position: absolute;
+      top: calc(100% + 12px);
+      right: max(0px, calc((96px - 78px) / 2));
+      z-index: 2;
       display: none;
-      width: fit-content;
-      max-width: min(484px, calc(100vw - 24px));
+      width: min(220px, calc(100vw - 32px));
+      max-width: min(220px, calc(100vw - 32px));
       min-width: 0;
       padding: 9px 12px;
       border-radius: 12px;
@@ -163,21 +179,60 @@ function injectStyles() {
       font-size: 12px;
       line-height: 1.3;
       color: #9a3412;
-      text-align: center;
+      text-align: left;
+      box-sizing: border-box;
+    }
+
+    #${STATUS_ID}[data-visible="true"] {
+      display: grid;
+      gap: 6px;
+    }
+
+    #${STATUS_SUMMARY_ID} {
+      display: -webkit-box;
       white-space: normal;
       overflow-wrap: anywhere;
       word-break: break-word;
       overflow: hidden;
       -webkit-box-orient: vertical;
-      -webkit-line-clamp: 3;
-      line-clamp: 3;
-      justify-self: end;
-      align-self: start;
-      box-sizing: border-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      font-weight: 600;
     }
 
-    #${STATUS_ID}[data-visible="true"] {
-      display: -webkit-box;
+    #${STATUS_TOGGLE_ID} {
+      appearance: none;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      opacity: 0.82;
+      font-size: 11px;
+      line-height: 1.2;
+      justify-self: start;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    #${STATUS_TOGGLE_ID}:hover {
+      opacity: 1;
+    }
+
+    #${STATUS_DETAIL_ID} {
+      display: none;
+      max-height: 96px;
+      overflow: auto;
+      padding-top: 2px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-weight: 500;
+      opacity: 0.92;
+    }
+
+    #${STATUS_ID}[data-expanded="true"] #${STATUS_DETAIL_ID} {
+      display: block;
     }
 
     #${ROOT_ID}[data-state="running"] #${STATUS_ID} {
@@ -281,6 +336,104 @@ function injectStyles() {
       border-color: rgba(249, 115, 22, 0.7);
       box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.18);
     }
+
+    #${AUTH_PROMPT_ID} {
+      position: absolute;
+      width: min(240px, calc(100vw - 32px));
+      display: none;
+      gap: 10px;
+      box-sizing: border-box;
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: 14px;
+      background: rgba(255, 247, 237, 0.98);
+      box-shadow: 0 18px 36px rgba(120, 53, 15, 0.16);
+      padding: 12px;
+      color: #7c2d12;
+      text-align: left;
+    }
+
+    #${AUTH_PROMPT_ID}[data-open="true"] {
+      display: grid;
+    }
+
+    #${STORYBOARD_PROMPT_ID} {
+      position: absolute;
+      width: min(252px, calc(100vw - 32px));
+      display: none;
+      gap: 10px;
+      box-sizing: border-box;
+      border: 1px solid rgba(29, 78, 216, 0.18);
+      border-radius: 14px;
+      background: rgba(248, 250, 252, 0.98);
+      box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+      padding: 12px;
+      color: #0f172a;
+      text-align: left;
+    }
+
+    #${STORYBOARD_PROMPT_ID}[data-open="true"] {
+      display: grid;
+    }
+
+    #${ROOT_ID}[data-bubble-side="left"] #${AUTH_PROMPT_ID},
+    #${ROOT_ID}[data-bubble-side="left"] #${STORYBOARD_PROMPT_ID} {
+      top: 50%;
+      right: calc(100% + 10px);
+      left: auto;
+      transform: translateY(-50%);
+    }
+
+    #${ROOT_ID}[data-bubble-side="right"] #${AUTH_PROMPT_ID},
+    #${ROOT_ID}[data-bubble-side="right"] #${STORYBOARD_PROMPT_ID} {
+      top: 50%;
+      left: calc(100% + 10px);
+      right: auto;
+      transform: translateY(-50%);
+    }
+
+    #${ROOT_ID}[data-bubble-side="below"] #${AUTH_PROMPT_ID},
+    #${ROOT_ID}[data-bubble-side="below"] #${STORYBOARD_PROMPT_ID} {
+      top: calc(100% + 12px);
+      right: 0;
+      left: auto;
+      transform: none;
+    }
+
+    #${AUTH_PROMPT_TEXT_ID} {
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    #${STORYBOARD_PROMPT_TEXT_ID} {
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .resume-matcher-auth-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .resume-matcher-auth-action {
+      appearance: none;
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #7c2d12;
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .resume-matcher-auth-action[data-variant="primary"] {
+      border-color: #ea580c;
+      background: #ea580c;
+      color: #ffffff;
+    }
   `;
   document.documentElement.appendChild(style);
 }
@@ -334,6 +487,90 @@ function updateFloatingTop(root, nextTop) {
   const clampedTop = clampTop(nextTop, root);
   root.style.top = `${clampedTop}px`;
   return clampedTop;
+}
+
+function updateOverlayPlacement(root) {
+  if (!root) return;
+  const button = document.getElementById(BUTTON_ID);
+  const anchorRect = button?.getBoundingClientRect() ?? root.getBoundingClientRect();
+  const promptWidth = Math.min(252, Math.max(0, window.innerWidth - 32));
+  const spaceLeft = anchorRect.left - VIEWPORT_PADDING;
+  const spaceRight = window.innerWidth - anchorRect.right - VIEWPORT_PADDING;
+
+  let side = 'below';
+  if (spaceLeft >= promptWidth) {
+    side = 'left';
+  } else if (spaceRight >= promptWidth) {
+    side = 'right';
+  }
+
+  root.dataset.bubbleSide = side;
+}
+
+function handleViewportChange() {
+  const root = document.getElementById(ROOT_ID);
+  if (!root) return;
+  const currentTop = Number.parseFloat(root.style.top);
+  if (Number.isFinite(currentTop)) {
+    root.style.top = `${clampTop(currentTop, root)}px`;
+  } else {
+    root.style.top = `${getDefaultTop(root)}px`;
+  }
+  updateOverlayPlacement(root);
+}
+
+function getAuthPrompt() {
+  return document.getElementById(AUTH_PROMPT_ID);
+}
+
+function hideAuthPrompt() {
+  const prompt = getAuthPrompt();
+  if (prompt) {
+    prompt.dataset.open = 'false';
+  }
+}
+
+function getStoryboardPrompt() {
+  return document.getElementById(STORYBOARD_PROMPT_ID);
+}
+
+function hideStoryboardPrompt() {
+  const prompt = getStoryboardPrompt();
+  if (prompt) {
+    prompt.dataset.open = 'false';
+  }
+}
+
+function showStoryboardPrompt(message) {
+  const prompt = getStoryboardPrompt();
+  const text = document.getElementById(STORYBOARD_PROMPT_TEXT_ID);
+  if (text) {
+    text.textContent = message || 'A storyboard helps produce better results. Continue without it?';
+  }
+  if (prompt) {
+    updateOverlayPlacement(document.getElementById(ROOT_ID));
+    prompt.dataset.open = 'true';
+  }
+}
+
+function showAuthPrompt(message) {
+  const prompt = getAuthPrompt();
+  const text = document.getElementById(AUTH_PROMPT_TEXT_ID);
+  const continueButton = document.getElementById(AUTH_PROMPT_CONTINUE_ID);
+  const resolvedMessage =
+    message || 'We’ll check your SOM Career Coach login and connect this extension to your account.';
+  if (text) {
+    text.textContent = resolvedMessage;
+  }
+  if (continueButton) {
+    continueButton.textContent = /signed out|sign in/i.test(resolvedMessage)
+      ? 'Sign in'
+      : 'Connect';
+  }
+  if (prompt) {
+    updateOverlayPlacement(document.getElementById(ROOT_ID));
+    prompt.dataset.open = 'true';
+  }
 }
 
 function handlePointerMove(event) {
@@ -412,6 +649,33 @@ function ensureRoot() {
   button.addEventListener('pointerdown', startPointerDrag);
   const status = document.createElement('div');
   status.id = STATUS_ID;
+  status.dataset.visible = 'false';
+  status.dataset.expanded = 'false';
+  status.innerHTML = `
+    <div id="${STATUS_SUMMARY_ID}"></div>
+    <button type="button" id="${STATUS_TOGGLE_ID}" hidden>Details</button>
+    <div id="${STATUS_DETAIL_ID}" hidden></div>
+  `;
+  const authPrompt = document.createElement('div');
+  authPrompt.id = AUTH_PROMPT_ID;
+  authPrompt.dataset.open = 'false';
+  authPrompt.innerHTML = `
+    <div id="${AUTH_PROMPT_TEXT_ID}">We’ll check your SOM Career Coach login and connect this extension to your account.</div>
+    <div class="resume-matcher-auth-actions">
+      <button type="button" id="${AUTH_PROMPT_CANCEL_ID}" class="resume-matcher-auth-action">Not now</button>
+      <button type="button" id="${AUTH_PROMPT_CONTINUE_ID}" class="resume-matcher-auth-action" data-variant="primary">Connect</button>
+    </div>
+  `;
+  const storyboardPrompt = document.createElement('div');
+  storyboardPrompt.id = STORYBOARD_PROMPT_ID;
+  storyboardPrompt.dataset.open = 'false';
+  storyboardPrompt.innerHTML = `
+    <div id="${STORYBOARD_PROMPT_TEXT_ID}">A storyboard helps produce better results. Continue without it?</div>
+    <div class="resume-matcher-auth-actions">
+      <button type="button" id="${STORYBOARD_PROMPT_CANCEL_ID}" class="resume-matcher-auth-action">Not now</button>
+      <button type="button" id="${STORYBOARD_PROMPT_CONTINUE_ID}" class="resume-matcher-auth-action" data-variant="primary">Continue</button>
+    </div>
+  `;
   const prompt1Details = document.createElement('details');
   prompt1Details.id = PROMPT1_DETAILS_ID;
 
@@ -433,8 +697,75 @@ function ensureRoot() {
 
   prompt1Panel.append(prompt1Textarea);
   prompt1Details.append(prompt1Summary, prompt1Panel);
-  root.append(button, prompt1Details, status);
+  root.append(button, prompt1Details, status, authPrompt, storyboardPrompt);
   document.documentElement.appendChild(root);
+  updateOverlayPlacement(root);
+  document.getElementById(STATUS_TOGGLE_ID)?.addEventListener('click', () => {
+    const statusRoot = document.getElementById(STATUS_ID);
+    if (!statusRoot || statusRoot.dataset.visible !== 'true') return;
+    const expanded = statusRoot.dataset.expanded === 'true';
+    statusRoot.dataset.expanded = expanded ? 'false' : 'true';
+    const toggle = document.getElementById(STATUS_TOGGLE_ID);
+    if (toggle) {
+      toggle.textContent = expanded ? 'Details' : 'Hide details';
+    }
+  });
+  document.getElementById(AUTH_PROMPT_CANCEL_ID)?.addEventListener('click', () => {
+    hideAuthPrompt();
+    awaitingAuthResume = false;
+    isRunning = false;
+    setUiState('idle', '');
+  });
+  document.getElementById(AUTH_PROMPT_CONTINUE_ID)?.addEventListener('click', async () => {
+    hideAuthPrompt();
+    awaitingAuthResume = true;
+    setUiState('running', 'Checking your SOM Career Coach login…');
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'OPEN_EXTENSION_CONNECT',
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error ?? 'Failed to open SOM Career Coach.');
+      }
+      setUiState('running', 'Connecting your extension…');
+    } catch (error) {
+      awaitingAuthResume = false;
+      isRunning = false;
+      setUiState(
+        'error',
+        formatErrorText(error instanceof Error ? error.message : 'Failed to open SOM Career Coach.')
+      );
+    }
+  });
+  document.getElementById(STORYBOARD_PROMPT_CANCEL_ID)?.addEventListener('click', async () => {
+    hideStoryboardPrompt();
+    awaitingStoryboardResume = false;
+    isRunning = false;
+    await chrome.runtime.sendMessage({ type: 'CLEAR_PENDING_EXTENSION_ACTION' }).catch(() => {});
+    setUiState('idle', '');
+  });
+  document.getElementById(STORYBOARD_PROMPT_CONTINUE_ID)?.addEventListener('click', async () => {
+    hideStoryboardPrompt();
+    awaitingStoryboardResume = true;
+    setUiState('running', 'Continuing without storyboard…');
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD',
+      });
+      if (!response?.ok) {
+        throw new Error(response?.error ?? 'Failed to continue without storyboard.');
+      }
+    } catch (error) {
+      awaitingStoryboardResume = false;
+      isRunning = false;
+      setUiState(
+        'error',
+        formatErrorText(
+          error instanceof Error ? error.message : 'Failed to continue without storyboard.'
+        )
+      );
+    }
+  });
   void applyStoredTopOffset(root);
   logInfo('Floating action injected.', { url: location.href });
   return root;
@@ -449,18 +780,98 @@ function removeFloatingAction() {
   document.getElementById(ROOT_ID)?.remove();
 }
 
+function getStatusCopy(state, message) {
+  const normalized = typeof message === 'string' ? message.trim() : '';
+  if (!normalized) {
+    return { summary: '', detail: '' };
+  }
+
+  if (state === 'error') {
+    if (/upload your resume in som career coach/i.test(normalized)) {
+      return {
+        summary: 'Resume required',
+        detail: 'Upload a .txt, .md, or .json resume in SOM Career Coach first.',
+      };
+    }
+
+    if (/reconnect som career coach to continue/i.test(normalized)) {
+      return {
+        summary: 'Reconnect required',
+        detail: 'Reconnect SOM Career Coach to continue.',
+      };
+    }
+
+    if (/connect som career coach to continue/i.test(normalized)) {
+      return {
+        summary: 'Connect required',
+        detail: 'Connect SOM Career Coach to continue.',
+      };
+    }
+
+    if (/upload a storyboard in assets/i.test(normalized)) {
+      return {
+        summary: 'Storyboard missing',
+        detail: 'Upload a storyboard in Assets or continue without it.',
+      };
+    }
+
+    if (/refresh this linkedin page/i.test(normalized)) {
+      return {
+        summary: 'Refresh required',
+        detail: 'Refresh this LinkedIn page and try again.',
+      };
+    }
+
+    if (normalized.length > 72) {
+      return {
+        summary: 'Generation failed',
+        detail: normalized,
+      };
+    }
+  }
+
+  if (normalized.length > 72) {
+    return {
+      summary: normalized.slice(0, 69).trimEnd() + '…',
+      detail: normalized,
+    };
+  }
+
+  return { summary: normalized, detail: '' };
+}
+
 function setUiState(state, message = '') {
   const root = ensureRoot();
   if (!root) return;
   const button = document.getElementById(BUTTON_ID);
   const status = document.getElementById(STATUS_ID);
+  const summary = document.getElementById(STATUS_SUMMARY_ID);
+  const toggle = document.getElementById(STATUS_TOGGLE_ID);
+  const detail = document.getElementById(STATUS_DETAIL_ID);
   root.dataset.state = state;
+  updateOverlayPlacement(root);
   if (button) {
     button.disabled = state === 'running';
   }
   if (status) {
-    status.textContent = message || '';
-    status.dataset.visible = message ? 'true' : 'false';
+    const copy = getStatusCopy(state, message);
+    status.dataset.visible = copy.summary ? 'true' : 'false';
+    status.dataset.expanded = 'false';
+    if (summary) {
+      summary.textContent = copy.summary;
+    }
+    if (toggle) {
+      toggle.hidden = !copy.detail;
+      toggle.textContent = 'Details';
+    }
+    if (detail) {
+      detail.hidden = !copy.detail;
+      detail.textContent = copy.detail;
+    }
+  }
+  if (state !== 'idle' && state !== 'running') {
+    hideAuthPrompt();
+    hideStoryboardPrompt();
   }
 }
 
@@ -505,6 +916,22 @@ function formatErrorText(message) {
 
   if (/no master resume was found/i.test(normalized)) {
     return 'Upload a master resume in SOM Career Coach first.';
+  }
+
+  if (/upload your resume to the extension first/i.test(normalized)) {
+    return 'Upload your resume in SOM Career Coach as a .txt, .md, or .json file first.';
+  }
+
+  if (/you are signed out of som career coach/i.test(normalized)) {
+    return 'You are signed out of SOM Career Coach. Sign in to continue.';
+  }
+
+  if (/connect som career coach to continue/i.test(normalized)) {
+    return 'Connect SOM Career Coach to continue.';
+  }
+
+  if (/reconnect som career coach to continue/i.test(normalized)) {
+    return 'Reconnect SOM Career Coach to continue.';
   }
 
   return normalized;
@@ -658,7 +1085,10 @@ function updateStatusFromLog(level, scope, message, data) {
   const progressMessage = getLlmProgressMessage(scope, message, data)
     ?? getProgressMessage(scope, message);
   if (!progressMessage) return;
-  setUiState(isRunning || awaitingAuthResume ? 'running' : 'idle', progressMessage);
+  setUiState(
+    isRunning || awaitingAuthResume || awaitingStoryboardResume ? 'running' : 'idle',
+    progressMessage
+  );
 }
 
 async function handleGenerateClick() {
@@ -682,22 +1112,35 @@ async function handleGenerateClick() {
       payload: { prompt1CustomInstruction },
     });
     if (response?.awaitingAuth) {
-      awaitingAuthResume = true;
-      setUiState('running', response.message || 'Finish signing in to SOM Career Coach.');
+      awaitingAuthResume = false;
+      awaitingStoryboardResume = false;
+      isRunning = false;
+      setUiState('idle', '');
+      showAuthPrompt(response.message);
+      return;
+    }
+    if (response?.awaitingStoryboard) {
+      awaitingAuthResume = false;
+      awaitingStoryboardResume = false;
+      isRunning = false;
+      setUiState('idle', '');
+      showStoryboardPrompt(response.message);
       return;
     }
     if (!response?.ok) {
       throw new Error(response?.error ?? 'Failed to generate tailored resume.');
     }
     awaitingAuthResume = false;
+    awaitingStoryboardResume = false;
     logInfo('Generate flow succeeded.', response.result ?? {});
     setUiState('success', 'Preview opened.');
   } catch (error) {
     awaitingAuthResume = false;
+    awaitingStoryboardResume = false;
     logError('Generate flow failed.', error);
     setUiState('error', formatErrorText(error instanceof Error ? error.message : 'Failed to generate tailored resume.'));
   } finally {
-    if (!awaitingAuthResume) {
+    if (!awaitingAuthResume && !awaitingStoryboardResume) {
       isRunning = false;
     }
     const root = document.getElementById(ROOT_ID);
@@ -730,9 +1173,24 @@ function startUrlWatcher() {
   urlObserver.observe(document.documentElement, { childList: true, subtree: true });
 }
 
+window.addEventListener('resize', handleViewportChange);
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === 'EXTENSION_RESUMED_GENERATION_RESULT') {
+  if (message?.type === 'EXTENSION_AUTH_REQUIRED') {
+    hideStoryboardPrompt();
     awaitingAuthResume = false;
+    awaitingStoryboardResume = false;
+    isRunning = false;
+    setUiState('idle', '');
+    showAuthPrompt(message.payload?.message || 'Sign in to SOM Career Coach to continue.');
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (message?.type === 'EXTENSION_RESUMED_GENERATION_RESULT') {
+    hideAuthPrompt();
+    hideStoryboardPrompt();
+    awaitingAuthResume = false;
+    awaitingStoryboardResume = false;
     isRunning = false;
     if (message.payload?.ok) {
       setUiState('success', 'Preview opened.');
@@ -743,6 +1201,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         formatErrorText(message.payload?.error || 'Failed to generate tailored resume.')
       );
     }
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (message?.type === 'EXTENSION_STORYBOARD_RECOMMENDATION') {
+    hideAuthPrompt();
+    awaitingAuthResume = false;
+    awaitingStoryboardResume = false;
+    isRunning = false;
+    setUiState('idle', '');
+    showStoryboardPrompt(message.payload?.message);
     sendResponse({ ok: true });
     return true;
   }

@@ -93,6 +93,23 @@ body {
   gap: 10px;
 }
 
+.asset-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e6e4da;
+  border-radius: 10px;
+  background: #fafaf8;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #5a5a57;
+}
+
+.asset-note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 11px;
+  color: #1d1d1b;
+}
+
 .asset-row {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) auto;
@@ -516,6 +533,14 @@ body {
   color: #7b7a75;
   font-size: 11px;
   cursor: pointer;
+}
+
+.panel__hint {
+  margin: 0;
+  padding: 0 4px 2px;
+  color: #7b7a75;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .panel__checkbox input {

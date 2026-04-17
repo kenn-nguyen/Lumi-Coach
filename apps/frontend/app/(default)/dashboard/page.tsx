@@ -106,25 +106,18 @@ export default function DashboardPage() {
       const status = data.raw_resume?.processing_status || 'pending';
       setProcessingStatus(status as ProcessingStatus);
     } catch (err: unknown) {
-      console.error('Failed to check resume status:', err);
       // If resume not found (404), clear the stale localStorage
       if (err instanceof Error && err.message.includes('404')) {
         localStorage.removeItem('master_resume_id');
         setMasterResumeId(null);
+        setMasterResumeItem(null);
+        setProcessingStatus('loading');
         return;
       }
+      console.error('Failed to check resume status:', err);
       setProcessingStatus('failed');
     }
   }, []);
-
-  useEffect(() => {
-    if (authStatus !== 'authenticated') return;
-    const storedId = localStorage.getItem('master_resume_id');
-    if (storedId) {
-      setMasterResumeId(storedId);
-      checkResumeStatus(storedId);
-    }
-  }, [authStatus, checkResumeStatus]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -137,8 +130,7 @@ export default function DashboardPage() {
     try {
       const data = await fetchResumeList(true);
       const masterFromList = data.find((r) => r.is_master);
-      const storedId = localStorage.getItem('master_resume_id');
-      const resolvedMasterId = masterFromList?.resume_id || storedId;
+      const resolvedMasterId = masterFromList?.resume_id || null;
 
       if (resolvedMasterId) {
         localStorage.setItem('master_resume_id', resolvedMasterId);
@@ -222,12 +214,22 @@ export default function DashboardPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMasterMenuOpen]);
 
-  const handleUploadComplete = (resumeId: string) => {
-    localStorage.setItem('master_resume_id', resumeId);
-    setMasterResumeId(resumeId);
+  const handleUploadComplete = async ({
+    resumeId,
+    isMaster,
+  }: {
+    resumeId: string;
+    isMaster: boolean;
+  }) => {
+    if (isMaster) {
+      localStorage.setItem('master_resume_id', resumeId);
+      setMasterResumeId(resumeId);
+      checkResumeStatus(resumeId);
+    } else {
+      localStorage.removeItem('master_resume_id');
+    }
     setIsUploadDialogOpen(false);
-    // Check status after upload completes
-    checkResumeStatus(resumeId);
+    await loadTailoredResumes();
     // Update cached counters
     incrementResumes();
     setHasMasterResume(true);

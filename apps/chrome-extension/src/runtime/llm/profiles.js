@@ -4,7 +4,7 @@ const DEFAULT_CLAUDE_TARGET_URL = 'https://claude.ai/new';
 const DEFAULT_CLAUDE_INCOGNITO_TARGET_URL = 'https://claude.ai/new?incognito';
 const DEFAULT_GEMINI_TARGET_URL = 'https://gemini.google.com/app';
 
-export const DEFAULT_ACTIVE_LLM_PROFILE_ID = 'chatgpt:web_automation';
+export const DEFAULT_ACTIVE_LLM_PROFILE_ID = 'chatgpt:api';
 
 const BASE_PROFILE_DEFS = [
   {

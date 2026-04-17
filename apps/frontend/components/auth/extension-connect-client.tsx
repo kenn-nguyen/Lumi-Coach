@@ -11,7 +11,7 @@ type ExtensionConnectClientProps = {
 
 export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientProps) {
   const [status, setStatus] = useState<ConnectStatus>('connecting');
-  const [message, setMessage] = useState('Connecting your extension…');
+  const [message, setMessage] = useState('Connecting your extension and returning you to LinkedIn…');
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +64,7 @@ export function ExtensionConnectClient({ extensionId }: ExtensionConnectClientPr
 
         if (cancelled) return;
         setStatus('success');
-        setMessage('Extension connected. You can return to the job page.');
+        setMessage('Connected. Returning you to LinkedIn…');
       } catch (error) {
         if (cancelled) return;
         setStatus('error');

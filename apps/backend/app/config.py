@@ -183,13 +183,11 @@ class Settings(BaseSettings):
             origins.append(url)
         return origins
 
+    # Database
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/som_career_coach"
+
     # Paths
     data_dir: Path = Path(__file__).parent.parent / "data"
-
-    @property
-    def db_path(self) -> Path:
-        """Path to TinyDB database file."""
-        return self.data_dir / "database.json"
 
     @property
     def config_path(self) -> Path:

@@ -7,6 +7,7 @@ import json
 import logging
 import unicodedata
 from collections.abc import Awaitable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
 from urllib.parse import quote
@@ -75,6 +76,7 @@ from app.services.cover_letter import (
 from app.security import (
     AuthenticatedUser,
     create_backend_access_token_for_user,
+    get_current_user_id,
     require_current_user,
 )
 from app.prompts import DEFAULT_IMPROVE_PROMPT_ID, IMPROVE_PROMPT_OPTIONS
@@ -84,6 +86,51 @@ router = APIRouter(
     tags=["Resumes"],
     dependencies=[Depends(require_current_user)],
 )
+
+
+@dataclass
+class _PreviewHashEntry:
+    preview_hashes: dict[str, str]
+    updated_at: float
+
+
+_PREVIEW_HASH_CACHE_TTL_SECONDS = 60 * 30
+_preview_hash_cache: dict[tuple[str, str], _PreviewHashEntry] = {}
+
+
+def _set_cached_preview_hash(user_id: str | None, job_id: str, prompt_id: str, preview_hash: str) -> None:
+    if not user_id:
+        return
+    now = asyncio.get_running_loop().time()
+    _prune_preview_hash_cache(now)
+    cache_key = (user_id, job_id)
+    existing = _preview_hash_cache.get(cache_key)
+    preview_hashes = dict(existing.preview_hashes) if existing else {}
+    preview_hashes[prompt_id] = preview_hash
+    _preview_hash_cache[cache_key] = _PreviewHashEntry(
+        preview_hashes=preview_hashes,
+        updated_at=now,
+    )
+
+
+def _get_cached_preview_hashes(user_id: str | None, job_id: str) -> dict[str, str]:
+    if not user_id:
+        return {}
+    now = asyncio.get_running_loop().time()
+    _prune_preview_hash_cache(now)
+    entry = _preview_hash_cache.get((user_id, job_id))
+    return dict(entry.preview_hashes) if entry else {}
+
+
+def _prune_preview_hash_cache(now: float | None = None) -> None:
+    current = now if now is not None else 0.0
+    expired_keys = [
+        key
+        for key, entry in _preview_hash_cache.items()
+        if current - entry.updated_at > _PREVIEW_HASH_CACHE_TTL_SECONDS
+    ]
+    for key in expired_keys:
+        _preview_hash_cache.pop(key, None)
 
 PRESERVED_PERSONAL_INFO_FIELDS = (
     "name",
@@ -1083,6 +1130,8 @@ async def _improve_preview_flow(
     improved_data = normalized_preview
     improved_text = json.dumps(improved_data, indent=2)
     preview_hash = _hash_improved_data(improved_data)
+    current_user_id = get_current_user_id()
+    _set_cached_preview_hash(current_user_id, request.job_id, prompt_id, preview_hash)
     preview_hashes = job.get("preview_hashes")
     if not isinstance(preview_hashes, dict):
         preview_hashes = {}
@@ -1182,6 +1231,7 @@ async def improve_resume_confirm_endpoint(
                 status_code=400,
                 detail="Invalid improved resume data. Please retry preview.",
             )
+        current_user_id = get_current_user_id()
         preview_hashes = job.get("preview_hashes")
         allowed_hashes: set[str] = set()
         if isinstance(preview_hashes, dict):
@@ -1194,6 +1244,7 @@ async def improve_resume_confirm_endpoint(
             preview_hash = job.get("preview_hash")
             if isinstance(preview_hash, str):
                 allowed_hashes.add(preview_hash)
+        allowed_hashes.update(_get_cached_preview_hashes(current_user_id, request.job_id).values())
 
         if not allowed_hashes:
             logger.warning(

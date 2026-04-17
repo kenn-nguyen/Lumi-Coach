@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    db.init_schema()
     # PDF renderer uses lazy initialization - will initialize on first use
     # await init_pdf_renderer()
     yield

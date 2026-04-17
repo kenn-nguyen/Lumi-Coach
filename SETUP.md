@@ -80,6 +80,26 @@ Open your browser to **<http://localhost:3000>** and you're ready to go!
 
 > **Note:** You'll need to configure an AI provider before using the app. See [Configuring Your AI Provider](#configuring-your-ai-provider) below.
 
+### Local PostgreSQL for Testing
+
+The backend now uses PostgreSQL instead of TinyDB. The fastest local setup is Docker:
+
+```bash
+docker compose -f docker-compose.local.yml up -d
+```
+
+This starts PostgreSQL on `localhost:5432` with these defaults:
+
+- database: `som_career_coach`
+- user: `postgres`
+- password: `postgres`
+
+Set this in `apps/backend/.env`:
+
+```env
+DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/som_career_coach
+```
+
 ---
 
 ## Step-by-Step Setup

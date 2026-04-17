@@ -20,6 +20,10 @@
         </summary>
 
         <div class="asset-group">
+          <p class="asset-note">
+            Resume is required for extension runs. Upload it here as a plain-text <code>.txt</code>, <code>.md</code>, or <code>.json</code> file only. Do not use PDF or DOCX in the extension admin.
+          </p>
+
           <div class="asset-row">
             <span class="asset-row__label">Master Resume Context</span>
             <span id="master-resume-context-status" class="asset-row__value"></span>
@@ -182,6 +186,10 @@
         <input id="custom-feature-checkbox" type="checkbox" />
         <span>Custom feature</span>
       </label>
+
+      <p class="panel__hint">
+        Overwrite backend master resume only when you want to replace the app's current master resume with the local JSON resume stored in this extension.
+      </p>
 
       <button id="overwrite-master-resume-button" class="panel__reset panel__reset--secondary" type="button">Overwrite backend master resume</button>
       <button id="reset-local-data-button" class="panel__reset" type="button">Reset local extension data</button>

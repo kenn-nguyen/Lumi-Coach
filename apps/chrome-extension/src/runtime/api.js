@@ -27,6 +27,52 @@ function toAbsoluteUrl(url, appOrigin) {
   return url.startsWith('http://') || url.startsWith('https://') ? url : `${appOrigin}${url}`;
 }
 
+export async function verifyWebsiteSession() {
+  const { appOrigin } = await getRuntimeEndpoints();
+  const endpoint = `${appOrigin}/api/auth/session-status`;
+  logInfo('ExtensionAuth', 'Checking website session status.', { endpoint });
+
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError('ExtensionAuth', 'Website session check failed before response.', {
+      endpoint,
+      error: message,
+    });
+    throw new Error(`Website session check failed before response at ${endpoint}: ${message}`);
+  }
+
+  if (response.status === 401) {
+    await clearExtensionAuth();
+    logWarn('ExtensionAuth', 'Website session is not authenticated.', { endpoint });
+    return {
+      authenticated: false,
+    };
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    logError('ExtensionAuth', 'Website session check returned a non-OK status.', {
+      endpoint,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(`Failed to verify website session (status ${response.status}): ${text}`);
+  }
+
+  const payload = await response.json().catch(() => ({ authenticated: true }));
+  return {
+    authenticated: payload?.authenticated !== false,
+    user: payload?.user ?? null,
+  };
+}
+
 async function fetchWithAuth(endpoint, options = {}) {
   const auth = await getExtensionAuth();
   if (!auth?.token || !auth?.expiresAt) {
@@ -49,6 +95,7 @@ async function fetchWithAuth(endpoint, options = {}) {
 
   if (response.status === 401) {
     await clearExtensionAuth();
+    throw new Error('Extension session expired. Reconnect SOM Career Coach and try again.');
   }
 
   return response;
@@ -447,8 +494,14 @@ export async function openPreviewTab(previewUrl) {
   await chrome.tabs.create({ url: toAbsoluteUrl(previewUrl, appOrigin) });
 }
 
-export async function openExtensionConnectTab(extensionId) {
+export async function openExtensionConnectTab(extensionId, sourceTabId = null) {
   const { appOrigin } = await getRuntimeEndpoints();
-  const url = `${appOrigin}/extension/connect?extensionId=${encodeURIComponent(extensionId)}`;
-  await chrome.tabs.create({ url });
+  const params = new URLSearchParams({
+    extensionId,
+  });
+  if (sourceTabId) {
+    params.set('sourceTabId', String(sourceTabId));
+  }
+  const url = `${appOrigin}/extension/connect?${params.toString()}`;
+  await chrome.tabs.create({ url, active: false });
 }
