@@ -26,9 +26,7 @@ export const SwissGrid = ({
   const { t } = useTranslations();
 
   return (
-    <div
-      className="skin-page-brand flex h-screen w-full items-start justify-center overflow-hidden px-4 py-12 md:px-8"
-    >
+    <div className="skin-page-brand flex h-screen w-full items-start justify-center overflow-hidden px-4 py-12 md:px-8">
       <div className="skin-shell flex max-h-full w-full max-w-[86rem] flex-col overflow-hidden rounded-[28px]">
         <div className="relative z-30 shrink-0 border-b border-border bg-white/60 px-8 py-5 md:px-10 md:py-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -44,29 +42,23 @@ export const SwissGrid = ({
               ) : null}
             </div>
             {headerActions ? (
-              <div className="flex flex-wrap items-center gap-3 lg:justify-end">{headerActions}</div>
+              <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+                {headerActions}
+              </div>
             ) : null}
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden relative z-10">
           <div className={cn('p-6 md:p-8', contentClassName)}>
-            <div className="min-h-full">
-              {children}
-            </div>
+            <div className="min-h-full">{children}</div>
           </div>
         </div>
 
         <div className="relative z-30 flex shrink-0 items-center justify-between border-t border-border bg-white/50 p-4 font-mono text-xs text-primary">
           <Link href="/" className="flex items-center gap-2 uppercase font-bold hover:underline">
-            <Image
-              src="/logo.svg"
-              alt="SOM Career Coach"
-              width={20}
-              height={20}
-              className="w-5 h-5"
-            />
-            <span>SOM Career Coach</span>
+            <Image src="/logo.png" alt="Lumi Coach" width={20} height={20} className="w-5 h-5" />
+            <span>Lumi Coach</span>
           </Link>
           {footerContent ? <div className="flex items-center gap-4">{footerContent}</div> : null}
         </div>

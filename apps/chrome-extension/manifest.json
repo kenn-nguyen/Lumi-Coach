@@ -1,21 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "SOM Career Coach Extension",
+  "name": "Lumi Coach",
   "version": "0.0.1",
-  "description": "Scrape LinkedIn jobs, run prompting, and push tailored JSON into SOM Career Coach.",
+  "description": "Scrape LinkedIn jobs, run prompting, and push tailored JSON into Lumi Coach.",
   "icons": {
     "16": "src/assets/icons/icon-16.png",
     "32": "src/assets/icons/icon-32.png",
     "48": "src/assets/icons/icon-48.png",
     "128": "src/assets/icons/icon-128.png"
   },
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "storage",
-    "tabs",
-    "sidePanel"
-  ],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://chatgpt.com/*",
@@ -38,20 +32,13 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.linkedin.com/jobs/*"
-      ],
-      "js": [
-        "src/content/linkedin-job.js"
-      ],
+      "matches": ["https://www.linkedin.com/jobs/*"],
+      "js": ["src/content/linkedin-job.js"],
       "run_at": "document_idle"
     }
   ],
-  "side_panel": {
-    "default_path": "src/sidepanel/index.html"
-  },
   "action": {
-    "default_title": "SOM Career Coach",
+    "default_title": "Lumi Coach",
     "default_icon": {
       "16": "src/assets/icons/icon-16.png",
       "32": "src/assets/icons/icon-32.png",
@@ -70,11 +57,10 @@
       "resources": [
         "src/prompts/*.txt",
         "src/prompts/patches/*.txt",
-        "src/assets/*.gif"
+        "src/assets/*.gif",
+        "src/assets/*.png"
       ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "matches": ["<all_urls>"]
     }
   ]
 }

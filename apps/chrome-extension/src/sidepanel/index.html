@@ -3,97 +3,70 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SOM Career Coach</title>
+    <title>Lumi Coach</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="panel">
       <header class="panel__header">
-        <h1>Resume Admin Board</h1>
-        <p>Manage local extension assets and reopen generated resume previews.</p>
+        <p class="panel__eyebrow">Lumi Coach</p>
+        <h1>Resume Workspace</h1>
+        <p>
+          Prepare assets, manage run settings, and reopen recent tailored
+          resumes.
+        </p>
       </header>
 
-      <details class="card card--foldable" id="assets-card">
-        <summary class="card__summary">
-          <h2>Assets</h2>
-          <span class="card__chevron" aria-hidden="true">⌄</span>
-        </summary>
+      <section class="card card--hero" id="assets-card">
+        <div class="card__intro">
+          <h2>Run Setup</h2>
+          <p>
+            Set the minimum required context before you click Tailor on a
+            LinkedIn job.
+          </p>
+        </div>
 
         <div class="asset-group">
           <p class="asset-note">
-            Resume is required for extension runs. Upload it here as a plain-text <code>.txt</code>, <code>.md</code>, or <code>.json</code> file only. Do not use PDF or DOCX in the extension admin.
+            Upload the master resume as plain-text <code>.txt</code>,
+            <code>.md</code>, or <code>.json</code>. PDF and DOCX are not
+            supported in the extension.
           </p>
 
           <div class="asset-row">
             <span class="asset-row__label">Master Resume Context</span>
-            <span id="master-resume-context-status" class="asset-row__value"></span>
-            <label class="button button--secondary asset-row__button" for="master-resume-context-input">Upload</label>
-            <input id="master-resume-context-input" class="asset-row__input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+            <span
+              id="master-resume-context-status"
+              class="asset-row__value"
+            ></span>
+            <label
+              class="button button--secondary asset-row__button"
+              for="master-resume-context-input"
+              >Upload</label
+            >
+            <input
+              id="master-resume-context-input"
+              class="asset-row__input"
+              type="file"
+              accept=".txt,.md,.json,text/plain,text/markdown,application/json"
+            />
           </div>
 
           <div class="asset-row">
             <span class="asset-row__label">Storyboard</span>
             <span id="storyboard-status" class="asset-row__value"></span>
-            <label class="button button--secondary asset-row__button" for="storyboard-input">Upload</label>
-            <input id="storyboard-input" class="asset-row__input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+            <label
+              class="button button--secondary asset-row__button"
+              for="storyboard-input"
+              >Upload</label
+            >
+            <input
+              id="storyboard-input"
+              class="asset-row__input"
+              type="file"
+              accept=".txt,.md,.json,text/plain,text/markdown,application/json"
+            />
           </div>
-
-          <details class="asset-help">
-            <summary class="asset-help__summary">
-              <span>Prompt Profiles</span>
-              <span class="asset-help__chevron" aria-hidden="true">⌄</span>
-            </summary>
-            <div class="asset-help__content meta">
-              <div class="prompt-profile-toolbar">
-                <div>
-                  <div id="prompt-profile-buttons" class="prompt-profile-buttons" role="group" aria-label="Prompt profiles">
-                    <button type="button" class="prompt-profile-button" data-prompt-profile-id="profile1">Profile 1</button>
-                    <button type="button" class="prompt-profile-button" data-prompt-profile-id="profile2">Profile 2</button>
-                    <button type="button" class="prompt-profile-button" data-prompt-profile-id="profile3">Profile 3</button>
-                  </div>
-                </div>
-              </div>
-              <div class="prompt-file-grid" id="prompt-file-grid">
-                <div class="prompt-file-item" data-template-name="prompt1">
-                  <button id="prompt-file-button-prompt1" class="prompt-file-tile" type="button" title="">
-                    <span id="prompt-file-text-prompt1" class="prompt-file-tile__text">...upload</span>
-                  </button>
-                  <button id="prompt-file-remove-prompt1" class="prompt-file-remove" type="button" aria-label="Remove Prompt 1 file">×</button>
-                  <input id="prompt-file-input-prompt1" class="asset-row__input" type="file" accept=".txt,text/plain" />
-                  <span class="prompt-file-item__label">Prompt 1</span>
-                </div>
-                <div class="prompt-file-item" data-template-name="prompt2">
-                  <button id="prompt-file-button-prompt2" class="prompt-file-tile" type="button" title="">
-                    <span id="prompt-file-text-prompt2" class="prompt-file-tile__text">...upload</span>
-                  </button>
-                  <button id="prompt-file-remove-prompt2" class="prompt-file-remove" type="button" aria-label="Remove Prompt 2 file">×</button>
-                  <input id="prompt-file-input-prompt2" class="asset-row__input" type="file" accept=".txt,text/plain" />
-                  <span class="prompt-file-item__label">Prompt 2</span>
-                </div>
-                <div class="prompt-file-item" data-template-name="prompt3">
-                  <button id="prompt-file-button-prompt3" class="prompt-file-tile" type="button" title="">
-                    <span id="prompt-file-text-prompt3" class="prompt-file-tile__text">...upload</span>
-                  </button>
-                  <button id="prompt-file-remove-prompt3" class="prompt-file-remove" type="button" aria-label="Remove Prompt 3 file">×</button>
-                  <input id="prompt-file-input-prompt3" class="asset-row__input" type="file" accept=".txt,text/plain" />
-                  <span class="prompt-file-item__label">Prompt 3</span>
-                </div>
-                <div class="prompt-file-item" data-template-name="systemPrompt">
-                  <button id="prompt-file-button-systemPrompt" class="prompt-file-tile" type="button" title="">
-                    <span id="prompt-file-text-systemPrompt" class="prompt-file-tile__text">...upload</span>
-                  </button>
-                  <button id="prompt-file-remove-systemPrompt" class="prompt-file-remove" type="button" aria-label="Remove System prompt file">×</button>
-                  <input id="prompt-file-input-systemPrompt" class="asset-row__input" type="file" accept=".txt,text/plain" />
-                  <span class="prompt-file-item__label">System prompt</span>
-                </div>
-              </div>
-              <p><strong>Prompt 1</strong> reads the LinkedIn job description and extracts the hiring signals that matter.</p>
-              <p><strong>Prompt 2</strong> compresses that into a sharper writing brief so Prompt 3 does less guessing.</p>
-              <p><strong>Prompt 3</strong> writes the final resume JSON. Most quality problems happen here if the brief is vague or overloaded.</p>
-              <p><strong>System prompt</strong> is only used for API providers. Leave it blank until you want a shared instruction layer across API calls.</p>
-              <p>Optimize prompts by keeping instructions concrete, preserving the schema, and avoiding keyword stuffing. Tight prompts usually outperform longer prompts that repeat the same rule.</p>
-            </div>
-          </details>
 
           <div class="asset-row asset-row--input">
             <span class="asset-row__label">Provider</span>
@@ -102,52 +75,305 @@
           </div>
 
           <div id="provider-url-row" class="asset-row asset-row--input" hidden>
-            <span id="provider-url-label" class="asset-row__label">Provider URL</span>
-            <input id="provider-url-input" class="asset-row__text" type="url" placeholder="" />
+            <span id="provider-url-label" class="asset-row__label"
+              >Provider URL</span
+            >
+            <input
+              id="provider-url-input"
+              class="asset-row__text"
+              type="url"
+              placeholder=""
+            />
             <span class="asset-row__spacer" aria-hidden="true"></span>
           </div>
 
-          <div id="provider-api-endpoint-row" class="asset-row asset-row--input" hidden>
+          <div
+            id="provider-api-endpoint-row"
+            class="asset-row asset-row--input"
+            hidden
+          >
             <span class="asset-row__label">API Endpoint</span>
-            <input id="provider-api-endpoint-input" class="asset-row__text" type="url" placeholder="" />
+            <input
+              id="provider-api-endpoint-input"
+              class="asset-row__text"
+              type="url"
+              placeholder=""
+            />
             <span class="asset-row__spacer" aria-hidden="true"></span>
           </div>
 
-          <div id="provider-model-row" class="asset-row asset-row--input" hidden>
+          <div
+            id="provider-model-row"
+            class="asset-row asset-row--input"
+            hidden
+          >
             <span class="asset-row__label">Model</span>
-            <input id="provider-model-input" class="asset-row__text" type="text" placeholder="" />
+            <input
+              id="provider-model-input"
+              class="asset-row__text"
+              type="text"
+              placeholder=""
+            />
             <span class="asset-row__spacer" aria-hidden="true"></span>
           </div>
 
-          <div id="provider-api-key-row" class="asset-row asset-row--input" hidden>
+          <div
+            id="provider-api-key-row"
+            class="asset-row asset-row--input"
+            hidden
+          >
             <span class="asset-row__label">API Key</span>
-            <input id="provider-api-key-input" class="asset-row__text" type="password" placeholder="" />
+            <input
+              id="provider-api-key-input"
+              class="asset-row__text"
+              type="password"
+              placeholder=""
+            />
             <span class="asset-row__spacer" aria-hidden="true"></span>
           </div>
 
           <div class="asset-row asset-row--input">
             <span class="asset-row__label">Frontend App URL</span>
-            <input id="app-url-input" class="asset-row__text" type="url" placeholder="https://som-career-coach-iota.vercel.app" />
+            <input
+              id="app-url-input"
+              class="asset-row__text"
+              type="url"
+              placeholder="https://som-career-coach-iota.vercel.app"
+            />
             <span class="asset-row__spacer" aria-hidden="true"></span>
           </div>
 
           <div class="asset-row asset-row--input">
             <span class="asset-row__label">Backend API URL</span>
-            <input id="api-url-input" class="asset-row__text" type="url" placeholder="https://som-career-coach.onrender.com" />
+            <input
+              id="api-url-input"
+              class="asset-row__text"
+              type="url"
+              placeholder="https://som-career-coach.onrender.com"
+            />
             <span class="asset-row__spacer" aria-hidden="true"></span>
+          </div>
+        </div>
+      </section>
+
+      <details class="card card--foldable">
+        <summary class="card__summary">
+          <h2>Prompting &amp; Profiles</h2>
+          <span class="card__chevron" aria-hidden="true">⌄</span>
+        </summary>
+
+        <div class="asset-group">
+          <p class="asset-note">
+            Use this only when you want to customize how the extension reasons
+            through Prompt 1, Prompt 2, and Prompt 3.
+          </p>
+
+          <div class="prompt-profile-toolbar">
+            <div>
+              <div
+                id="prompt-profile-buttons"
+                class="prompt-profile-buttons"
+                role="group"
+                aria-label="Prompt profiles"
+              >
+                <button
+                  type="button"
+                  class="prompt-profile-button"
+                  data-prompt-profile-id="profile1"
+                >
+                  Profile 1
+                </button>
+                <button
+                  type="button"
+                  class="prompt-profile-button"
+                  data-prompt-profile-id="profile2"
+                >
+                  Profile 2
+                </button>
+                <button
+                  type="button"
+                  class="prompt-profile-button"
+                  data-prompt-profile-id="profile3"
+                >
+                  Profile 3
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="prompt-file-grid" id="prompt-file-grid">
+            <div class="prompt-file-item" data-template-name="prompt1">
+              <button
+                id="prompt-file-button-prompt1"
+                class="prompt-file-tile"
+                type="button"
+                title=""
+              >
+                <span
+                  id="prompt-file-text-prompt1"
+                  class="prompt-file-tile__text"
+                  >Upload file</span
+                >
+              </button>
+              <button
+                id="prompt-file-remove-prompt1"
+                class="prompt-file-remove"
+                type="button"
+                aria-label="Remove Prompt 1 file"
+              >
+                <img
+                  class="prompt-file-remove__icon"
+                  src="../assets/delete.png"
+                  alt=""
+                />
+              </button>
+              <input
+                id="prompt-file-input-prompt1"
+                class="asset-row__input"
+                type="file"
+                accept=".txt,text/plain"
+              />
+              <span class="prompt-file-item__label">Prompt 1</span>
+            </div>
+            <div class="prompt-file-item" data-template-name="prompt2">
+              <button
+                id="prompt-file-button-prompt2"
+                class="prompt-file-tile"
+                type="button"
+                title=""
+              >
+                <span
+                  id="prompt-file-text-prompt2"
+                  class="prompt-file-tile__text"
+                  >Upload file</span
+                >
+              </button>
+              <button
+                id="prompt-file-remove-prompt2"
+                class="prompt-file-remove"
+                type="button"
+                aria-label="Remove Prompt 2 file"
+              >
+                <img
+                  class="prompt-file-remove__icon"
+                  src="../assets/delete.png"
+                  alt=""
+                />
+              </button>
+              <input
+                id="prompt-file-input-prompt2"
+                class="asset-row__input"
+                type="file"
+                accept=".txt,text/plain"
+              />
+              <span class="prompt-file-item__label">Prompt 2</span>
+            </div>
+            <div class="prompt-file-item" data-template-name="prompt3">
+              <button
+                id="prompt-file-button-prompt3"
+                class="prompt-file-tile"
+                type="button"
+                title=""
+              >
+                <span
+                  id="prompt-file-text-prompt3"
+                  class="prompt-file-tile__text"
+                  >Upload file</span
+                >
+              </button>
+              <button
+                id="prompt-file-remove-prompt3"
+                class="prompt-file-remove"
+                type="button"
+                aria-label="Remove Prompt 3 file"
+              >
+                <img
+                  class="prompt-file-remove__icon"
+                  src="../assets/delete.png"
+                  alt=""
+                />
+              </button>
+              <input
+                id="prompt-file-input-prompt3"
+                class="asset-row__input"
+                type="file"
+                accept=".txt,text/plain"
+              />
+              <span class="prompt-file-item__label">Prompt 3</span>
+            </div>
+            <div class="prompt-file-item" data-template-name="systemPrompt">
+              <button
+                id="prompt-file-button-systemPrompt"
+                class="prompt-file-tile"
+                type="button"
+                title=""
+              >
+                <span
+                  id="prompt-file-text-systemPrompt"
+                  class="prompt-file-tile__text"
+                  >Upload file</span
+                >
+              </button>
+              <button
+                id="prompt-file-remove-systemPrompt"
+                class="prompt-file-remove"
+                type="button"
+                aria-label="Remove System prompt file"
+              >
+                <img
+                  class="prompt-file-remove__icon"
+                  src="../assets/delete.png"
+                  alt=""
+                />
+              </button>
+              <input
+                id="prompt-file-input-systemPrompt"
+                class="asset-row__input"
+                type="file"
+                accept=".txt,text/plain"
+              />
+              <span class="prompt-file-item__label">System Prompt</span>
+            </div>
+          </div>
+
+          <div class="prompt-copy meta">
+            <p>
+              <strong>Prompt 1</strong> extracts the hiring signals from the
+              LinkedIn job.
+            </p>
+            <p>
+              <strong>Prompt 2</strong> turns those signals into the strategy
+              brief.
+            </p>
+            <p><strong>Prompt 3</strong> writes the final resume JSON.</p>
+            <p>
+              <strong>System prompt</strong> is only used for API providers.
+            </p>
           </div>
         </div>
       </details>
 
       <section class="card">
-        <h2>History</h2>
+        <div class="card__intro card__intro--compact">
+          <h2>Recent Runs</h2>
+          <p>Search and reopen generated resume previews.</p>
+        </div>
         <div class="history-toolbar">
           <label class="field history-search">
             <span class="sr-only">Search title</span>
-            <input id="history-search-input" type="search" placeholder="Search by job title" />
+            <input
+              id="history-search-input"
+              type="search"
+              placeholder="Search by job title"
+            />
           </label>
           <details class="history-filters">
-            <summary class="history-filters__toggle" aria-label="History filters">⟐</summary>
+            <summary
+              class="history-filters__toggle"
+              aria-label="History filters"
+            >
+              ⟐
+            </summary>
             <div class="history-filters__panel">
               <label class="field field--compact">
                 <span>Sort by</span>
@@ -169,7 +395,13 @@
         </div>
         <div id="history-list" class="history-list"></div>
         <div class="history-pagination">
-          <button id="history-prev-page" class="button button--secondary" type="button">Previous</button>
+          <button
+            id="history-prev-page"
+            class="button button--secondary"
+            type="button"
+          >
+            Previous
+          </button>
           <span id="history-page-indicator" class="meta"></span>
           <label class="history-page-size" for="history-page-size">
             <span>Show</span>
@@ -178,23 +410,60 @@
               <option value="100">100</option>
             </select>
           </label>
-          <button id="history-next-page" class="button button--secondary" type="button">Next</button>
+          <button
+            id="history-next-page"
+            class="button button--secondary"
+            type="button"
+          >
+            Next
+          </button>
         </div>
       </section>
 
-      <label class="panel__checkbox" for="custom-feature-checkbox">
-        <input id="custom-feature-checkbox" type="checkbox" />
-        <span>Custom feature</span>
-      </label>
+      <details class="card card--foldable">
+        <summary class="card__summary">
+          <h2>Advanced</h2>
+          <span class="card__chevron" aria-hidden="true">⌄</span>
+        </summary>
 
-      <p class="panel__hint">
-        Overwrite backend master resume only when you want to replace the app's current master resume with the local JSON resume stored in this extension.
-      </p>
+        <div class="asset-group">
+          <label class="panel__checkbox" for="custom-feature-checkbox">
+            <input id="custom-feature-checkbox" type="checkbox" />
+            <span>Enable custom feature</span>
+          </label>
 
-      <button id="overwrite-master-resume-button" class="panel__reset panel__reset--secondary" type="button">Overwrite backend master resume</button>
-      <button id="reset-local-data-button" class="panel__reset" type="button">Reset local extension data</button>
-      <button id="reset-default-settings-button" class="panel__reset panel__reset--secondary" type="button">Reset to default settings</button>
+          <p class="panel__hint">
+            Only overwrite the backend master resume when you want to replace
+            the app’s current master resume with the JSON resume stored in this
+            extension.
+          </p>
+
+          <div class="danger-zone">
+            <button
+              id="overwrite-master-resume-button"
+              class="panel__reset panel__reset--secondary"
+              type="button"
+            >
+              Overwrite backend master resume
+            </button>
+            <button
+              id="reset-default-settings-button"
+              class="panel__reset panel__reset--secondary"
+              type="button"
+            >
+              Reset to default settings
+            </button>
+            <button
+              id="reset-local-data-button"
+              class="panel__reset"
+              type="button"
+            >
+              Reset local extension data
+            </button>
+          </div>
+        </div>
+      </details>
     </main>
     <script type="module" src="./panel.js"></script>
   </body>
-  </html>
+</html>

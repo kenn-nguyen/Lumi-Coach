@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Geist, Space_Grotesk } from 'next/font/google';
+import { AuthExtensionBridgeClient } from '@/components/auth/auth-extension-bridge-client';
 import { AuthSessionProvider } from '@/components/auth/auth-session-provider';
 import { PostHogProvider } from '@/components/analytics/posthog-provider';
 import './(default)/css/globals.css';
@@ -18,9 +19,9 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: 'SOM Career Coach',
-  description: 'Build your resume with SOM Career Coach',
-  applicationName: 'SOM Career Coach',
+  title: 'Lumi Coach',
+  description: 'Build your resume with Lumi Coach',
+  applicationName: 'Lumi Coach',
   keywords: ['resume', 'matcher', 'job', 'application'],
 };
 
@@ -32,7 +33,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <AuthSessionProvider>
           <Suspense fallback={children}>
-            <PostHogProvider>{children}</PostHogProvider>
+            <PostHogProvider>
+              <AuthExtensionBridgeClient />
+              {children}
+            </PostHogProvider>
           </Suspense>
         </AuthSessionProvider>
       </body>

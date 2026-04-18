@@ -50,7 +50,10 @@ import { RegenerateWizard } from './regenerate-wizard';
 import { useRegenerateWizard } from '@/hooks/use-regenerate-wizard';
 import { useTranslations } from '@/lib/i18n';
 import { type TemplateSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/lib/types/template-settings';
-import { commitPendingSectionRemovals, withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
+import {
+  commitPendingSectionRemovals,
+  withLocalizedDefaultSections,
+} from '@/lib/utils/section-helpers';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/context/language-context';
 import { buildResumeFilename, downloadBlobAsFile, openUrlInNewTab } from '@/lib/utils/download';
@@ -514,10 +517,7 @@ const ResumeBuilderContent = () => {
     } catch (error) {
       console.error('Failed to update job description:', error);
       const message = error instanceof Error ? error.message : t('common.error');
-      showNotification(
-        t('builder.jdMatch.saveFailed', { error: message }),
-        'danger'
-      );
+      showNotification(t('builder.jdMatch.saveFailed', { error: message }), 'danger');
     } finally {
       setIsSavingJobDescription(false);
     }
@@ -864,7 +864,6 @@ const ResumeBuilderContent = () => {
                   </Button>
                 </>
               )}
-
             </div>
           </div>
         </div>
@@ -872,7 +871,10 @@ const ResumeBuilderContent = () => {
         {/* Content Grid */}
         <div
           ref={workspaceRef}
-          className={cn('flex flex-1 min-h-0 flex-col gap-px bg-border lg:flex-row', isResizingPanels && 'select-none')}
+          className={cn(
+            'flex flex-1 min-h-0 flex-col gap-px bg-border lg:flex-row',
+            isResizingPanels && 'select-none'
+          )}
         >
           {/* Left Panel: Editor */}
           <div
@@ -1207,13 +1209,7 @@ const ResumeBuilderContent = () => {
         {/* Footer */}
         <div className="no-print flex items-center justify-between border-t border-border bg-white/50 p-4 font-mono text-xs text-primary">
           <span className="flex items-center gap-2 font-bold uppercase tracking-[0.14em]">
-            <Image
-              src="/logo.svg"
-              alt="SOM Career Coach"
-              width={20}
-              height={20}
-              className="w-5 h-5"
-            />
+            <Image src="/logo.png" alt="Lumi Coach" width={20} height={20} className="w-5 h-5" />
             {t('builder.footer.moduleLabel')}
           </span>
           <div className="flex items-center gap-4">

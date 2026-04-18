@@ -39,7 +39,7 @@ export default function Hero() {
           href="/dashboard"
           className="inline-block rounded-full bg-white px-10 py-4 text-lg font-medium text-[#0f172a] no-underline shadow-[0_4px_15px_rgba(255,255,255,0.1)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-[0_8px_25px_rgba(255,255,255,0.25)]"
         >
-          Launch SOM Career Coach
+          Launch Lumi Coach
         </Link>
 
         <span className="mt-6 block text-sm font-medium uppercase tracking-[0.05em] text-slate-500">

@@ -367,10 +367,7 @@ export default function SettingsPage() {
 
   // Update feature config
   const handleFeatureConfigChange = async (
-    key:
-      | 'enable_cover_letter'
-      | 'enable_outreach_message'
-      | 'preserve_generated_resume_facts',
+    key: 'enable_cover_letter' | 'enable_outreach_message' | 'preserve_generated_resume_facts',
     value: boolean
   ) => {
     setFeatureConfigLoading(true);
@@ -1000,13 +997,7 @@ export default function SettingsPage() {
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-border bg-white/50 p-4">
           <div className="flex items-center gap-2">
-            <Image
-              src="/logo.svg"
-              alt="SOM Career Coach"
-              width={20}
-              height={20}
-              className="w-5 h-5"
-            />
+            <Image src="/logo.png" alt="Lumi Coach" width={20} height={20} className="w-5 h-5" />
             <span className="font-mono text-xs text-gray-500">
               {getVersionString().toUpperCase()}
             </span>
