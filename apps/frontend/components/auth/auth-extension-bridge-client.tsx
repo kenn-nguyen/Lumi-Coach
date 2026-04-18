@@ -79,7 +79,7 @@ export function AuthExtensionBridgeClient() {
             {
               type: 'SOM_EXTENSION_SIGNED_OUT',
             },
-            (result: { ok?: boolean; error?: string }) => {
+            (result?: ChromeSendResult) => {
               const runtimeError = chromeRuntime.lastError;
               if (runtimeError?.message) {
                 reject(new Error(runtimeError.message));
@@ -123,7 +123,7 @@ export function AuthExtensionBridgeClient() {
                 sourceTabId: bridgeState?.sourceTabId || knownState?.sourceTabId || null,
               },
             },
-            (result: { ok?: boolean; error?: string }) => {
+            (result?: ChromeSendResult) => {
               const runtimeError = chromeRuntime.lastError;
               if (runtimeError?.message) {
                 reject(new Error(runtimeError.message));
