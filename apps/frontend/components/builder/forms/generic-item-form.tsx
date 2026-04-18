@@ -8,6 +8,7 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Plus, Trash2 } from 'lucide-react';
 import type { CustomSectionItem } from '@/components/dashboard/resume-component';
 import { useTranslations } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 
 interface GenericItemFormProps {
   items: CustomSectionItem[];
