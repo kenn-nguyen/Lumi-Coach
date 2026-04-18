@@ -181,11 +181,13 @@
       "renameSection": "Renombrar sección",
       "customTag": "Personalizada",
       "hiddenFromPdfTag": "Oculta en PDF",
+      "pendingRemovalTag": "Se eliminará al guardar",
       "hideSection": "Ocultar sección",
       "showSection": "Mostrar sección",
       "moveUp": "Mover arriba",
       "moveDown": "Mover abajo",
       "deleteSection": "Eliminar sección",
+      "undoRemove": "Deshacer",
       "deleteTitle": "Eliminar sección",
       "deleteDescription": "¿Seguro que quieres eliminar \"{name}\"? Esta acción no se puede deshacer."
     },

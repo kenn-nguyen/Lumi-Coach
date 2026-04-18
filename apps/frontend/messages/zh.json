@@ -181,11 +181,13 @@
       "renameSection": "重命名板块",
       "customTag": "自定义",
       "hiddenFromPdfTag": "PDF 中隐藏",
+      "pendingRemovalTag": "保存时将被移除",
       "hideSection": "隐藏板块",
       "showSection": "显示板块",
       "moveUp": "上移",
       "moveDown": "下移",
       "deleteSection": "删除板块",
+      "undoRemove": "撤销",
       "deleteTitle": "删除板块",
       "deleteDescription": "确定要删除“{name}”吗？此操作无法撤销。"
     },

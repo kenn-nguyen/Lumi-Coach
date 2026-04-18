@@ -181,11 +181,13 @@
       "renameSection": "Renomear seção",
       "customTag": "Personalizado",
       "hiddenFromPdfTag": "Oculto do PDF",
+      "pendingRemovalTag": "Será removido ao salvar",
       "hideSection": "Ocultar seção",
       "showSection": "Mostrar seção",
       "moveUp": "Mover para cima",
       "moveDown": "Mover para baixo",
       "deleteSection": "Excluir seção",
+      "undoRemove": "Desfazer",
       "deleteTitle": "Excluir Seção",
       "deleteDescription": "Tem certeza que deseja excluir \"{name}\"? Esta ação não pode ser desfeita."
     },

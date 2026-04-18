@@ -181,11 +181,13 @@
       "renameSection": "セクション名を変更",
       "customTag": "カスタム",
       "hiddenFromPdfTag": "PDFに含めない",
+      "pendingRemovalTag": "保存時に削除されます",
       "hideSection": "セクションを非表示",
       "showSection": "セクションを表示",
       "moveUp": "上へ移動",
       "moveDown": "下へ移動",
       "deleteSection": "セクションを削除",
+      "undoRemove": "元に戻す",
       "deleteTitle": "セクションを削除",
       "deleteDescription": "「{name}」を削除しますか？この操作は元に戻せません。"
     },
