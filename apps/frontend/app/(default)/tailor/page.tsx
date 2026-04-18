@@ -199,7 +199,7 @@ export default function TailorPage() {
       return detailMatch[1];
     }
 
-    const jsonMatch = errorMessage.match(/\{.*\}$/s);
+    const jsonMatch = errorMessage.match(/\{[\s\S]*\}$/);
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[0]) as { detail?: string };
@@ -211,7 +211,9 @@ export default function TailorPage() {
       }
     }
 
-    const improveFailureMatch = errorMessage.match(/^Improve failed with status \d+:\s*(.+)$/s);
+    const improveFailureMatch = errorMessage.match(
+      /^Improve failed with status \d+:\s*([\s\S]+)$/
+    );
     if (improveFailureMatch?.[1]) {
       return improveFailureMatch[1].trim();
     }
@@ -379,9 +381,7 @@ export default function TailorPage() {
                 <p className="font-mono text-sm font-bold uppercase tracking-[0.16em] text-amber-800">
                   {t('tailor.setupRequiredTitle')}
                 </p>
-                <p className="mt-1 text-xs text-amber-700">
-                  {t('tailor.noApiKeyMessage')}
-                </p>
+                <p className="mt-1 text-xs text-amber-700">{t('tailor.noApiKeyMessage')}</p>
                 <Link
                   href="/settings"
                   className="inline-flex items-center gap-2 mt-3 text-amber-700 hover:text-amber-900 transition-colors"
