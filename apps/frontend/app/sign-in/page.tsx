@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { auth, signIn } from '@/auth';
+import { auth } from '@/auth';
+import { signIn } from '@/auth-node';
 import { ExtensionLoginRequiredClient } from '@/components/auth/extension-login-required-client';
 import { GoogleSignInButton } from '@/components/auth/google-sign-in-button';
 import { SignInRedirectClient } from '@/components/auth/sign-in-redirect-client';
