@@ -20,11 +20,7 @@
     "https://gemini.google.com/*",
     "https://generativelanguage.googleapis.com/*",
     "https://som-career-coach.onrender.com/*",
-    "https://som-career-coach-iota.vercel.app/*",
-    "http://127.0.0.1:8000/*",
-    "http://localhost:8000/*",
-    "http://127.0.0.1:3000/*",
-    "http://localhost:3000/*"
+    "https://som-career-coach-iota.vercel.app/*"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -46,11 +42,7 @@
     }
   },
   "externally_connectable": {
-    "matches": [
-      "http://localhost:3000/*",
-      "http://127.0.0.1:3000/*",
-      "https://*.vercel.app/*"
-    ]
+    "matches": ["https://*.vercel.app/*"]
   },
   "web_accessible_resources": [
     {

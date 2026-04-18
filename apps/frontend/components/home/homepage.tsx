@@ -195,6 +195,27 @@ export default function Homepage() {
             </div>
           </div>
         </section>
+
+        <footer className="flex flex-col gap-4 border-t border-white/55 py-8 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl">
+            Lumi Coach helps users tailor resumes inside LinkedIn and review the result in the web
+            app.
+          </p>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link
+              href="/privacy"
+              className="font-medium text-slate-700 transition hover:text-slate-950"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              href="/sign-in"
+              className="font-medium text-slate-700 transition hover:text-slate-950"
+            >
+              Sign in
+            </Link>
+          </div>
+        </footer>
       </div>
     </main>
   );
