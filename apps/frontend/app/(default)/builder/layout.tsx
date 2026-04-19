@@ -3,10 +3,10 @@ import { AuthenticatedAppShell } from '@/components/auth/authenticated-app-shell
 import { createNoIndexMetadata } from '@/lib/seo';
 
 export const metadata: Metadata = createNoIndexMetadata(
-  'Settings',
-  'Authenticated settings workspace in Lumi Coach.'
+  'Resume Builder',
+  'Authenticated resume builder workspace in Lumi Coach.'
 );
 
-export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+export default function BuilderLayout({ children }: { children: React.ReactNode }) {
   return <AuthenticatedAppShell>{children}</AuthenticatedAppShell>;
 }

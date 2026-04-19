@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { AuthenticatedAppShell } from '@/components/auth/authenticated-app-shell';
 import { createNoIndexMetadata } from '@/lib/seo';
 
 export const metadata: Metadata = createNoIndexMetadata(
@@ -7,5 +8,5 @@ export const metadata: Metadata = createNoIndexMetadata(
 );
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <AuthenticatedAppShell>{children}</AuthenticatedAppShell>;
 }
