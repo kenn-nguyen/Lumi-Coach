@@ -1,39 +1,41 @@
-export const DEFAULT_APP_ORIGIN = 'https://som-career-coach-iota.vercel.app';
-export const DEFAULT_API_ORIGIN = 'https://som-career-coach.onrender.com';
-export const DEFAULT_CHATGPT_TARGET_URL = 'https://chatgpt.com/?temporary-chat=true';
+export const DEFAULT_APP_ORIGIN = "https://som-career-coach-iota.vercel.app";
+export const DEFAULT_API_ORIGIN = "https://som-career-coach.onrender.com";
+export const DEFAULT_CHATGPT_TARGET_URL =
+  "https://chatgpt.com/?temporary-chat=true";
 
 export const STORAGE_KEYS = {
-  masterResumeContextAsset: 'masterResumeContextAsset',
-  storyboardAsset: 'storyboardAsset',
-  apifyFallbackSettings: 'apifyFallbackSettings',
-  prompt1TemplateAsset: 'prompt1TemplateAsset',
-  prompt2TemplateAsset: 'prompt2TemplateAsset',
-  prompt3TemplateAsset: 'prompt3TemplateAsset',
-  promptTemplateProfiles: 'promptTemplateProfiles',
-  llmSettings: 'llmSettings',
-  chatGptTargetUrl: 'chatGptTargetUrl',
-  appOrigin: 'appOrigin',
-  apiOrigin: 'apiOrigin',
-  customFeatureEnabled: 'customFeatureEnabled',
-  extensionAuth: 'extensionAuth',
-  onboardingProgress: 'onboardingProgress',
-  extensionPendingAction: 'extensionPendingAction',
-  extensionSession: 'extensionSession',
-  analyticsState: 'analyticsState',
-  historyEntries: 'historyEntries',
-  lastError: 'lastError',
+  masterResumeContextAsset: "masterResumeContextAsset",
+  storyboardAsset: "storyboardAsset",
+  apifyFallbackSettings: "apifyFallbackSettings",
+  prompt1TemplateAsset: "prompt1TemplateAsset",
+  prompt2TemplateAsset: "prompt2TemplateAsset",
+  prompt3TemplateAsset: "prompt3TemplateAsset",
+  promptTemplateProfiles: "promptTemplateProfiles",
+  llmSettings: "llmSettings",
+  chatGptTargetUrl: "chatGptTargetUrl",
+  appOrigin: "appOrigin",
+  apiOrigin: "apiOrigin",
+  customFeatureEnabled: "customFeatureEnabled",
+  extensionAuth: "extensionAuth",
+  onboardingProgress: "onboardingProgress",
+  extensionPendingAction: "extensionPendingAction",
+  extensionSession: "extensionSession",
+  analyticsState: "analyticsState",
+  historyEntries: "historyEntries",
+  lastError: "lastError",
 };
 
-export const APIFY_DEFAULT_LINKEDIN_ACTOR = 'apimaestro/linkedin-job-detail';
+export const APIFY_DEFAULT_LINKEDIN_ACTOR = "apimaestro/linkedin-job-detail";
 
 export const SESSION_STATUS = {
-  idle: 'idle',
-  starting: 'starting',
-  scraped: 'scraped',
-  prompt1Done: 'prompt1_done',
-  prompt2Done: 'prompt2_done',
-  prompt3Done: 'prompt3_done',
-  validated: 'validated',
-  patched: 'patched',
-  error: 'error',
+  idle: "idle",
+  starting: "starting",
+  bootstrapMaster: "bootstrap_master",
+  scraped: "scraped",
+  prompt1Done: "prompt1_done",
+  prompt2Done: "prompt2_done",
+  prompt3Done: "prompt3_done",
+  validated: "validated",
+  patched: "patched",
+  error: "error",
 };

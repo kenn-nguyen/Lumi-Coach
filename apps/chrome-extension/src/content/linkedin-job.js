@@ -66,6 +66,7 @@ const STYLE_ID = "resume-matcher-floating-style";
 const POSITION_KEY = "resumeMatcherFloatingPosition";
 const DISMISSED_KEY = "resumeMatcherFloatingButtonDismissed";
 const ICON_PATH = "src/assets/rocket.png";
+const STAR_ICON_PATH = "src/assets/star.png";
 const UPLOAD_ICON_PATH = "src/assets/upload.png";
 const DOWNLOAD_ICON_PATH = "src/assets/direct-download.png";
 const DELETE_ICON_PATH = "src/assets/delete.png";
@@ -173,6 +174,7 @@ const ICONS = {
       <path d="M2.5 8.9 10 2.5l7.5 6.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M5 7.5v7a1 1 0 0 0 1 1h2.6a.9.9 0 0 0 .9-.9V11a.7.7 0 0 1 .7-.7h0a.7.7 0 0 1 .7.7v3.6a.9.9 0 0 0 .9.9H14a1 1 0 0 0 1-1v-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`,
+  aiStar: `<img src="${chrome.runtime.getURL(STAR_ICON_PATH)}" alt="" aria-hidden="true" />`,
   run: `
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path d="M6 4.5h4.8a2 2 0 0 1 1.6.8l1.7 2.2H16a1.5 1.5 0 0 1 0 3h-1.3l-1.1 5H6.4l-1.1-5H4a1.5 1.5 0 0 1 0-3h1.9l1.7-2.2A2 2 0 0 1 9.2 4.5Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
@@ -930,6 +932,7 @@ function injectStyles() {
     }
 
     .resume-matcher-icon-button svg,
+    .resume-matcher-icon-button img,
     .resume-matcher-board__subtitle svg {
       width: 15px;
       height: 15px;
@@ -3449,6 +3452,7 @@ function cloneJobForRun(job) {
 
 const ACTIVE_EXTENSION_SESSION_STATUSES = new Set([
   "starting",
+  "bootstrap_master",
   "scraped",
   "prompt1_done",
   "prompt2_done",
@@ -3470,6 +3474,10 @@ function getRunStateFromExtensionSession() {
       starting: {
         title: "Starting run",
         detail: "Getting things ready.",
+      },
+      bootstrap_master: {
+        title: "Creating your base resume",
+        detail: "Extracting your uploaded Markdown file.",
       },
       scraped: {
         title: "Job captured",
@@ -4721,7 +4729,7 @@ function renderViews() {
   const settingsView = $(SETTINGS_VIEW_ID);
   runView?.classList.toggle("is-active", state.currentView === "run");
   settingsView?.classList.toggle("is-active", state.currentView === "settings");
-  $(BOARD_HOME_ID)?.classList.toggle("is-active", state.currentView === "run");
+  $(BOARD_RUNS_ID)?.classList.toggle("is-active", state.currentView === "run");
   $(BOARD_SETTINGS_ID)?.classList.toggle(
     "is-active",
     state.currentView === "settings",
@@ -5287,7 +5295,8 @@ function ensureRoot() {
           </button>
         </div>
         <div class="resume-matcher-board__header-actions">
-          <button id="${BOARD_HOME_ID}" class="resume-matcher-icon-button" type="button" aria-label="Run" title="Run">${icon("home")}</button>
+          <button id="${BOARD_HOME_ID}" class="resume-matcher-icon-button" type="button" aria-label="Dashboard" title="Dashboard">${icon("home")}</button>
+          <button id="${BOARD_RUNS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Run" title="Run">${icon("aiStar")}</button>
           <button id="${BOARD_SETTINGS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Settings" title="Settings">${icon("settings")}</button>
           <button id="${BOARD_MINIMIZE_ID}" class="resume-matcher-icon-button" type="button" aria-label="Minimize" title="Minimize">${icon("minimize")}</button>
         </div>
@@ -5469,7 +5478,10 @@ function ensureRoot() {
   $(BOARD_TITLE_ID)?.addEventListener("click", () => {
     window.open(APP_URL, "_blank", "noopener,noreferrer");
   });
-  $(BOARD_HOME_ID)?.addEventListener("click", async () => {
+  $(BOARD_HOME_ID)?.addEventListener("click", () => {
+    window.open(`${getAppOrigin()}/dashboard`, "_blank", "noopener,noreferrer");
+  });
+  $(BOARD_RUNS_ID)?.addEventListener("click", async () => {
     state.currentView = "run";
     render();
     await reconcileConnectionStatus("run");
@@ -6086,6 +6098,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           message.payload?.error || "Failed to generate tailored resume.",
         ),
       );
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message?.type === "EXTENSION_PREVIEW_OPENED") {
+    state.launcherAlert = false;
+    state.activeRunJob = null;
+    if (
+      !state.isRunning &&
+      !state.awaitingAuth &&
+      !state.awaitingStoryboard &&
+      state.statusTone === "success" &&
+      /opening workspace|workspace ready/i.test(state.statusTitle || "")
+    ) {
+      setRunStatus("neutral", "", "");
+    } else {
+      render();
     }
     sendResponse({ ok: true });
     return true;

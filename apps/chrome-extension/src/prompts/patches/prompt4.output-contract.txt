@@ -1,0 +1,44 @@
+Output contract:
+- Return one valid JSON object only
+- The top-level object must be ResumeData itself
+- Do not wrap the output in `resume_data`
+- Do not include `generation_feedback`
+- Do not include any keys outside the ResumeData schema
+- Use integer `id` values for `workExperience`, `education`, and `personalProjects`
+- Use `null` only where the schema allows nullable strings
+- Use empty arrays or empty strings instead of inventing content
+
+Required top-level keys:
+{
+  "personalInfo": {
+    "name": "",
+    "title": "",
+    "customTagline": null,
+    "email": "",
+    "phone": "",
+    "location": "",
+    "website": null,
+    "linkedin": null,
+    "github": null
+  },
+  "summary": "",
+  "workExperience": [],
+  "education": [],
+  "personalProjects": [],
+  "additional": {
+    "technicalSkills": [],
+    "languages": [],
+    "certificationsTraining": [],
+    "awards": []
+  },
+  "sectionMeta": [],
+  "customSections": {}
+}
+
+Validation notes:
+- `workExperience[].description` must be an array of strings
+- `personalProjects[].description` must be an array of strings
+- `education[].description` must be a string or null
+- `customSections` must be an object, even when empty
+- `sectionMeta` must be a full array, not omitted
+- Do not return an empty schema template when the Markdown contains real resume content

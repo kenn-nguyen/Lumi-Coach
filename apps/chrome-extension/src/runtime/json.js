@@ -13,10 +13,10 @@ export function extractPrompt3PayloadFromText(rawText) {
   const parsed = extractJsonFromText(rawText);
   const hasWrappedResumeData =
     parsed &&
-    typeof parsed === 'object' &&
+    typeof parsed === "object" &&
     !Array.isArray(parsed) &&
     parsed.resume_data &&
-    typeof parsed.resume_data === 'object' &&
+    typeof parsed.resume_data === "object" &&
     !Array.isArray(parsed.resume_data);
 
   if (!hasWrappedResumeData) {
@@ -34,6 +34,21 @@ export function extractPrompt3PayloadFromText(rawText) {
     generationFeedback: normalizeGenerationFeedback(parsed.generation_feedback),
     usedLegacyShape: false,
   };
+}
+
+export function extractPrompt4ResumeDataFromText(rawText) {
+  const parsed = extractJsonFromText(rawText);
+  const wrappedResumeData =
+    parsed &&
+    typeof parsed === "object" &&
+    !Array.isArray(parsed) &&
+    parsed.resume_data &&
+    typeof parsed.resume_data === "object" &&
+    !Array.isArray(parsed.resume_data)
+      ? parsed.resume_data
+      : parsed;
+
+  return wrappedResumeData;
 }
 
 function tryParseJson(text) {
@@ -55,21 +70,26 @@ function tryParseJson(text) {
         }
       }
     }
-    throw new Error('Unable to parse JSON from model output.');
+    throw new Error("Unable to parse JSON from model output.");
   }
 }
 
 function normalizeGenerationFeedback(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
-  const summary = typeof value.summary === 'string' ? value.summary.trim() : '';
+  const summary = typeof value.summary === "string" ? value.summary.trim() : "";
   const pros = normalizeFeedbackItems(value.pros);
   const cons = normalizeFeedbackItems(value.cons);
   const caveats = normalizeFeedbackItems(value.caveats);
 
-  if (!summary && pros.length === 0 && cons.length === 0 && caveats.length === 0) {
+  if (
+    !summary &&
+    pros.length === 0 &&
+    cons.length === 0 &&
+    caveats.length === 0
+  ) {
     return null;
   }
 
@@ -86,18 +106,18 @@ function normalizeFeedbackItems(value) {
     return [];
   }
   return value
-    .filter((item) => typeof item === 'string')
+    .filter((item) => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function sliceLikelyJsonBlock(text) {
-  const objectSlice = findBalancedJsonSlice(text, '{', '}');
+  const objectSlice = findBalancedJsonSlice(text, "{", "}");
   if (objectSlice) {
     return objectSlice;
   }
 
-  const arraySlice = findBalancedJsonSlice(text, '[', ']');
+  const arraySlice = findBalancedJsonSlice(text, "[", "]");
   if (arraySlice) {
     return arraySlice;
   }
@@ -121,7 +141,7 @@ function findBalancedJsonSlice(text, openChar, closeChar) {
           escaped = false;
           continue;
         }
-        if (char === '\\') {
+        if (char === "\\") {
           escaped = true;
           continue;
         }
@@ -160,19 +180,19 @@ function findBalancedJsonSlice(text, openChar, closeChar) {
 }
 
 function sanitizeHtmlArtifacts(text) {
-  let sanitized = typeof text === 'string' ? text : '';
+  let sanitized = typeof text === "string" ? text : "";
   if (!sanitized) {
     return sanitized;
   }
 
   sanitized = sanitized
-    .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1')
-    .replace(/<\/?(?:div|p|span|strong|em|code|pre|br)\b[^>]*>/gi, '')
-    .replace(/&amp;/g, '&')
+    .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, "$1")
+    .replace(/<\/?(?:div|p|span|strong|em|code|pre|br)\b[^>]*>/gi, "")
+    .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 
   return sanitized;
 }

@@ -123,6 +123,37 @@ async function broadcastLinkedInMessage(message) {
   );
 }
 
+async function consumePatchedSuccess(extensionState = null) {
+  const currentState =
+    extensionState ?? (await getExtensionState().catch(() => null));
+  if (!currentState || currentState.status !== SESSION_STATUS.patched) {
+    return;
+  }
+
+  const sourceTabId = currentState.sourceTabId ?? null;
+  await setExtensionState({
+    status: SESSION_STATUS.idle,
+    sourceTabId: null,
+    activeRunJob: null,
+    previewUrl: null,
+    patchError: null,
+  });
+
+  const message = {
+    type: "EXTENSION_PREVIEW_OPENED",
+    payload: {
+      sourceTabId,
+    },
+  };
+
+  if (sourceTabId) {
+    await chrome.tabs.sendMessage(sourceTabId, message).catch(() => {});
+    return;
+  }
+
+  await broadcastLinkedInMessage(message);
+}
+
 async function ensureExtensionAuthForAction(pendingAction, options = {}) {
   const hasAuth = await hasValidExtensionAuth();
   if (!hasAuth) {
@@ -393,6 +424,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 
   if (activeStatus === SESSION_STATUS.patched && extensionState?.previewUrl) {
     await openPreviewTab(extensionState.previewUrl);
+    await consumePatchedSuccess(extensionState);
     return;
   }
 
@@ -587,8 +619,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ok: true,
             setupState,
             message:
-              setupState.detail ||
-              getMissingMasterResumeContextMessage(),
+              setupState.detail || getMissingMasterResumeContextMessage(),
           };
         }
         if (setupState?.state === "missing_provider_config") {
@@ -703,6 +734,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case "OPEN_PREVIEW": {
         await openPreviewTab(message.payload?.previewUrl);
+        await consumePatchedSuccess();
         return { ok: true };
       }
 

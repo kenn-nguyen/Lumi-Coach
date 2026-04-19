@@ -3,33 +3,33 @@ import {
   DEFAULT_APP_ORIGIN,
   SESSION_STATUS,
   STORAGE_KEYS,
-} from './constants.js';
+} from "./constants.js";
 import {
   getDefaultLlmSettings,
   mergeLlmSettings,
   updateLlmSettings,
-} from './llm/profiles.js';
+} from "./llm/profiles.js";
 
-const PROMPT_PROFILE_IDS = ['profile1', 'profile2', 'profile3'];
-const ONBOARDING_STEPS = ['intro', 'sign_in', 'assets', 'provider', 'done'];
+const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
+const ONBOARDING_STEPS = ["intro", "sign_in", "assets", "provider", "done"];
 
 function getDefaultOnboardingProgress() {
   return {
     hasCompletedOnboarding: false,
-    onboardingStep: 'sign_in',
+    onboardingStep: "sign_in",
   };
 }
 
 export function getDefaultApifyFallbackSettings() {
   return {
     enabled: true,
-    apiToken: '',
+    apiToken: "",
   };
 }
 
 function getDefaultPromptTemplateProfiles() {
   return {
-    activeProfileId: 'profile1',
+    activeProfileId: "profile1",
     profiles: Object.fromEntries(
       PROMPT_PROFILE_IDS.map((profileId) => [
         profileId,
@@ -39,7 +39,7 @@ function getDefaultPromptTemplateProfiles() {
           prompt3TemplateAsset: null,
           systemPromptTemplateAsset: null,
         },
-      ])
+      ]),
     ),
   };
 }
@@ -52,13 +52,14 @@ function mergePromptTemplateProfiles(storedProfiles, legacyAssets = {}) {
   const defaults = getDefaultPromptTemplateProfiles();
   const merged = cloneValue(defaults);
 
-  if (storedProfiles && typeof storedProfiles === 'object') {
-    const profiles = storedProfiles.profiles && typeof storedProfiles.profiles === 'object'
-      ? storedProfiles.profiles
-      : {};
+  if (storedProfiles && typeof storedProfiles === "object") {
+    const profiles =
+      storedProfiles.profiles && typeof storedProfiles.profiles === "object"
+        ? storedProfiles.profiles
+        : {};
     for (const profileId of PROMPT_PROFILE_IDS) {
       const storedProfile = profiles[profileId];
-      if (storedProfile && typeof storedProfile === 'object') {
+      if (storedProfile && typeof storedProfile === "object") {
         merged.profiles[profileId] = {
           ...merged.profiles[profileId],
           ...cloneValue(storedProfile),
@@ -66,22 +67,34 @@ function mergePromptTemplateProfiles(storedProfiles, legacyAssets = {}) {
       }
     }
 
-    if (typeof storedProfiles.activeProfileId === 'string' && storedProfiles.activeProfileId in merged.profiles) {
+    if (
+      typeof storedProfiles.activeProfileId === "string" &&
+      storedProfiles.activeProfileId in merged.profiles
+    ) {
       merged.activeProfileId = storedProfiles.activeProfileId;
     }
   }
 
   const activeProfile = merged.profiles[merged.activeProfileId];
-  if (!activeProfile.prompt1TemplateAsset && legacyAssets.prompt1TemplateAsset) {
+  if (
+    !activeProfile.prompt1TemplateAsset &&
+    legacyAssets.prompt1TemplateAsset
+  ) {
     activeProfile.prompt1TemplateAsset = legacyAssets.prompt1TemplateAsset;
   }
-  if (!activeProfile.prompt2TemplateAsset && legacyAssets.prompt2TemplateAsset) {
+  if (
+    !activeProfile.prompt2TemplateAsset &&
+    legacyAssets.prompt2TemplateAsset
+  ) {
     activeProfile.prompt2TemplateAsset = legacyAssets.prompt2TemplateAsset;
   }
-  if (!activeProfile.prompt3TemplateAsset && legacyAssets.prompt3TemplateAsset) {
+  if (
+    !activeProfile.prompt3TemplateAsset &&
+    legacyAssets.prompt3TemplateAsset
+  ) {
     activeProfile.prompt3TemplateAsset = legacyAssets.prompt3TemplateAsset;
   }
-  if (!('systemPromptTemplateAsset' in activeProfile)) {
+  if (!("systemPromptTemplateAsset" in activeProfile)) {
     activeProfile.systemPromptTemplateAsset = null;
   }
 
@@ -98,6 +111,7 @@ function storageSet(values) {
 
 const ACTIVE_SESSION_STATUSES = new Set([
   SESSION_STATUS.starting,
+  SESSION_STATUS.bootstrapMaster,
   SESSION_STATUS.scraped,
   SESSION_STATUS.prompt1Done,
   SESSION_STATUS.prompt2Done,
@@ -106,9 +120,14 @@ const ACTIVE_SESSION_STATUSES = new Set([
 ]);
 
 function buildRunLabel(extensionState) {
-  const title = extensionState?.jobSnapshot?.title || extensionState?.activeRunJob?.title || "";
+  const title =
+    extensionState?.jobSnapshot?.title ||
+    extensionState?.activeRunJob?.title ||
+    "";
   const company =
-    extensionState?.jobSnapshot?.company || extensionState?.activeRunJob?.company || "";
+    extensionState?.jobSnapshot?.company ||
+    extensionState?.activeRunJob?.company ||
+    "";
   if (title && company) return `${title} at ${company}`;
   return title || company || "current job";
 }
@@ -120,7 +139,9 @@ async function syncBrowserActionState(extensionState) {
   const label = buildRunLabel(extensionState);
 
   if (ACTIVE_SESSION_STATUSES.has(status)) {
-    await chrome.action.setBadgeBackgroundColor({ color: "#8C1F3F" }).catch(() => {});
+    await chrome.action
+      .setBadgeBackgroundColor({ color: "#8C1F3F" })
+      .catch(() => {});
     await chrome.action.setBadgeText({ text: "..." }).catch(() => {});
     await chrome.action
       .setTitle({ title: `Lumi Coach: running for ${label}` })
@@ -129,7 +150,9 @@ async function syncBrowserActionState(extensionState) {
   }
 
   if (status === SESSION_STATUS.patched) {
-    await chrome.action.setBadgeBackgroundColor({ color: "#1A5A38" }).catch(() => {});
+    await chrome.action
+      .setBadgeBackgroundColor({ color: "#1A5A38" })
+      .catch(() => {});
     await chrome.action.setBadgeText({ text: "✓" }).catch(() => {});
     await chrome.action
       .setTitle({ title: `Lumi Coach: tailored resume ready for ${label}` })
@@ -138,10 +161,14 @@ async function syncBrowserActionState(extensionState) {
   }
 
   if (status === SESSION_STATUS.error) {
-    await chrome.action.setBadgeBackgroundColor({ color: "#A01F1F" }).catch(() => {});
+    await chrome.action
+      .setBadgeBackgroundColor({ color: "#A01F1F" })
+      .catch(() => {});
     await chrome.action.setBadgeText({ text: "!" }).catch(() => {});
     await chrome.action
-      .setTitle({ title: `Lumi Coach: run failed${label ? ` for ${label}` : ""}` })
+      .setTitle({
+        title: `Lumi Coach: run failed${label ? ` for ${label}` : ""}`,
+      })
       .catch(() => {});
     return;
   }
@@ -169,7 +196,7 @@ export async function getUserAssets() {
   ]);
   const llmSettings = mergeLlmSettings(
     data[STORAGE_KEYS.llmSettings],
-    data[STORAGE_KEYS.chatGptTargetUrl]
+    data[STORAGE_KEYS.chatGptTargetUrl],
   );
   const promptTemplateProfiles = mergePromptTemplateProfiles(
     data[STORAGE_KEYS.promptTemplateProfiles],
@@ -177,25 +204,31 @@ export async function getUserAssets() {
       prompt1TemplateAsset: data[STORAGE_KEYS.prompt1TemplateAsset] ?? null,
       prompt2TemplateAsset: data[STORAGE_KEYS.prompt2TemplateAsset] ?? null,
       prompt3TemplateAsset: data[STORAGE_KEYS.prompt3TemplateAsset] ?? null,
-    }
+    },
   );
   const activePromptProfileId = promptTemplateProfiles.activeProfileId;
-  const activePromptProfile = promptTemplateProfiles.profiles[activePromptProfileId] ?? getDefaultPromptTemplateProfiles().profiles.profile1;
+  const activePromptProfile =
+    promptTemplateProfiles.profiles[activePromptProfileId] ??
+    getDefaultPromptTemplateProfiles().profiles.profile1;
   return {
-    masterResumeContextAsset: data[STORAGE_KEYS.masterResumeContextAsset] ?? null,
+    masterResumeContextAsset:
+      data[STORAGE_KEYS.masterResumeContextAsset] ?? null,
     storyboardAsset: data[STORAGE_KEYS.storyboardAsset] ?? null,
     promptTemplateProfiles,
     activePromptProfileId,
     prompt1TemplateAsset: activePromptProfile.prompt1TemplateAsset ?? null,
     prompt2TemplateAsset: activePromptProfile.prompt2TemplateAsset ?? null,
     prompt3TemplateAsset: activePromptProfile.prompt3TemplateAsset ?? null,
-    systemPromptTemplateAsset: activePromptProfile.systemPromptTemplateAsset ?? null,
+    systemPromptTemplateAsset:
+      activePromptProfile.systemPromptTemplateAsset ?? null,
     llmSettings,
     appOrigin: data[STORAGE_KEYS.appOrigin] ?? DEFAULT_APP_ORIGIN,
     apiOrigin: data[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
     customFeatureEnabled: data[STORAGE_KEYS.customFeatureEnabled] === true,
     extensionAuth: data[STORAGE_KEYS.extensionAuth] ?? null,
-    onboardingProgress: normalizeOnboardingProgress(data[STORAGE_KEYS.onboardingProgress]),
+    onboardingProgress: normalizeOnboardingProgress(
+      data[STORAGE_KEYS.onboardingProgress],
+    ),
     apifyFallbackSettings: normalizeApifyFallbackSettings(
       data[STORAGE_KEYS.apifyFallbackSettings],
     ),
@@ -204,30 +237,30 @@ export async function getUserAssets() {
 
 export function normalizeApifyFallbackSettings(storedSettings) {
   const defaults = getDefaultApifyFallbackSettings();
-  if (!storedSettings || typeof storedSettings !== 'object') {
+  if (!storedSettings || typeof storedSettings !== "object") {
     return defaults;
   }
 
   return {
     enabled: storedSettings.enabled === true,
     apiToken:
-      typeof storedSettings.apiToken === 'string'
+      typeof storedSettings.apiToken === "string"
         ? storedSettings.apiToken.trim()
-        : '',
+        : "",
   };
 }
 
 export function normalizeOnboardingProgress(storedProgress) {
   const defaults = getDefaultOnboardingProgress();
-  if (!storedProgress || typeof storedProgress !== 'object') {
+  if (!storedProgress || typeof storedProgress !== "object") {
     return defaults;
   }
 
   const nextStep =
-    typeof storedProgress.onboardingStep === 'string' &&
+    typeof storedProgress.onboardingStep === "string" &&
     ONBOARDING_STEPS.includes(storedProgress.onboardingStep)
-      ? storedProgress.onboardingStep === 'intro'
-        ? 'sign_in'
+      ? storedProgress.onboardingStep === "intro"
+        ? "sign_in"
         : storedProgress.onboardingStep
       : defaults.onboardingStep;
 
@@ -255,7 +288,7 @@ export async function setOnboardingProgress(progress) {
 export async function completeOnboarding() {
   return setOnboardingProgress({
     hasCompletedOnboarding: true,
-    onboardingStep: 'done',
+    onboardingStep: "done",
   });
 }
 
@@ -295,7 +328,7 @@ export async function clearPendingExtensionAction() {
 }
 
 function normalizeOrigin(value, fallback) {
-  const normalized = (value || fallback).trim().replace(/\/+$/, '');
+  const normalized = (value || fallback).trim().replace(/\/+$/, "");
   return normalized || fallback;
 }
 
@@ -307,16 +340,21 @@ export async function setMasterResumeContextAsset(asset) {
   await storageSet({ [STORAGE_KEYS.masterResumeContextAsset]: asset });
 }
 
-export async function setPromptTemplateAsset(templateName, asset, promptProfileId = null) {
+export async function setPromptTemplateAsset(
+  templateName,
+  asset,
+  promptProfileId = null,
+) {
   const profileField = `${templateName}TemplateAsset`;
   if (!(profileField in getDefaultPromptTemplateProfiles().profiles.profile1)) {
     throw new Error(`Unknown prompt template name "${templateName}".`);
   }
   const currentAssets = await getUserAssets();
   const next = cloneValue(currentAssets.promptTemplateProfiles);
-  const activeProfileId = promptProfileId && PROMPT_PROFILE_IDS.includes(promptProfileId)
-    ? promptProfileId
-    : next.activeProfileId;
+  const activeProfileId =
+    promptProfileId && PROMPT_PROFILE_IDS.includes(promptProfileId)
+      ? promptProfileId
+      : next.activeProfileId;
   next.profiles[activeProfileId] = {
     ...next.profiles[activeProfileId],
     [profileField]: asset,
@@ -352,8 +390,14 @@ export async function savePromptTemplateProfileBundle(profileId, uploads) {
 }
 
 async function getStoredLlmSettings() {
-  const data = await storageGet([STORAGE_KEYS.llmSettings, STORAGE_KEYS.chatGptTargetUrl]);
-  return mergeLlmSettings(data[STORAGE_KEYS.llmSettings], data[STORAGE_KEYS.chatGptTargetUrl]);
+  const data = await storageGet([
+    STORAGE_KEYS.llmSettings,
+    STORAGE_KEYS.chatGptTargetUrl,
+  ]);
+  return mergeLlmSettings(
+    data[STORAGE_KEYS.llmSettings],
+    data[STORAGE_KEYS.chatGptTargetUrl],
+  );
 }
 
 export async function saveLlmSettings(activeProfileId, profileUpdates) {
@@ -378,10 +422,12 @@ export async function saveApifyFallbackSettings(nextSettings) {
 }
 
 export async function setChatGptTargetUrl(url) {
-  const normalizedUrl = (url || '').trim();
+  const normalizedUrl = (url || "").trim();
   const current = await getStoredLlmSettings();
-  const next = updateLlmSettings(current, 'chatgpt:web_automation', {
-    targetUrl: normalizedUrl || getDefaultLlmSettings().profiles['chatgpt:web_automation'].targetUrl,
+  const next = updateLlmSettings(current, "chatgpt:web_automation", {
+    targetUrl:
+      normalizedUrl ||
+      getDefaultLlmSettings().profiles["chatgpt:web_automation"].targetUrl,
   });
   await storageSet({
     [STORAGE_KEYS.llmSettings]: next,
@@ -408,7 +454,10 @@ export async function setCustomFeatureEnabled(enabled) {
 }
 
 export async function getExtensionState() {
-  const data = await storageGet([STORAGE_KEYS.extensionSession, STORAGE_KEYS.lastError]);
+  const data = await storageGet([
+    STORAGE_KEYS.extensionSession,
+    STORAGE_KEYS.lastError,
+  ]);
   return (
     data[STORAGE_KEYS.extensionSession] ?? {
       sessionId: null,
@@ -461,15 +510,18 @@ export async function getHistoryEntries() {
 
 export async function upsertHistoryEntry(entry) {
   const current = await getHistoryEntries();
-  const next = [entry, ...current.filter((item) => item.jobKey !== entry.jobKey)];
+  const next = [
+    entry,
+    ...current.filter((item) => item.jobKey !== entry.jobKey),
+  ];
   await storageSet({ [STORAGE_KEYS.historyEntries]: next });
   return next;
 }
 
 export async function clearExtensionLocalData() {
   await chrome.storage.local.remove([
-    'masterResumeId',
-    'resumeMatcherFloatingButtonTopOffset',
+    "masterResumeId",
+    "resumeMatcherFloatingButtonTopOffset",
     STORAGE_KEYS.masterResumeContextAsset,
     STORAGE_KEYS.storyboardAsset,
     STORAGE_KEYS.promptTemplateProfiles,
@@ -495,7 +547,7 @@ export async function clearExtensionLocalData() {
 
 export async function resetExtensionSettingsToDefault() {
   await chrome.storage.local.remove([
-    'resumeMatcherFloatingButtonTopOffset',
+    "resumeMatcherFloatingButtonTopOffset",
     STORAGE_KEYS.promptTemplateProfiles,
     STORAGE_KEYS.llmSettings,
     STORAGE_KEYS.chatGptTargetUrl,

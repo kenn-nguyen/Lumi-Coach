@@ -7,19 +7,21 @@ This document defines the intended runtime flow and checkpointing rules for the 
 1. User sets an optional master resume id override, uploads the local master resume context, and uploads the storyboard in the side panel admin board
 2. User clicks the floating action on a LinkedIn job page
 3. Scrape the LinkedIn job into a `jobSnapshot`
-4. Create a fresh job-specific `resume_id` by cloning the app master resume
-5. Run Prompt 1 and persist the parsed result
-6. Run Prompt 2 using Prompt 1 output and persist the parsed result
-7. Run Prompt 3 using Prompt 2 output, current resume, and storyboard
-8. Parse and validate Prompt 3 output as `ResumeData`
-9. Patch the validated JSON to the job-specific `resume_id`
-10. Open the resume preview page and save the job-to-resume history entry
+4. If no app master resume exists yet, run Prompt 4 on the uploaded local Markdown resume and upload the extracted `ResumeData` JSON as the new master resume
+5. Create a fresh job-specific `resume_id` by cloning the app master resume
+6. Run Prompt 1 and persist the parsed result
+7. Run Prompt 2 using Prompt 1 output and persist the parsed result
+8. Run Prompt 3 using Prompt 2 output, current resume, and storyboard
+9. Parse and validate Prompt 3 output as `ResumeData`
+10. Patch the validated JSON to the job-specific `resume_id`
+11. Open the resume preview page and save the job-to-resume history entry
 
 ## Checkpoint Rule
 
 Every stage should persist its usable output before moving to the next stage.
 
 Minimum checkpoints:
+
 - `jobSnapshot`
 - `prompt1Result`
 - `prompt2Result`
@@ -44,23 +46,27 @@ These are required behaviors for the extension:
 ### Prompt 3 parse or schema failure
 
 Keep:
+
 - `prompt1Result`
 - `prompt2Result`
 - `prompt3Raw`
 - validation errors
 
 Allow:
+
 - rerun Prompt 3 only
 - future schema-repair flow
 
 ### Backend patch failure
 
 Keep:
+
 - `prompt3Parsed`
 - `patchPayload`
 - `patchError`
 
 Allow:
+
 - retry patch without rerunning ChatGPT
 
 ## Recommended Session Shape
@@ -70,14 +76,14 @@ type ExtensionSession = {
   sessionId: string;
   selectedResumeId: string;
   status:
-    | 'idle'
-    | 'scraped'
-    | 'prompt1_done'
-    | 'prompt2_done'
-    | 'prompt3_done'
-    | 'validated'
-    | 'patched'
-    | 'error';
+    | "idle"
+    | "scraped"
+    | "prompt1_done"
+    | "prompt2_done"
+    | "prompt3_done"
+    | "validated"
+    | "patched"
+    | "error";
   jobSnapshot: unknown;
   resumeSource: unknown;
   storyboard: unknown;

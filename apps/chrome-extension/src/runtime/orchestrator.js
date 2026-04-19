@@ -1,11 +1,16 @@
 import { SESSION_STATUS } from "./constants.js";
 import { runApifyLinkedInFallback } from "./apify.js";
-import { extractJsonFromText, extractPrompt3PayloadFromText } from "./json.js";
+import {
+  extractJsonFromText,
+  extractPrompt3PayloadFromText,
+  extractPrompt4ResumeDataFromText,
+} from "./json.js";
 import { evaluateJobDescriptionGuardrail } from "./job-guardrail.js";
 import {
   renderPrompt1,
   renderPrompt2,
   renderPrompt3,
+  renderPrompt4,
 } from "./prompt-loader.js";
 import { scrapeLinkedInJob } from "./linkedin.js";
 import { validateResumeData } from "./validation.js";
@@ -21,6 +26,7 @@ import {
   openPreviewTab,
   patchResume,
   renameResume,
+  uploadStructuredResume,
   uploadJobDescription,
 } from "./api.js";
 import { logError, logInfo } from "./log.js";
@@ -131,9 +137,7 @@ export function shouldAcceptLocalSnapshot({
 }
 
 function buildManualEntryRequiredError(reason = "") {
-  const detail = reason
-    ? ` ${reason}`
-    : "";
+  const detail = reason ? ` ${reason}` : "";
   return new Error(
     `This does not look like a usable job description yet. Paste the full job description manually to continue.${detail}`,
   );
@@ -147,7 +151,9 @@ async function resolveValidatedJobSnapshot({
   apifyFallbackSettings,
 }) {
   const isManualInput = Boolean(jobInput?.rawText?.trim());
-  const extensionApifyEnabled = hasExtensionApifyFallback(apifyFallbackSettings);
+  const extensionApifyEnabled = hasExtensionApifyFallback(
+    apifyFallbackSettings,
+  );
   const backendApifyEnabled = hasBackendApifyFallback(apifyFallbackSettings);
   const sourceUrlHint = isManualInput
     ? jobInput?.sourceUrl?.trim() || (await getSourceUrlForTab(activeTabId))
@@ -175,7 +181,10 @@ async function resolveValidatedJobSnapshot({
   }
 
   if (localSnapshot) {
-    if (typeof localSnapshot.sourceUrl === "string" && localSnapshot.sourceUrl) {
+    if (
+      typeof localSnapshot.sourceUrl === "string" &&
+      localSnapshot.sourceUrl
+    ) {
       resolvedSourceUrlHint = localSnapshot.sourceUrl;
     }
     const guardrail = await evaluateJobDescriptionGuardrail(
@@ -187,20 +196,26 @@ async function resolveValidatedJobSnapshot({
       ...(localSnapshot.diagnostics || {}),
       guardrail,
     };
-    if (shouldAcceptLocalSnapshot({
-      snapshot: localSnapshot,
-      guardrail,
-      isManualInput,
-    })) {
+    if (
+      shouldAcceptLocalSnapshot({
+        snapshot: localSnapshot,
+        guardrail,
+        isManualInput,
+      })
+    ) {
       return localSnapshot;
     }
 
-    logInfo("Orchestrator", "Primary extraction did not meet acceptance threshold.", {
-      source: localSnapshot.source,
-      localConfidence: localSnapshot?.quality?.confidence || "unknown",
-      confidence: guardrail.confidence,
-      reason: guardrail.reason,
-    });
+    logInfo(
+      "Orchestrator",
+      "Primary extraction did not meet acceptance threshold.",
+      {
+        source: localSnapshot.source,
+        localConfidence: localSnapshot?.quality?.confidence || "unknown",
+        confidence: guardrail.confidence,
+        reason: guardrail.reason,
+      },
+    );
 
     if (isManualInput) {
       throw buildManualEntryRequiredError(guardrail.reason);
@@ -248,8 +263,9 @@ async function resolveValidatedJobSnapshot({
 
   if (backendApifyEnabled && resolvedSourceUrlHint) {
     try {
-      const backendApifySnapshot =
-        await fetchBackendApifyLinkedInFallback(resolvedSourceUrlHint);
+      const backendApifySnapshot = await fetchBackendApifyLinkedInFallback(
+        resolvedSourceUrlHint,
+      );
       const backendApifyGuardrail = await evaluateJobDescriptionGuardrail(
         backendApifySnapshot,
         activeLlmProfile,
@@ -752,13 +768,174 @@ function buildPrompt3RepairPrompt({ validationMessage, promptLabel, attempt }) {
   ].join("\n");
 }
 
-async function resolveBaseResumeId(storedResumeId) {
+function validatePrompt4RawOutput(rawText) {
+  try {
+    const resumeData = extractPrompt4ResumeDataFromText(rawText);
+    const validationErrors = validateResumeData(
+      normalizePrompt3ResumeData(resumeData),
+    );
+    if (validationErrors.length > 0) {
+      return {
+        valid: false,
+        message: validationErrors.join(" | "),
+      };
+    }
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to parse JSON from model output.",
+    };
+  }
+}
+
+function buildPrompt4RepairPrompt({ validationMessage, promptLabel, attempt }) {
+  return [
+    `Your previous ${promptLabel ?? "Prompt 4"} response was invalid.`,
+    `Validation issue: ${validationMessage}`,
+    "Return corrected JSON only.",
+    "Do not include markdown fences, commentary, or prose before or after the JSON.",
+    "Return only the ResumeData object itself. Do not wrap it in `resume_data`.",
+    "Do not include `generation_feedback`, explanations, notes, or any other top-level keys.",
+    "Do not use the em dash character `—`; use a normal hyphen `-` instead.",
+    "Do not return the empty schema template. Reuse the same resume facts you already extracted, but fix the JSON format and schema issues.",
+    `This is repair attempt ${attempt}.`,
+  ].join("\n");
+}
+
+function buildBootstrappedMasterFilename(asset) {
+  const originalName =
+    typeof asset?.filename === "string" && asset.filename.trim()
+      ? asset.filename.trim()
+      : "master-resume.md";
+  const withoutExtension = /\.[^.]+$/.test(originalName)
+    ? originalName.replace(/\.[^.]+$/, "")
+    : originalName;
+  return `${withoutExtension}.json`;
+}
+
+async function bootstrapMasterResumeFromMarkdown({
+  masterResumeContextAsset,
+  activeLlmProfile,
+  systemPrompt,
+  activeRunJob,
+  sourceTabId,
+}) {
+  const localResumeMarkdown = masterResumeContextAsset?.content?.trim();
+  if (!localResumeMarkdown) {
+    const message =
+      "No master resume was found in Lumi Coach. Upload your Markdown resume in the extension first.";
+    await setExtensionState({
+      sourceTabId,
+      activeRunJob,
+      patchError: message,
+      status: SESSION_STATUS.error,
+    });
+    throw new Error(message);
+  }
+
+  await setExtensionState({
+    sourceTabId,
+    activeRunJob,
+    patchError: null,
+    status: SESSION_STATUS.bootstrapMaster,
+  });
+
+  try {
+    const prompt4 = await renderPrompt4(
+      {
+        currentResume: localResumeMarkdown,
+        systemPrompt,
+      },
+      activeLlmProfile,
+    );
+    logPromptDebug("Prompt 4", "input", prompt4);
+    logInfo("Orchestrator", "Running Prompt 4.");
+
+    const prompt4Run = await runPrompt(prompt4, {
+      profile: activeLlmProfile,
+      promptLabel: "Prompt 4",
+      systemPrompt,
+      validateResponse: validatePrompt4RawOutput,
+      buildRepairPrompt: buildPrompt4RepairPrompt,
+      maxRepairAttempts: 1,
+    });
+
+    const prompt4Raw =
+      prompt4Run.status === "success"
+        ? prompt4Run.rawText
+        : (prompt4Run.partialRawText ?? "");
+
+    if (prompt4Run.status !== "success") {
+      logError("Orchestrator", "Prompt 4 failed.", prompt4Run);
+      throw new Error(`Prompt 4 failed: ${prompt4Run.message}`);
+    }
+
+    if (prompt4Run.validationError) {
+      logError("Orchestrator", "Prompt 4 failed validation after repair.", {
+        validationError: prompt4Run.validationError,
+        conversationUrl: prompt4Run.conversationUrl ?? null,
+      });
+      throw new Error(`Prompt 4 failed: ${prompt4Run.validationError}`);
+    }
+
+    logInfo("Orchestrator", "Parsing Prompt 4 output.");
+    logPromptDebug("Prompt 4", "output", prompt4Raw);
+    const parsedResumeData = normalizePrompt3ResumeData(
+      extractPrompt4ResumeDataFromText(prompt4Raw),
+    );
+    const validationErrors = validateResumeData(parsedResumeData);
+    if (validationErrors.length > 0) {
+      throw new Error(
+        `Prompt 4 produced invalid ResumeData: ${validationErrors.join(" | ")}`,
+      );
+    }
+
+    const uploadResponse = await uploadStructuredResume(
+      buildBootstrappedMasterFilename(masterResumeContextAsset),
+      parsedResumeData,
+    );
+    if (!uploadResponse?.resume_id) {
+      throw new Error(
+        "Prompt 4 finished, but Lumi Coach did not return a master resume id.",
+      );
+    }
+
+    logInfo("Orchestrator", "Created backend master resume from Prompt 4.", {
+      resumeId: uploadResponse.resume_id,
+      processingStatus: uploadResponse.processing_status ?? null,
+    });
+    return uploadResponse.resume_id;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await setExtensionState({
+      patchError: message,
+      status: SESSION_STATUS.error,
+    });
+    throw error instanceof Error ? error : new Error(message);
+  }
+}
+
+async function resolveBaseResumeId({
+  masterResumeContextAsset,
+  activeLlmProfile,
+  systemPrompt,
+  activeRunJob,
+  sourceTabId,
+}) {
   const resumeList = await listResumes(true);
   const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
   if (!masterResume?.resume_id) {
-    throw new Error(
-      "No master resume was found in Lumi Coach. Upload one in the app first.",
-    );
+    return bootstrapMasterResumeFromMarkdown({
+      masterResumeContextAsset,
+      activeLlmProfile,
+      systemPrompt,
+      activeRunJob,
+      sourceTabId,
+    });
   }
   return masterResume.resume_id;
 }
@@ -813,7 +990,20 @@ export async function generateResumeForLinkedInJob(
   });
 
   logInfo("Orchestrator", "Resolving base resume.");
-  const baseResumeId = await resolveBaseResumeId();
+  const activeRunJob = {
+    title: jobSnapshot.title,
+    company: jobSnapshot.company,
+    location: jobSnapshot.location ?? "",
+    datePosted: jobSnapshot.datePosted ?? null,
+    sourceUrl: jobSnapshot.sourceUrl,
+  };
+  const baseResumeId = await resolveBaseResumeId({
+    masterResumeContextAsset,
+    activeLlmProfile,
+    systemPrompt,
+    activeRunJob,
+    sourceTabId: activeTabId,
+  });
   logInfo("Orchestrator", "Resolved base resume for cloning.", {
     baseResumeId,
   });
@@ -835,13 +1025,7 @@ export async function generateResumeForLinkedInJob(
   }
   await setExtensionState({
     sourceTabId: activeTabId,
-    activeRunJob: {
-      title: jobSnapshot.title,
-      company: jobSnapshot.company,
-      location: jobSnapshot.location ?? "",
-      datePosted: jobSnapshot.datePosted ?? null,
-      sourceUrl: jobSnapshot.sourceUrl,
-    },
+    activeRunJob,
     status: SESSION_STATUS.scraped,
     llmProfileId: activeLlmProfile.id,
     llmProfileLabel: activeLlmProfile.label,

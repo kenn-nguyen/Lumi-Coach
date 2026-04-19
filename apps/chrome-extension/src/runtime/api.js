@@ -219,6 +219,72 @@ export async function listResumes(includeMaster = false) {
   return payload;
 }
 
+export async function uploadStructuredResume(filename, resumeData) {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/resumes/upload`;
+  const safeFilename =
+    typeof filename === "string" && filename.trim()
+      ? filename.trim()
+      : "master-resume.json";
+  const serializedResume = JSON.stringify(resumeData, null, 2);
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new File([serializedResume], safeFilename, {
+      type: "application/json",
+    }),
+  );
+
+  logInfo("ResumeApi", "Uploading structured resume.", {
+    endpoint,
+    filename: safeFilename,
+    size: serializedResume.length,
+  });
+
+  let response;
+  try {
+    response = await fetchWithAuth(endpoint, {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError("ResumeApi", "Structured resume upload failed before response.", {
+      endpoint,
+      filename: safeFilename,
+      error: message,
+    });
+    throw new Error(
+      `Structured resume upload failed before response at ${endpoint}: ${message}`,
+    );
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    logError(
+      "ResumeApi",
+      "Structured resume upload returned a non-OK status.",
+      {
+        endpoint,
+        filename: safeFilename,
+        status: response.status,
+        body: text,
+      },
+    );
+    throw new Error(
+      `Failed to upload structured resume (status ${response.status}): ${text}`,
+    );
+  }
+
+  const payload = await response.json();
+  logInfo("ResumeApi", "Structured resume upload succeeded.", {
+    filename: safeFilename,
+    resumeId: payload?.resume_id ?? null,
+    isMaster: payload?.is_master ?? null,
+  });
+  return payload;
+}
+
 export async function cloneResume(resumeId) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}/clone`;
@@ -363,8 +429,7 @@ export function normalizeBackendApifyFallbackPayload(
         ? payload.source_url.trim()
         : fallbackSourceUrl,
     title: typeof payload?.title === "string" ? payload.title.trim() : "",
-    company:
-      typeof payload?.company === "string" ? payload.company.trim() : "",
+    company: typeof payload?.company === "string" ? payload.company.trim() : "",
     location:
       typeof payload?.location === "string" ? payload.location.trim() : "",
     datePosted:
