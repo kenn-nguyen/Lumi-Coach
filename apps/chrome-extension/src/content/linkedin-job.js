@@ -49,6 +49,7 @@ const PROVIDER_MODEL_ROW_ID = "resume-matcher-provider-model-row";
 const PROVIDER_MODEL_INPUT_ID = "resume-matcher-provider-model-input";
 const PROVIDER_API_KEY_ROW_ID = "resume-matcher-provider-api-key-row";
 const PROVIDER_API_KEY_INPUT_ID = "resume-matcher-provider-api-key-input";
+const PROVIDER_SAVE_ID = "resume-matcher-provider-save";
 const ONBOARDING_PROVIDER_API_KEY_INPUT_ID =
   "resume-matcher-onboarding-provider-api-key-input";
 const APP_URL_INPUT_ID = "resume-matcher-app-url-input";
@@ -57,6 +58,7 @@ const APIFY_ENABLED_INPUT_ID = "resume-matcher-apify-enabled";
 const APIFY_TOKEN_ROW_ID = "resume-matcher-apify-token-row";
 const APIFY_TOKEN_INPUT_ID = "resume-matcher-apify-token-input";
 const APIFY_TOKEN_TOGGLE_ID = "resume-matcher-apify-token-toggle";
+const APIFY_SAVE_ID = "resume-matcher-apify-save";
 const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
 const CUSTOM_FEATURE_INPUT_ID = "resume-matcher-custom-feature";
 const RUNTIME_URLS_ROW_ID = "resume-matcher-runtime-urls";
@@ -80,39 +82,40 @@ const JOB_LOAD_TIMEOUT_MS = 7000;
 const EDGE_GAP_TOTAL = EDGE_PADDING * 2;
 const APP_URL = "https://som-career-coach-iota.vercel.app/";
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
-const RUN_WAIT_MESSAGE_INTERVAL_MS = 12000;
-const RUN_WAIT_MESSAGES = [
-  "Reading the job post.",
-  "Checking the latest job details.",
-  "Looking for the full JD.",
-  "Rechecking the page content.",
-  "Trying a cleaner extraction path.",
-  "Comparing the job signals.",
-  "Preparing the role summary.",
-  "Mapping the hiring priorities.",
-  "Reviewing the core requirements.",
-  "Pulling out the strongest signals.",
-  "Checking the fallback path.",
-  "Waiting on the model.",
-  "Keeping the run alive.",
-  "Still shaping the draft.",
-  "Reviewing the current output.",
-  "Cleaning the response.",
-  "Comparing resume and JD.",
-  "Refining the positioning.",
-  "Building the tailored draft.",
-  "Checking for missing details.",
-  "Making the wording tighter.",
-  "Keeping the format consistent.",
-  "Replaying the next step.",
-  "Waiting for web automation.",
-  "Still working through the queue.",
-  "Checking the generated sections.",
-  "Keeping the draft coherent.",
-  "Revalidating the result.",
-  "Finalizing the current pass.",
-  "Almost there.",
-];
+const RUN_WAIT_MESSAGE_INTERVAL_MS = 10000;
+const RUN_WAIT_MESSAGE_POOLS = {
+  default: ["Still working on this step.", "Reviewing the current pass."],
+  setup: [
+    "Checking your setup.",
+    "Connecting the run.",
+    "Preparing the workspace.",
+  ],
+  bootstrap: [
+    "Reading your uploaded resume.",
+    "Structuring the main sections.",
+    "Saving your base resume.",
+  ],
+  fitCheck: [
+    "Reading the role.",
+    "Pulling out the key requirements.",
+    "Checking what matters most.",
+  ],
+  positioning: [
+    "Matching your experience to the role.",
+    "Choosing the strongest angles.",
+    "Tightening the positioning.",
+  ],
+  draft: [
+    "Writing the tailored resume.",
+    "Sharpening the strongest bullets.",
+    "Checking the draft for consistency.",
+  ],
+  saving: [
+    "Saving your resume.",
+    "Finalizing the workspace.",
+    "Opening your workspace.",
+  ],
+};
 let adapterModulePromise = null;
 let zipModulePromise = null;
 
@@ -135,7 +138,7 @@ function loadZipModule() {
 const PROMPT_FILE_DESCRIPTORS = [
   {
     templateName: "prompt1",
-    label: "Prompt 1 Analyze job description",
+    label: "Role fit check",
     defaultPath: "src/prompts/prompt1.txt",
     contractPath: "src/prompts/patches/prompt1.output-contract.txt",
     promptFileName: "prompt1.txt",
@@ -144,7 +147,7 @@ const PROMPT_FILE_DESCRIPTORS = [
   },
   {
     templateName: "prompt2",
-    label: "Prompt 2 Strategize positioning",
+    label: "Positioning plan",
     defaultPath: "src/prompts/prompt2.txt",
     contractPath: "src/prompts/patches/prompt2.output-contract.txt",
     promptFileName: "prompt2.txt",
@@ -153,7 +156,7 @@ const PROMPT_FILE_DESCRIPTORS = [
   },
   {
     templateName: "prompt3",
-    label: "Prompt 3 Write tailored resume",
+    label: "Resume draft",
     defaultPath: "src/prompts/prompt3.txt",
     contractPath: "src/prompts/patches/prompt3.output-contract.txt",
     promptFileName: "prompt3.txt",
@@ -167,6 +170,14 @@ const PROMPT_FILE_DESCRIPTORS = [
     downloadName: null,
   },
 ];
+
+const USER_FACING_PROMPT_LABELS = new Map([
+  ["Prompt 1", "Role fit check"],
+  ["Prompt 2", "Positioning plan"],
+  ["Prompt 3", "Resume draft"],
+  ["Prompt 4", "Base resume setup"],
+  ["JD Guardrail", "Role fit check"],
+]);
 
 const ICONS = {
   home: `
@@ -260,9 +271,7 @@ let selectedJobDetailObservedRoot = null;
 let lastUrl = location.href;
 let pointerDragState = null;
 let suppressNextClick = false;
-let providerSettingsSaveTimer = null;
 let runtimeUrlsSaveTimer = null;
-let apifyFallbackSaveTimer = null;
 let jobLoadTimer = null;
 let selectedJobRefreshTimer = null;
 let runningStatusMessageTimer = null;
@@ -280,6 +289,8 @@ const secretDraftState = {
 const secretRevealState = {
   [APIFY_TOKEN_INPUT_ID]: false,
 };
+let providerDraftState = null;
+let apifyDraftState = null;
 
 const state = {
   boardOpen: false,
@@ -295,6 +306,7 @@ const state = {
   statusDetail: "",
   rotatingStatusDetail: "",
   rotatingStatusIndex: -1,
+  rotatingStatusPoolKey: "",
   statusActions: [],
   assets: null,
   setupState: null,
@@ -319,14 +331,6 @@ const state = {
   historyPage: 1,
   historyFilterOpen: false,
 };
-
-function logInfo(message, data) {
-  if (data === undefined) {
-    console.info(`${LOG_PREFIX} ${message}`);
-    return;
-  }
-  console.info(`${LOG_PREFIX} ${message}`, data);
-}
 
 function logError(message, data) {
   if (data === undefined) {
@@ -382,24 +386,135 @@ function getSecretPlaceholder(inputId) {
   return "Paste new API key";
 }
 
-function getCurrentSecretValue(inputId) {
-  if (inputId === APIFY_TOKEN_INPUT_ID) {
-    return state.assets?.apifyFallbackSettings?.apiToken || "";
+function getSavedProfileById(profileId, settings = null) {
+  const resolvedSettings = settings || state.assets?.llmSettings;
+  if (!resolvedSettings?.profiles || !profileId) return null;
+  return resolvedSettings.profiles[profileId] ?? null;
+}
+
+function createProviderDraftState(profileId = null, settings = null) {
+  const resolvedSettings = settings || state.assets?.llmSettings;
+  if (!resolvedSettings?.profiles) {
+    return {
+      selectedProfileId: "",
+      targetUrl: "",
+      apiBaseUrl: "",
+      model: "",
+      apiKey: "",
+      dirty: false,
+    };
   }
 
-  if (inputId === ONBOARDING_PROVIDER_API_KEY_INPUT_ID) {
-    return (
-      getSelectedProfile(
-        "resume-matcher-onboarding-provider-select",
-        state.assets?.llmSettings,
-      )?.apiKey || ""
+  const resolvedProfileId =
+    profileId ||
+    resolvedSettings.activeProfileId ||
+    Object.keys(resolvedSettings.profiles)[0] ||
+    "";
+  const profile =
+    getSavedProfileById(resolvedProfileId, resolvedSettings) || {};
+  return {
+    selectedProfileId: resolvedProfileId,
+    targetUrl: profile.targetUrl || "",
+    apiBaseUrl: profile.apiBaseUrl || "",
+    model: profile.model || "",
+    apiKey: profile.apiKey || "",
+    dirty: false,
+  };
+}
+
+function hasProviderDraftChanges(draft, settings = null) {
+  const resolvedSettings = settings || state.assets?.llmSettings;
+  if (!resolvedSettings?.profiles || !draft) return false;
+  if (
+    (draft.selectedProfileId || "") !== (resolvedSettings.activeProfileId || "")
+  ) {
+    return true;
+  }
+  const savedProfile = getSavedProfileById(
+    draft.selectedProfileId,
+    resolvedSettings,
+  );
+  if (!savedProfile) return true;
+  if (savedProfile.mode === "web_automation") {
+    return (savedProfile.targetUrl || "") !== (draft.targetUrl || "");
+  }
+  return (
+    (savedProfile.apiBaseUrl || "") !== (draft.apiBaseUrl || "") ||
+    (savedProfile.model || "") !== (draft.model || "") ||
+    normalizeSecretValue(savedProfile.apiKey) !==
+      normalizeSecretValue(draft.apiKey)
+  );
+}
+
+function syncProviderDraftState({ force = false } = {}) {
+  const settings = state.assets?.llmSettings;
+  if (
+    force ||
+    !providerDraftState ||
+    !providerDraftState.dirty ||
+    !getSavedProfileById(providerDraftState.selectedProfileId, settings)
+  ) {
+    providerDraftState = createProviderDraftState(
+      providerDraftState?.selectedProfileId,
+      settings,
     );
   }
-
-  return (
-    getSelectedProfile(PROVIDER_SELECT_ID, state.assets?.llmSettings)?.apiKey ||
-    ""
+  providerDraftState.dirty = hasProviderDraftChanges(
+    providerDraftState,
+    settings,
   );
+  return providerDraftState;
+}
+
+function setProviderDraftState(updates = {}, { replace = false } = {}) {
+  const next = replace
+    ? { ...createProviderDraftState(updates.selectedProfileId), ...updates }
+    : { ...syncProviderDraftState(), ...updates };
+  next.dirty = hasProviderDraftChanges(next);
+  providerDraftState = next;
+  return providerDraftState;
+}
+
+function createApifyDraftState() {
+  return {
+    enabled: state.assets?.apifyFallbackSettings?.enabled === true,
+    apiToken: state.assets?.apifyFallbackSettings?.apiToken || "",
+    dirty: false,
+  };
+}
+
+function hasApifyDraftChanges(draft) {
+  const saved = state.assets?.apifyFallbackSettings || {};
+  return (
+    Boolean(draft?.enabled) !== (saved.enabled === true) ||
+    normalizeSecretValue(draft?.apiToken) !==
+      normalizeSecretValue(saved.apiToken)
+  );
+}
+
+function syncApifyDraftState({ force = false } = {}) {
+  if (force || !apifyDraftState || !apifyDraftState.dirty) {
+    apifyDraftState = createApifyDraftState();
+  }
+  apifyDraftState.dirty = hasApifyDraftChanges(apifyDraftState);
+  return apifyDraftState;
+}
+
+function setApifyDraftState(updates = {}) {
+  apifyDraftState = { ...syncApifyDraftState(), ...updates };
+  apifyDraftState.dirty = hasApifyDraftChanges(apifyDraftState);
+  return apifyDraftState;
+}
+
+function getCurrentSecretValue(inputId) {
+  if (inputId === APIFY_TOKEN_INPUT_ID) {
+    return syncApifyDraftState().apiToken || "";
+  }
+  return syncProviderDraftState().apiKey || "";
+}
+
+function normalizeSecretValue(value) {
+  return String(value || "").trim();
 }
 
 function syncSecretInput(inputId) {
@@ -458,13 +573,14 @@ function beginSecretEdit(input) {
   if (!(input instanceof HTMLInputElement) || input.readOnly !== true) return;
   const inputId = input.id;
   secretEditingState[inputId] = true;
-  secretDraftState[inputId] = "";
+  secretDraftState[inputId] = getCurrentSecretValue(inputId);
   secretRevealState[inputId] = false;
   syncSecretInput(inputId);
   syncSecretRevealToggle(inputId);
   const next = $(inputId);
   if (next instanceof HTMLInputElement) {
     next.focus();
+    next.select();
   }
 }
 
@@ -485,11 +601,71 @@ function toggleSecretReveal(inputId) {
   syncSecretRevealToggle(inputId);
 }
 
-function readSecretInputValue(inputId) {
-  if (secretEditingState[inputId] === true) {
-    return (secretDraftState[inputId] || "").trim();
+function getOnboardingProviderDraftState() {
+  const providerSettings = state.assets?.llmSettings;
+  const providerDraft = syncProviderDraftState();
+  const selectedProfile = getSavedProfileById(
+    providerDraft.selectedProfileId,
+    providerSettings,
+  );
+  if (!selectedProfile) {
+    return { ready: false, selectedProfile: null };
   }
-  return getCurrentSecretValue(inputId);
+
+  if (selectedProfile.mode === "web_automation") {
+    return {
+      ready: Boolean(providerDraft.targetUrl.trim()),
+      selectedProfile,
+    };
+  }
+
+  if (selectedProfile.mode === "api") {
+    return {
+      ready: Boolean(
+        providerDraft.apiBaseUrl.trim() &&
+        providerDraft.model.trim() &&
+        normalizeSecretValue(providerDraft.apiKey),
+      ),
+      selectedProfile,
+    };
+  }
+
+  return {
+    ready: false,
+    selectedProfile,
+  };
+}
+
+function syncOnboardingProviderContinueState() {
+  const onboardingRoot = $(RUN_ONBOARDING_ID);
+  if (!(onboardingRoot instanceof HTMLElement)) return;
+  const nextButton = onboardingRoot.querySelector(
+    '[data-onboarding-action="save_provider_continue"]',
+  );
+  if (!(nextButton instanceof HTMLButtonElement)) return;
+  nextButton.disabled = !getOnboardingProviderDraftState().ready;
+}
+
+function syncProviderSaveButtonState() {
+  const button = $(PROVIDER_SAVE_ID);
+  if (!(button instanceof HTMLButtonElement)) return;
+  button.disabled = !syncProviderDraftState().dirty;
+}
+
+function syncApifySaveButtonState() {
+  const button = $(APIFY_SAVE_ID);
+  if (!(button instanceof HTMLButtonElement)) return;
+  const draft = syncApifyDraftState();
+  button.hidden = !draft.enabled && !draft.dirty;
+  button.disabled = !draft.dirty;
+}
+
+function isSecretInputId(inputId) {
+  return [
+    PROVIDER_API_KEY_INPUT_ID,
+    ONBOARDING_PROVIDER_API_KEY_INPUT_ID,
+    APIFY_TOKEN_INPUT_ID,
+  ].includes(inputId);
 }
 
 function formatDate(value) {
@@ -3476,23 +3652,23 @@ function getRunStateFromExtensionSession() {
         detail: "Getting things ready.",
       },
       bootstrap_master: {
-        title: "Creating your base resume",
-        detail: "Extracting your uploaded Markdown file.",
+        title: "Base resume setup",
+        detail: "Reading your uploaded resume.",
       },
       scraped: {
         title: "Job captured",
         detail: "Job details are ready.",
       },
       prompt1_done: {
-        title: "Prompt 1 · Analyze JD",
-        detail: "Reading hiring signals.",
+        title: "Role fit check",
+        detail: "Reading the role.",
       },
       prompt2_done: {
-        title: "Prompt 2 · Positioning",
-        detail: "Building the positioning strategy.",
+        title: "Positioning plan",
+        detail: "Choosing the strongest angles.",
       },
       prompt3_done: {
-        title: "Prompt 3 · Tailored Resume",
+        title: "Resume draft",
         detail: "Writing the tailored resume.",
       },
       validated: {
@@ -3854,8 +4030,9 @@ function renderOnboardingStep() {
   const hasResume = Boolean(state.assets?.masterResumeContextAsset?.filename);
   const hasStoryboard = Boolean(state.assets?.storyboardAsset?.filename);
   const providerSettings = state.assets?.llmSettings;
-  const selectedProfile = getSelectedProfile(
-    "resume-matcher-onboarding-provider-select",
+  const providerDraft = syncProviderDraftState();
+  const selectedProfile = getSavedProfileById(
+    providerDraft.selectedProfileId,
     providerSettings,
   );
 
@@ -3918,6 +4095,7 @@ function renderOnboardingStep() {
         </div>
       `;
     case "provider": {
+      const effectiveProviderState = getOnboardingProviderDraftState();
       const isWeb = selectedProfile?.mode === "web_automation";
       const isApi = selectedProfile?.mode === "api";
       return `
@@ -3929,13 +4107,13 @@ function renderOnboardingStep() {
             <select id="resume-matcher-onboarding-provider-select">${renderProviderOptions(providerSettings)}</select>
           </div>
           <div id="resume-matcher-onboarding-provider-web-row" class="resume-matcher-field"${isWeb ? "" : " hidden"}>
-            <input id="resume-matcher-onboarding-provider-web-input" type="url" placeholder="Provider URL" value="${escapeHtml(isWeb ? selectedProfile?.targetUrl || "" : "")}" />
+            <input id="resume-matcher-onboarding-provider-web-input" type="url" placeholder="Provider URL" value="${escapeHtml(isWeb ? providerDraft.targetUrl || "" : "")}" />
           </div>
           <div id="resume-matcher-onboarding-provider-api-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
-            <input id="resume-matcher-onboarding-provider-api-base-input" type="url" placeholder="API endpoint" value="${escapeHtml(isApi ? selectedProfile?.apiBaseUrl || "" : "")}" />
+            <input id="resume-matcher-onboarding-provider-api-base-input" type="url" placeholder="API endpoint" value="${escapeHtml(isApi ? providerDraft.apiBaseUrl || "" : "")}" />
           </div>
           <div id="resume-matcher-onboarding-provider-model-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
-            <input id="resume-matcher-onboarding-provider-model-input" type="text" placeholder="Model" value="${escapeHtml(isApi ? selectedProfile?.model || "" : "")}" />
+            <input id="resume-matcher-onboarding-provider-model-input" type="text" placeholder="Model" value="${escapeHtml(isApi ? providerDraft.model || "" : "")}" />
           </div>
           <div id="resume-matcher-onboarding-provider-key-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
             <input id="${ONBOARDING_PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" value="" />
@@ -3943,7 +4121,7 @@ function renderOnboardingStep() {
         </div>
         <p class="resume-matcher-onboarding__help resume-matcher-onboarding__help--subtle"><em>Most tested: ChatGPT web automation and Claude API.</em></p>
         <div class="resume-matcher-onboarding__actions">
-          ${renderPrimaryButtonMarkup("Next", "onboarding_next", `data-next-step="done"${setupState.canContinue ? "" : " disabled"}`)}
+          ${renderPrimaryButtonMarkup("Save and continue", "save_provider_continue", `${effectiveProviderState.ready ? "" : " disabled"}`)}
         </div>
       `;
     }
@@ -4074,6 +4252,86 @@ function stopRunningStatusRotation() {
   }
   state.rotatingStatusIndex = -1;
   state.rotatingStatusDetail = "";
+  state.rotatingStatusPoolKey = "";
+}
+
+function getRunWaitPoolKey(title) {
+  const normalized = String(title || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "starting run" || normalized === "loading assets") {
+    return "setup";
+  }
+  if (
+    normalized === "creating your base resume" ||
+    normalized === "base resume setup"
+  ) {
+    return "bootstrap";
+  }
+  if (normalized === "role fit check") {
+    return "fitCheck";
+  }
+  if (normalized === "positioning plan") {
+    return "positioning";
+  }
+  if (normalized === "resume draft") {
+    return "draft";
+  }
+  if (
+    normalized === "saving draft" ||
+    normalized === "saving resume" ||
+    normalized === "opening workspace" ||
+    normalized === "naming resume"
+  ) {
+    return "saving";
+  }
+  return "default";
+}
+
+function getRunWaitMessagesForTitle(title) {
+  const key = getRunWaitPoolKey(title);
+  return {
+    key,
+    messages: RUN_WAIT_MESSAGE_POOLS[key] || RUN_WAIT_MESSAGE_POOLS.default,
+  };
+}
+
+function getUserFacingPromptLabel(promptLabel) {
+  const normalized = String(promptLabel || "").trim();
+  return USER_FACING_PROMPT_LABELS.get(normalized) || normalized || "Working";
+}
+
+function getPromptStageDetail(title, message) {
+  if (title === "Base resume setup") {
+    if (/validat/i.test(message || "")) return "Checking the extracted resume.";
+    if (/pars/i.test(message || "")) return "Structuring the main sections.";
+    return "Reading your uploaded resume.";
+  }
+
+  if (title === "Role fit check") {
+    if (/pars/i.test(message || "")) return "Summarizing what the role needs.";
+    return "Reading the role.";
+  }
+
+  if (title === "Positioning plan") {
+    if (/pars/i.test(message || "")) return "Shaping the positioning plan.";
+    return "Choosing the strongest angles.";
+  }
+
+  if (title === "Resume draft") {
+    if (/validat/i.test(message || "")) return "Checking the draft.";
+    if (/pars/i.test(message || "")) return "Reviewing the drafted sections.";
+    return "Writing the tailored resume.";
+  }
+
+  return "Working through this step.";
+}
+
+function seedRunningStatusRotation(title, fallbackDetail = "") {
+  const { key } = getRunWaitMessagesForTitle(title);
+  state.rotatingStatusPoolKey = key;
+  state.rotatingStatusIndex = -1;
+  state.rotatingStatusDetail = fallbackDetail || "";
 }
 
 function scheduleNextRunningStatusRotation() {
@@ -4081,14 +4339,25 @@ function scheduleNextRunningStatusRotation() {
   runningStatusMessageTimer = window.setTimeout(() => {
     runningStatusMessageTimer = null;
     if (!state.isRunning || state.statusTone !== "running") return;
+    const { key, messages } = getRunWaitMessagesForTitle(state.statusTitle);
+    if (state.rotatingStatusPoolKey !== key) {
+      seedRunningStatusRotation(state.statusTitle, state.statusDetail);
+      render();
+      scheduleNextRunningStatusRotation();
+      return;
+    }
+    if (!messages.length) return;
     const nextIndex =
       state.rotatingStatusIndex < 0
-        ? Math.floor(Math.random() * RUN_WAIT_MESSAGES.length)
-        : (state.rotatingStatusIndex + 1) % RUN_WAIT_MESSAGES.length;
+        ? 0
+        : Math.min(state.rotatingStatusIndex + 1, messages.length - 1);
     state.rotatingStatusIndex = nextIndex;
-    state.rotatingStatusDetail = RUN_WAIT_MESSAGES[nextIndex];
+    state.rotatingStatusDetail =
+      messages[nextIndex] || state.statusDetail || state.rotatingStatusDetail;
     render();
-    scheduleNextRunningStatusRotation();
+    if (nextIndex < messages.length - 1) {
+      scheduleNextRunningStatusRotation();
+    }
   }, RUN_WAIT_MESSAGE_INTERVAL_MS);
 }
 
@@ -4097,11 +4366,12 @@ function startRunningStatusRotation() {
     stopRunningStatusRotation();
     return;
   }
-  if (!state.rotatingStatusDetail) {
-    state.rotatingStatusIndex = Math.floor(
-      Math.random() * RUN_WAIT_MESSAGES.length,
-    );
-    state.rotatingStatusDetail = RUN_WAIT_MESSAGES[state.rotatingStatusIndex];
+  const nextPoolKey = getRunWaitPoolKey(state.statusTitle);
+  if (
+    !state.rotatingStatusDetail ||
+    state.rotatingStatusPoolKey !== nextPoolKey
+  ) {
+    seedRunningStatusRotation(state.statusTitle, state.statusDetail);
   }
   if (!runningStatusMessageTimer) {
     scheduleNextRunningStatusRotation();
@@ -4130,10 +4400,16 @@ function setRunStatus(tone, title, detail = "", actions = []) {
 
 function formatErrorText(message) {
   if (!message) return "Generation failed.";
+  const raw = String(message || "");
   const normalized = message
     .replace(/^Prompt \d+ failed:\s*/i, "")
     .replace(/^Failed to /i, "")
     .trim();
+  const hasResumeSchemaError =
+    /produced invalid resumedata|personalinfo must|summary must|workexperience must|education must|projects must|skills must|certifications must|languages must|awards must|volunteer must|customsections must|sectionmeta\[|must be one of personalInfo, text, itemList, stringList/i.test(
+      normalized,
+    );
+
   if (/no master resume was found|upload your resume/i.test(normalized)) {
     return "Upload your resume first.";
   }
@@ -4149,6 +4425,12 @@ function formatErrorText(message) {
   }
   if (/extension context invalidated/i.test(normalized)) {
     return "Refresh the LinkedIn page and try again.";
+  }
+  if (hasResumeSchemaError) {
+    if (/Prompt 4/i.test(raw)) {
+      return "Couldn't read your resume. Try again.";
+    }
+    return "The draft came back in the wrong format. Try again.";
   }
   return normalized;
 }
@@ -4180,29 +4462,24 @@ function getProgressMessage(scope, message, data) {
         "Cloned base resume and created job-specific resume.",
         ["Draft created", "Created the job draft."],
       ],
-      [
-        "Rendering Prompt 1.",
-        ["Prompt 1 · Analyze JD", "Preparing the job analysis."],
-      ],
-      [
-        "Running Prompt 1.",
-        ["Prompt 1 · Analyze JD", "Reading hiring signals."],
-      ],
+      ["Rendering Prompt 1.", ["Role fit check", "Preparing the role review."]],
+      ["Running Prompt 1.", ["Role fit check", "Reading the role."]],
       [
         "Rendering Prompt 2.",
-        ["Prompt 2 · Positioning", "Preparing the positioning strategy."],
+        ["Positioning plan", "Preparing the positioning plan."],
       ],
       [
         "Running Prompt 2.",
-        ["Prompt 2 · Positioning", "Building the positioning strategy."],
+        ["Positioning plan", "Choosing the strongest angles."],
       ],
       [
         "Rendering Prompt 3.",
-        ["Prompt 3 · Tailored Resume", "Preparing the tailored draft."],
+        ["Resume draft", "Preparing the tailored draft."],
       ],
+      ["Running Prompt 3.", ["Resume draft", "Writing the tailored resume."]],
       [
-        "Running Prompt 3.",
-        ["Prompt 3 · Tailored Resume", "Writing the tailored resume."],
+        "Running Prompt 4.",
+        ["Base resume setup", "Reading your uploaded resume."],
       ],
       [
         "Validating Prompt 3 output.",
@@ -4237,7 +4514,8 @@ function getProgressMessage(scope, message, data) {
   }
 
   if (promptLabel && scope !== "Background") {
-    return [promptLabel, message];
+    const title = getUserFacingPromptLabel(promptLabel);
+    return [title, getPromptStageDetail(title, message)];
   }
 
   return null;
@@ -4308,14 +4586,19 @@ function renderHistory() {
 
 function renderProviderFields() {
   const settings = state.assets?.llmSettings;
+  const providerDraft = syncProviderDraftState();
   const select = $(PROVIDER_SELECT_ID);
   if (!settings || !select) return;
 
   const options = renderProviderOptions(settings);
   select.innerHTML = options;
-  select.value = settings.activeProfileId || "";
+  select.value =
+    providerDraft.selectedProfileId || settings.activeProfileId || "";
 
-  const profile = getSelectedProfile();
+  const profile = getSavedProfileById(
+    providerDraft.selectedProfileId,
+    settings,
+  );
   const isWeb = profile?.mode === "web_automation";
   const isApi = profile?.mode === "api";
 
@@ -4332,11 +4615,12 @@ function renderProviderFields() {
   toggleRow(PROVIDER_API_KEY_ROW_ID, isApi);
 
   const webInput = $(PROVIDER_WEB_INPUT_ID);
-  if (webInput) webInput.value = isWeb ? profile.targetUrl || "" : "";
+  if (webInput) webInput.value = isWeb ? providerDraft.targetUrl || "" : "";
   const apiBaseInput = $(PROVIDER_API_BASE_INPUT_ID);
-  if (apiBaseInput) apiBaseInput.value = isApi ? profile.apiBaseUrl || "" : "";
+  if (apiBaseInput)
+    apiBaseInput.value = isApi ? providerDraft.apiBaseUrl || "" : "";
   const modelInput = $(PROVIDER_MODEL_INPUT_ID);
-  if (modelInput) modelInput.value = isApi ? profile.model || "" : "";
+  if (modelInput) modelInput.value = isApi ? providerDraft.model || "" : "";
   syncSecretInput(PROVIDER_API_KEY_INPUT_ID);
 }
 
@@ -4374,13 +4658,14 @@ function renderSettings() {
   if (appUrl) appUrl.value = assets?.appOrigin || "";
   const apiUrl = $(API_URL_INPUT_ID);
   if (apiUrl) apiUrl.value = assets?.apiOrigin || "";
+  const apifyDraft = syncApifyDraftState();
   const apifyEnabled = $(APIFY_ENABLED_INPUT_ID);
   if (apifyEnabled) {
-    apifyEnabled.checked = assets?.apifyFallbackSettings?.enabled === true;
+    apifyEnabled.checked = apifyDraft.enabled === true;
   }
   const apifyTokenRow = $(APIFY_TOKEN_ROW_ID);
   if (apifyTokenRow) {
-    apifyTokenRow.hidden = assets?.apifyFallbackSettings?.enabled !== true;
+    apifyTokenRow.hidden = apifyDraft.enabled !== true;
   }
   const apifyTokenInput = $(APIFY_TOKEN_INPUT_ID);
   if (apifyTokenInput) {
@@ -4455,6 +4740,8 @@ function renderSettings() {
   });
 
   renderProviderFields();
+  syncProviderSaveButtonState();
+  syncApifySaveButtonState();
 }
 
 function autoGrowTextarea(textarea) {
@@ -4498,18 +4785,16 @@ function renderRunView() {
     onboardingRoot.hidden = !onboardingMode;
     onboardingRoot.innerHTML = onboardingMode ? renderOnboardingStep() : "";
     if (onboardingMode && state.setupState?.step === "provider") {
+      const providerDraft = syncProviderDraftState();
       const onboardingProviderSelect = $(
         "resume-matcher-onboarding-provider-select",
       );
-      if (
-        onboardingProviderSelect &&
-        state.assets?.llmSettings?.activeProfileId
-      ) {
-        onboardingProviderSelect.value =
-          state.assets.llmSettings.activeProfileId;
+      if (onboardingProviderSelect && providerDraft.selectedProfileId) {
+        onboardingProviderSelect.value = providerDraft.selectedProfileId;
       }
     }
     syncSecretInput(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
+    syncOnboardingProviderContinueState();
   }
 
   if (readyPill) {
@@ -4832,45 +5117,48 @@ async function saveTextAsset(file, type) {
 
 async function persistProviderSelection(selectId = PROVIDER_SELECT_ID) {
   const select = $(selectId);
-  if (!select) return;
-  const response = await sendMessage("SAVE_LLM_SETTINGS", {
-    activeProfileId: select.value,
-    profileUpdates: null,
+  if (!(select instanceof HTMLSelectElement)) return;
+  endSecretEdit(PROVIDER_API_KEY_INPUT_ID);
+  endSecretEdit(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
+  setProviderDraftState(createProviderDraftState(select.value), {
+    replace: true,
   });
-  if (!response?.ok) {
-    throw new Error(response?.error || "Failed to save provider selection.");
-  }
-  state.assets = {
-    ...(state.assets || {}),
-    llmSettings: response.llmSettings,
-  };
   renderSettings();
   renderRunView();
 }
 
-async function persistSelectedProviderSettings(config = {}) {
-  const {
-    selectId = PROVIDER_SELECT_ID,
-    webInputId = PROVIDER_WEB_INPUT_ID,
-    apiBaseInputId = PROVIDER_API_BASE_INPUT_ID,
-    modelInputId = PROVIDER_MODEL_INPUT_ID,
-    apiKeyInputId = PROVIDER_API_KEY_INPUT_ID,
-  } = config;
-  const profile = getSelectedProfile(selectId);
-  if (!profile) return;
+function getSelectedProviderSettingsPayload() {
+  const providerDraft = syncProviderDraftState();
+  const profile = getSavedProfileById(providerDraft.selectedProfileId);
+  if (!profile) return null;
 
   const profileUpdates =
     profile.mode === "web_automation"
-      ? { targetUrl: $(webInputId)?.value.trim() || "" }
+      ? { targetUrl: providerDraft.targetUrl.trim() }
       : {
-          apiBaseUrl: $(apiBaseInputId)?.value.trim() || "",
-          model: $(modelInputId)?.value.trim() || "",
-          apiKey: readSecretInputValue(apiKeyInputId),
+          apiBaseUrl: providerDraft.apiBaseUrl.trim(),
+          model: providerDraft.model.trim(),
+          apiKey: normalizeSecretValue(providerDraft.apiKey),
         };
 
-  const response = await sendMessage("SAVE_LLM_SETTINGS", {
-    activeProfileId: profile.id,
+  return {
+    profileId: providerDraft.selectedProfileId,
     profileUpdates,
+  };
+}
+
+async function persistSelectedProviderSettings() {
+  const payload = getSelectedProviderSettingsPayload();
+  if (!payload) return false;
+  const providerDraft = syncProviderDraftState();
+
+  if (!providerDraft.dirty) {
+    return true;
+  }
+
+  const response = await sendMessage("SAVE_LLM_SETTINGS", {
+    activeProfileId: payload.profileId,
+    profileUpdates: payload.profileUpdates,
   });
   if (!response?.ok) {
     throw new Error(response?.error || "Failed to save provider settings.");
@@ -4879,27 +5167,54 @@ async function persistSelectedProviderSettings(config = {}) {
     ...(state.assets || {}),
     llmSettings: response.llmSettings,
   };
-  endSecretEdit(apiKeyInputId);
+  providerDraftState = createProviderDraftState(
+    payload.profileId,
+    response.llmSettings,
+  );
+  endSecretEdit(PROVIDER_API_KEY_INPUT_ID);
+  endSecretEdit(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
   renderSettings();
   renderRunView();
+  return true;
 }
 
-function scheduleProviderSettingsSave() {
-  if (providerSettingsSaveTimer) {
-    window.clearTimeout(providerSettingsSaveTimer);
+async function persistOnboardingProviderSettingsAndContinue() {
+  const draftState = getOnboardingProviderDraftState();
+  if (!draftState.ready) {
+    return;
   }
-  providerSettingsSaveTimer = window.setTimeout(() => {
-    providerSettingsSaveTimer = null;
-    persistSelectedProviderSettings().catch((error) => {
-      setRunStatus(
-        "error",
-        "Save failed",
-        error instanceof Error
-          ? error.message
-          : "Unable to save provider settings.",
-      );
-    });
-  }, 350);
+  await persistSelectedProviderSettings();
+  const response = await sendMessage("SET_ONBOARDING_STEP", {
+    step: "done",
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error || "Failed to continue onboarding.");
+  }
+  await refreshBoardData();
+}
+
+async function persistApifyFallbackSettings() {
+  const apifyDraft = syncApifyDraftState();
+  if (!apifyDraft.dirty) {
+    return;
+  }
+  const response = await sendMessage("SAVE_APIFY_FALLBACK_SETTINGS", {
+    enabled: apifyDraft.enabled === true,
+    apiToken: normalizeSecretValue(apifyDraft.apiToken),
+  });
+  if (!response?.ok) {
+    throw new Error(
+      response?.error || "Failed to save Apify fallback settings.",
+    );
+  }
+  state.assets = {
+    ...(state.assets || {}),
+    apifyFallbackSettings:
+      response.apifyFallbackSettings || state.assets?.apifyFallbackSettings,
+  };
+  apifyDraftState = createApifyDraftState();
+  endSecretEdit(APIFY_TOKEN_INPUT_ID);
+  renderSettings();
 }
 
 async function persistRuntimeUrls() {
@@ -4926,43 +5241,6 @@ function scheduleRuntimeUrlsSave() {
       );
     });
   }, 350);
-}
-
-async function persistApifyFallbackSettings() {
-  const response = await sendMessage("SAVE_APIFY_FALLBACK_SETTINGS", {
-    enabled: $(APIFY_ENABLED_INPUT_ID)?.checked === true,
-    apiToken: readSecretInputValue(APIFY_TOKEN_INPUT_ID),
-  });
-  if (!response?.ok) {
-    throw new Error(
-      response?.error || "Failed to save Apify fallback settings.",
-    );
-  }
-  state.assets = {
-    ...(state.assets || {}),
-    apifyFallbackSettings:
-      response.apifyFallbackSettings || state.assets?.apifyFallbackSettings,
-  };
-  endSecretEdit(APIFY_TOKEN_INPUT_ID);
-  renderSettings();
-}
-
-function scheduleApifyFallbackSave() {
-  if (apifyFallbackSaveTimer) {
-    window.clearTimeout(apifyFallbackSaveTimer);
-  }
-  apifyFallbackSaveTimer = window.setTimeout(() => {
-    apifyFallbackSaveTimer = null;
-    persistApifyFallbackSettings().catch((error) => {
-      setRunStatus(
-        "error",
-        "Save failed",
-        error instanceof Error
-          ? error.message
-          : "Unable to save Apify fallback settings.",
-      );
-    });
-  }, 250);
 }
 
 async function handleGenerateClick() {
@@ -5253,6 +5531,11 @@ async function handleOnboardingAction(actionId, nextStep = "") {
     return;
   }
 
+  if (actionId === "save_provider_continue") {
+    await persistOnboardingProviderSettingsAndContinue();
+    return;
+  }
+
   if (actionId === "complete_onboarding") {
     const response = await sendMessage("COMPLETE_ONBOARDING");
     if (!response?.ok) {
@@ -5378,6 +5661,7 @@ function ensureRoot() {
                         <input id="${PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" />
                       </div>
                     </div>
+                    <button id="${PROVIDER_SAVE_ID}" type="button" class="resume-matcher-button is-primary">Save provider</button>
                   </div>
                 </div>
               </div>
@@ -5406,6 +5690,7 @@ function ensureRoot() {
                         </div>
                       </div>
                     </div>
+                    <button id="${APIFY_SAVE_ID}" type="button" class="resume-matcher-button is-primary">Save Apify</button>
                   </div>
                   <div class="resume-matcher-settings-item">
                     <div class="resume-matcher-settings-item__title">Prompting</div>
@@ -5524,42 +5809,14 @@ function ensureRoot() {
     try {
       if (target.id === "resume-matcher-onboarding-provider-select") {
         await persistProviderSelection(target.id);
-        await refreshBoardData();
+        renderRunView();
+        syncOnboardingProviderContinueState();
       }
     } catch (error) {
       setRunStatus(
         "error",
         "Save failed",
         error instanceof Error ? error.message : "Unable to save provider.",
-      );
-    }
-  });
-  $(RUN_ONBOARDING_ID)?.addEventListener("focusout", async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    const providerInputIds = new Set([
-      "resume-matcher-onboarding-provider-web-input",
-      "resume-matcher-onboarding-provider-api-base-input",
-      "resume-matcher-onboarding-provider-model-input",
-      "resume-matcher-onboarding-provider-api-key-input",
-    ]);
-    if (!providerInputIds.has(target.id)) return;
-    try {
-      await persistSelectedProviderSettings({
-        selectId: "resume-matcher-onboarding-provider-select",
-        webInputId: "resume-matcher-onboarding-provider-web-input",
-        apiBaseInputId: "resume-matcher-onboarding-provider-api-base-input",
-        modelInputId: "resume-matcher-onboarding-provider-model-input",
-        apiKeyInputId: "resume-matcher-onboarding-provider-api-key-input",
-      });
-      await refreshBoardData();
-    } catch (error) {
-      setRunStatus(
-        "error",
-        "Save failed",
-        error instanceof Error
-          ? error.message
-          : "Unable to save provider settings.",
       );
     }
   });
@@ -5642,64 +5899,46 @@ function ensureRoot() {
         );
       });
   });
-  [
-    PROVIDER_WEB_INPUT_ID,
-    PROVIDER_API_BASE_INPUT_ID,
-    PROVIDER_MODEL_INPUT_ID,
-    PROVIDER_API_KEY_INPUT_ID,
-  ].forEach((id) => {
-    $(id)?.addEventListener("input", scheduleProviderSettingsSave);
-  });
   [APP_URL_INPUT_ID, API_URL_INPUT_ID].forEach((id) => {
     $(id)?.addEventListener("input", scheduleRuntimeUrlsSave);
   });
   $(APIFY_ENABLED_INPUT_ID)?.addEventListener("change", () => {
-    state.assets = {
-      ...(state.assets || {}),
-      apifyFallbackSettings: {
-        ...(state.assets?.apifyFallbackSettings || {}),
-        enabled: $(APIFY_ENABLED_INPUT_ID)?.checked === true,
-      },
-    };
+    setApifyDraftState({
+      enabled: $(APIFY_ENABLED_INPUT_ID)?.checked === true,
+    });
     renderSettings();
-    scheduleApifyFallbackSave();
-  });
-  $(APIFY_TOKEN_INPUT_ID)?.addEventListener("input", (event) => {
-    secretDraftState[APIFY_TOKEN_INPUT_ID] = event.target.value || "";
-    scheduleApifyFallbackSave();
   });
   $(APIFY_TOKEN_TOGGLE_ID)?.addEventListener("click", (event) => {
     event.preventDefault();
     toggleSecretReveal(APIFY_TOKEN_INPUT_ID);
   });
-  [
-    PROVIDER_API_KEY_INPUT_ID,
-    ONBOARDING_PROVIDER_API_KEY_INPUT_ID,
-    APIFY_TOKEN_INPUT_ID,
-  ].forEach((id) => {
-    $(id)?.addEventListener("focus", (event) => {
-      beginSecretEdit(event.target);
-    });
-    $(id)?.addEventListener("mousedown", (event) => {
-      beginSecretEdit(event.target);
-    });
-    $(id)?.addEventListener("copy", (event) => {
-      event.preventDefault();
-    });
-    $(id)?.addEventListener("cut", (event) => {
-      event.preventDefault();
-    });
-    $(id)?.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-    });
-    $(id)?.addEventListener("blur", () => {
-      if (
-        secretEditingState[id] === true &&
-        !(secretDraftState[id] || "").trim()
-      ) {
-        endSecretEdit(id);
-      }
-    });
+  $(PROVIDER_SAVE_ID)?.addEventListener("click", async () => {
+    try {
+      await persistSelectedProviderSettings();
+      await refreshBoardData();
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Save failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to save provider settings.",
+      );
+    }
+  });
+  $(APIFY_SAVE_ID)?.addEventListener("click", async () => {
+    try {
+      await persistApifyFallbackSettings();
+      await refreshBoardData();
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Save failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to save Apify fallback settings.",
+      );
+    }
   });
   $(CUSTOM_FEATURE_INPUT_ID)?.addEventListener("change", async (event) => {
     await sendMessage("SAVE_CUSTOM_FEATURE_ENABLED", {
@@ -5732,6 +5971,128 @@ function ensureRoot() {
         surface:
           state.currentView === "settings" ? "settings_view" : "run_view",
       });
+    }
+  });
+  root.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+
+    if (target.id === APIFY_TOKEN_INPUT_ID) {
+      secretDraftState[APIFY_TOKEN_INPUT_ID] = target.value || "";
+      setApifyDraftState({
+        apiToken: target.value || "",
+      });
+      syncApifySaveButtonState();
+      return;
+    }
+
+    if (target.id === PROVIDER_API_KEY_INPUT_ID) {
+      secretDraftState[PROVIDER_API_KEY_INPUT_ID] = target.value || "";
+      setProviderDraftState({
+        apiKey: target.value || "",
+      });
+      syncProviderSaveButtonState();
+      return;
+    }
+
+    if (target.id === ONBOARDING_PROVIDER_API_KEY_INPUT_ID) {
+      secretDraftState[ONBOARDING_PROVIDER_API_KEY_INPUT_ID] =
+        target.value || "";
+      setProviderDraftState({
+        apiKey: target.value || "",
+      });
+      syncOnboardingProviderContinueState();
+      return;
+    }
+
+    if (target.id === PROVIDER_WEB_INPUT_ID) {
+      setProviderDraftState({
+        targetUrl: target.value || "",
+      });
+      syncProviderSaveButtonState();
+      return;
+    }
+
+    if (target.id === PROVIDER_API_BASE_INPUT_ID) {
+      setProviderDraftState({
+        apiBaseUrl: target.value || "",
+      });
+      syncProviderSaveButtonState();
+      return;
+    }
+
+    if (target.id === PROVIDER_MODEL_INPUT_ID) {
+      setProviderDraftState({
+        model: target.value || "",
+      });
+      syncProviderSaveButtonState();
+      return;
+    }
+
+    if (target.id === "resume-matcher-onboarding-provider-web-input") {
+      setProviderDraftState({
+        targetUrl: target.value || "",
+      });
+      syncOnboardingProviderContinueState();
+      return;
+    }
+
+    if (target.id === "resume-matcher-onboarding-provider-api-base-input") {
+      setProviderDraftState({
+        apiBaseUrl: target.value || "",
+      });
+      syncOnboardingProviderContinueState();
+      return;
+    }
+
+    if (target.id === "resume-matcher-onboarding-provider-model-input") {
+      setProviderDraftState({
+        model: target.value || "",
+      });
+      syncOnboardingProviderContinueState();
+    }
+  });
+  root.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!isSecretInputId(target.id)) return;
+    beginSecretEdit(target);
+  });
+  root.addEventListener("mousedown", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!isSecretInputId(target.id)) return;
+    beginSecretEdit(target);
+  });
+  root.addEventListener("copy", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!isSecretInputId(target.id)) return;
+    event.preventDefault();
+  });
+  root.addEventListener("cut", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!isSecretInputId(target.id)) return;
+    event.preventDefault();
+  });
+  root.addEventListener("contextmenu", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!isSecretInputId(target.id)) return;
+    event.preventDefault();
+  });
+  root.addEventListener("focusout", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!isSecretInputId(target.id)) return;
+    const draftValue = normalizeSecretValue(secretDraftState[target.id]);
+    const currentValue = normalizeSecretValue(getCurrentSecretValue(target.id));
+    if (
+      secretEditingState[target.id] === true &&
+      (!draftValue || draftValue === currentValue)
+    ) {
+      endSecretEdit(target.id);
     }
   });
   if (!selectedJobClickListenerAttached) {

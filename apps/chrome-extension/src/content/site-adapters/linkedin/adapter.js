@@ -1,17 +1,21 @@
-import { createEmptySnapshot, evaluateReadiness, FIELD_PROVENANCE } from '../../../shared/job-snapshot.js';
-import { scoreConfidence } from '../shared/confidence.js';
-import { tryExpandJobDescription } from '../shared/expand-text.js';
-import { extractJobPostingLd } from '../shared/json-ld.js';
-import { qaCheckDescription } from '../shared/qa.js';
-import { reconcile } from '../shared/reconcile.js';
-import { extractFromLegacyClasses } from './dom-class.js';
-import { extractHeuristic } from './heuristic.js';
-import { extractFromTestids } from './dom-testid.js';
+import {
+  createEmptySnapshot,
+  evaluateReadiness,
+  FIELD_PROVENANCE,
+} from "../../../shared/job-snapshot.js";
+import { scoreConfidence } from "../shared/confidence.js";
+import { tryExpandJobDescription } from "../shared/expand-text.js";
+import { extractJobPostingLd } from "../shared/json-ld.js";
+import { qaCheckDescription } from "../shared/qa.js";
+import { reconcile } from "../shared/reconcile.js";
+import { extractFromLegacyClasses } from "./dom-class.js";
+import { extractHeuristic } from "./heuristic.js";
+import { extractFromTestids } from "./dom-testid.js";
 
 function normalizeUrl(href) {
   try {
     const parsed = new URL(href);
-    const currentJobId = parsed.searchParams.get('currentJobId')?.trim();
+    const currentJobId = parsed.searchParams.get("currentJobId")?.trim();
     if (currentJobId) {
       return `${parsed.origin}/jobs/view/${currentJobId}/`;
     }
@@ -42,10 +46,7 @@ function deriveLinkedInJobUrl(doc, href) {
   ];
 
   for (const candidate of linkCandidates) {
-    const rawHref =
-      candidate?.href ||
-      candidate?.getAttribute?.('href') ||
-      '';
+    const rawHref = candidate?.href || candidate?.getAttribute?.("href") || "";
     const normalized = normalizeUrl(rawHref);
     if (/\/jobs\/view\/\d+\//.test(normalized)) {
       return normalized;
@@ -56,12 +57,12 @@ function deriveLinkedInJobUrl(doc, href) {
 }
 
 function applyConfidenceDelta(confidence, delta, shouldBlock) {
-  if (shouldBlock) return 'low';
+  if (shouldBlock) return "low";
 
-  const order = ['low', 'medium', 'high'];
+  const order = ["low", "medium", "high"];
   const startIndex = Math.max(0, order.indexOf(confidence));
   const nextIndex = Math.max(0, Math.min(order.length - 1, startIndex + delta));
-  return order[nextIndex] || 'low';
+  return order[nextIndex] || "low";
 }
 
 export const linkedInAdapter = {
@@ -70,8 +71,8 @@ export const linkedInAdapter = {
   },
 
   async snapshot(doc, options) {
-    const mode = options?.mode ?? 'preview';
-    const href = options?.locationHref ?? doc.location?.href ?? '';
+    const mode = options?.mode ?? "preview";
+    const href = options?.locationHref ?? doc.location?.href ?? "";
     const snapshot = createEmptySnapshot({
       sourceUrl: deriveLinkedInJobUrl(doc, href),
     });
@@ -79,14 +80,16 @@ export const linkedInAdapter = {
     const ld = extractJobPostingLd(doc);
     const testid = extractFromTestids(doc);
 
-    if (mode === 'full' && testid.expanderPresent) {
+    if (mode === "full" && testid.expanderPresent) {
       const exp = await tryExpandJobDescription(doc);
       snapshot.quality.expandedAttempted = exp.expandedAttempted;
       snapshot.quality.expandedSucceeded = exp.expandedSucceeded;
       snapshot.quality.textLengthBefore = exp.textLengthBefore;
       snapshot.quality.textLengthAfter = exp.textLengthAfter;
       if (exp.expandedSucceeded && testid.descriptionNode) {
-        testid.description = (testid.descriptionNode.textContent || '').replace(/\s+/g, ' ').trim();
+        testid.description = (testid.descriptionNode.textContent || "")
+          .replace(/\s+/g, " ")
+          .trim();
         testid.descriptionProvenance = FIELD_PROVENANCE.testid_expanded;
         snapshot.quality.descriptionExpanded = true;
       }
@@ -96,7 +99,7 @@ export const linkedInAdapter = {
     const heuristic =
       !ld.description && !testid.description && !classes.description
         ? extractHeuristic(doc)
-        : { description: '', descriptionProvenance: FIELD_PROVENANCE.missing };
+        : { description: "", descriptionProvenance: FIELD_PROVENANCE.missing };
 
     const reconciled = reconcile({ ld, testid, classes, heuristic });
     snapshot.title = reconciled.title;
@@ -114,8 +117,10 @@ export const linkedInAdapter = {
       company: reconciled.company,
     });
     const qa = qaCheckDescription(reconciled.description, {
-      ldDescription: ld.description,
-      provenance: reconciled.provenance.description,
+      expandedAttempted: snapshot.quality.expandedAttempted,
+      expandedSucceeded: snapshot.quality.expandedSucceeded,
+      textLengthBefore: snapshot.quality.textLengthBefore,
+      textLengthAfter: snapshot.quality.textLengthAfter,
     });
 
     snapshot.quality.confidence = applyConfidenceDelta(
@@ -129,7 +134,8 @@ export const linkedInAdapter = {
       hasJsonLd: Boolean(ld.description || ld.title),
       hasTestids: Boolean(testid.description || testid.title),
       hasLegacyClasses: Boolean(classes.description || classes.title),
-      heuristicUsed: reconciled.provenance.description === FIELD_PROVENANCE.heuristic,
+      heuristicUsed:
+        reconciled.provenance.description === FIELD_PROVENANCE.heuristic,
       qa,
     };
     snapshot.readiness = evaluateReadiness(snapshot, { mode });
