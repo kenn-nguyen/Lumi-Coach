@@ -95,8 +95,7 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
   const handleShowContactIconsToggle = (nextChecked?: boolean) => {
     onChange({
       ...settings,
-      showContactIcons:
-        typeof nextChecked === 'boolean' ? nextChecked : !settings.showContactIcons,
+      showContactIcons: typeof nextChecked === 'boolean' ? nextChecked : !settings.showContactIcons,
     });
   };
 

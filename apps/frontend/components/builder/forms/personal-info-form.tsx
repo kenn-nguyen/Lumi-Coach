@@ -89,9 +89,17 @@ export const PersonalInfoForm: React.FC<PersonalInfoFormProps> = ({
             size="icon"
             className="h-8 w-8 rounded-full text-gray-500 hover:bg-secondary/60 hover:text-gray-700"
             onClick={() => setIsCollapsed((current) => !current)}
-            title={isCollapsed ? `Expand ${t('builder.personalInfo')}` : `Collapse ${t('builder.personalInfo')}`}
+            title={
+              isCollapsed
+                ? `Expand ${t('builder.personalInfo')}`
+                : `Collapse ${t('builder.personalInfo')}`
+            }
           >
-            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </div>

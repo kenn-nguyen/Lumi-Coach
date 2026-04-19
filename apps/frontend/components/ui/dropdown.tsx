@@ -107,9 +107,7 @@ export function Dropdown({
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold">{option.label}</div>
                     {option.description && (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {option.description}
-                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{option.description}</div>
                     )}
                   </div>
                   {option.id === value ? <Check className="mt-0.5 h-4 w-4 text-primary" /> : null}

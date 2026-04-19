@@ -11,6 +11,21 @@ import {
 } from './llm/profiles.js';
 
 const PROMPT_PROFILE_IDS = ['profile1', 'profile2', 'profile3'];
+const ONBOARDING_STEPS = ['intro', 'sign_in', 'assets', 'provider', 'done'];
+
+function getDefaultOnboardingProgress() {
+  return {
+    hasCompletedOnboarding: false,
+    onboardingStep: 'sign_in',
+  };
+}
+
+export function getDefaultApifyFallbackSettings() {
+  return {
+    enabled: true,
+    apiToken: '',
+  };
+}
 
 function getDefaultPromptTemplateProfiles() {
   return {
@@ -81,6 +96,60 @@ function storageSet(values) {
   return chrome.storage.local.set(values);
 }
 
+const ACTIVE_SESSION_STATUSES = new Set([
+  SESSION_STATUS.starting,
+  SESSION_STATUS.scraped,
+  SESSION_STATUS.prompt1Done,
+  SESSION_STATUS.prompt2Done,
+  SESSION_STATUS.prompt3Done,
+  SESSION_STATUS.validated,
+]);
+
+function buildRunLabel(extensionState) {
+  const title = extensionState?.jobSnapshot?.title || extensionState?.activeRunJob?.title || "";
+  const company =
+    extensionState?.jobSnapshot?.company || extensionState?.activeRunJob?.company || "";
+  if (title && company) return `${title} at ${company}`;
+  return title || company || "current job";
+}
+
+async function syncBrowserActionState(extensionState) {
+  if (!chrome?.action?.setBadgeText) return;
+
+  const status = extensionState?.status || SESSION_STATUS.idle;
+  const label = buildRunLabel(extensionState);
+
+  if (ACTIVE_SESSION_STATUSES.has(status)) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#8C1F3F" }).catch(() => {});
+    await chrome.action.setBadgeText({ text: "..." }).catch(() => {});
+    await chrome.action
+      .setTitle({ title: `Lumi Coach: running for ${label}` })
+      .catch(() => {});
+    return;
+  }
+
+  if (status === SESSION_STATUS.patched) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#1A5A38" }).catch(() => {});
+    await chrome.action.setBadgeText({ text: "✓" }).catch(() => {});
+    await chrome.action
+      .setTitle({ title: `Lumi Coach: tailored resume ready for ${label}` })
+      .catch(() => {});
+    return;
+  }
+
+  if (status === SESSION_STATUS.error) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#A01F1F" }).catch(() => {});
+    await chrome.action.setBadgeText({ text: "!" }).catch(() => {});
+    await chrome.action
+      .setTitle({ title: `Lumi Coach: run failed${label ? ` for ${label}` : ""}` })
+      .catch(() => {});
+    return;
+  }
+
+  await chrome.action.setBadgeText({ text: "" }).catch(() => {});
+  await chrome.action.setTitle({ title: "Lumi Coach" }).catch(() => {});
+}
+
 export async function getUserAssets() {
   const data = await storageGet([
     STORAGE_KEYS.masterResumeContextAsset,
@@ -95,6 +164,8 @@ export async function getUserAssets() {
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
     STORAGE_KEYS.extensionAuth,
+    STORAGE_KEYS.onboardingProgress,
+    STORAGE_KEYS.apifyFallbackSettings,
   ]);
   const llmSettings = mergeLlmSettings(
     data[STORAGE_KEYS.llmSettings],
@@ -124,7 +195,68 @@ export async function getUserAssets() {
     apiOrigin: data[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
     customFeatureEnabled: data[STORAGE_KEYS.customFeatureEnabled] === true,
     extensionAuth: data[STORAGE_KEYS.extensionAuth] ?? null,
+    onboardingProgress: normalizeOnboardingProgress(data[STORAGE_KEYS.onboardingProgress]),
+    apifyFallbackSettings: normalizeApifyFallbackSettings(
+      data[STORAGE_KEYS.apifyFallbackSettings],
+    ),
   };
+}
+
+export function normalizeApifyFallbackSettings(storedSettings) {
+  const defaults = getDefaultApifyFallbackSettings();
+  if (!storedSettings || typeof storedSettings !== 'object') {
+    return defaults;
+  }
+
+  return {
+    enabled: storedSettings.enabled === true,
+    apiToken:
+      typeof storedSettings.apiToken === 'string'
+        ? storedSettings.apiToken.trim()
+        : '',
+  };
+}
+
+export function normalizeOnboardingProgress(storedProgress) {
+  const defaults = getDefaultOnboardingProgress();
+  if (!storedProgress || typeof storedProgress !== 'object') {
+    return defaults;
+  }
+
+  const nextStep =
+    typeof storedProgress.onboardingStep === 'string' &&
+    ONBOARDING_STEPS.includes(storedProgress.onboardingStep)
+      ? storedProgress.onboardingStep === 'intro'
+        ? 'sign_in'
+        : storedProgress.onboardingStep
+      : defaults.onboardingStep;
+
+  return {
+    hasCompletedOnboarding: storedProgress.hasCompletedOnboarding === true,
+    onboardingStep: nextStep,
+  };
+}
+
+export async function getOnboardingProgress() {
+  const data = await storageGet(STORAGE_KEYS.onboardingProgress);
+  return normalizeOnboardingProgress(data[STORAGE_KEYS.onboardingProgress]);
+}
+
+export async function setOnboardingProgress(progress) {
+  const current = await getOnboardingProgress();
+  const next = normalizeOnboardingProgress({
+    ...current,
+    ...progress,
+  });
+  await storageSet({ [STORAGE_KEYS.onboardingProgress]: next });
+  return next;
+}
+
+export async function completeOnboarding() {
+  return setOnboardingProgress({
+    hasCompletedOnboarding: true,
+    onboardingStep: 'done',
+  });
 }
 
 export async function getExtensionAuth() {
@@ -233,6 +365,18 @@ export async function saveLlmSettings(activeProfileId, profileUpdates) {
   return next;
 }
 
+export async function saveApifyFallbackSettings(nextSettings) {
+  const current = await getUserAssets();
+  const merged = normalizeApifyFallbackSettings({
+    ...current.apifyFallbackSettings,
+    ...nextSettings,
+  });
+  await storageSet({
+    [STORAGE_KEYS.apifyFallbackSettings]: merged,
+  });
+  return merged;
+}
+
 export async function setChatGptTargetUrl(url) {
   const normalizedUrl = (url || '').trim();
   const current = await getStoredLlmSettings();
@@ -268,14 +412,17 @@ export async function getExtensionState() {
   return (
     data[STORAGE_KEYS.extensionSession] ?? {
       sessionId: null,
+      sourceTabId: null,
       selectedResumeId: null,
       status: SESSION_STATUS.idle,
       llmProfileId: null,
       llmProfileLabel: null,
+      activeRunJob: null,
       jobSnapshot: null,
       jobId: null,
       originalResumeId: null,
       tailoredResumeId: null,
+      previewUrl: null,
       jobContextLinked: false,
       resumeSource: null,
       prompt1Result: null,
@@ -298,6 +445,7 @@ export async function setExtensionState(nextState) {
     updatedAt: new Date().toISOString(),
   };
   await storageSet({ [STORAGE_KEYS.extensionSession]: merged });
+  await syncBrowserActionState(merged);
   return merged;
 }
 
@@ -334,11 +482,15 @@ export async function clearExtensionLocalData() {
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
     STORAGE_KEYS.extensionAuth,
+    STORAGE_KEYS.onboardingProgress,
+    STORAGE_KEYS.apifyFallbackSettings,
+    STORAGE_KEYS.analyticsState,
     STORAGE_KEYS.extensionPendingAction,
     STORAGE_KEYS.extensionSession,
     STORAGE_KEYS.historyEntries,
     STORAGE_KEYS.lastError,
   ]);
+  await syncBrowserActionState({ status: SESSION_STATUS.idle });
 }
 
 export async function resetExtensionSettingsToDefault() {
@@ -350,6 +502,8 @@ export async function resetExtensionSettingsToDefault() {
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
+    STORAGE_KEYS.apifyFallbackSettings,
     STORAGE_KEYS.extensionAuth,
   ]);
+  await syncBrowserActionState(await getExtensionState());
 }

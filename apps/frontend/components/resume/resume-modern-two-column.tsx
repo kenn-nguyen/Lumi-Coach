@@ -87,7 +87,11 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
   // Helper function to render contact details
   const renderContactDetail = (label: string, value?: string | null, hrefPrefix: string = '') => {
     if (!value) return null;
-    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(label, value, hrefPrefix);
+    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(
+      label,
+      value,
+      hrefPrefix
+    );
 
     return (
       <span className="inline-flex items-center gap-1">
@@ -131,7 +135,9 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
           <div className={`${baseStyles['resume-title']} mt-1`}>{personalInfo.title}</div>
         )}
         {personalInfo && (
-          <div className={`${baseStyles['resume-contact-line']} flex flex-wrap gap-x-3 gap-y-1 mt-1`}>
+          <div
+            className={`${baseStyles['resume-contact-line']} flex flex-wrap gap-x-3 gap-y-1 mt-1`}
+          >
             {renderContactDetail('CustomTagline', personalInfo.customTagline)}
             {renderContactDetail('Email', personalInfo.email, 'mailto:')}
             {renderContactDetail('Phone', personalInfo.phone, 'tel:')}

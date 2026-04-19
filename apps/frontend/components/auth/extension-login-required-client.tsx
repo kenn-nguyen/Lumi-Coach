@@ -1,6 +1,27 @@
 'use client';
 
 import { useEffect } from 'react';
+import { saveExtensionBridgeState } from '@/lib/auth/extension-bridge';
+
+type ChromeSendResult = {
+  ok?: boolean;
+  error?: string;
+};
+
+type ChromeRuntimeLike = {
+  sendMessage: (
+    extensionId: string,
+    message: unknown,
+    callback?: (result?: ChromeSendResult) => void
+  ) => void;
+  lastError?: {
+    message?: string;
+  };
+};
+
+type WindowWithChromeRuntime = Window & {
+  chrome?: { runtime?: ChromeRuntimeLike };
+};
 
 type ExtensionLoginRequiredClientProps = {
   extensionId: string;
@@ -16,7 +37,9 @@ export function ExtensionLoginRequiredClient({
       return;
     }
 
-    const chromeRuntime = (window as Window & { chrome?: any }).chrome?.runtime;
+    saveExtensionBridgeState(extensionId, sourceTabId);
+
+    const chromeRuntime = (window as WindowWithChromeRuntime).chrome?.runtime;
     if (!chromeRuntime?.sendMessage) {
       return;
     }

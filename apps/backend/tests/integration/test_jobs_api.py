@@ -6,12 +6,27 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.security import AuthenticatedUser, require_current_user
 
 
 @pytest.fixture
 def client():
     transport = ASGITransport(app=app)
     return AsyncClient(transport=transport, base_url="http://test")
+
+
+@pytest.fixture(autouse=True)
+def override_auth():
+    async def _fake_user():
+        return AuthenticatedUser(
+            user_id="user-123",
+            email="tester@example.com",
+            name="Test User",
+        )
+
+    app.dependency_overrides[require_current_user] = _fake_user
+    yield
+    app.dependency_overrides.pop(require_current_user, None)
 
 
 class TestJobUpload:
@@ -83,3 +98,49 @@ class TestGetJob:
         async with client:
             resp = await client.get("/api/v1/jobs/nonexistent")
         assert resp.status_code == 404
+
+
+class TestLinkedInApifyFallback:
+    """POST /api/v1/jobs/linkedin-apify-fallback"""
+
+    @patch("app.routers.jobs.fetch_linkedin_job_detail_via_apify")
+    async def test_backend_apify_fallback_success(self, mock_fetch, client):
+        mock_fetch.return_value = {
+            "source": "apify_backend",
+            "source_url": "https://www.linkedin.com/jobs/view/4370473767/",
+            "title": "Forward Deployed Product Manager",
+            "company": "Glean",
+            "location": "San Francisco Bay Area",
+            "date_posted": "2026-04-15T17:51:38",
+            "raw_text": "Job Title: Forward Deployed Product Manager\n\nJob Description:\nAbout Glean",
+            "diagnostics": {
+                "actor_id": "apimaestro/linkedin-job-detail",
+                "item_count": 1,
+            },
+        }
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/jobs/linkedin-apify-fallback",
+                json={"source_url": "https://www.linkedin.com/jobs/view/4370473767/"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["source"] == "apify_backend"
+        assert data["title"] == "Forward Deployed Product Manager"
+        assert data["company"] == "Glean"
+        assert "Job Description:" in data["raw_text"]
+
+    @patch("app.routers.jobs.fetch_linkedin_job_detail_via_apify")
+    async def test_backend_apify_fallback_unavailable(self, mock_fetch, client):
+        mock_fetch.side_effect = RuntimeError("Apify fallback failed with status 403.")
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/jobs/linkedin-apify-fallback",
+                json={"source_url": "https://www.linkedin.com/jobs/view/4370473767/"},
+            )
+
+        assert resp.status_code == 503
+        assert "fallback" in resp.json()["detail"].lower()

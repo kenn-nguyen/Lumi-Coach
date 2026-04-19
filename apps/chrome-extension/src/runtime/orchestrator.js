@@ -1,5 +1,7 @@
 import { SESSION_STATUS } from "./constants.js";
+import { runApifyLinkedInFallback } from "./apify.js";
 import { extractJsonFromText, extractPrompt3PayloadFromText } from "./json.js";
+import { evaluateJobDescriptionGuardrail } from "./job-guardrail.js";
 import {
   renderPrompt1,
   renderPrompt2,
@@ -10,6 +12,7 @@ import { validateResumeData } from "./validation.js";
 import {
   buildPreviewUrl,
   cloneResume,
+  fetchBackendApifyLinkedInFallback,
   fetchFeatureConfig,
   enableContentGenerationFeatures,
   fetchResumeById,
@@ -21,12 +24,15 @@ import {
   uploadJobDescription,
 } from "./api.js";
 import { logError, logInfo } from "./log.js";
+import { logWarn } from "./log.js";
 import {
+  getExtensionState,
   getUserAssets,
   setExtensionState,
   setStoryboardAsset,
   upsertHistoryEntry,
 } from "./storage.js";
+import { captureExtensionEvent } from "./analytics.js";
 import { getActiveLlmProfile } from "./llm/profiles.js";
 import { runPrompt } from "./llm/runners.js";
 
@@ -54,6 +60,236 @@ async function getActiveLinkedInTabId(tabId) {
     );
   }
   return activeTab.id;
+}
+
+async function buildJobSnapshot(activeTabId, jobInput = null) {
+  const manualRawText = jobInput?.rawText?.trim();
+  if (manualRawText) {
+    const tab = await chrome.tabs.get(activeTabId).catch(() => null);
+    const pageUrl = tab?.url || "";
+    const jobIdMatch = pageUrl.match(/\/jobs\/view\/(\d+)/);
+    const sourceUrl =
+      jobInput?.sourceUrl?.trim() ||
+      (jobIdMatch
+        ? `${new URL(pageUrl).origin}/jobs/view/${jobIdMatch[1]}/`
+        : pageUrl);
+
+    return {
+      source: jobInput?.source || "manual_text",
+      sourceUrl,
+      title: jobInput?.title?.trim() || "",
+      company: jobInput?.company?.trim() || "",
+      location: jobInput?.location?.trim() || "",
+      datePosted: jobInput?.datePosted?.trim() || null,
+      extractedAt: new Date().toISOString(),
+      rawText: manualRawText,
+      diagnostics: {
+        source: jobInput?.source || "manual_text",
+        manualOverride: true,
+        rawTextLength: manualRawText.length,
+      },
+    };
+  }
+
+  return scrapeLinkedInJob(activeTabId);
+}
+
+async function getSourceUrlForTab(tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  return typeof tab?.url === "string" ? tab.url : "";
+}
+
+function hasExtensionApifyFallback(settings) {
+  return Boolean(settings?.enabled && settings?.apiToken);
+}
+
+function hasBackendApifyFallback(settings) {
+  return Boolean(settings?.enabled && !settings?.apiToken);
+}
+
+export function shouldAcceptLocalSnapshot({
+  snapshot,
+  guardrail,
+  isManualInput = false,
+}) {
+  if (isManualInput) return Boolean(guardrail?.is_job_description);
+  if (!guardrail?.is_job_description) return false;
+
+  if (snapshot?.readiness === "full_jd_ready") return true;
+
+  const localConfidence = snapshot?.quality?.confidence;
+  if (localConfidence === "high") return true;
+
+  if (localConfidence !== "medium") return false;
+
+  const descriptionLength = snapshot?.quality?.descriptionLength ?? 0;
+  const rawTextLength = snapshot?.rawText?.length ?? 0;
+  const guardrailConfidence = guardrail?.confidence;
+  const minimumLength = guardrailConfidence === "high" ? 900 : 1400;
+
+  return descriptionLength >= minimumLength && rawTextLength >= minimumLength;
+}
+
+function buildManualEntryRequiredError(reason = "") {
+  const detail = reason
+    ? ` ${reason}`
+    : "";
+  return new Error(
+    `This does not look like a usable job description yet. Paste the full job description manually to continue.${detail}`,
+  );
+}
+
+async function resolveValidatedJobSnapshot({
+  activeTabId,
+  jobInput,
+  activeLlmProfile,
+  systemPrompt,
+  apifyFallbackSettings,
+}) {
+  const isManualInput = Boolean(jobInput?.rawText?.trim());
+  const extensionApifyEnabled = hasExtensionApifyFallback(apifyFallbackSettings);
+  const backendApifyEnabled = hasBackendApifyFallback(apifyFallbackSettings);
+  const sourceUrlHint = isManualInput
+    ? jobInput?.sourceUrl?.trim() || (await getSourceUrlForTab(activeTabId))
+    : await getSourceUrlForTab(activeTabId);
+
+  let localSnapshot = null;
+  let localFailure = null;
+  let resolvedSourceUrlHint = sourceUrlHint;
+
+  try {
+    localSnapshot = await buildJobSnapshot(activeTabId, jobInput);
+  } catch (error) {
+    localFailure = error instanceof Error ? error : new Error(String(error));
+    if (
+      localFailure?.snapshot?.sourceUrl &&
+      typeof localFailure.snapshot.sourceUrl === "string"
+    ) {
+      resolvedSourceUrlHint = localFailure.snapshot.sourceUrl;
+    }
+    logWarn("Orchestrator", "Primary job extraction failed.", {
+      message: localFailure.message,
+      sourceUrlHint: resolvedSourceUrlHint,
+      isManualInput,
+    });
+  }
+
+  if (localSnapshot) {
+    if (typeof localSnapshot.sourceUrl === "string" && localSnapshot.sourceUrl) {
+      resolvedSourceUrlHint = localSnapshot.sourceUrl;
+    }
+    const guardrail = await evaluateJobDescriptionGuardrail(
+      localSnapshot,
+      activeLlmProfile,
+      systemPrompt,
+    );
+    localSnapshot.diagnostics = {
+      ...(localSnapshot.diagnostics || {}),
+      guardrail,
+    };
+    if (shouldAcceptLocalSnapshot({
+      snapshot: localSnapshot,
+      guardrail,
+      isManualInput,
+    })) {
+      return localSnapshot;
+    }
+
+    logInfo("Orchestrator", "Primary extraction did not meet acceptance threshold.", {
+      source: localSnapshot.source,
+      localConfidence: localSnapshot?.quality?.confidence || "unknown",
+      confidence: guardrail.confidence,
+      reason: guardrail.reason,
+    });
+
+    if (isManualInput) {
+      throw buildManualEntryRequiredError(guardrail.reason);
+    }
+  }
+
+  if (extensionApifyEnabled && resolvedSourceUrlHint) {
+    try {
+      const apifySnapshot = await runApifyLinkedInFallback(
+        resolvedSourceUrlHint,
+        apifyFallbackSettings,
+      );
+      const apifyGuardrail = await evaluateJobDescriptionGuardrail(
+        apifySnapshot,
+        activeLlmProfile,
+        systemPrompt,
+      );
+      apifySnapshot.diagnostics = {
+        ...(apifySnapshot.diagnostics || {}),
+        guardrail: apifyGuardrail,
+        localFailure:
+          localFailure?.message ||
+          localSnapshot?.diagnostics?.guardrail?.reason ||
+          null,
+      };
+
+      if (apifyGuardrail.is_job_description) {
+        return apifySnapshot;
+      }
+
+      logInfo("Orchestrator", "Apify fallback failed JD guardrail.", {
+        confidence: apifyGuardrail.confidence,
+        reason: apifyGuardrail.reason,
+      });
+      throw buildManualEntryRequiredError(apifyGuardrail.reason);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logWarn("Orchestrator", "Extension Apify fallback failed.", {
+        message,
+        sourceUrlHint: resolvedSourceUrlHint,
+      });
+      throw buildManualEntryRequiredError(message);
+    }
+  }
+
+  if (backendApifyEnabled && resolvedSourceUrlHint) {
+    try {
+      const backendApifySnapshot =
+        await fetchBackendApifyLinkedInFallback(resolvedSourceUrlHint);
+      const backendApifyGuardrail = await evaluateJobDescriptionGuardrail(
+        backendApifySnapshot,
+        activeLlmProfile,
+        systemPrompt,
+      );
+      backendApifySnapshot.diagnostics = {
+        ...(backendApifySnapshot.diagnostics || {}),
+        guardrail: backendApifyGuardrail,
+        localFailure:
+          localFailure?.message ||
+          localSnapshot?.diagnostics?.guardrail?.reason ||
+          null,
+      };
+
+      if (backendApifyGuardrail.is_job_description) {
+        return backendApifySnapshot;
+      }
+
+      logInfo("Orchestrator", "Backend Apify fallback failed JD guardrail.", {
+        confidence: backendApifyGuardrail.confidence,
+        reason: backendApifyGuardrail.reason,
+      });
+      throw buildManualEntryRequiredError(backendApifyGuardrail.reason);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logWarn("Orchestrator", "Backend Apify fallback failed.", {
+        message,
+        sourceUrlHint: resolvedSourceUrlHint,
+      });
+      throw buildManualEntryRequiredError(message);
+    }
+  }
+
+  if (localFailure) {
+    throw buildManualEntryRequiredError(localFailure.message);
+  }
+
+  throw buildManualEntryRequiredError(
+    localSnapshot?.diagnostics?.guardrail?.reason || "",
+  );
 }
 
 function toResumeSource(resumePayload) {
@@ -530,6 +766,7 @@ async function resolveBaseResumeId(storedResumeId) {
 export async function generateResumeForLinkedInJob(
   tabId,
   prompt1CustomInstruction = "",
+  jobInput = null,
 ) {
   logInfo("Orchestrator", "Generate flow started.", { tabId });
   logInfo("Orchestrator", "Loading local assets.");
@@ -539,14 +776,24 @@ export async function generateResumeForLinkedInJob(
     systemPromptTemplateAsset,
     llmSettings,
     customFeatureEnabled,
+    apifyFallbackSettings,
   } = await getUserAssets();
   const activeLlmProfile = getActiveLlmProfile(llmSettings);
   const systemPrompt = systemPromptTemplateAsset?.content?.trim() || "";
+  const currentExtensionState = await getExtensionState();
+  const runId = currentExtensionState?.sessionId ?? null;
 
   const activeTabId = await getActiveLinkedInTabId(tabId);
   logInfo("Orchestrator", "Using active LinkedIn tab.", { activeTabId });
-  const jobSnapshot = await scrapeLinkedInJob(activeTabId);
-  logInfo("Orchestrator", "LinkedIn scrape completed.", {
+  const jobSnapshot = await resolveValidatedJobSnapshot({
+    activeTabId,
+    jobInput,
+    activeLlmProfile,
+    systemPrompt,
+    apifyFallbackSettings,
+  });
+  logInfo("Orchestrator", "Job extraction completed.", {
+    source: jobSnapshot.source,
     sourceUrl: jobSnapshot.sourceUrl,
     title: jobSnapshot.title,
     company: jobSnapshot.company,
@@ -554,6 +801,15 @@ export async function generateResumeForLinkedInJob(
   });
   logInfo("LinkedInScrape", "LinkedIn scrape output.", {
     jobSnapshot,
+  });
+  await captureExtensionEvent("scrape_source_selected", {
+    surface: "run_view",
+    run_id: runId,
+    source: jobSnapshot.source,
+    source_url: jobSnapshot.sourceUrl,
+    readiness: jobSnapshot.readiness ?? null,
+    scrape_confidence: jobSnapshot?.quality?.confidence ?? null,
+    jd_length: jobSnapshot.rawText?.length ?? 0,
   });
 
   logInfo("Orchestrator", "Resolving base resume.");
@@ -578,7 +834,14 @@ export async function generateResumeForLinkedInJob(
     throw new Error("Job upload response did not include a job id.");
   }
   await setExtensionState({
-    sessionId: crypto.randomUUID(),
+    sourceTabId: activeTabId,
+    activeRunJob: {
+      title: jobSnapshot.title,
+      company: jobSnapshot.company,
+      location: jobSnapshot.location ?? "",
+      datePosted: jobSnapshot.datePosted ?? null,
+      sourceUrl: jobSnapshot.sourceUrl,
+    },
     status: SESSION_STATUS.scraped,
     llmProfileId: activeLlmProfile.id,
     llmProfileLabel: activeLlmProfile.label,
@@ -586,6 +849,7 @@ export async function generateResumeForLinkedInJob(
     jobId,
     originalResumeId: baseResumeId,
     tailoredResumeId: null,
+    previewUrl: null,
     jobContextLinked: false,
     prompt1Result: null,
     prompt2Result: null,
@@ -653,6 +917,12 @@ export async function generateResumeForLinkedInJob(
   logPromptDebug("Prompt 1", "input", prompt1);
 
   logInfo("Orchestrator", "Running Prompt 1.");
+  await captureExtensionEvent("prompt_stage_started", {
+    surface: "run_view",
+    run_id: runId,
+    stage: 1,
+    stage_label: "analyze_jd",
+  });
   const prompt1Run = await runPrompt(prompt1, {
     profile: activeLlmProfile,
     promptLabel: "Prompt 1",
@@ -660,6 +930,13 @@ export async function generateResumeForLinkedInJob(
   });
   if (prompt1Run.status !== "success") {
     logError("Orchestrator", "Prompt 1 failed.", prompt1Run);
+    await captureExtensionEvent("prompt_stage_failed", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 1,
+      stage_label: "analyze_jd",
+      error_message: prompt1Run.message ?? "Prompt 1 failed.",
+    });
     throw new Error(`Prompt 1 failed: ${prompt1Run.message}`);
   }
   logInfo("Orchestrator", "Parsing Prompt 1 output.");
@@ -671,11 +948,23 @@ export async function generateResumeForLinkedInJob(
     status: SESSION_STATUS.prompt1Done,
     resumeSource: currentResume,
   });
+  await captureExtensionEvent("prompt_stage_succeeded", {
+    surface: "run_view",
+    run_id: runId,
+    stage: 1,
+    stage_label: "analyze_jd",
+  });
 
   logInfo("Orchestrator", "Rendering Prompt 2.");
   const prompt2 = await renderPrompt2(promptContext, activeLlmProfile);
   logPromptDebug("Prompt 2", "input", prompt2);
   logInfo("Orchestrator", "Running Prompt 2.");
+  await captureExtensionEvent("prompt_stage_started", {
+    surface: "run_view",
+    run_id: runId,
+    stage: 2,
+    stage_label: "strategize_positioning",
+  });
   const prompt2Run = await runPrompt(prompt2, {
     profile: activeLlmProfile,
     promptLabel: "Prompt 2",
@@ -683,6 +972,13 @@ export async function generateResumeForLinkedInJob(
   });
   if (prompt2Run.status !== "success") {
     logError("Orchestrator", "Prompt 2 failed.", prompt2Run);
+    await captureExtensionEvent("prompt_stage_failed", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 2,
+      stage_label: "strategize_positioning",
+      error_message: prompt2Run.message ?? "Prompt 2 failed.",
+    });
     throw new Error(`Prompt 2 failed: ${prompt2Run.message}`);
   }
   logInfo("Orchestrator", "Parsing Prompt 2 output.");
@@ -693,11 +989,23 @@ export async function generateResumeForLinkedInJob(
     prompt2Result,
     status: SESSION_STATUS.prompt2Done,
   });
+  await captureExtensionEvent("prompt_stage_succeeded", {
+    surface: "run_view",
+    run_id: runId,
+    stage: 2,
+    stage_label: "strategize_positioning",
+  });
 
   logInfo("Orchestrator", "Rendering Prompt 3.");
   const prompt3 = await renderPrompt3(promptContext, activeLlmProfile);
   logPromptDebug("Prompt 3", "input", prompt3);
   logInfo("Orchestrator", "Running Prompt 3.");
+  await captureExtensionEvent("prompt_stage_started", {
+    surface: "run_view",
+    run_id: runId,
+    stage: 3,
+    stage_label: "write_tailored_resume",
+  });
   const prompt3Run = await runPrompt(prompt3, {
     profile: activeLlmProfile,
     promptLabel: "Prompt 3",
@@ -713,12 +1021,26 @@ export async function generateResumeForLinkedInJob(
   await setExtensionState({ prompt3Raw, status: SESSION_STATUS.prompt3Done });
   if (prompt3Run.status !== "success") {
     logError("Orchestrator", "Prompt 3 failed.", prompt3Run);
+    await captureExtensionEvent("prompt_stage_failed", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 3,
+      stage_label: "write_tailored_resume",
+      error_message: prompt3Run.message ?? "Prompt 3 failed.",
+    });
     throw new Error(`Prompt 3 failed: ${prompt3Run.message}`);
   }
   if (prompt3Run.validationError) {
     logError("Orchestrator", "Prompt 3 failed validation after repair.", {
       validationError: prompt3Run.validationError,
       conversationUrl: prompt3Run.conversationUrl ?? null,
+    });
+    await captureExtensionEvent("prompt_stage_failed", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 3,
+      stage_label: "write_tailored_resume",
+      error_message: prompt3Run.validationError,
     });
     throw new Error(`Prompt 3 failed: ${prompt3Run.validationError}`);
   }
@@ -783,10 +1105,23 @@ export async function generateResumeForLinkedInJob(
     logError("Orchestrator", "Prompt 3 validation failed.", {
       validationErrors,
     });
+    await captureExtensionEvent("prompt_stage_failed", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 3,
+      stage_label: "write_tailored_resume",
+      error_message: validationErrors.join(" | "),
+    });
     throw new Error(
       `Prompt 3 produced invalid ResumeData: ${validationErrors.join(" | ")}`,
     );
   }
+  await captureExtensionEvent("prompt_stage_succeeded", {
+    surface: "run_view",
+    run_id: runId,
+    stage: 3,
+    stage_label: "write_tailored_resume",
+  });
 
   try {
     logInfo("Orchestrator", "Patching generated resume.");
@@ -809,7 +1144,10 @@ export async function generateResumeForLinkedInJob(
       datePosted: jobSnapshot.datePosted ?? null,
       generatedAt: new Date().toISOString(),
       resumeId,
-      previewUrl: await buildPreviewUrl(resumeId),
+      previewUrl: await buildPreviewUrl(resumeId, {
+        runId,
+        source: "extension",
+      }),
       status: "patch_failed",
     });
     throw error;
@@ -851,7 +1189,10 @@ export async function generateResumeForLinkedInJob(
       datePosted: jobSnapshot.datePosted ?? null,
       generatedAt: new Date().toISOString(),
       resumeId,
-      previewUrl: await buildPreviewUrl(resumeId),
+      previewUrl: await buildPreviewUrl(resumeId, {
+        runId,
+        source: "extension",
+      }),
       status: "job_context_link_failed",
     });
     throw error;
@@ -900,8 +1241,15 @@ export async function generateResumeForLinkedInJob(
     }
   }
 
-  const previewUrl = await buildPreviewUrl(resumeId);
-  await setExtensionState({ status: SESSION_STATUS.patched, patchError: null });
+  const previewUrl = await buildPreviewUrl(resumeId, {
+    runId,
+    source: "extension",
+  });
+  await setExtensionState({
+    status: SESSION_STATUS.patched,
+    patchError: null,
+    previewUrl,
+  });
   logInfo("Orchestrator", "Opening generated resume preview.", {
     resumeId,
     previewUrl,
@@ -916,6 +1264,13 @@ export async function generateResumeForLinkedInJob(
     resumeId,
     previewUrl,
     status: "generated",
+  });
+  await captureExtensionEvent("tailor_completed", {
+    surface: "run_view",
+    run_id: runId,
+    resume_id: resumeId,
+    job_id: jobId,
+    source_url: jobSnapshot.sourceUrl,
   });
   await openPreviewTab(previewUrl);
 

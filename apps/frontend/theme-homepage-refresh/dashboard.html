@@ -7,17 +7,70 @@
     <link rel="stylesheet" href="./tokens.css" />
     <link rel="stylesheet" href="./preview-shared.css" />
     <style>
-      .dashboard-shell { min-height: calc(100vh - 64px); }
-      .dash-header-actions { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
-      .dash-master { min-width: 15rem; display:flex; align-items:center; gap:10px; padding: 12px 16px; }
-      .dash-master .icon { width:20px;height:20px;border:1px solid #121826;background:#2453ff;color:white;display:grid;place-items:center;font-size:10px;font-weight:700; }
-      .dash-main { display:flex; flex-direction:column; gap:24px; }
-      .dash-panel { border:1px solid var(--thr-border-strong); background:rgba(255,255,255,0.92); }
-      .dash-toolbar { display:flex; justify-content:space-between; gap:18px; align-items:center; padding:20px 22px; border-bottom:1px solid var(--thr-border-soft); }
-      .dash-toolbar-controls { display:flex; gap:12px; flex-wrap:wrap; }
-      .dash-empty { padding:32px 22px; }
-      .dash-right { display:flex; align-items:center; gap:10px; margin-left:auto; }
-      @media (max-width: 900px) { .dash-toolbar { flex-direction:column; align-items:flex-start; } }
+      .dashboard-shell {
+        min-height: calc(100vh - 64px);
+      }
+      .dash-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+      .dash-master {
+        min-width: 15rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+      }
+      .dash-master .icon {
+        width: 20px;
+        height: 20px;
+        border: 1px solid #121826;
+        background: #2453ff;
+        color: white;
+        display: grid;
+        place-items: center;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .dash-main {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .dash-panel {
+        border: 1px solid var(--thr-border-strong);
+        background: rgba(255, 255, 255, 0.92);
+      }
+      .dash-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: center;
+        padding: 20px 22px;
+        border-bottom: 1px solid var(--thr-border-soft);
+      }
+      .dash-toolbar-controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .dash-empty {
+        padding: 32px 22px;
+      }
+      .dash-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto;
+      }
+      @media (max-width: 900px) {
+        .dash-toolbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
     </style>
   </head>
   <body class="thr-preview-page">
@@ -31,11 +84,13 @@
           <div class="thr-pill-action dash-master">
             <div class="icon">M</div>
             <div>
-              <div style="font-weight:700;">Master Resume</div>
+              <div style="font-weight: 700">Master Resume</div>
               <div class="thr-mono">Ready</div>
             </div>
           </div>
-          <a class="thr-pill-action thr-pill-action--primary" href="./tailor.html">Tailor For Job</a>
+          <a class="thr-pill-action thr-pill-action--primary" href="./tailor.html"
+            >Tailor For Job</a
+          >
           <a class="thr-pill-action" href="./settings.html">Settings</a>
         </div>
       </div>
@@ -43,55 +98,74 @@
         <div class="dash-panel">
           <div class="dash-toolbar">
             <div>
-              <h2 style="margin:0;font-family:'Iowan Old Style','Times New Roman',serif;font-size:34px;letter-spacing:-0.04em;">Tailored Resumes</h2>
-              <div class="thr-mono" style="margin-top:8px;">3 / 3 resumes</div>
+              <h2
+                style="
+                  margin: 0;
+                  font-family: 'Iowan Old Style', 'Times New Roman', serif;
+                  font-size: 34px;
+                  letter-spacing: -0.04em;
+                "
+              >
+                Tailored Resumes
+              </h2>
+              <div class="thr-mono" style="margin-top: 8px">3 / 3 resumes</div>
             </div>
             <div class="dash-toolbar-controls">
-              <input class="thr-input" value="Search" readonly style="min-width:220px;" />
-              <select class="thr-select" style="min-width:220px;"><option>Recently Updated</option></select>
+              <input class="thr-input" value="Search" readonly style="min-width: 220px" />
+              <select class="thr-select" style="min-width: 220px">
+                <option>Recently Updated</option>
+              </select>
             </div>
           </div>
           <div class="thr-dashboard-list">
             <div class="thr-dashboard-row">
-              <div class="thr-monogram" style="background:#2453ff;color:white;">KN</div>
+              <div class="thr-monogram" style="background: #2453ff; color: white">KN</div>
               <div>
                 <h3 class="thr-row-title">KENN NGUYEN - MASTER Resume.json</h3>
-                <div class="thr-mono" style="margin-top:6px;">Edited Apr 16, 2026</div>
+                <div class="thr-mono" style="margin-top: 6px">Edited Apr 16, 2026</div>
               </div>
               <div class="dash-right">
                 <span class="thr-status thr-status--green">Ready</span>
-                <span class="thr-pill-action" style="padding:8px 12px;">Open</span>
+                <span class="thr-pill-action" style="padding: 8px 12px">Open</span>
               </div>
             </div>
             <div class="thr-dashboard-row">
-              <div class="thr-monogram" style="background:#dfe6ff;color:#17308c;">RP</div>
+              <div class="thr-monogram" style="background: #dfe6ff; color: #17308c">RP</div>
               <div>
                 <h3 class="thr-row-title">Ramp - Product Manager | Generalist (All Levels)</h3>
-                <div class="thr-mono" style="margin-top:6px;">Edited Apr 16, 2026</div>
+                <div class="thr-mono" style="margin-top: 6px">Edited Apr 16, 2026</div>
               </div>
               <div class="dash-right">
                 <span class="thr-status thr-status--green">Ready</span>
-                <span class="thr-pill-action" style="padding:8px 12px;">Open</span>
+                <span class="thr-pill-action" style="padding: 8px 12px">Open</span>
               </div>
             </div>
             <div class="thr-dashboard-row">
-              <div class="thr-monogram" style="background:#f5dddd;color:#8c1d1d;">PM</div>
+              <div class="thr-monogram" style="background: #f5dddd; color: #8c1d1d">PM</div>
               <div>
                 <h3 class="thr-row-title">Product Manager @ Ramp</h3>
-                <div class="thr-mono" style="margin-top:6px;">Edited Apr 16, 2026</div>
+                <div class="thr-mono" style="margin-top: 6px">Edited Apr 16, 2026</div>
               </div>
               <div class="dash-right">
                 <span class="thr-status thr-status--green">Ready</span>
-                <span class="thr-pill-action" style="padding:8px 12px;">Open</span>
+                <span class="thr-pill-action" style="padding: 8px 12px">Open</span>
               </div>
             </div>
           </div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--thr-border-soft);padding-top:12px;">
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--thr-border-soft);
+            padding-top: 12px;
+          "
+        >
           <a class="thr-pill-action" href="./preview.html">Back To Theme Hub</a>
           <div class="thr-mono">Brand-led screen. Same dashboard structure, sharper system.</div>
         </div>
       </div>
     </div>
   </body>
-  </html>
+</html>

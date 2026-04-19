@@ -148,7 +148,10 @@
       linear-gradient(rgba(36, 83, 255, 0.05) 1px, transparent 1px),
       linear-gradient(90deg, rgba(36, 83, 255, 0.05) 1px, transparent 1px),
       linear-gradient(180deg, #f9f6ef 0%, var(--background) 100%);
-    background-size: 44px 44px, 44px 44px, auto;
+    background-size:
+      44px 44px,
+      44px 44px,
+      auto;
   }
   button {
     font-family: var(--font-sans);
@@ -161,12 +164,14 @@
       linear-gradient(rgba(36, 83, 255, 0.05) 1px, transparent 1px),
       linear-gradient(90deg, rgba(36, 83, 255, 0.05) 1px, transparent 1px),
       linear-gradient(180deg, #f9f6ef 0%, var(--background) 100%);
-    background-size: 44px 44px, 44px 44px, auto;
+    background-size:
+      44px 44px,
+      44px 44px,
+      auto;
   }
 
   .skin-page-work {
-    background:
-      linear-gradient(180deg, #faf7ef 0%, var(--background) 100%);
+    background: linear-gradient(180deg, #faf7ef 0%, var(--background) 100%);
   }
 
   .skin-shell {

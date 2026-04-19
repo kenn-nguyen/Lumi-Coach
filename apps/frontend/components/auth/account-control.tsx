@@ -5,6 +5,7 @@ import { signOut, useSession } from 'next-auth/react';
 import User from 'lucide-react/dist/esm/icons/user';
 import LogOut from 'lucide-react/dist/esm/icons/log-out';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
+import { broadcastSessionInvalidation } from '@/lib/auth/cross-tab-session';
 import { cn } from '@/lib/utils';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
@@ -71,9 +72,7 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
         >
           {initials || <User className="h-3 w-3" />}
         </span>
-        <span className="hidden max-w-[12rem] truncate md:inline">
-          {user.name || user.email}
-        </span>
+        <span className="hidden max-w-[12rem] truncate md:inline">{user.name || user.email}</span>
         <ChevronDown className="h-3.5 w-3.5" />
       </button>
 
@@ -94,6 +93,7 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
             type="button"
             onClick={() => {
               captureEvent(POSTHOG_EVENTS.AUTH_SIGN_OUT_CLICKED);
+              broadcastSessionInvalidation();
               signOut({ callbackUrl: '/sign-in' });
             }}
             className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-secondary"

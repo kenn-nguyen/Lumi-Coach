@@ -7,7 +7,9 @@ import { useSession } from 'next-auth/react';
 import { captureEvent, POSTHOG_EVENTS, registerAnalyticsContext } from '@/lib/analytics/posthog';
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim() ?? '';
-const POSTHOG_HOST = (process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || 'https://us.i.posthog.com').replace(/\/$/, '');
+const POSTHOG_HOST = (
+  process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || 'https://us.i.posthog.com'
+).replace(/\/$/, '');
 
 function buildCurrentPath(pathname: string, search: string) {
   return search ? `${pathname}?${search}` : pathname;
@@ -26,8 +28,9 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loaded || !POSTHOG_KEY) return;
+    registerAnalyticsContext(pathname);
     captureEvent(POSTHOG_EVENTS.PAGEVIEW, { $current_url: currentPath });
-  }, [currentPath, loaded]);
+  }, [currentPath, loaded, pathname]);
 
   useEffect(() => {
     if (!loaded || !POSTHOG_KEY) return;
@@ -36,6 +39,9 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       window.posthog?.identify?.(session.user.id, {
         email: session.user.email ?? null,
         name: session.user.name ?? null,
+      });
+      window.posthog?.register?.({
+        user_id: session.user.id,
       });
       return;
     }

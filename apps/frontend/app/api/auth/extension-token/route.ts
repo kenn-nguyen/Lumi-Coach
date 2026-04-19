@@ -13,16 +13,10 @@ export async function GET() {
 
   const secret = process.env.BACKEND_AUTH_SHARED_SECRET;
   if (!secret) {
-    return NextResponse.json(
-      { error: 'Missing BACKEND_AUTH_SHARED_SECRET' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Missing BACKEND_AUTH_SHARED_SECRET' }, { status: 500 });
   }
 
-  const configuredTtl = Number.parseInt(
-    process.env.EXTENSION_AUTH_TOKEN_TTL_SECONDS || '',
-    10
-  );
+  const configuredTtl = Number.parseInt(process.env.EXTENSION_AUTH_TOKEN_TTL_SECONDS || '', 10);
   const expiresInSeconds =
     Number.isFinite(configuredTtl) && configuredTtl > 0
       ? configuredTtl

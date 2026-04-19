@@ -52,7 +52,10 @@ interface ExperienceFormProps {
 }
 
 type PopoverType = 'original' | 'rewrite';
-const SortableBulletRow: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+const SortableBulletRow: React.FC<{ id: string; children: React.ReactNode }> = ({
+  id,
+  children,
+}) => {
   const [mounted, setMounted] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
@@ -112,9 +115,9 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
   const [isGeneratingByKey, setIsGeneratingByKey] = useState<Record<string, boolean>>({});
   const [showFormattingByKey, setShowFormattingByKey] = useState<Record<string, boolean>>({});
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
-  const [collapsedDescriptionsById, setCollapsedDescriptionsById] = useState<Record<number, boolean>>(
-    {}
-  );
+  const [collapsedDescriptionsById, setCollapsedDescriptionsById] = useState<
+    Record<number, boolean>
+  >({});
   const instructionTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const generatedBulletTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
@@ -149,7 +152,9 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
   }, [instructionByKey, activePopover]);
 
   useEffect(() => {
-    Object.values(generatedBulletTextareaRefs.current).forEach((element) => resizeTextarea(element));
+    Object.values(generatedBulletTextareaRefs.current).forEach((element) =>
+      resizeTextarea(element)
+    );
   }, [generatedBulletByKey, activePopover]);
 
   const normalizeBulletText = (value: string): string =>
@@ -208,7 +213,10 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
     return tokenScore * 0.55 + numberScore * 0.2 + verbScore * 0.15 + lengthRatio * 0.1;
   };
 
-  const findMatchingOriginalExperience = (item: Experience, experienceIndex: number): Experience | null =>
+  const findMatchingOriginalExperience = (
+    item: Experience,
+    experienceIndex: number
+  ): Experience | null =>
     originalExperienceById.get(item.id) ||
     originalData?.find(
       (originalItem) =>
@@ -728,10 +736,15 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                             >
                               {item.description?.map((desc, idx) => {
                                 const bulletPopoverKey = `${item.id}-${idx}`;
-                                const originalBullet = getOriginalBullet(item, experienceIndex, idx);
+                                const originalBullet = getOriginalBullet(
+                                  item,
+                                  experienceIndex,
+                                  idx
+                                );
                                 const isActive = activePopover?.key === bulletPopoverKey;
                                 const activeType = isActive ? activePopover.type : null;
-                                const showFormatting = showFormattingByKey[bulletPopoverKey] ?? false;
+                                const showFormatting =
+                                  showFormattingByKey[bulletPopoverKey] ?? false;
                                 const popover =
                                   isActive && activeType
                                     ? renderPopover(
@@ -745,7 +758,10 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                                     : null;
 
                                 return (
-                                  <SortableBulletRow key={bulletPopoverKey} id={`${item.id}:${idx}`}>
+                                  <SortableBulletRow
+                                    key={bulletPopoverKey}
+                                    id={`${item.id}:${idx}`}
+                                  >
                                     <div data-bullet-row className="space-y-2">
                                       <div className="flex items-center gap-2">
                                         <div className="flex-1">
@@ -754,10 +770,14 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                                             onChange={(html) =>
                                               handleDescriptionChange(item.id, idx, html)
                                             }
-                                            placeholder={t('builder.forms.experience.placeholders.description')}
+                                            placeholder={t(
+                                              'builder.forms.experience.placeholders.description'
+                                            )}
                                             minHeight="60px"
                                             showToolbar={showFormatting}
-                                            onToolbarClose={() => toggleFormatting(bulletPopoverKey)}
+                                            onToolbarClose={() =>
+                                              toggleFormatting(bulletPopoverKey)
+                                            }
                                           />
                                         </div>
                                         <div
@@ -781,7 +801,9 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                                             size="sm"
                                             onClick={() =>
                                               setOpenMenuKey((current) =>
-                                                current === bulletPopoverKey ? null : bulletPopoverKey
+                                                current === bulletPopoverKey
+                                                  ? null
+                                                  : bulletPopoverKey
                                               )
                                             }
                                             title="More actions"
@@ -796,7 +818,11 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                                                   type="button"
                                                   onClick={(event) => {
                                                     setOpenMenuKey(null);
-                                                    togglePopover(event, bulletPopoverKey, 'original');
+                                                    togglePopover(
+                                                      event,
+                                                      bulletPopoverKey,
+                                                      'original'
+                                                    );
                                                   }}
                                                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-secondary/60"
                                                 >
@@ -845,7 +871,8 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                             onClick={() => handleAddDescription(item.id)}
                             className="mt-1 h-auto w-auto justify-start rounded-none border-none bg-transparent px-0 py-0 text-xs font-semibold text-blue-700 shadow-none hover:bg-transparent hover:text-blue-800"
                           >
-                            <Plus className="w-3 h-3 mr-1" /> {t('builder.genericItemForm.actions.addPoint')}
+                            <Plus className="w-3 h-3 mr-1" />{' '}
+                            {t('builder.genericItemForm.actions.addPoint')}
                           </Button>
                         </>
                       )}

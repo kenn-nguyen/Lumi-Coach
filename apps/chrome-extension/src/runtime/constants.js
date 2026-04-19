@@ -5,6 +5,7 @@ export const DEFAULT_CHATGPT_TARGET_URL = 'https://chatgpt.com/?temporary-chat=t
 export const STORAGE_KEYS = {
   masterResumeContextAsset: 'masterResumeContextAsset',
   storyboardAsset: 'storyboardAsset',
+  apifyFallbackSettings: 'apifyFallbackSettings',
   prompt1TemplateAsset: 'prompt1TemplateAsset',
   prompt2TemplateAsset: 'prompt2TemplateAsset',
   prompt3TemplateAsset: 'prompt3TemplateAsset',
@@ -15,14 +16,19 @@ export const STORAGE_KEYS = {
   apiOrigin: 'apiOrigin',
   customFeatureEnabled: 'customFeatureEnabled',
   extensionAuth: 'extensionAuth',
+  onboardingProgress: 'onboardingProgress',
   extensionPendingAction: 'extensionPendingAction',
   extensionSession: 'extensionSession',
+  analyticsState: 'analyticsState',
   historyEntries: 'historyEntries',
   lastError: 'lastError',
 };
 
+export const APIFY_DEFAULT_LINKEDIN_ACTOR = 'apimaestro/linkedin-job-detail';
+
 export const SESSION_STATUS = {
   idle: 'idle',
+  starting: 'starting',
   scraped: 'scraped',
   prompt1Done: 'prompt1_done',
   prompt2Done: 'prompt2_done',

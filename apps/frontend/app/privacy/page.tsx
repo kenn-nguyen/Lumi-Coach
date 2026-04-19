@@ -1,9 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { createPageMetadata } from '@/lib/seo';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy | Lumi Coach',
-  description: 'Privacy Policy for the Lumi Coach web app and Chrome extension.',
+  ...createPageMetadata({
+    title: 'Privacy Policy',
+    description: 'Privacy Policy for the Lumi Coach web app and Chrome extension.',
+    path: '/privacy',
+    keywords: ['lumi coach privacy policy', 'chrome extension privacy policy'],
+  }),
 };
 
 const sections = [

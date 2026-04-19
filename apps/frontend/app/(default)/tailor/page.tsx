@@ -211,9 +211,7 @@ export default function TailorPage() {
       }
     }
 
-    const improveFailureMatch = errorMessage.match(
-      /^Improve failed with status \d+:\s*([\s\S]+)$/
-    );
+    const improveFailureMatch = errorMessage.match(/^Improve failed with status \d+:\s*([\s\S]+)$/);
     if (improveFailureMatch?.[1]) {
       return improveFailureMatch[1].trim();
     }

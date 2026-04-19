@@ -187,9 +187,7 @@ export const ProjectsForm: React.FC<ProjectsFormProps> = ({ data, onChange }) =>
                         title="Format"
                         className="h-8 w-8 rounded-full border-transparent bg-transparent px-0 text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground"
                       >
-                        <Type
-                          className={cn('h-3.5 w-3.5', showFormatting && 'text-primary')}
-                        />
+                        <Type className={cn('h-3.5 w-3.5', showFormatting && 'text-primary')} />
                       </Button>
                       <Button
                         variant="outline"

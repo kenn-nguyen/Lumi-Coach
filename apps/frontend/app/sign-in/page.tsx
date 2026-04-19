@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
@@ -5,11 +6,18 @@ import { signIn } from '@/auth-node';
 import { ExtensionLoginRequiredClient } from '@/components/auth/extension-login-required-client';
 import { GoogleSignInButton } from '@/components/auth/google-sign-in-button';
 import { SignInRedirectClient } from '@/components/auth/sign-in-redirect-client';
+import { createNoIndexMetadata } from '@/lib/seo';
+
+export const metadata: Metadata = createNoIndexMetadata(
+  'Sign In',
+  'Sign in to access your Lumi Coach workspace.'
+);
 
 type SignInPageProps = {
   searchParams?: Promise<{
     callbackUrl?: string;
     extensionId?: string;
+    reason?: string;
   }>;
 };
 
@@ -43,6 +51,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const callbackUrl = resolvedSearchParams?.callbackUrl || '/dashboard';
   const extensionId = resolvedSearchParams?.extensionId || '';
+  const reason = resolvedSearchParams?.reason || '';
   const sourceTabId = getSourceTabIdFromCallbackUrl(resolvedSearchParams?.callbackUrl);
 
   if (session?.user) {
@@ -68,7 +77,11 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
             </p>
             <h1 className="font-serif text-4xl tracking-[-0.04em] text-foreground">Sign in</h1>
             <p className="text-sm text-muted-foreground">
-              Continue with Google to access your resumes and generated documents.
+              {reason === 'signed-out'
+                ? 'You were signed out in another tab.'
+                : extensionId
+                  ? 'Continue with Google to return to the extension and resume tailoring this job.'
+                  : 'Continue with Google to access your resumes and generated documents.'}
             </p>
           </div>
 

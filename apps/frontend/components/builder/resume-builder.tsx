@@ -801,7 +801,7 @@ const ResumeBuilderContent = () => {
                   className={builderHeaderDownloadButtonClass}
                 >
                   <Download className="w-4 h-4" />
-                  {isDownloading ? t('common.generating') : t('common.download')}
+                  {isDownloading ? t('common.generating') : t('resumeViewer.downloadResume')}
                 </Button>
               )}
 
@@ -913,10 +913,11 @@ const ResumeBuilderContent = () => {
                       onClick={handleExportJson}
                       disabled={!resumeId}
                       className={builderHeaderButtonClass}
-                      title="Export JSON"
-                      aria-label="Export JSON"
+                      title="Download JSON"
+                      aria-label="Download JSON"
                     >
                       <DownloadIcon className="w-4 h-4" />
+                      <span>JSON</span>
                     </Button>
                     <Button
                       variant="outline"

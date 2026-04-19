@@ -141,7 +141,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // Show loading state during SSR
   if (!isMounted) {
-      return (
+    return (
       <div className={cn('space-y-1', className)}>
         {showToolbar ? (
           <div className="h-10 rounded-xl border border-border bg-white p-1 shadow-xs" />
@@ -165,11 +165,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   return (
     <div className={cn('space-y-1', className)}>
       {showToolbar ? (
-        <RichTextToolbar
-          editor={editor}
-          onLinkClick={handleLinkClick}
-          onClose={onToolbarClose}
-        />
+        <RichTextToolbar editor={editor} onLinkClick={handleLinkClick} onClose={onToolbarClose} />
       ) : null}
       <div
         className={cn(

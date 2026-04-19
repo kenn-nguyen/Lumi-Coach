@@ -4,16 +4,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  ArrowUp,
-  ArrowDown,
-  Trash2,
-  Eye,
-  EyeOff,
-  Pencil,
-  Check,
-  X,
-} from 'lucide-react';
+import { ArrowUp, ArrowDown, Trash2, Eye, EyeOff, Pencil, Check, X } from 'lucide-react';
 import type { SectionMeta } from '@/components/dashboard/resume-component';
 import { useTranslations } from '@/lib/i18n';
 
@@ -99,8 +90,8 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         isPendingRemoval
           ? 'border-dashed border-orange-300 bg-[rgba(255,249,240,0.92)]'
           : isHidden
-          ? 'border-dashed border-gray-300 bg-[rgba(255,255,255,0.72)] opacity-70'
-          : 'border-border bg-[rgba(255,253,248,0.92)]'
+            ? 'border-dashed border-gray-300 bg-[rgba(255,255,255,0.72)] opacity-70'
+            : 'border-border bg-[rgba(255,253,248,0.92)]'
       }`}
     >
       {/* Section Header */}

@@ -22,6 +22,7 @@ import { useFileUpload, formatBytes } from '@/hooks/use-file-upload';
 import { getUploadUrl } from '@/lib/api/client';
 import { useTranslations } from '@/lib/i18n';
 import { retryProcessing } from '@/lib/api/resume';
+import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 interface ResumeUploadDialogProps {
   trigger?: React.ReactNode | null;
@@ -76,6 +77,12 @@ export function ResumeUploadDialog({
     fileId?: string;
     message: string;
   }) => {
+    if (isMaster) {
+      captureEvent(POSTHOG_EVENTS.MASTER_RESUME_UPLOAD_SUCCEEDED, {
+        resume_id: resumeId,
+        is_master: true,
+      });
+    }
     setUploadFeedback({ type: 'success', message });
     setFailedResumeId(null);
 

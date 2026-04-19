@@ -53,9 +53,7 @@ export function CoverLetterPreview({
       )}
     >
       {/* Letter Content */}
-      <div
-        className={cn('p-8 md:p-12', pageSize === 'A4' ? 'min-h-[297mm]' : 'min-h-[11in]')}
-      >
+      <div className={cn('p-8 md:p-12', pageSize === 'A4' ? 'min-h-[297mm]' : 'min-h-[11in]')}>
         {/* Header - Personal Info */}
         <header className="mb-8 border-b-2 border-black pb-4">
           <h1 className="font-serif text-2xl font-bold tracking-tight">

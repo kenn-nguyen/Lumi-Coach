@@ -45,8 +45,8 @@ export const DraggableSectionWrapper: React.FC<DraggableSectionWrapperProps> = (
   return (
     <div ref={setNodeRef} style={style} className="group/section relative">
       {/* Drag Handle */}
-      {!disabled && (
-        mounted ? (
+      {!disabled &&
+        (mounted ? (
           <div
             {...attributes}
             {...listeners}
@@ -62,8 +62,7 @@ export const DraggableSectionWrapper: React.FC<DraggableSectionWrapperProps> = (
           >
             <GripVertical className="h-4 w-4 text-transparent" />
           </div>
-        )
-      )}
+        ))}
 
       {/* Section Content */}
       <div>{children}</div>

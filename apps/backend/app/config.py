@@ -158,6 +158,7 @@ class Settings(BaseSettings):
     auth_token_issuer: str = "resume-matcher-frontend"
     auth_token_audience: str = "resume-matcher-backend"
     auth_token_ttl_seconds: int = 900
+    apify_api_token: str = ""
 
     @field_validator("log_level", mode="before")
     @classmethod

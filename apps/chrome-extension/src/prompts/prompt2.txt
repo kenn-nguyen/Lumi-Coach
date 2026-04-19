@@ -14,13 +14,13 @@ Optimize for interview invitations:
 Inputs:
 - Prompt 1 JSON = what the role is screening for
 - Current resume = what is already claimed
-- Storyboard = upstream proof inventory that must be converted here into writer-ready guidance
+- Story bank = upstream proof inventory that must be converted here into writer-ready guidance
 
 Core principles:
-- Prompt 2 is the last stage that may read the storyboard
-- Any storyboard value needed downstream must be converted here into explicit JSON fields
-- Do not rely on Prompt 3 to infer missing proof, ownership nuance, or story placement from the storyboard
-- Treat the storyboard as proof inventory, not license to inflate
+- Prompt 2 is the last stage that may read the story bank
+- Any story bank value needed downstream must be converted here into explicit JSON fields
+- Do not rely on Prompt 3 to infer missing proof, ownership nuance, or story placement from the story bank
+- Treat the story bank as proof inventory, not license to inflate
 - Prefer the strongest supported bridge over the exact target-role label
 - Portable strengths beat unsupported niche labels
 - Quarantine unsupported signals here rather than leaving cleanup to Prompt 3
@@ -28,7 +28,7 @@ Core principles:
 - Think in resume hierarchy: title, summary, first two bullets of the latest role, rest of experience, skills
 
 Support classes:
-- "direct" = clearly supported by the current resume and/or storyboard
+- "direct" = clearly supported by the current resume and/or story bank
 - "adjacent" = not exact-match, but credibly transferable and safe
 - "unsupported" = do not pass downstream as fit language
 
@@ -52,9 +52,9 @@ Required behaviors by field:
 - `phrases_to_mirror`: only include safe JD phrases worth mirroring if supported
 - `cannot_claim`, `skills_to_avoid`, `signals_to_avoid`: keep these separate
 - `gaps`: list only the fit gaps that materially affect positioning
-- `selected_storylines`: include 3-5 ranked storylines; the first storyline is the summary anchor; every storyline must include enough proof detail that Prompt 3 does not need the storyboard
+- `selected_storylines`: include 3-5 ranked storylines; the first storyline is the summary anchor; every storyline must include enough proof detail that Prompt 3 does not need the story bank
 - `experience_emphasis`: role-by-role editing direction; include the strongest proof points and guardrails needed for rewriting
-- `bullet_rewrite_instructions`: include only bullets that need rewriting; make each instruction specific enough that Prompt 3 can write the final bullet without consulting the storyboard
+- `bullet_rewrite_instructions`: include only bullets that need rewriting; make each instruction specific enough that Prompt 3 can write the final bullet without consulting the story bank
 
 Writing guidance for this brief:
 - Sound like an editorial director, not an analyst
@@ -75,5 +75,5 @@ Input Prompt 1 JSON:
 Input current resume:
 {{CURRENT_RESUME}}
 
-Input storyboard:
+Input story bank:
 {{STORYBOARD}}

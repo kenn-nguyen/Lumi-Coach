@@ -14,13 +14,8 @@ type BackendTokenPayload = {
 const encoder = new TextEncoder();
 
 function base64UrlEncode(value: string | Uint8Array): string {
-  const buffer =
-    typeof value === 'string' ? Buffer.from(value, 'utf8') : Buffer.from(value);
-  return buffer
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
+  const buffer = typeof value === 'string' ? Buffer.from(value, 'utf8') : Buffer.from(value);
+  return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function signSegment(data: string, secret: string): string {

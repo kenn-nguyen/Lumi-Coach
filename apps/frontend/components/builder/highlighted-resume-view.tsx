@@ -32,12 +32,8 @@ export function HighlightedResumeView({
       {/* Header */}
       <div className="flex min-h-[72px] items-center gap-2 border-b border-[#ddd5c4] bg-[#f6f1e6] px-4 py-3">
         <FileUser className="w-4 h-4 text-gray-600 shrink-0" />
-        <h3 className="font-mono text-sm font-bold uppercase text-gray-700">
-          {resolvedTitle}
-        </h3>
-        <span className="ml-2 text-sm text-gray-500">
-          {resolvedSubtitle}
-        </span>
+        <h3 className="font-mono text-sm font-bold uppercase text-gray-700">{resolvedTitle}</h3>
+        <span className="ml-2 text-sm text-gray-500">{resolvedSubtitle}</span>
       </div>
 
       {/* Content */}

@@ -1,6 +1,6 @@
 body {
   margin: 0;
-  font-family: "SF Pro Display", "Inter", "Helvetica Neue", sans-serif;
+  font-family: 'SF Pro Display', 'Inter', 'Helvetica Neue', sans-serif;
   color: var(--thr-text-primary);
 }
 
@@ -11,12 +11,14 @@ body {
     linear-gradient(rgba(36, 83, 255, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(36, 83, 255, 0.05) 1px, transparent 1px),
     linear-gradient(180deg, var(--thr-bg-grid) 0%, var(--thr-bg-app) 100%);
-  background-size: 44px 44px, 44px 44px, auto;
+  background-size:
+    44px 44px,
+    44px 44px,
+    auto;
 }
 
 .thr-mode-work {
-  background:
-    linear-gradient(180deg, #faf7ef 0%, #f2eee4 100%);
+  background: linear-gradient(180deg, #faf7ef 0%, #f2eee4 100%);
 }
 
 .thr-shell,
@@ -143,7 +145,7 @@ body {
 
 .thr-brand-title {
   margin: 0;
-  font-family: "Iowan Old Style", "Times New Roman", serif;
+  font-family: 'Iowan Old Style', 'Times New Roman', serif;
   font-size: clamp(34px, 4vw, 56px);
   line-height: 0.95;
   letter-spacing: -0.04em;
@@ -180,7 +182,7 @@ body {
 
 .thr-section-header h2 {
   margin: 0;
-  font-family: "Iowan Old Style", "Times New Roman", serif;
+  font-family: 'Iowan Old Style', 'Times New Roman', serif;
   font-size: 38px;
   letter-spacing: -0.04em;
 }
@@ -282,7 +284,7 @@ body {
 
 .thr-row-title {
   margin: 0;
-  font-family: "Iowan Old Style", "Times New Roman", serif;
+  font-family: 'Iowan Old Style', 'Times New Roman', serif;
   font-size: 28px;
   letter-spacing: -0.03em;
 }

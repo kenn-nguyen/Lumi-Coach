@@ -169,7 +169,11 @@ export function PaginatedPreview({
             onCheckedChange={toggleCompactMode}
             label={t('preview.fitToOnePage')}
             display="inline"
-            className={!isCalculating && pages.length > 1 ? '[&_span:last-child]:text-blue-700 [&_span:last-child]:font-bold' : ''}
+            className={
+              !isCalculating && pages.length > 1
+                ? '[&_span:last-child]:text-blue-700 [&_span:last-child]:font-bold'
+                : ''
+            }
           />
           <FileText className="w-4 h-4" />
           <span className="font-mono text-xs uppercase">

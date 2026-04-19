@@ -109,7 +109,10 @@ export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
   return (
     <div className="fixed inset-0 z-50">
       {/* Overlay */}
-      <div className="fixed inset-0 bg-[rgba(18,24,38,0.32)] backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        className="fixed inset-0 bg-[rgba(18,24,38,0.32)] backdrop-blur-[2px]"
+        onClick={onClose}
+      />
 
       {/* Dialog */}
       <div className="fixed inset-0 flex items-center justify-center p-4">

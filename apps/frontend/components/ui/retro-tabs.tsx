@@ -58,7 +58,9 @@ export const RetroTabs: React.FC<RetroTabsProps> = ({
               variant === 'folder' &&
                 isDisabled &&
                 '-ml-px cursor-not-allowed border-border/60 bg-secondary/50 text-muted-foreground/60',
-              variant !== 'folder' && isActive && 'border-primary/15 bg-accent text-foreground shadow-xs',
+              variant !== 'folder' &&
+                isActive &&
+                'border-primary/15 bg-accent text-foreground shadow-xs',
               variant !== 'folder' &&
                 !isActive &&
                 !isDisabled &&

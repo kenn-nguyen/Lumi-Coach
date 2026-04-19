@@ -12,7 +12,10 @@ const BOARD_MINIMIZE_ID = "resume-matcher-board-minimize";
 const RUN_VIEW_ID = "resume-matcher-run-view";
 const RUN_READY_ID = "resume-matcher-job-ready";
 const RUN_META_ID = "resume-matcher-job-meta";
+const RUN_ONBOARDING_ID = "resume-matcher-run-onboarding";
 const RUN_NOTES_ID = "resume-matcher-run-notes";
+const RUN_MANUAL_JD_FIELD_ID = "resume-matcher-manual-jd-field";
+const RUN_MANUAL_JD_ID = "resume-matcher-manual-jd";
 const RUN_PRIMARY_ID = "resume-matcher-run-primary";
 const RUN_SECONDARY_ID = "resume-matcher-run-secondary";
 const RUN_ACTIONS_ID = "resume-matcher-run-actions";
@@ -46,10 +49,17 @@ const PROVIDER_MODEL_ROW_ID = "resume-matcher-provider-model-row";
 const PROVIDER_MODEL_INPUT_ID = "resume-matcher-provider-model-input";
 const PROVIDER_API_KEY_ROW_ID = "resume-matcher-provider-api-key-row";
 const PROVIDER_API_KEY_INPUT_ID = "resume-matcher-provider-api-key-input";
+const ONBOARDING_PROVIDER_API_KEY_INPUT_ID =
+  "resume-matcher-onboarding-provider-api-key-input";
 const APP_URL_INPUT_ID = "resume-matcher-app-url-input";
 const API_URL_INPUT_ID = "resume-matcher-api-url-input";
+const APIFY_ENABLED_INPUT_ID = "resume-matcher-apify-enabled";
+const APIFY_TOKEN_ROW_ID = "resume-matcher-apify-token-row";
+const APIFY_TOKEN_INPUT_ID = "resume-matcher-apify-token-input";
+const APIFY_TOKEN_TOGGLE_ID = "resume-matcher-apify-token-toggle";
 const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
 const CUSTOM_FEATURE_INPUT_ID = "resume-matcher-custom-feature";
+const RUNTIME_URLS_ROW_ID = "resume-matcher-runtime-urls";
 const RESET_LOCAL_ID = "resume-matcher-reset-local";
 const RESET_DEFAULTS_ID = "resume-matcher-reset-defaults";
 const STYLE_ID = "resume-matcher-floating-style";
@@ -68,24 +78,86 @@ const JOB_LOAD_RETRY_MS = 300;
 const JOB_LOAD_TIMEOUT_MS = 7000;
 const EDGE_GAP_TOTAL = EDGE_PADDING * 2;
 const APP_URL = "https://som-career-coach-iota.vercel.app/";
+const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
+const RUN_WAIT_MESSAGE_INTERVAL_MS = 12000;
+const RUN_WAIT_MESSAGES = [
+  "Reading the job post.",
+  "Checking the latest job details.",
+  "Looking for the full JD.",
+  "Rechecking the page content.",
+  "Trying a cleaner extraction path.",
+  "Comparing the job signals.",
+  "Preparing the role summary.",
+  "Mapping the hiring priorities.",
+  "Reviewing the core requirements.",
+  "Pulling out the strongest signals.",
+  "Checking the fallback path.",
+  "Waiting on the model.",
+  "Keeping the run alive.",
+  "Still shaping the draft.",
+  "Reviewing the current output.",
+  "Cleaning the response.",
+  "Comparing resume and JD.",
+  "Refining the positioning.",
+  "Building the tailored draft.",
+  "Checking for missing details.",
+  "Making the wording tighter.",
+  "Keeping the format consistent.",
+  "Replaying the next step.",
+  "Waiting for web automation.",
+  "Still working through the queue.",
+  "Checking the generated sections.",
+  "Keeping the draft coherent.",
+  "Revalidating the result.",
+  "Finalizing the current pass.",
+  "Almost there.",
+];
+let adapterModulePromise = null;
+let zipModulePromise = null;
+
+function loadAdapterModule() {
+  if (!adapterModulePromise) {
+    adapterModulePromise = import(
+      chrome.runtime.getURL("src/content/site-adapters/index.js")
+    );
+  }
+  return adapterModulePromise;
+}
+
+function loadZipModule() {
+  if (!zipModulePromise) {
+    zipModulePromise = import(chrome.runtime.getURL("src/shared/zip.js"));
+  }
+  return zipModulePromise;
+}
+
 const PROMPT_FILE_DESCRIPTORS = [
   {
     templateName: "prompt1",
     label: "Prompt 1 Analyze job description",
     defaultPath: "src/prompts/prompt1.txt",
-    downloadName: "prompt1.default.txt",
+    contractPath: "src/prompts/patches/prompt1.output-contract.txt",
+    promptFileName: "prompt1.txt",
+    contractFileName: "prompt1.output-contract.txt",
+    downloadName: "prompt1.default.zip",
   },
   {
     templateName: "prompt2",
     label: "Prompt 2 Strategize positioning",
     defaultPath: "src/prompts/prompt2.txt",
-    downloadName: "prompt2.default.txt",
+    contractPath: "src/prompts/patches/prompt2.output-contract.txt",
+    promptFileName: "prompt2.txt",
+    contractFileName: "prompt2.output-contract.txt",
+    downloadName: "prompt2.default.zip",
   },
   {
     templateName: "prompt3",
     label: "Prompt 3 Write tailored resume",
     defaultPath: "src/prompts/prompt3.txt",
-    downloadName: "prompt3.default.txt",
+    contractPath: "src/prompts/patches/prompt3.output-contract.txt",
+    promptFileName: "prompt3.txt",
+    contractFileName: "prompt3.output-contract.txt",
+    downloadName: "prompt3.default.zip",
   },
   {
     templateName: "systemPrompt",
@@ -134,6 +206,24 @@ const ICONS = {
       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
     </svg>`,
+  info: `
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M10 8.4v4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="10" cy="5.9" r="1" fill="currentColor"/>
+    </svg>`,
+  eye: `
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M2.5 10s2.5-4.5 7.5-4.5 7.5 4.5 7.5 4.5-2.5 4.5-7.5 4.5S2.5 10 2.5 10Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+      <circle cx="10" cy="10" r="2.2" stroke="currentColor" stroke-width="1.5"/>
+    </svg>`,
+  eyeOff: `
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M3 3 17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M7.1 5.6A8.5 8.5 0 0 1 10 5.1c5 0 7.5 4.4 7.5 4.4a12.7 12.7 0 0 1-3 3.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12.2 12.3a2.3 2.3 0 0 1-3.1-3.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M5.3 7.1A13.1 13.1 0 0 0 2.5 9.5S5 14 10 14c1 0 1.9-.2 2.7-.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`,
   upload: `
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path d="M10 13.8V5.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
@@ -163,12 +253,31 @@ const ICONS = {
 };
 
 let urlObserver = null;
+let selectedJobDetailObserver = null;
+let selectedJobDetailObservedRoot = null;
 let lastUrl = location.href;
 let pointerDragState = null;
 let suppressNextClick = false;
 let providerSettingsSaveTimer = null;
 let runtimeUrlsSaveTimer = null;
+let apifyFallbackSaveTimer = null;
 let jobLoadTimer = null;
+let selectedJobRefreshTimer = null;
+let runningStatusMessageTimer = null;
+let selectedJobClickListenerAttached = false;
+const secretEditingState = {
+  [PROVIDER_API_KEY_INPUT_ID]: false,
+  [ONBOARDING_PROVIDER_API_KEY_INPUT_ID]: false,
+  [APIFY_TOKEN_INPUT_ID]: false,
+};
+const secretDraftState = {
+  [PROVIDER_API_KEY_INPUT_ID]: "",
+  [ONBOARDING_PROVIDER_API_KEY_INPUT_ID]: "",
+  [APIFY_TOKEN_INPUT_ID]: "",
+};
+const secretRevealState = {
+  [APIFY_TOKEN_INPUT_ID]: false,
+};
 
 const state = {
   boardOpen: false,
@@ -182,8 +291,11 @@ const state = {
   statusTone: "neutral",
   statusTitle: "",
   statusDetail: "",
+  rotatingStatusDetail: "",
+  rotatingStatusIndex: -1,
   statusActions: [],
   assets: null,
+  setupState: null,
   history: [],
   extensionState: null,
   connectionState: "signed_out",
@@ -192,7 +304,14 @@ const state = {
   jobLoadState: "idle",
   jobLoadStartedAt: null,
   customMessage: "",
+  manualJobDescription: "",
+  scrapeIssue: "",
+  storyboardHelpOpen: false,
   currentJob: null,
+  selectedJobRefreshing: false,
+  selectedJobExpectedSourceUrl: "",
+  selectedJobRefreshAttempts: 0,
+  activeRunJob: null,
   historySearch: "",
   historySortDirection: "desc",
   historyPage: 1,
@@ -230,6 +349,12 @@ async function sendMessage(type, payload) {
   return chrome.runtime.sendMessage({ type, payload });
 }
 
+function trackAnalyticsEvent(event, properties = {}) {
+  return sendMessage("TRACK_ANALYTICS_EVENT", { event, properties }).catch(
+    () => {},
+  );
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -237,6 +362,132 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function maskSecret(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  if (normalized.length <= 6) {
+    return `${normalized.slice(0, 1)}...${normalized.slice(-1)}`;
+  }
+  return `${normalized.slice(0, 3)}...${normalized.slice(-3)}`;
+}
+
+function getSecretPlaceholder(inputId) {
+  if (inputId === APIFY_TOKEN_INPUT_ID) {
+    return "Paste your Apify API token";
+  }
+  return "Paste new API key";
+}
+
+function getCurrentSecretValue(inputId) {
+  if (inputId === APIFY_TOKEN_INPUT_ID) {
+    return state.assets?.apifyFallbackSettings?.apiToken || "";
+  }
+
+  if (inputId === ONBOARDING_PROVIDER_API_KEY_INPUT_ID) {
+    return (
+      getSelectedProfile(
+        "resume-matcher-onboarding-provider-select",
+        state.assets?.llmSettings,
+      )?.apiKey || ""
+    );
+  }
+
+  return (
+    getSelectedProfile(PROVIDER_SELECT_ID, state.assets?.llmSettings)?.apiKey ||
+    ""
+  );
+}
+
+function syncSecretInput(inputId) {
+  const input = $(inputId);
+  if (!(input instanceof HTMLInputElement)) return;
+
+  const actualValue = getCurrentSecretValue(inputId);
+  const isEditing = secretEditingState[inputId] === true;
+  input.dataset.secretInput = "true";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+
+  if (isEditing) {
+    input.type = "password";
+    input.readOnly = false;
+    input.placeholder = getSecretPlaceholder(inputId);
+    input.value = secretDraftState[inputId] || "";
+    return;
+  }
+
+  if (actualValue) {
+    if (inputId === APIFY_TOKEN_INPUT_ID) {
+      input.type = secretRevealState[inputId] === true ? "text" : "password";
+      input.readOnly = true;
+      input.placeholder = "";
+      input.value = actualValue;
+    } else {
+      input.type = "text";
+      input.readOnly = true;
+      input.placeholder = "";
+      input.value = maskSecret(actualValue);
+    }
+    return;
+  }
+
+  input.type = "password";
+  input.readOnly = false;
+  input.placeholder = getSecretPlaceholder(inputId);
+  input.value = "";
+}
+
+function syncSecretRevealToggle(inputId) {
+  if (inputId !== APIFY_TOKEN_INPUT_ID) return;
+  const button = $(APIFY_TOKEN_TOGGLE_ID);
+  if (!(button instanceof HTMLButtonElement)) return;
+  const actualValue = getCurrentSecretValue(inputId);
+  const isEditing = secretEditingState[inputId] === true;
+  const isVisible = secretRevealState[inputId] === true;
+  button.hidden = !actualValue || isEditing;
+  button.setAttribute("aria-label", isVisible ? "Hide token" : "Show token");
+  button.setAttribute("title", isVisible ? "Hide token" : "Show token");
+  button.innerHTML = icon(isVisible ? "eyeOff" : "eye");
+}
+
+function beginSecretEdit(input) {
+  if (!(input instanceof HTMLInputElement) || input.readOnly !== true) return;
+  const inputId = input.id;
+  secretEditingState[inputId] = true;
+  secretDraftState[inputId] = "";
+  secretRevealState[inputId] = false;
+  syncSecretInput(inputId);
+  syncSecretRevealToggle(inputId);
+  const next = $(inputId);
+  if (next instanceof HTMLInputElement) {
+    next.focus();
+  }
+}
+
+function endSecretEdit(inputId) {
+  secretEditingState[inputId] = false;
+  secretDraftState[inputId] = "";
+  secretRevealState[inputId] = false;
+  syncSecretInput(inputId);
+  syncSecretRevealToggle(inputId);
+}
+
+function toggleSecretReveal(inputId) {
+  if (inputId !== APIFY_TOKEN_INPUT_ID) return;
+  if (secretEditingState[inputId] === true) return;
+  if (!getCurrentSecretValue(inputId)) return;
+  secretRevealState[inputId] = !secretRevealState[inputId];
+  syncSecretInput(inputId);
+  syncSecretRevealToggle(inputId);
+}
+
+function readSecretInputValue(inputId) {
+  if (secretEditingState[inputId] === true) {
+    return (secretDraftState[inputId] || "").trim();
+  }
+  return getCurrentSecretValue(inputId);
 }
 
 function formatDate(value) {
@@ -297,15 +548,48 @@ async function downloadDefaultPrompt(templateName) {
   const descriptor = PROMPT_FILE_DESCRIPTORS.find(
     (item) => item.templateName === templateName,
   );
-  if (!descriptor?.defaultPath || !descriptor.downloadName) return;
-
-  const response = await fetch(chrome.runtime.getURL(descriptor.defaultPath));
-  if (!response.ok) {
-    throw new Error(`Failed to load default ${descriptor.label}.`);
+  if (
+    !descriptor?.defaultPath ||
+    !descriptor.contractPath ||
+    !descriptor.downloadName ||
+    !descriptor.promptFileName ||
+    !descriptor.contractFileName
+  ) {
+    return;
   }
 
-  const text = await response.text();
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const [promptResponse, contractResponse] = await Promise.all([
+    fetch(chrome.runtime.getURL(descriptor.defaultPath)),
+    fetch(chrome.runtime.getURL(descriptor.contractPath)),
+  ]);
+
+  if (!promptResponse.ok) {
+    throw new Error(`Failed to load default ${descriptor.label}.`);
+  }
+  if (!contractResponse.ok) {
+    throw new Error(`Failed to load output contract for ${descriptor.label}.`);
+  }
+
+  const [promptText, rawContractText] = await Promise.all([
+    promptResponse.text(),
+    contractResponse.text(),
+  ]);
+  const { createZipArchive } = await loadZipModule();
+  const contractText = [
+    "Output contract note:",
+    "- This contract is fixed in the extension code.",
+    "- Changes to this file will not affect runtime behavior.",
+    "- Upload .txt files only.",
+    "- Upload only the main prompt file, not this contract file.",
+    "- To tailor the tool, edit the main prompt instead.",
+    "",
+    rawContractText.trim(),
+  ].join("\n");
+  const archive = createZipArchive([
+    { name: descriptor.promptFileName, content: promptText },
+    { name: descriptor.contractFileName, content: contractText },
+  ]);
+  const blob = new Blob([archive], { type: "application/zip" });
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
@@ -519,8 +803,8 @@ function injectStyles() {
       -webkit-backdrop-filter: blur(30px) saturate(150%);
     }
 
-    #${ROOT_ID}[data-current-view="runs"] #${BOARD_ID},
-    #${ROOT_ID}[data-current-view="settings"] #${BOARD_ID} {
+    #${ROOT_ID}[data-current-view="settings"] #${BOARD_ID},
+    #${ROOT_ID}[data-onboarding-mode="true"] #${BOARD_ID} {
       width: min(${WIDE_BOARD_WIDTH}px, calc(100vw - ${EDGE_GAP_TOTAL}px));
     }
 
@@ -629,7 +913,13 @@ function injectStyles() {
       font: inherit;
       font-size: 0;
       opacity: 1;
-      transition: background 140ms ease, color 140ms ease, transform 140ms ease, border-color 140ms ease;
+      position: relative;
+      transition:
+        background 140ms ease,
+        color 140ms ease,
+        transform 140ms ease,
+        border-color 140ms ease,
+        box-shadow 140ms ease;
     }
 
     .resume-matcher-icon-button:hover {
@@ -648,8 +938,28 @@ function injectStyles() {
 
     .resume-matcher-icon-button.is-active {
       color: rgba(0, 0, 0, 0.85);
-      background: transparent;
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.78),
+        rgba(255, 255, 255, 0.54)
+      );
+      border-color: rgba(255, 255, 255, 0.92);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 18px rgba(59, 130, 246, 0.22),
+        0 8px 18px rgba(15, 23, 42, 0.08);
+      transform: translateY(-0.5px);
       opacity: 1;
+    }
+
+    .resume-matcher-icon-button.is-active::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 999px;
+      border: 1px solid rgba(96, 165, 250, 0.42);
+      box-shadow: 0 0 14px rgba(96, 165, 250, 0.14);
+      pointer-events: none;
     }
 
     .resume-matcher-board__body {
@@ -775,6 +1085,263 @@ function injectStyles() {
       font-size: 10px;
     }
 
+    .resume-matcher-onboarding {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(245, 248, 255, 0.92)),
+        rgba(255, 255, 255, 0.6);
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55);
+    }
+
+    .resume-matcher-onboarding__progress {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .resume-matcher-onboarding__progress-step {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .resume-matcher-onboarding__progress-bar {
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      overflow: hidden;
+    }
+
+    .resume-matcher-onboarding__progress-bar::after {
+      content: "";
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: rgba(148, 163, 184, 0.3);
+      transform: scaleX(0.42);
+      transform-origin: left center;
+    }
+
+    .resume-matcher-onboarding__progress-step.is-active .resume-matcher-onboarding__progress-bar::after,
+    .resume-matcher-onboarding__progress-step.is-complete .resume-matcher-onboarding__progress-bar::after {
+      transform: scaleX(1);
+      background: linear-gradient(90deg, #8e2247, #c04e77);
+    }
+
+    .resume-matcher-onboarding__progress-label {
+      min-width: 0;
+      font-size: 11px;
+      line-height: 1.25;
+      color: rgba(0, 0, 0, 0.42);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .resume-matcher-onboarding__progress-step.is-active .resume-matcher-onboarding__progress-label,
+    .resume-matcher-onboarding__progress-step.is-complete .resume-matcher-onboarding__progress-label {
+      color: #5b1a30;
+    }
+
+    .resume-matcher-onboarding__eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(0, 0, 0, 0.48);
+    }
+
+    .resume-matcher-onboarding__title {
+      font-size: 26px;
+      line-height: 1.02;
+      letter-spacing: -0.06em;
+      font-weight: 700;
+      color: rgba(17, 24, 39, 0.94);
+    }
+
+    .resume-matcher-onboarding__text,
+    .resume-matcher-onboarding__list,
+    .resume-matcher-onboarding__help {
+      font-size: 14px;
+      line-height: 1.45;
+      color: rgba(0, 0, 0, 0.7);
+      margin: 0;
+    }
+
+    .resume-matcher-onboarding__help--subtle {
+      font-size: 12px;
+      color: rgba(71, 85, 105, 0.82);
+      font-style: italic;
+    }
+
+    .resume-matcher-onboarding__list {
+      padding-left: 18px;
+    }
+
+    .resume-matcher-onboarding__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(52, 199, 89, 0.14);
+      color: rgba(22, 101, 52, 0.95);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .resume-matcher-onboarding__status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      background: rgba(255, 255, 255, 0.76);
+      color: rgba(17, 24, 39, 0.62);
+    }
+
+    .resume-matcher-onboarding__status-pill.is-required {
+      background: rgba(249, 115, 22, 0.12);
+      color: rgba(154, 52, 18, 0.94);
+      border-color: rgba(249, 115, 22, 0.22);
+    }
+
+    .resume-matcher-onboarding__status-pill.is-optional {
+      background: rgba(255, 255, 255, 0.76);
+      color: rgba(17, 24, 39, 0.52);
+    }
+
+    .resume-matcher-onboarding__status-pill.is-complete {
+      background: rgba(52, 199, 89, 0.14);
+      color: rgba(22, 101, 52, 0.95);
+      border-color: rgba(52, 199, 89, 0.18);
+    }
+
+    .resume-matcher-onboarding__row {
+      display: grid;
+      gap: 10px;
+    }
+
+    .resume-matcher-onboarding__file {
+      display: grid;
+      gap: 8px;
+    }
+
+    .resume-matcher-onboarding__file-top,
+    .resume-matcher-onboarding__provider-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .resume-matcher-onboarding__label {
+      font-size: 13px;
+      font-weight: 700;
+      color: rgba(0, 0, 0, 0.82);
+      min-width: 0;
+    }
+
+    .resume-matcher-onboarding__status {
+      font-size: 12px;
+      color: rgba(0, 0, 0, 0.54);
+      min-width: 0;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .resume-matcher-onboarding__link {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: rgba(0, 122, 255, 0.92);
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .resume-matcher-onboarding__link svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    .resume-matcher-onboarding__provider-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field select,
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field input {
+      min-height: 44px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(231, 197, 207, 0.96);
+      background: rgba(255, 252, 252, 0.94);
+      color: #4c1d2d;
+      font-size: 13px;
+      line-height: 1.3;
+      box-shadow: inset 0 1px 2px rgba(91, 26, 48, 0.04);
+    }
+
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field select {
+      padding-right: 38px;
+    }
+
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field select:focus,
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field input:focus {
+      outline: none;
+      border-color: rgba(152, 35, 72, 0.72);
+      box-shadow:
+        0 0 0 3px rgba(168, 85, 110, 0.14),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04);
+    }
+
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field select option {
+      color: #4c1d2d;
+      background: #ffffff;
+    }
+
+    .resume-matcher-onboarding__provider-note {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(15, 23, 42, 0.06);
+      background: rgba(255, 255, 255, 0.72);
+      font-size: 12px;
+      line-height: 1.4;
+      color: rgba(17, 24, 39, 0.64);
+    }
+
+    .resume-matcher-onboarding__provider-note strong {
+      color: rgba(17, 24, 39, 0.84);
+    }
+
+    .resume-matcher-onboarding__actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
     .resume-matcher-field {
       display: grid;
       gap: 4px;
@@ -808,6 +1375,28 @@ function injectStyles() {
       font: inherit;
       font-size: 13px;
       line-height: 1.4;
+    }
+
+    .resume-matcher-field select,
+    .resume-matcher-settings-item select {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(71, 85, 105, 0.82) 50%),
+        linear-gradient(135deg, rgba(71, 85, 105, 0.82) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(50% - 2px),
+        calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 34px;
+      color: #1f2937;
+    }
+
+    .resume-matcher-field select option,
+    .resume-matcher-settings-item select option {
+      color: #1f2937;
+      background: #ffffff;
     }
 
     .resume-matcher-field textarea {
@@ -848,6 +1437,13 @@ function injectStyles() {
       box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
     }
 
+    .resume-matcher-field__hint {
+      font-size: 12px;
+      line-height: 1.4;
+      color: rgba(0, 0, 0, 0.62);
+      margin-top: 4px;
+    }
+
     .resume-matcher-file-row {
       display: block;
     }
@@ -863,6 +1459,10 @@ function injectStyles() {
       justify-content: space-between;
       gap: 8px;
       min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
       color: #1f2937;
       font-size: 12px;
       line-height: 1.2;
@@ -873,8 +1473,10 @@ function injectStyles() {
     }
 
     .resume-matcher-file-chip__text {
-      flex: 1 1 auto;
+      display: block;
+      flex: 1 1 0%;
       min-width: 0;
+      max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -943,6 +1545,7 @@ function injectStyles() {
 
     .resume-matcher-button {
       appearance: none;
+      box-sizing: border-box;
       border: 1px solid rgba(216, 206, 187, 0.96);
       border-radius: 999px;
       background: #ffffff;
@@ -957,6 +1560,7 @@ function injectStyles() {
       align-items: center;
       justify-content: center;
       gap: 6px;
+      min-width: 0;
       min-height: 40px;
     }
 
@@ -1037,9 +1641,25 @@ function injectStyles() {
       box-shadow: none;
     }
 
+    #${ROOT_ID}[data-running="true"] .resume-matcher-field textarea:disabled,
+    #${ROOT_ID}[data-running="true"] .resume-matcher-field input:disabled,
+    #${ROOT_ID}[data-running="true"] .resume-matcher-field select:disabled {
+      cursor: default;
+      opacity: 0.78;
+    }
+
     .resume-matcher-status-card {
       display: none;
-      gap: 8px;
+      gap: 4px;
+      color: #4a2333;
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      background: rgba(255, 255, 255, 0.5);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      line-height: 1.4;
     }
 
     .resume-matcher-status-card.is-visible {
@@ -1047,100 +1667,70 @@ function injectStyles() {
     }
 
     .resume-matcher-status-card[data-tone="error"] {
-      background: rgba(255, 59, 48, 0.14);
-      border: 1px solid rgba(255, 59, 48, 0.24);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(255, 214, 214, 0.5);
+      color: #a01f1f;
     }
 
     .resume-matcher-status-card[data-tone="running"] {
-      background: rgba(0, 122, 255, 0.14);
-      border: 1px solid rgba(0, 122, 255, 0.2);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.5);
+      color: #4a2333;
     }
 
     .resume-matcher-status-card[data-tone="success"] {
-      background: rgba(52, 199, 89, 0.14);
-      border: 1px solid rgba(52, 199, 89, 0.2);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(167, 215, 193, 0.4);
+      color: #1a5a38;
     }
 
     .resume-matcher-status-card[data-tone="blocked"] {
-      background:
-        radial-gradient(circle at top right, rgba(255, 220, 150, 0.38), transparent 42%),
-        linear-gradient(180deg, rgba(255, 186, 73, 0.32), rgba(255, 154, 58, 0.22));
-      border: 1px solid rgba(255, 150, 56, 0.52);
-      color: rgba(132, 56, 12, 0.98);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.42),
-        0 10px 22px rgba(255, 154, 58, 0.12);
-      backdrop-filter: blur(12px) saturate(145%);
-      -webkit-backdrop-filter: blur(12px) saturate(145%);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(252, 227, 200, 0.5);
+      color: #7a4b1a;
     }
 
     .resume-matcher-status-card[data-tone="warning"] {
-      background:
-        radial-gradient(circle at top right, rgba(255, 228, 170, 0.28), transparent 42%),
-        linear-gradient(180deg, rgba(255, 197, 102, 0.2), rgba(255, 171, 84, 0.14));
-      border: 1px solid rgba(255, 162, 70, 0.34);
-      color: rgba(132, 56, 12, 0.94);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.34),
-        0 8px 18px rgba(255, 171, 84, 0.08);
-      backdrop-filter: blur(10px) saturate(138%);
-      -webkit-backdrop-filter: blur(10px) saturate(138%);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(252, 227, 200, 0.5);
+      color: #7a4b1a;
     }
 
     .resume-matcher-status-card[data-tone="info"] {
-      background: rgba(14, 165, 233, 0.12);
-      border: 1px solid rgba(2, 132, 199, 0.18);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.5);
+      color: #4a2333;
     }
 
     .resume-matcher-status-card[data-tone="neutral"] {
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(255, 255, 255, 0.7);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.5);
+      color: #4a2333;
     }
 
     .resume-matcher-status-card[data-tone="idle"] {
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(255, 255, 255, 0.7);
-      border-radius: 10px;
-      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.5);
+      color: #4a2333;
     }
 
     .resume-matcher-status-title {
-      font-size: 13px;
+      font-size: 16px;
       font-weight: 700;
-      color: rgba(0, 0, 0, 0.88);
+      color: inherit;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 12px;
+      margin-bottom: 4px;
     }
 
     .resume-matcher-status-detail {
-      font-size: 13px;
-      line-height: 1.45;
-      color: rgba(0, 0, 0, 0.76);
+      font-size: 14px;
+      line-height: 1.4;
+      color: inherit;
+      opacity: 0.92;
       overflow-wrap: anywhere;
     }
 
     .resume-matcher-status-spinner {
-      width: 13px;
-      height: 13px;
+      width: 14px;
+      height: 14px;
       flex: 0 0 auto;
       border-radius: 999px;
-      border: 2px solid rgba(2, 132, 199, 0.2);
-      border-top-color: rgba(2, 132, 199, 0.88);
+      border: 2px solid rgba(74, 35, 51, 0.2);
+      border-top-color: currentColor;
       animation: resume-matcher-spin 0.85s linear infinite;
     }
 
@@ -1433,7 +2023,7 @@ function injectStyles() {
 
     .resume-matcher-settings-list {
       display: grid;
-      gap: 10px;
+      gap: 12px;
     }
 
     .resume-matcher-settings-item {
@@ -1451,16 +2041,49 @@ function injectStyles() {
       color: #667085;
     }
 
+    .resume-matcher-settings-item__detail {
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(71, 85, 105, 0.86);
+      margin-top: -2px;
+    }
+
+    .resume-matcher-settings-item__detail a {
+      color: rgba(29, 78, 216, 0.92);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .resume-matcher-settings-item__link {
+      display: inline-flex;
+      width: fit-content;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.3;
+      color: rgba(154, 79, 103, 0.88);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
     .resume-matcher-settings-substack {
       display: grid;
       gap: 8px;
       padding-top: 2px;
     }
 
+    .resume-matcher-settings-substack--compact {
+      gap: 4px;
+      padding-top: 0;
+    }
+
     .resume-matcher-settings-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
+    }
+
+    .resume-matcher-settings-grid--single {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .resume-matcher-settings-grid > .resume-matcher-field--full {
@@ -1502,8 +2125,24 @@ function injectStyles() {
     .resume-matcher-settings-item input {
       min-height: 38px;
       border-radius: 12px;
+      border: 1px solid rgba(231, 197, 207, 0.96);
+      background: rgba(255, 252, 252, 0.94);
+      color: #4c1d2d;
+      box-shadow: inset 0 1px 2px rgba(91, 26, 48, 0.04);
       padding: 9px 11px;
       font-size: 12px;
+    }
+
+    .resume-matcher-settings-item input:focus,
+    .resume-matcher-settings-item select:focus,
+    .resume-matcher-settings-row input:focus,
+    .resume-matcher-settings-row select:focus,
+    .resume-matcher-secret-field input:focus {
+      outline: none;
+      border-color: rgba(152, 35, 72, 0.72);
+      box-shadow:
+        0 0 0 3px rgba(168, 85, 110, 0.14),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04);
     }
 
     .resume-matcher-settings-item .resume-matcher-button,
@@ -1537,8 +2176,58 @@ function injectStyles() {
     .resume-matcher-settings-row input {
       min-height: 38px;
       border-radius: 12px;
+      border: 1px solid rgba(231, 197, 207, 0.96);
+      background: rgba(255, 252, 252, 0.94);
+      color: #4c1d2d;
+      box-shadow: inset 0 1px 2px rgba(91, 26, 48, 0.04);
       padding: 9px 11px;
       font-size: 12px;
+    }
+
+    .resume-matcher-secret-field {
+      position: relative;
+      display: grid;
+      align-items: center;
+    }
+
+    .resume-matcher-secret-field input {
+      padding-right: 42px !important;
+    }
+
+    .resume-matcher-secret-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 999px;
+      background: transparent;
+      color: rgba(111, 58, 76, 0.72);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .resume-matcher-secret-toggle:hover {
+      background: rgba(127, 29, 63, 0.08);
+      color: rgba(91, 26, 48, 0.92);
+    }
+
+    .resume-matcher-secret-toggle:focus-visible {
+      outline: none;
+      background: rgba(127, 29, 63, 0.1);
+      box-shadow: 0 0 0 3px rgba(168, 85, 110, 0.14);
+      color: rgba(91, 26, 48, 0.92);
+    }
+
+    .resume-matcher-secret-toggle svg {
+      width: 16px;
+      height: 16px;
+      display: block;
     }
 
     .resume-matcher-settings-row .resume-matcher-button,
@@ -1553,11 +2242,18 @@ function injectStyles() {
     }
 
     .resume-matcher-inline-action {
-      display: inline-flex;
+      display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
+      gap: 12px;
       font-size: 12px;
       color: #667085;
+      min-width: 0;
+      min-height: 38px;
+    }
+
+    .resume-matcher-inline-action--compact {
+      min-height: 30px;
     }
 
     .resume-matcher-checkbox {
@@ -1571,26 +2267,49 @@ function injectStyles() {
     .resume-matcher-inline-action__label {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
       cursor: pointer;
+      min-width: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(91, 26, 48, 0.84);
     }
 
-    .resume-matcher-inline-action__label::before {
-      content: "";
-      width: 14px;
-      height: 14px;
-      border: 1.5px solid #98a2b3;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.96);
-      box-sizing: border-box;
+    .resume-matcher-toggle {
+      position: relative;
+      width: 38px;
+      height: 22px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.36);
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16);
       flex: 0 0 auto;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      transition: background 140ms ease;
     }
 
-    .resume-matcher-checkbox:checked + .resume-matcher-inline-action__label::before {
-      background: #2563eb;
-      border-color: #2563eb;
-      box-shadow: inset 0 0 0 3px #ffffff;
+    .resume-matcher-toggle::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+      transition: transform 140ms ease;
+    }
+
+    .resume-matcher-checkbox:checked + .resume-matcher-toggle {
+      background: rgba(37, 99, 235, 0.88);
+    }
+
+    .resume-matcher-checkbox:checked + .resume-matcher-toggle::after {
+      transform: translateX(16px);
+    }
+
+    .resume-matcher-inline-action:focus-within .resume-matcher-toggle {
+      box-shadow:
+        inset 0 0 0 1px rgba(152, 35, 72, 0.28),
+        0 0 0 3px rgba(168, 85, 110, 0.14);
     }
 
     .resume-matcher-advanced {
@@ -1621,17 +2340,31 @@ function injectStyles() {
 
     .resume-matcher-advanced-actions {
       display: grid;
-      grid-template-columns: repeat(2, max-content);
       gap: 8px;
-      justify-content: start;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .resume-matcher-advanced-actions .resume-matcher-button {
-      width: auto;
-      min-height: 28px !important;
-      padding: 5px 10px !important;
-      font-size: 11px !important;
+      width: 100%;
+      justify-content: center;
+      min-height: 38px !important;
+      padding: 8px 12px !important;
+      font-size: 12px !important;
       line-height: 1 !important;
+    }
+
+    .resume-matcher-advanced-actions .resume-matcher-button:nth-child(3) {
+      grid-column: 1 / -1;
+    }
+
+    @media (max-width: 360px) {
+      .resume-matcher-advanced-actions {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .resume-matcher-advanced-actions .resume-matcher-button:nth-child(3) {
+        grid-column: auto;
+      }
     }
 
     .resume-matcher-advanced > summary::-webkit-details-marker {
@@ -1643,6 +2376,344 @@ function injectStyles() {
       line-height: 1.45;
       color: #667085;
       padding: 12px 0;
+    }
+
+    #${ROOT_ID} {
+      color: #381622;
+    }
+
+    #${LAUNCHER_ID} {
+      border-color: rgba(255, 234, 239, 0.88);
+      background:
+        linear-gradient(180deg, rgba(133, 35, 68, 0.94), rgba(98, 21, 50, 0.96)),
+        rgba(117, 26, 57, 0.94);
+      box-shadow:
+        -10px 20px 30px rgba(64, 16, 34, 0.3),
+        inset 0 1px 1px rgba(255, 243, 246, 0.34);
+    }
+
+    #${LAUNCHER_ID}::before {
+      background: conic-gradient(
+        from 0deg at 50% 50%,
+        rgba(123, 29, 64, 0) 0deg,
+        rgba(123, 29, 64, 0) 210deg,
+        rgba(196, 74, 118, 0.18) 265deg,
+        rgba(232, 120, 156, 0.76) 320deg,
+        rgba(245, 192, 206, 0.28) 346deg,
+        rgba(123, 29, 64, 0) 360deg
+      );
+      filter: drop-shadow(0 0 14px rgba(196, 74, 118, 0.28));
+    }
+
+    #${LAUNCHER_CLOSE_ID} {
+      border-color: rgba(253, 226, 235, 0.92);
+      background: rgba(255, 246, 248, 0.96);
+      color: rgba(91, 26, 48, 0.74);
+    }
+
+    #${BOARD_ID} {
+      border-color: rgba(255, 228, 236, 0.72);
+      background:
+        radial-gradient(circle at top right, rgba(138, 31, 68, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(248, 237, 241, 0.97), rgba(242, 225, 231, 0.95)),
+        rgba(243, 228, 233, 0.94);
+      box-shadow:
+        -12px 26px 36px rgba(76, 21, 41, 0.18),
+        inset 0 1px 1px rgba(255, 246, 248, 0.86);
+    }
+
+    .resume-matcher-board__header {
+      border-bottom-color: rgba(136, 34, 68, 0.14);
+      background:
+        linear-gradient(to bottom, rgba(110, 22, 54, 0.1), rgba(110, 22, 54, 0.04)),
+        rgba(255, 248, 250, 0.62);
+      box-shadow: inset 0 -1px 0 rgba(255, 231, 237, 0.66);
+    }
+
+    .resume-matcher-board__title,
+    .resume-matcher-run-job__title {
+      color: #3f1424;
+    }
+
+    .resume-matcher-board__brand img {
+      filter: drop-shadow(0 4px 10px rgba(110, 22, 54, 0.18));
+    }
+
+    .resume-matcher-icon-button {
+      border-color: rgba(255, 229, 236, 0.86);
+      background: rgba(255, 247, 249, 0.82);
+      color: rgba(91, 26, 48, 0.76);
+      box-shadow: 0 8px 18px rgba(91, 26, 48, 0.08);
+    }
+
+    .resume-matcher-icon-button:hover {
+      background: rgba(255, 242, 246, 0.96);
+      border-color: rgba(226, 171, 188, 0.92);
+      color: rgba(91, 26, 48, 0.9);
+    }
+
+    .resume-matcher-icon-button.is-active {
+      color: #5b1a30;
+      background: linear-gradient(
+        180deg,
+        rgba(255, 250, 251, 0.98),
+        rgba(247, 227, 234, 0.94)
+      );
+      border-color: rgba(205, 128, 155, 0.86);
+      box-shadow:
+        0 0 0 1px rgba(255, 244, 247, 0.24),
+        0 0 18px rgba(162, 45, 84, 0.16),
+        0 10px 22px rgba(91, 26, 48, 0.12);
+    }
+
+    .resume-matcher-icon-button.is-active::after {
+      border-color: rgba(170, 52, 91, 0.38);
+      box-shadow: 0 0 14px rgba(170, 52, 91, 0.12);
+    }
+
+    .resume-matcher-section,
+    .resume-matcher-history-item,
+    .resume-matcher-settings-group,
+    .resume-matcher-onboarding {
+      border-color: rgba(255, 234, 239, 0.88);
+      background: rgba(255, 249, 250, 0.74);
+      box-shadow: 0 16px 30px rgba(91, 26, 48, 0.08);
+    }
+
+    .resume-matcher-run-shell {
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .resume-matcher-job-meta,
+    .resume-matcher-history-item__company,
+    .resume-matcher-history-pagination span,
+    .resume-matcher-settings-item__detail,
+    .resume-matcher-empty,
+    .resume-matcher-onboarding__text,
+    .resume-matcher-onboarding__help,
+    .resume-matcher-field__hint {
+      color: rgba(79, 30, 45, 0.8);
+    }
+
+    .resume-matcher-status-title,
+    .resume-matcher-status-detail {
+      color: inherit;
+    }
+
+    .resume-matcher-run-ready {
+      background: #7f1d3f;
+      box-shadow: 0 8px 16px rgba(127, 29, 63, 0.26), inset 0 1px 1px rgba(255, 235, 241, 0.28);
+    }
+
+    .resume-matcher-run-ready.is-loading {
+      background: rgba(127, 29, 63, 0.14);
+      color: #7f1d3f;
+      box-shadow: 0 8px 16px rgba(127, 29, 63, 0.12), inset 0 1px 1px rgba(255, 235, 241, 0.26);
+    }
+
+    .resume-matcher-field input,
+    .resume-matcher-field textarea,
+    .resume-matcher-field select,
+    .resume-matcher-file-display,
+    .resume-matcher-history-search input,
+    .resume-matcher-history-filter__menu {
+      border-color: rgba(231, 197, 207, 0.96);
+      background: rgba(255, 252, 252, 0.94);
+      color: #4c1d2d;
+    }
+
+    .resume-matcher-field input:hover,
+    .resume-matcher-field textarea:hover,
+    .resume-matcher-field select:hover,
+    .resume-matcher-history-search input:hover,
+    .resume-matcher-settings-item input:hover,
+    .resume-matcher-settings-item select:hover,
+    .resume-matcher-settings-row input:hover,
+    .resume-matcher-settings-row select:hover,
+    .resume-matcher-secret-field input:hover,
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field input:hover,
+    .resume-matcher-onboarding__provider-grid .resume-matcher-field select:hover {
+      border-color: rgba(205, 128, 155, 0.86);
+      box-shadow: inset 0 1px 3px rgba(91, 26, 48, 0.05);
+    }
+
+    .resume-matcher-field input::placeholder,
+    .resume-matcher-field textarea::placeholder,
+    .resume-matcher-history-search input::placeholder {
+      color: rgba(111, 58, 76, 0.58);
+    }
+
+    .resume-matcher-field input:focus,
+    .resume-matcher-field textarea:focus,
+    .resume-matcher-field select:focus,
+    .resume-matcher-history-search input:focus {
+      border-color: rgba(152, 35, 72, 0.72);
+      box-shadow: 0 0 0 3px rgba(168, 85, 110, 0.14);
+    }
+
+    .resume-matcher-run-shell .resume-matcher-field input,
+    .resume-matcher-run-shell .resume-matcher-field textarea {
+      border-color: rgba(237, 210, 219, 0.98);
+      background: rgba(255, 251, 252, 0.9);
+      color: #4c1d2d;
+      box-shadow: inset 0 1px 3px rgba(91, 26, 48, 0.04);
+    }
+
+    .resume-matcher-file-chip {
+      border-color: rgba(231, 197, 207, 0.96);
+      background: rgba(255, 252, 252, 0.92);
+      color: #4c1d2d;
+    }
+
+    .resume-matcher-file-chip.is-placeholder {
+      color: rgba(122, 92, 102, 0.84);
+    }
+
+    .resume-matcher-file-chip__action {
+      color: #6c2940;
+    }
+
+    .resume-matcher-file-chip__action:hover {
+      background: rgba(127, 29, 63, 0.08);
+    }
+
+    .resume-matcher-button {
+      border-color: rgba(226, 188, 200, 0.98);
+      background: rgba(255, 252, 252, 0.94);
+      color: #5b1a30;
+    }
+
+    .resume-matcher-button.is-primary,
+    .resume-matcher-run-shell .resume-matcher-button.is-primary {
+      border-color: rgba(127, 29, 63, 0.9);
+      background: linear-gradient(180deg, #8e2247, #691733);
+      color: #fff8fa;
+      box-shadow: 0 12px 24px rgba(105, 23, 51, 0.24);
+    }
+
+    .resume-matcher-run-shell .resume-matcher-button:not(.is-primary) {
+      background: rgba(255, 250, 251, 0.9);
+      border-color: rgba(234, 206, 215, 0.96);
+      color: #5b1a30;
+      box-shadow: 0 8px 18px rgba(91, 26, 48, 0.08);
+    }
+
+    .resume-matcher-button.is-danger {
+      color: #b42318;
+      border-color: rgba(248, 113, 113, 0.38);
+      background: rgba(255, 247, 247, 0.92);
+    }
+
+    .resume-matcher-status-card[data-tone="running"] {
+      background: rgba(255, 255, 255, 0.5);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: #4a2333;
+    }
+
+    .resume-matcher-status-card[data-tone="success"] {
+      background: rgba(167, 215, 193, 0.4);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: #1a5a38;
+    }
+
+    .resume-matcher-status-card[data-tone="warning"] {
+      background: rgba(252, 227, 200, 0.5);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: #7a4b1a;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+    }
+
+    .resume-matcher-status-card[data-tone="blocked"] {
+      background: rgba(252, 227, 200, 0.5);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: #7a4b1a;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+    }
+
+    .resume-matcher-status-card[data-tone="error"] {
+      background: rgba(255, 214, 214, 0.5);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: #a01f1f;
+    }
+
+    .resume-matcher-status-card[data-tone="info"],
+    .resume-matcher-status-card[data-tone="neutral"],
+    .resume-matcher-status-card[data-tone="idle"] {
+      background: rgba(255, 255, 255, 0.5);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: #4a2333;
+    }
+
+    .resume-matcher-status-spinner {
+      border-color: rgba(74, 35, 51, 0.2);
+      border-top-color: currentColor;
+    }
+
+    .resume-matcher-settings-title,
+    .resume-matcher-settings-item__title,
+    .resume-matcher-settings-row__label,
+    .resume-matcher-advanced > summary,
+    .resume-matcher-onboarding__eyebrow,
+    .resume-matcher-onboarding__label {
+      color: rgba(108, 41, 64, 0.8);
+    }
+
+    .resume-matcher-settings-item__detail a,
+    .resume-matcher-history-item__link,
+    .resume-matcher-onboarding__link {
+      color: #8e2247;
+    }
+
+    .resume-matcher-history-filter__button,
+    .resume-matcher-history-pagination button {
+      border-color: rgba(232, 206, 214, 0.86);
+      background: rgba(255, 250, 251, 0.9);
+      color: #5b1a30;
+      box-shadow: inset 0 0 0 1px rgba(217, 180, 193, 0.12);
+    }
+
+    .resume-matcher-history-filter__option:hover,
+    .resume-matcher-history-filter__option.is-active {
+      background: rgba(142, 34, 71, 0.08);
+      color: #8e2247;
+    }
+
+    .resume-matcher-onboarding__progress-bar {
+      background: rgba(231, 197, 207, 0.74);
+    }
+
+    .resume-matcher-onboarding__progress-bar::after {
+      background: linear-gradient(90deg, #8e2247, #c04e77);
+    }
+
+    .resume-matcher-onboarding__progress-label {
+      color: rgba(91, 26, 48, 0.68);
+    }
+
+    .resume-matcher-onboarding__progress-step.is-active .resume-matcher-onboarding__progress-label,
+    .resume-matcher-onboarding__progress-step.is-complete .resume-matcher-onboarding__progress-label {
+      color: #5b1a30;
+    }
+
+    .resume-matcher-onboarding__provider-note {
+      border-color: rgba(235, 209, 217, 0.92);
+      background: rgba(255, 250, 251, 0.94);
+      color: rgba(79, 30, 45, 0.82);
+    }
+
+    .resume-matcher-onboarding__help--subtle {
+      color: rgba(108, 41, 64, 0.68);
+      font-size: 11px;
+    }
+
+    .resume-matcher-toggle {
+      background: rgba(180, 159, 167, 0.42);
+      box-shadow: inset 0 0 0 1px rgba(167, 130, 143, 0.2);
+    }
+
+    .resume-matcher-checkbox:checked + .resume-matcher-toggle {
+      background: rgba(127, 29, 63, 0.92);
     }
 
     @media (max-width: 520px) {
@@ -1917,11 +2988,21 @@ function dismissLauncher() {
 }
 
 function openBoard(view = "run", options = {}) {
+  const previousOpen = state.boardOpen;
+  const previousView = state.currentView;
   state.boardOpen = true;
   state.currentView = view;
   state.launcherAlert = false;
   render();
   syncDockedPosition($(ROOT_ID));
+  if (!previousOpen || previousView !== view) {
+    void trackAnalyticsEvent(
+      view === "settings"
+        ? "extension_settings_viewed"
+        : "extension_board_opened",
+      { surface: view === "settings" ? "settings_view" : "run_view" },
+    );
+  }
   if (!options.skipConnectionCheck && (view === "run" || view === "settings")) {
     void reconcileConnectionStatus(view);
     return;
@@ -1952,6 +3033,8 @@ function extractMetaCandidates() {
     ".jobs-unified-top-card__primary-description-container",
     ".job-details-jobs-unified-top-card__job-insight",
     ".job-details-jobs-unified-top-card__job-insight-view-model-secondary",
+    '[class*="primary-description"]',
+    '[class*="job-insight"]',
   ];
   return Array.from(document.querySelectorAll(selectors.join(",")))
     .flatMap((node) => {
@@ -2011,14 +3094,44 @@ function guessHighlights(values, location) {
   return Array.from(new Set(parts.filter(Boolean)));
 }
 
+function readInlineJobDescriptionText() {
+  const node = document.querySelector('[data-testid="expandable-text-box"]');
+  return (node?.innerText || node?.textContent || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferJobTitleFromDocumentTitle(company = "") {
+  const raw = (document.title || "").replace(/\s*\|\s*LinkedIn.*$/i, "").trim();
+  if (!raw) return "";
+
+  const normalizedCompany = company.trim().toLowerCase();
+  if (normalizedCompany) {
+    const suffix = ` - ${company.trim()}`.toLowerCase();
+    if (raw.toLowerCase().endsWith(suffix)) {
+      return raw.slice(0, raw.length - suffix.length).trim();
+    }
+  }
+
+  return raw;
+}
+
 function hasUsableJobContext(job) {
   if (!job) return false;
-  return Boolean(job.title || job.company || job.location);
+  return Boolean(
+    job.title ||
+    job.company ||
+    job.location ||
+    (job.descriptionText || "").length > 120,
+  );
 }
 
 function hasEnoughJobContext(job) {
-  if (!job?.title) return false;
-  return Boolean(job.company || job.location || job.highlights?.length);
+  if (!job) return false;
+  if (job.title && (job.company || job.location || job.highlights?.length)) {
+    return true;
+  }
+  return Boolean(job.company && (job.descriptionText || "").length > 200);
 }
 
 function clearJobLoadTimer() {
@@ -2030,8 +3143,16 @@ function clearJobLoadTimer() {
 
 function resetJobLoadingState() {
   clearJobLoadTimer();
+  if (selectedJobRefreshTimer) {
+    window.clearTimeout(selectedJobRefreshTimer);
+    selectedJobRefreshTimer = null;
+  }
   state.jobLoadState = "idle";
   state.jobLoadStartedAt = null;
+  state.scrapeIssue = "";
+  state.selectedJobRefreshing = false;
+  state.selectedJobExpectedSourceUrl = "";
+  state.selectedJobRefreshAttempts = 0;
 }
 
 function scheduleJobReadinessCheck() {
@@ -2050,6 +3171,12 @@ function updateJobReadiness(nextJob = extractCurrentJob()) {
     clearJobLoadTimer();
     state.jobLoadState = "ready";
     state.jobLoadStartedAt = null;
+    state.selectedJobRefreshing = false;
+    state.selectedJobExpectedSourceUrl = "";
+    state.selectedJobRefreshAttempts = 0;
+    if (!state.isRunning) {
+      state.scrapeIssue = "";
+    }
     return true;
   }
 
@@ -2060,6 +3187,11 @@ function updateJobReadiness(nextJob = extractCurrentJob()) {
 
   const elapsed = now - state.jobLoadStartedAt;
   state.jobLoadState = elapsed >= JOB_LOAD_TIMEOUT_MS ? "timed_out" : "loading";
+  if (state.jobLoadState === "timed_out") {
+    state.selectedJobRefreshing = false;
+    state.selectedJobExpectedSourceUrl = "";
+    state.selectedJobRefreshAttempts = 0;
+  }
 
   if (state.jobLoadState === "loading") {
     scheduleJobReadinessCheck();
@@ -2070,20 +3202,393 @@ function updateJobReadiness(nextJob = extractCurrentJob()) {
   return false;
 }
 
-function getConnectionRequirementStatus() {
+function getCurrentJobSignature(job) {
+  if (!job) return "";
+  const sourceUrl = normalizeJobSourceUrl(job.sourceUrl);
+  if (sourceUrl) return sourceUrl;
+  return [
+    String(job.title || "").trim(),
+    String(job.company || "").trim(),
+    String(job.location || "").trim(),
+  ].join("|");
+}
+
+function getSelectedJobClickSourceUrl(target) {
+  const clickable = target?.closest?.(
+    'a[href*="/jobs/view/"], a[href*="currentJobId="], [data-job-id], .job-card-container, .jobs-search-results__list-item, .scaffold-layout__list-item',
+  );
+  if (!clickable) return "";
+  const href =
+    clickable.href ||
+    clickable.getAttribute?.("href") ||
+    clickable
+      .querySelector?.('a[href*="/jobs/view/"], a[href*="currentJobId="]')
+      ?.getAttribute?.("href") ||
+    "";
+  return normalizeJobSourceUrl(href);
+}
+
+function isCurrentJobExpectedSelection(nextJob) {
+  const expectedUrl = normalizeJobSourceUrl(state.selectedJobExpectedSourceUrl);
+  if (!expectedUrl) return true;
+  return normalizeJobSourceUrl(nextJob?.sourceUrl) === expectedUrl;
+}
+
+function performSelectedJobRefresh() {
+  selectedJobRefreshTimer = null;
+  if (!isLinkedInJobPage()) return;
+
+  const nextJob = extractCurrentJob();
+  const matchesExpected = isCurrentJobExpectedSelection(nextJob);
+  const nextHasEnoughContext = hasEnoughJobContext(nextJob);
+
+  updateJobReadiness(nextJob);
+
+  if (matchesExpected && nextHasEnoughContext) {
+    render();
+    return;
+  }
+
+  state.selectedJobRefreshAttempts += 1;
+  if (state.selectedJobRefreshAttempts >= 6) {
+    state.selectedJobRefreshing = false;
+    state.selectedJobExpectedSourceUrl = "";
+    render();
+    return;
+  }
+
+  selectedJobRefreshTimer = window.setTimeout(performSelectedJobRefresh, 250);
+  render();
+}
+
+function scheduleSelectedJobRefresh(options = {}) {
+  if (!isLinkedInJobPage()) return;
+
+  const nextExpectedUrl = normalizeJobSourceUrl(
+    options.expectedSourceUrl || "",
+  );
+  const currentSignature = getCurrentJobSignature(state.currentJob);
+
+  if (nextExpectedUrl && nextExpectedUrl === currentSignature) {
+    return;
+  }
+
+  if (
+    nextExpectedUrl &&
+    nextExpectedUrl !== state.selectedJobExpectedSourceUrl
+  ) {
+    state.selectedJobRefreshAttempts = 0;
+  }
+
+  state.selectedJobRefreshing = true;
+  state.selectedJobExpectedSourceUrl = nextExpectedUrl;
+  state.jobLoadState = "loading";
+  state.jobLoadStartedAt = Date.now();
+
+  if (selectedJobRefreshTimer) {
+    window.clearTimeout(selectedJobRefreshTimer);
+  }
+  selectedJobRefreshTimer = window.setTimeout(
+    performSelectedJobRefresh,
+    options.delayMs ?? 420,
+  );
+  render();
+}
+
+function getSetupRequirementStatus(messageOverride = "") {
+  const setupState = state.setupState;
+  if (!setupState) {
+    if (
+      state.connectionState === "signed_out" &&
+      !state.websiteAuthenticated &&
+      !state.extensionConnected
+    ) {
+      return {
+        tone: "blocked",
+        title: "You’ve been signed out",
+        detail:
+          messageOverride ||
+          "Sign in to continue tailoring this job. Your setup is still here.",
+        actions: [
+          {
+            id: "connect",
+            label: "Continue with Google",
+            variant: "primary",
+          },
+        ],
+      };
+    }
+    return null;
+  }
+
+  if (setupState.state === "ready") {
+    return null;
+  }
+
+  const actions = [];
+  if (setupState.primaryAction?.id && setupState.primaryAction?.label) {
+    actions.push({
+      id: setupState.primaryAction.id,
+      label: setupState.primaryAction.label,
+      variant: "primary",
+    });
+  }
+  if (setupState.secondaryAction?.id && setupState.secondaryAction?.label) {
+    actions.push({
+      id: setupState.secondaryAction.id,
+      label: setupState.secondaryAction.label,
+    });
+  }
+
   return {
     tone: "blocked",
-    title: "Google sign-in required",
-    detail: "Sign in with Google to continue this run.",
-    actions: [{ id: "connect", label: "Sign in", variant: "primary" }],
+    title: setupState.title || "Finish setup",
+    detail: messageOverride || setupState.detail || "Finish setup to continue.",
+    actions,
   };
 }
 
-function getRunBlockingState() {
-  const hasResume = Boolean(
-    state.assets?.masterResumeContextAsset?.content?.trim(),
+function hasManualJobDescription() {
+  return Boolean(state.manualJobDescription.trim());
+}
+
+function isScrapeProblemMessage(message) {
+  const normalized = String(message || "").toLowerCase();
+  return (
+    /unable to extract|readable linkedin job description|scrape|job details unavailable|we could not read this job|does not look like a usable job description|does not appear to be a job description|paste the full job description manually/i.test(
+      normalized,
+    ) || /refresh the linkedin page/i.test(normalized)
   );
-  const hasAccount = state.connectionState === "connected";
+}
+
+function getScrapeRequirementStatus(messageOverride = "") {
+  const hasApifyToken = Boolean(
+    state.assets?.apifyFallbackSettings?.apiToken?.trim(),
+  );
+  return {
+    tone: "warning",
+    title: "Couldn’t read full JD",
+    detail:
+      messageOverride ||
+      (hasApifyToken
+        ? "I’ll keep trying fallback extraction. If it still misses, paste the JD below."
+        : "I couldn’t get the full JD. Enable Apify in Settings or paste the JD below."),
+    actions: [],
+  };
+}
+
+function isHardPrerequisiteBlocker() {
+  if (isOnboardingMode()) return false;
+  if (
+    state.connectionState === "signed_out" &&
+    !state.websiteAuthenticated &&
+    !state.extensionConnected
+  ) {
+    return true;
+  }
+
+  return [
+    "signed_out_returning",
+    "missing_resume",
+    "missing_provider_config",
+  ].includes(state.setupState?.state);
+}
+
+function shouldShowManualJdFallback() {
+  return !getSetupRequirementStatus() && Boolean(state.scrapeIssue);
+}
+
+function buildManualJobInput() {
+  const rawText = state.manualJobDescription.trim();
+  if (!rawText) {
+    return null;
+  }
+
+  return {
+    source: "manual_text",
+    rawText,
+    title: state.currentJob?.title || "",
+    company: state.currentJob?.company || "",
+    location: state.currentJob?.location || "",
+    datePosted: state.currentJob?.datePosted || "",
+    sourceUrl: state.currentJob?.sourceUrl || window.location.href,
+  };
+}
+
+function normalizeJobSourceUrl(url) {
+  const normalized = String(url || "").trim();
+  if (!normalized) return "";
+  try {
+    const parsed = new URL(normalized);
+    const currentJobId = parsed.searchParams.get("currentJobId")?.trim();
+    if (currentJobId) {
+      return `${parsed.origin}/jobs/view/${currentJobId}/`;
+    }
+    const directMatch = parsed.pathname.match(/\/jobs\/view\/(\d+)/);
+    if (directMatch) {
+      return `${parsed.origin}/jobs/view/${directMatch[1]}/`;
+    }
+    parsed.hash = "";
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return normalized;
+  }
+}
+
+function cloneJobForRun(job) {
+  if (!job) return null;
+  return {
+    title: job.title || "",
+    company: job.company || "",
+    location: job.location || "",
+    datePosted: job.datePosted || "",
+    sourceUrl: normalizeJobSourceUrl(job.sourceUrl || window.location.href),
+  };
+}
+
+const ACTIVE_EXTENSION_SESSION_STATUSES = new Set([
+  "starting",
+  "scraped",
+  "prompt1_done",
+  "prompt2_done",
+  "prompt3_done",
+  "validated",
+]);
+
+function getRunStateFromExtensionSession() {
+  const session = state.extensionState;
+  if (!session) return null;
+
+  const status = session.status || "";
+  const activeRunJob = cloneJobForRun(
+    session.jobSnapshot || session.activeRunJob || null,
+  );
+
+  if (ACTIVE_EXTENSION_SESSION_STATUSES.has(status)) {
+    const byStatus = {
+      starting: {
+        title: "Starting run",
+        detail: "Getting things ready.",
+      },
+      scraped: {
+        title: "Job captured",
+        detail: "Job details are ready.",
+      },
+      prompt1_done: {
+        title: "Prompt 1 · Analyze JD",
+        detail: "Reading hiring signals.",
+      },
+      prompt2_done: {
+        title: "Prompt 2 · Positioning",
+        detail: "Building the positioning strategy.",
+      },
+      prompt3_done: {
+        title: "Prompt 3 · Tailored Resume",
+        detail: "Writing the tailored resume.",
+      },
+      validated: {
+        title: "Saving draft",
+        detail: "Saving your resume.",
+      },
+    };
+    return {
+      isRunning: true,
+      tone: "running",
+      activeRunJob,
+      ...(byStatus[status] || byStatus.starting),
+    };
+  }
+
+  if (status === "patched" && activeRunJob) {
+    return {
+      isRunning: false,
+      tone: "success",
+      title: "Opening workspace",
+      detail: `Your tailored resume for ${getJobDisplayLabel(activeRunJob)} is opening on the web.`,
+      activeRunJob,
+    };
+  }
+
+  if (status === "error") {
+    return {
+      isRunning: false,
+      tone: "error",
+      title: "Run failed",
+      detail: formatErrorText(session.patchError || ""),
+      activeRunJob,
+    };
+  }
+
+  return null;
+}
+
+function syncVisibleRunStateFromExtensionSession() {
+  if (state.isRunning || state.awaitingAuth || state.awaitingStoryboard) return;
+  if (getSetupRequirementStatus() || isHardPrerequisiteBlocker()) {
+    state.activeRunJob = null;
+    return;
+  }
+  const sessionState = getRunStateFromExtensionSession();
+  if (!sessionState) {
+    state.activeRunJob = null;
+    return;
+  }
+
+  state.isRunning = sessionState.isRunning;
+  state.activeRunJob = sessionState.activeRunJob;
+  state.statusTone = sessionState.tone;
+  state.statusTitle = sessionState.title;
+  state.statusDetail = sessionState.detail;
+  state.statusActions = [];
+}
+
+function getJobDisplayLabel(job) {
+  if (!job) return "another job";
+  const title = String(job.title || "").trim();
+  const company = String(job.company || "").trim();
+  if (title && company) return `${title} at ${company}`;
+  return title || company || "another job";
+}
+
+function doesActiveRunMatchCurrentJob() {
+  if (!state.activeRunJob || !state.currentJob) return true;
+  const activeUrl = normalizeJobSourceUrl(state.activeRunJob.sourceUrl);
+  const currentUrl = normalizeJobSourceUrl(state.currentJob.sourceUrl);
+  if (activeUrl && currentUrl) {
+    return activeUrl === currentUrl;
+  }
+  return (
+    String(state.activeRunJob.title || "").trim() ===
+      String(state.currentJob.title || "").trim() &&
+    String(state.activeRunJob.company || "").trim() ===
+      String(state.currentJob.company || "").trim()
+  );
+}
+
+function canAttemptRecoveryRun() {
+  if (!isLinkedInJobPage()) return false;
+  if (hasManualJobDescription()) return true;
+
+  const job = state.currentJob || {};
+  return Boolean(
+    job.sourceUrl ||
+    job.title ||
+    job.company ||
+    /\/jobs\/view\/\d+/.test(window.location.href),
+  );
+}
+
+function getRunBlockingState() {
+  const setupRequirement = getSetupRequirementStatus();
+  if (setupRequirement) {
+    return setupRequirement;
+  }
+
+  if (hasManualJobDescription()) {
+    return null;
+  }
+
   const hasJob = hasEnoughJobContext(state.currentJob);
 
   if (!hasJob) {
@@ -2095,25 +3600,17 @@ function getRunBlockingState() {
         actions: [],
       };
     }
-    return {
-      tone: "blocked",
-      title: "Refresh page",
-      detail: "We could not read this job yet.",
-      actions: [{ id: "refresh-page", label: "Refresh", variant: "primary" }],
-    };
+    if (!canAttemptRecoveryRun()) {
+      return getScrapeRequirementStatus();
+    }
+    return null;
   }
 
-  if (!hasResume) {
-    return {
-      tone: "blocked",
-      title: "Add resume",
-      detail: "Open Settings to add your master resume.",
-      actions: [{ id: "open-settings", label: "Settings", variant: "primary" }],
-    };
-  }
-
-  if (!hasAccount) {
-    return getConnectionRequirementStatus();
+  if (state.scrapeIssue) {
+    if (!canAttemptRecoveryRun()) {
+      return getScrapeRequirementStatus(state.scrapeIssue);
+    }
+    return null;
   }
 
   return null;
@@ -2128,6 +3625,14 @@ function isRunReady() {
 function extractCurrentJob() {
   const normalizedSourceUrl = (() => {
     const href = window.location.href;
+    try {
+      const parsed = new URL(href);
+      const currentJobId = parsed.searchParams.get("currentJobId")?.trim();
+      if (currentJobId) {
+        return `${parsed.origin}/jobs/view/${currentJobId}/`;
+      }
+    } catch {}
+
     const canonicalMatch = href.match(/\/jobs\/view\/(\d+)/);
     if (canonicalMatch) {
       return `${window.location.origin}/jobs/view/${canonicalMatch[1]}/`;
@@ -2147,29 +3652,43 @@ function extractCurrentJob() {
     return href;
   })();
 
-  const title = extractText([
-    ".job-details-jobs-unified-top-card__job-title h1",
-    ".jobs-unified-top-card__job-title h1",
-    "main h1",
-  ]);
   const company = extractText([
     ".job-details-jobs-unified-top-card__company-name a",
     ".job-details-jobs-unified-top-card__company-name",
     ".jobs-unified-top-card__company-name a",
     ".jobs-unified-top-card__company-name",
+    '#workspace a[href*="/company/"]',
   ]);
+  const title =
+    extractText([
+      ".job-details-jobs-unified-top-card__job-title h1",
+      ".jobs-unified-top-card__job-title h1",
+      '[data-test-id="job-details-job-title"]',
+      "#workspace h1",
+      "main h1",
+    ]) || inferJobTitleFromDocumentTitle(company);
   const values = extractMetaCandidates();
   const jobLocation = guessLocation(values);
   const applicants = guessApplicants(values);
   const highlights = guessHighlights(values, jobLocation);
+  const descriptionText = readInlineJobDescriptionText();
   return {
     title,
     company,
     location: jobLocation,
     applicants,
     highlights,
+    descriptionText,
     sourceUrl: normalizedSourceUrl,
   };
+}
+
+function getLinkedInJobDetailRoot() {
+  return (
+    document.querySelector(
+      ".jobs-search__job-details--container, .jobs-search__job-details, .scaffold-layout__detail, [data-testid='job-details']",
+    ) || document.querySelector("main")
+  );
 }
 
 function getHistoryTitle(entry) {
@@ -2239,34 +3758,290 @@ function getHistorySourceUrl(entry) {
   return "";
 }
 
-function getSelectedProfile() {
-  const settings = state.assets?.llmSettings;
-  if (!settings?.profiles) return null;
-  const select = $(PROVIDER_SELECT_ID);
-  const profileId = select?.value || settings.activeProfileId;
-  return settings.profiles[profileId] ?? null;
+function getSelectedProfile(selectId = PROVIDER_SELECT_ID, settings = null) {
+  const resolvedSettings = settings || state.assets?.llmSettings;
+  if (!resolvedSettings?.profiles) return null;
+  const select = $(selectId);
+  const profileId = select?.value || resolvedSettings.activeProfileId;
+  return resolvedSettings.profiles[profileId] ?? null;
+}
+
+function isOnboardingMode() {
+  return state.setupState?.mode === "onboarding";
+}
+
+function renderPrimaryButtonMarkup(label, actionId, extraAttrs = "") {
+  return `<button type="button" class="resume-matcher-button is-primary" data-onboarding-action="${escapeHtml(actionId)}" ${extraAttrs}>${escapeHtml(label)}</button>`;
+}
+
+function renderProviderOptions(settings) {
+  return Object.values(settings?.profiles || {})
+    .sort((left, right) =>
+      (left?.label || "").localeCompare(right?.label || "", undefined, {
+        sensitivity: "base",
+      }),
+    )
+    .map(
+      (profile) =>
+        `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.label)}</option>`,
+    )
+    .join("");
+}
+
+function getOnboardingStepIndex(step) {
+  switch (step) {
+    case "sign_in":
+      return 1;
+    case "assets":
+      return 2;
+    case "provider":
+    case "done":
+      return 3;
+    case "intro":
+    default:
+      return 0;
+  }
+}
+
+function renderOnboardingProgress(currentStep) {
+  const currentIndex = getOnboardingStepIndex(currentStep);
+  const steps = [
+    { label: "Sign in", index: 1 },
+    { label: "Add resume", index: 2 },
+    { label: "Choose AI", index: 3 },
+  ];
+
+  return `
+    <div class="resume-matcher-onboarding__progress" aria-hidden="true">
+      ${steps
+        .map((step) => {
+          const stateClass =
+            step.index < currentIndex
+              ? "is-complete"
+              : step.index === currentIndex
+                ? "is-active"
+                : "";
+          return `
+            <div class="resume-matcher-onboarding__progress-step ${stateClass}">
+              <div class="resume-matcher-onboarding__progress-bar"></div>
+              <div class="resume-matcher-onboarding__progress-label">${escapeHtml(step.label)}</div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderOnboardingStatusPill(label, tone = "optional") {
+  return `<span class="resume-matcher-onboarding__status-pill is-${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+}
+
+function renderOnboardingStep() {
+  const setupState = state.setupState;
+  if (!setupState || setupState.mode !== "onboarding") {
+    return "";
+  }
+
+  const hasResume = Boolean(state.assets?.masterResumeContextAsset?.filename);
+  const hasStoryboard = Boolean(state.assets?.storyboardAsset?.filename);
+  const providerSettings = state.assets?.llmSettings;
+  const selectedProfile = getSelectedProfile(
+    "resume-matcher-onboarding-provider-select",
+    providerSettings,
+  );
+
+  switch (setupState.step) {
+    case "sign_in":
+      return `
+        ${renderOnboardingProgress(setupState.step)}
+        <p class="resume-matcher-onboarding__text">${escapeHtml(setupState.detail)}</p>
+        ${
+          state.connectionState === "connected"
+            ? '<div class="resume-matcher-onboarding__badge">Connected</div>'
+            : ""
+        }
+        <div class="resume-matcher-onboarding__actions">
+          ${
+            state.connectionState === "connected"
+              ? renderPrimaryButtonMarkup(
+                  "Next",
+                  "onboarding_next",
+                  'data-next-step="assets"',
+                )
+              : `<button type="button" class="resume-matcher-button is-primary resume-matcher-google-button" data-onboarding-action="connect">${renderGoogleButtonLabel("Continue with Google")}</button>`
+          }
+        </div>
+      `;
+    case "assets":
+      return `
+        ${renderOnboardingProgress(setupState.step)}
+        <p class="resume-matcher-onboarding__text">Use TXT, MD, or JSON for both files.</p>
+        <div class="resume-matcher-onboarding__row">
+          <div class="resume-matcher-onboarding__file">
+            <div class="resume-matcher-onboarding__file-top">
+              <span class="resume-matcher-onboarding__label">Resume</span>
+              ${hasResume ? renderOnboardingStatusPill("Added", "complete") : renderOnboardingStatusPill("Required", "required")}
+            </div>
+            ${
+              hasResume
+                ? `<span class="resume-matcher-onboarding__status">${escapeHtml(state.assets?.masterResumeContextAsset?.filename || "Resume added")}</span>`
+                : ""
+            }
+            <button type="button" class="resume-matcher-button" data-onboarding-action="upload_resume">${hasResume ? "Replace" : "Upload"}</button>
+          </div>
+          <div class="resume-matcher-onboarding__file">
+            <div class="resume-matcher-onboarding__file-top">
+              <span class="resume-matcher-onboarding__label">Story bank</span>
+              ${hasStoryboard ? renderOnboardingStatusPill("Added", "complete") : renderOnboardingStatusPill("Optional", "optional")}
+            </div>
+            <p class="resume-matcher-onboarding__help">Use a story bank for fuller bullet details and extra wins beyond your main resume. It gives the AI stronger stories to pull into the tailored version.</p>
+            <a class="resume-matcher-settings-item__link" href="${STORY_BANK_GUIDE_URL}" target="_blank" rel="noopener noreferrer">Optional, but useful. Learn more.</a>
+            ${
+              hasStoryboard
+                ? `<span class="resume-matcher-onboarding__status">${escapeHtml(state.assets?.storyboardAsset?.filename || "Story bank added")}</span>`
+                : ""
+            }
+            <button type="button" class="resume-matcher-button" data-onboarding-action="upload_storyboard">${hasStoryboard ? "Replace" : "Upload"}</button>
+          </div>
+        </div>
+        <div class="resume-matcher-onboarding__actions">
+          ${renderPrimaryButtonMarkup("Next", "onboarding_next", `data-next-step="provider"${hasResume ? "" : " disabled"}`)}
+        </div>
+      `;
+    case "provider": {
+      const isWeb = selectedProfile?.mode === "web_automation";
+      const isApi = selectedProfile?.mode === "api";
+      return `
+        ${renderOnboardingProgress(setupState.step)}
+        <div class="resume-matcher-onboarding__provider-grid">
+          <p class="resume-matcher-onboarding__provider-note"><strong>API key</strong> is more stable.</p>
+          <p class="resume-matcher-onboarding__provider-note"><strong>Web automation</strong> uses your browser login and is less stable.</p>
+          <div class="resume-matcher-field">
+            <select id="resume-matcher-onboarding-provider-select">${renderProviderOptions(providerSettings)}</select>
+          </div>
+          <div id="resume-matcher-onboarding-provider-web-row" class="resume-matcher-field"${isWeb ? "" : " hidden"}>
+            <input id="resume-matcher-onboarding-provider-web-input" type="url" placeholder="Provider URL" value="${escapeHtml(isWeb ? selectedProfile?.targetUrl || "" : "")}" />
+          </div>
+          <div id="resume-matcher-onboarding-provider-api-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
+            <input id="resume-matcher-onboarding-provider-api-base-input" type="url" placeholder="API endpoint" value="${escapeHtml(isApi ? selectedProfile?.apiBaseUrl || "" : "")}" />
+          </div>
+          <div id="resume-matcher-onboarding-provider-model-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
+            <input id="resume-matcher-onboarding-provider-model-input" type="text" placeholder="Model" value="${escapeHtml(isApi ? selectedProfile?.model || "" : "")}" />
+          </div>
+          <div id="resume-matcher-onboarding-provider-key-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
+            <input id="${ONBOARDING_PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" value="" />
+          </div>
+        </div>
+        <p class="resume-matcher-onboarding__help resume-matcher-onboarding__help--subtle"><em>Most tested: ChatGPT web automation and Claude API.</em></p>
+        <div class="resume-matcher-onboarding__actions">
+          ${renderPrimaryButtonMarkup("Next", "onboarding_next", `data-next-step="done"${setupState.canContinue ? "" : " disabled"}`)}
+        </div>
+      `;
+    }
+    case "done":
+      return `
+        ${renderOnboardingProgress(setupState.step)}
+        <p class="resume-matcher-onboarding__text">${escapeHtml(setupState.detail)}</p>
+        <div class="resume-matcher-onboarding__actions">
+          ${renderPrimaryButtonMarkup("Start tailoring", "complete_onboarding")}
+        </div>
+      `;
+    case "intro":
+    default:
+      return `
+        ${renderOnboardingProgress(setupState.step)}
+        <p class="resume-matcher-onboarding__text">${escapeHtml(setupState.detail)}</p>
+        <div class="resume-matcher-onboarding__actions">
+          ${renderPrimaryButtonMarkup("Continue", "onboarding_next", 'data-next-step="sign_in"')}
+        </div>
+      `;
+  }
 }
 
 function getRunStatusCopy() {
+  if (state.awaitingAuth) {
+    return {
+      tone: state.statusTone || "info",
+      title: state.statusTitle || "Opening Google sign-in",
+      detail:
+        state.statusDetail || "We will bring you back here after sign-in.",
+      actions: [],
+    };
+  }
+
   const blocked = getRunBlockingState();
   if (blocked) {
     return blocked;
   }
 
-  if (state.awaitingAuth) {
-    return getConnectionRequirementStatus();
+  if (state.statusTone === "error" && state.statusTitle) {
+    return {
+      tone: state.statusTone,
+      title: state.statusTitle,
+      detail: state.statusDetail,
+      actions: state.statusActions,
+    };
+  }
+
+  if (
+    state.statusTitle &&
+    (state.isRunning ||
+      state.statusTone === "success" ||
+      state.statusTone === "info" ||
+      state.statusTone === "running")
+  ) {
+    const isDifferentJob =
+      state.activeRunJob &&
+      (state.isRunning || state.awaitingStoryboard || state.awaitingAuth) &&
+      !doesActiveRunMatchCurrentJob();
+    if (isDifferentJob) {
+      return {
+        tone: state.statusTone === "success" ? "success" : "info",
+        title:
+          state.statusTone === "success"
+            ? "Workspace ready"
+            : state.awaitingStoryboard
+              ? "Story bank needed for another job"
+              : state.awaitingAuth
+                ? "Sign-in needed for another job"
+                : "Tailoring in background",
+        detail:
+          state.statusTone === "success"
+            ? `Opened the tailored resume for ${getJobDisplayLabel(state.activeRunJob)}.`
+            : state.awaitingStoryboard
+              ? `Continue or upload a story bank for ${getJobDisplayLabel(state.activeRunJob)}.`
+              : state.awaitingAuth
+                ? `Sign in to continue ${getJobDisplayLabel(state.activeRunJob)}.`
+                : `${state.statusTitle || "Still working"} for ${getJobDisplayLabel(state.activeRunJob)}.`,
+        actions: state.statusActions,
+      };
+    }
+    return {
+      tone: state.statusTone,
+      title: state.statusTitle,
+      detail:
+        state.statusTone === "running" && state.rotatingStatusDetail
+          ? state.rotatingStatusDetail
+          : state.statusDetail,
+      actions: state.statusActions,
+    };
   }
 
   if (state.awaitingStoryboard) {
     return {
       tone: "warning",
-      title: "Storyboard missing",
-      detail: "Continue without a storyboard or upload one in Settings.",
+      title: "Story bank missing",
+      detail: "Continue without a story bank or upload one in Settings.",
       actions: [
         { id: "continue-storyboard", label: "Continue", variant: "primary" },
         { id: "cancel-storyboard", label: "Cancel" },
       ],
     };
+  }
+
+  if (shouldShowManualJdFallback()) {
+    return getScrapeRequirementStatus(state.scrapeIssue);
   }
 
   if (!state.statusTitle && state.statusTone === "neutral") {
@@ -2276,9 +4051,57 @@ function getRunStatusCopy() {
   return {
     tone: state.statusTone,
     title: state.statusTitle,
-    detail: state.statusDetail,
+    detail:
+      state.statusTone === "running" && state.rotatingStatusDetail
+        ? state.rotatingStatusDetail
+        : state.statusDetail,
     actions: state.statusActions,
   };
+}
+
+function stopRunningStatusRotation() {
+  if (runningStatusMessageTimer) {
+    window.clearTimeout(runningStatusMessageTimer);
+    runningStatusMessageTimer = null;
+  }
+  state.rotatingStatusIndex = -1;
+  state.rotatingStatusDetail = "";
+}
+
+function scheduleNextRunningStatusRotation() {
+  if (!state.isRunning || state.statusTone !== "running") return;
+  runningStatusMessageTimer = window.setTimeout(() => {
+    runningStatusMessageTimer = null;
+    if (!state.isRunning || state.statusTone !== "running") return;
+    const nextIndex =
+      state.rotatingStatusIndex < 0
+        ? Math.floor(Math.random() * RUN_WAIT_MESSAGES.length)
+        : (state.rotatingStatusIndex + 1) % RUN_WAIT_MESSAGES.length;
+    state.rotatingStatusIndex = nextIndex;
+    state.rotatingStatusDetail = RUN_WAIT_MESSAGES[nextIndex];
+    render();
+    scheduleNextRunningStatusRotation();
+  }, RUN_WAIT_MESSAGE_INTERVAL_MS);
+}
+
+function startRunningStatusRotation() {
+  if (!state.isRunning || state.statusTone !== "running") {
+    stopRunningStatusRotation();
+    return;
+  }
+  if (!state.rotatingStatusDetail) {
+    state.rotatingStatusIndex = Math.floor(
+      Math.random() * RUN_WAIT_MESSAGES.length,
+    );
+    state.rotatingStatusDetail = RUN_WAIT_MESSAGES[state.rotatingStatusIndex];
+  }
+  if (!runningStatusMessageTimer) {
+    scheduleNextRunningStatusRotation();
+  }
+}
+
+function clearScrapeRecoveryState() {
+  state.scrapeIssue = "";
 }
 
 function setRunStatus(tone, title, detail = "", actions = []) {
@@ -2286,6 +4109,11 @@ function setRunStatus(tone, title, detail = "", actions = []) {
   state.statusTitle = title || "";
   state.statusDetail = detail || "";
   state.statusActions = Array.isArray(actions) ? actions : [];
+  if (tone === "running" && state.isRunning) {
+    startRunningStatusRotation();
+  } else {
+    stopRunningStatusRotation();
+  }
   if (!state.boardOpen && tone === "error") {
     state.launcherAlert = true;
   }
@@ -2306,10 +4134,10 @@ function formatErrorText(message) {
       normalized,
     )
   ) {
-    return "Connect your account to continue.";
+    return "Sign in with Google to continue.";
   }
   if (/storyboard/i.test(normalized)) {
-    return "Storyboard required or continue without it.";
+    return "Story bank required or continue without it.";
   }
   if (/extension context invalidated/i.test(normalized)) {
     return "Refresh the LinkedIn page and try again.";
@@ -2322,17 +4150,11 @@ function getProgressMessage(scope, message, data) {
     typeof data?.promptLabel === "string" ? data.promptLabel : null;
   if (scope === "Orchestrator") {
     const byMessage = new Map([
-      [
-        "Generate flow started.",
-        ["Starting run", "Preparing your tailored resume."],
-      ],
-      [
-        "Loading local assets.",
-        ["Loading assets", "Checking your saved setup."],
-      ],
+      ["Generate flow started.", ["Starting run", "Getting things ready."]],
+      ["Loading local assets.", ["Loading assets", "Checking your setup."]],
       [
         "Using active LinkedIn tab.",
-        ["Checking job page", "Reading the current LinkedIn job."],
+        ["Checking job page", "Reading this job."],
       ],
       [
         "LinkedIn scrape completed.",
@@ -2340,7 +4162,7 @@ function getProgressMessage(scope, message, data) {
       ],
       [
         "Resolving base resume.",
-        ["Finding resume", "Locating your base resume."],
+        ["Finding resume", "Looking for your base resume."],
       ],
       [
         "Resolved base resume for cloning.",
@@ -2348,29 +4170,41 @@ function getProgressMessage(scope, message, data) {
       ],
       [
         "Cloned base resume and created job-specific resume.",
-        ["Draft created", "Created a job-specific draft."],
+        ["Draft created", "Created the job draft."],
       ],
-      ["Rendering Prompt 1.", ["Prompt 1", "Preparing extraction."]],
-      ["Running Prompt 1.", ["Prompt 1", "Extracting hiring signals."]],
-      ["Rendering Prompt 2.", ["Prompt 2", "Preparing strategy brief."]],
-      ["Running Prompt 2.", ["Prompt 2", "Building strategy brief."]],
-      ["Rendering Prompt 3.", ["Prompt 3", "Preparing writing pass."]],
-      ["Running Prompt 3.", ["Prompt 3", "Writing tailored resume."]],
+      [
+        "Rendering Prompt 1.",
+        ["Prompt 1 · Analyze JD", "Preparing the job analysis."],
+      ],
+      [
+        "Running Prompt 1.",
+        ["Prompt 1 · Analyze JD", "Reading hiring signals."],
+      ],
+      [
+        "Rendering Prompt 2.",
+        ["Prompt 2 · Positioning", "Preparing the positioning strategy."],
+      ],
+      [
+        "Running Prompt 2.",
+        ["Prompt 2 · Positioning", "Building the positioning strategy."],
+      ],
+      [
+        "Rendering Prompt 3.",
+        ["Prompt 3 · Tailored Resume", "Preparing the tailored draft."],
+      ],
+      [
+        "Running Prompt 3.",
+        ["Prompt 3 · Tailored Resume", "Writing the tailored resume."],
+      ],
       [
         "Validating Prompt 3 output.",
-        ["Validating output", "Checking generated resume JSON."],
+        ["Validating output", "Checking the draft."],
       ],
-      [
-        "Patching generated resume.",
-        ["Saving draft", "Saving your tailored resume."],
-      ],
-      [
-        "Renaming generated resume.",
-        ["Naming resume", "Updating the resume title."],
-      ],
+      ["Patching generated resume.", ["Saving draft", "Saving your resume."]],
+      ["Renaming generated resume.", ["Naming resume", "Updating the title."]],
       [
         "Opening generated resume preview.",
-        ["Opening workspace", "Opening the tailored resume on the web."],
+        ["Opening workspace", "Opening your resume."],
       ],
     ]);
     return byMessage.get(message) ?? null;
@@ -2378,20 +4212,20 @@ function getProgressMessage(scope, message, data) {
 
   if (scope === "LinkedInScrape") {
     if (message === "Starting LinkedIn scrape.")
-      return ["Reading job page", "Extracting current job details."];
+      return ["Reading job page", "Extracting job details."];
     if (message === "LinkedIn scrape normalized successfully.")
       return ["Job captured", "LinkedIn job is ready."];
   }
 
   if (scope === "ResumeApi") {
     if (message === "Listing resumes.")
-      return ["Finding resume", "Loading your available resumes."];
+      return ["Finding resume", "Loading your resumes."];
     if (message === "Cloning resume.")
       return ["Creating draft", "Cloning your base resume."];
     if (message === "Patch resume succeeded.")
-      return ["Saved", "Generated resume saved."];
+      return ["Saved", "Resume saved."];
     if (message === "Rename resume succeeded.")
-      return ["Named", "Resume title updated."];
+      return ["Named", "Title updated."];
   }
 
   if (promptLabel && scope !== "Background") {
@@ -2469,17 +4303,7 @@ function renderProviderFields() {
   const select = $(PROVIDER_SELECT_ID);
   if (!settings || !select) return;
 
-  const options = Object.values(settings.profiles || {})
-    .sort((left, right) =>
-      (left?.label || "").localeCompare(right?.label || "", undefined, {
-        sensitivity: "base",
-      }),
-    )
-    .map(
-      (profile) =>
-        `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.label)}</option>`,
-    )
-    .join("");
+  const options = renderProviderOptions(settings);
   select.innerHTML = options;
   select.value = settings.activeProfileId || "";
 
@@ -2505,8 +4329,7 @@ function renderProviderFields() {
   if (apiBaseInput) apiBaseInput.value = isApi ? profile.apiBaseUrl || "" : "";
   const modelInput = $(PROVIDER_MODEL_INPUT_ID);
   if (modelInput) modelInput.value = isApi ? profile.model || "" : "";
-  const apiKeyInput = $(PROVIDER_API_KEY_INPUT_ID);
-  if (apiKeyInput) apiKeyInput.value = isApi ? profile.apiKey || "" : "";
+  syncSecretInput(PROVIDER_API_KEY_INPUT_ID);
 }
 
 function renderSettings() {
@@ -2522,8 +4345,8 @@ function renderSettings() {
   }
   if (storyboardLabel) {
     const hasFile = Boolean(assets?.storyboardAsset?.filename);
-    const label = assets?.storyboardAsset?.filename?.trim() || "Storyboard";
-    storyboardLabel.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(label)}</span><button id="${STORYBOARD_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="${hasFile ? "Delete storyboard" : "Upload storyboard"}" title="${hasFile ? "Delete storyboard" : "Upload storyboard"}">${renderFileActionIcon(hasFile ? "delete" : "upload")}</button>`;
+    const label = assets?.storyboardAsset?.filename?.trim() || "Story bank";
+    storyboardLabel.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(label)}</span><button id="${STORYBOARD_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="${hasFile ? "Delete story bank" : "Upload story bank"}" title="${hasFile ? "Delete story bank" : "Upload story bank"}">${renderFileActionIcon(hasFile ? "delete" : "upload")}</button>`;
     storyboardLabel.classList.toggle("is-placeholder", !hasFile);
   }
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label }) => {
@@ -2543,9 +4366,26 @@ function renderSettings() {
   if (appUrl) appUrl.value = assets?.appOrigin || "";
   const apiUrl = $(API_URL_INPUT_ID);
   if (apiUrl) apiUrl.value = assets?.apiOrigin || "";
+  const apifyEnabled = $(APIFY_ENABLED_INPUT_ID);
+  if (apifyEnabled) {
+    apifyEnabled.checked = assets?.apifyFallbackSettings?.enabled === true;
+  }
+  const apifyTokenRow = $(APIFY_TOKEN_ROW_ID);
+  if (apifyTokenRow) {
+    apifyTokenRow.hidden = assets?.apifyFallbackSettings?.enabled !== true;
+  }
+  const apifyTokenInput = $(APIFY_TOKEN_INPUT_ID);
+  if (apifyTokenInput) {
+    syncSecretInput(APIFY_TOKEN_INPUT_ID);
+    syncSecretRevealToggle(APIFY_TOKEN_INPUT_ID);
+  }
   const customFeature = $(CUSTOM_FEATURE_INPUT_ID);
   if (customFeature)
     customFeature.checked = assets?.customFeatureEnabled === true;
+  const runtimeUrlsRow = $(RUNTIME_URLS_ROW_ID);
+  if (runtimeUrlsRow) {
+    runtimeUrlsRow.hidden = assets?.customFeatureEnabled !== true;
+  }
 
   const accountButton = $(ACCOUNT_ACTION_ID);
   if (accountButton) {
@@ -2590,6 +4430,10 @@ function renderSettings() {
     $(promptDownloadId(templateName))?.addEventListener("click", async () => {
       try {
         await downloadDefaultPrompt(templateName);
+        void trackAnalyticsEvent("extension_prompt_downloaded", {
+          surface: "settings_view",
+          template_name: templateName,
+        });
       } catch (error) {
         setRunStatus(
           "error",
@@ -2628,10 +4472,40 @@ function renderRunView() {
   const status = getRunStatusCopy();
   const readyPill = $(RUN_READY_ID);
   const jobMeta = $(RUN_META_ID);
+  const onboardingRoot = $(RUN_ONBOARDING_ID);
+  const manualJdField = $(RUN_MANUAL_JD_FIELD_ID);
+  const manualJdInput = $(RUN_MANUAL_JD_ID);
+  const notesField = $(RUN_NOTES_ID)?.closest(".resume-matcher-field");
   const isLoadingJob =
-    state.jobLoadState === "loading" && !hasEnoughJobContext(state.currentJob);
+    state.jobLoadState === "loading" &&
+    (state.selectedJobRefreshing || !hasEnoughJobContext(state.currentJob));
+  const hasScrapeProblem = shouldShowManualJdFallback();
+  const hardBlocker = isHardPrerequisiteBlocker();
   const canRun = isRunReady();
+  const onboardingMode = isOnboardingMode();
+  const runningDifferentJob =
+    state.isRunning && !doesActiveRunMatchCurrentJob();
+
+  if (onboardingRoot) {
+    onboardingRoot.hidden = !onboardingMode;
+    onboardingRoot.innerHTML = onboardingMode ? renderOnboardingStep() : "";
+    if (onboardingMode && state.setupState?.step === "provider") {
+      const onboardingProviderSelect = $(
+        "resume-matcher-onboarding-provider-select",
+      );
+      if (
+        onboardingProviderSelect &&
+        state.assets?.llmSettings?.activeProfileId
+      ) {
+        onboardingProviderSelect.value =
+          state.assets.llmSettings.activeProfileId;
+      }
+    }
+    syncSecretInput(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
+  }
+
   if (readyPill) {
+    readyPill.hidden = onboardingMode || hardBlocker;
     readyPill.textContent = canRun ? "✓" : isLoadingJob ? "…" : "!";
     const toneClass = canRun
       ? ""
@@ -2654,19 +4528,25 @@ function renderRunView() {
   }
 
   if (jobMeta) {
-    const job = state.currentJob || {};
-    const parts = [];
-    if (job.company) parts.push(`<strong>${escapeHtml(job.company)}</strong>`);
-    if (job.highlights?.length) {
-      if (parts.length)
-        parts.push('<span class="resume-matcher-run-meta__bullet">•</span>');
-      parts.push(`<span>${escapeHtml(job.highlights.join(" · "))}</span>`);
-    } else if (job.location) {
-      if (parts.length)
-        parts.push('<span class="resume-matcher-run-meta__bullet">•</span>');
-      parts.push(`<span>${escapeHtml(job.location)}</span>`);
+    jobMeta.hidden = onboardingMode || hardBlocker;
+    if (state.selectedJobRefreshing) {
+      jobMeta.innerHTML = "";
+    } else {
+      const job = state.currentJob || {};
+      const parts = [];
+      if (job.company)
+        parts.push(`<strong>${escapeHtml(job.company)}</strong>`);
+      if (job.highlights?.length) {
+        if (parts.length)
+          parts.push('<span class="resume-matcher-run-meta__bullet">•</span>');
+        parts.push(`<span>${escapeHtml(job.highlights.join(" · "))}</span>`);
+      } else if (job.location) {
+        if (parts.length)
+          parts.push('<span class="resume-matcher-run-meta__bullet">•</span>');
+        parts.push(`<span>${escapeHtml(job.location)}</span>`);
+      }
+      jobMeta.innerHTML = parts.join("");
     }
-    jobMeta.innerHTML = parts.join("");
   }
 
   const notes = $(RUN_NOTES_ID);
@@ -2674,23 +4554,46 @@ function renderRunView() {
     notes.value = state.customMessage;
     autoGrowTextarea(notes);
   }
+  if (manualJdField) {
+    manualJdField.hidden = onboardingMode || hardBlocker || !hasScrapeProblem;
+  }
+  if (manualJdInput && manualJdInput.value !== state.manualJobDescription) {
+    manualJdInput.value = state.manualJobDescription;
+    autoGrowTextarea(manualJdInput);
+  }
+  if (notesField) {
+    notesField.hidden = onboardingMode || hardBlocker;
+  }
 
   const primaryButton = $(RUN_PRIMARY_ID);
   if (primaryButton) {
-    primaryButton.disabled = state.isRunning || !canRun;
-    primaryButton.textContent = state.isRunning ? "Running…" : "Tailor";
+    primaryButton.disabled = onboardingMode || state.isRunning || !canRun;
+    primaryButton.textContent = state.isRunning
+      ? runningDifferentJob
+        ? "Working on other job"
+        : "Running…"
+      : hasManualJobDescription() && hasScrapeProblem
+        ? "Continue"
+        : "Tailor";
+    primaryButton.hidden = onboardingMode || hardBlocker;
   }
 
   const secondaryButton = $(RUN_SECONDARY_ID);
   if (secondaryButton) {
     secondaryButton.textContent = "Minimize";
+    secondaryButton.hidden = onboardingMode || hardBlocker;
   }
 
   const mainActions = $(RUN_ACTIONS_ID);
   const statusRoot = $(RUN_STATUS_ID);
   const statusActions = $(RUN_STATUS_ACTIONS_ID);
   if (statusRoot && statusActions) {
-    statusRoot.classList.toggle("is-visible", Boolean(status));
+    statusRoot.hidden = onboardingMode;
+    statusActions.hidden = onboardingMode;
+    statusRoot.classList.toggle(
+      "is-visible",
+      !onboardingMode && Boolean(status),
+    );
     statusRoot.dataset.tone = status?.tone || "neutral";
     statusRoot.innerHTML = status
       ? `
@@ -2716,18 +4619,26 @@ function renderRunView() {
       status?.actions?.length &&
       (status.tone === "blocked" || status.tone === "warning"),
     );
-    mainActions.classList.toggle("is-hidden", shouldHideMainActions);
+    mainActions.classList.toggle(
+      "is-hidden",
+      onboardingMode || hardBlocker || shouldHideMainActions,
+    );
   }
 
   const titleNode = document.querySelector("#resume-matcher-job-title");
   if (titleNode) {
-    titleNode.textContent =
-      state.currentJob?.title ||
-      (isLoadingJob
-        ? "Loading job"
-        : hasUsableJobContext(state.currentJob)
-          ? "Current job"
-          : "Job details unavailable");
+    titleNode.textContent = onboardingMode
+      ? state.setupState?.title || "Welcome"
+      : hardBlocker
+        ? state.setupState?.title || "Finish setup"
+        : isLoadingJob
+          ? state.selectedJobRefreshing
+            ? "Loading selected job"
+            : "Loading job"
+          : state.currentJob?.title ||
+            (hasUsableJobContext(state.currentJob)
+              ? "Current job"
+              : "Job details unavailable");
   }
 }
 
@@ -2740,21 +4651,77 @@ function renderRootFlags() {
   root.dataset.hidden = state.dismissed && !state.boardOpen ? "true" : "false";
   root.dataset.dockSide = state.dockSide;
   root.dataset.currentView = state.currentView;
+  root.dataset.onboardingMode = isOnboardingMode() ? "true" : "false";
   if (!pointerDragState) {
     root.dataset.dragging = "false";
     root.dataset.dockPreview = state.dockSide;
   }
 }
 
+function syncRunningInteractivity() {
+  const board = $(BOARD_ID);
+  if (!board) return;
+
+  const allowedIds = new Set([
+    BOARD_HOME_ID,
+    BOARD_SETTINGS_ID,
+    BOARD_MINIMIZE_ID,
+    RUN_SECONDARY_ID,
+  ]);
+
+  const controls = board.querySelectorAll("button, input, textarea, select, a");
+  controls.forEach((control) => {
+    const id = control.id || "";
+    const allowWhileRunning = allowedIds.has(id);
+    const isInRunView = control.closest(`#${RUN_VIEW_ID}`) !== null;
+    if (
+      control instanceof HTMLButtonElement ||
+      control instanceof HTMLInputElement ||
+      control instanceof HTMLTextAreaElement ||
+      control instanceof HTMLSelectElement
+    ) {
+      if (state.isRunning && isInRunView && !allowWhileRunning) {
+        if (!control.dataset.runningDisabled) {
+          control.dataset.runningDisabled = control.disabled ? "true" : "false";
+        }
+        control.disabled = true;
+      } else if (control.dataset.runningDisabled) {
+        control.disabled = control.dataset.runningDisabled === "true";
+        delete control.dataset.runningDisabled;
+      }
+      return;
+    }
+
+    if (!(control instanceof HTMLAnchorElement)) return;
+    if (state.isRunning && isInRunView && !allowWhileRunning) {
+      control.dataset.runningPointerEvents = control.style.pointerEvents || "";
+      control.dataset.runningOpacity = control.style.opacity || "";
+      control.dataset.runningTabIndex = String(control.tabIndex);
+      control.setAttribute("aria-disabled", "true");
+      control.tabIndex = -1;
+      control.style.pointerEvents = "none";
+      control.style.opacity = "0.55";
+    } else if (control.dataset.runningPointerEvents !== undefined) {
+      control.removeAttribute("aria-disabled");
+      control.style.pointerEvents = control.dataset.runningPointerEvents;
+      control.style.opacity = control.dataset.runningOpacity;
+      control.tabIndex = Number.parseInt(
+        control.dataset.runningTabIndex || "0",
+        10,
+      );
+      delete control.dataset.runningPointerEvents;
+      delete control.dataset.runningOpacity;
+      delete control.dataset.runningTabIndex;
+    }
+  });
+}
+
 function renderViews() {
   const runView = $(RUN_VIEW_ID);
-  const historyView = $(HISTORY_VIEW_ID);
   const settingsView = $(SETTINGS_VIEW_ID);
   runView?.classList.toggle("is-active", state.currentView === "run");
-  historyView?.classList.toggle("is-active", state.currentView === "runs");
   settingsView?.classList.toggle("is-active", state.currentView === "settings");
   $(BOARD_HOME_ID)?.classList.toggle("is-active", state.currentView === "run");
-  $(BOARD_RUNS_ID)?.classList.toggle("is-active", state.currentView === "runs");
   $(BOARD_SETTINGS_ID)?.classList.toggle(
     "is-active",
     state.currentView === "settings",
@@ -2764,11 +4731,16 @@ function renderViews() {
 function render() {
   const root = ensureRoot();
   if (!root) return;
+  if (state.isRunning && state.statusTone === "running") {
+    startRunningStatusRotation();
+  } else {
+    stopRunningStatusRotation();
+  }
   renderRootFlags();
   renderViews();
   renderRunView();
-  renderHistory();
   renderSettings();
+  syncRunningInteractivity();
 }
 
 async function refreshBoardData() {
@@ -2778,9 +4750,11 @@ async function refreshBoardData() {
       throw new Error(response?.error || "Failed to load extension state.");
     }
     state.assets = response.assets ?? null;
+    state.setupState = response.setupState ?? state.setupState;
     state.history = response.history ?? [];
     state.extensionState = response.state ?? null;
     updateJobReadiness(extractCurrentJob());
+    syncVisibleRunStateFromExtensionSession();
     render();
   } catch (error) {
     logError("Failed to refresh board data.", {
@@ -2789,42 +4763,32 @@ async function refreshBoardData() {
   }
 }
 
-async function reconcileConnectionStatus(view = state.currentView) {
+async function reconcileConnectionStatus() {
   try {
     const response = await sendMessage("CHECK_CONNECTION_STATUS");
     if (!response?.ok) {
       throw new Error(response?.error || "Failed to check connection status.");
     }
     state.assets = response.assets ?? state.assets;
+    state.setupState = response.setupState ?? state.setupState;
     state.history = response.history ?? state.history;
     state.extensionState = response.state ?? state.extensionState;
-    updateJobReadiness(extractCurrentJob());
     state.connectionState =
       response.connectionState ||
       (response.connected ? "connected" : "signed_out");
     state.websiteAuthenticated = response.websiteAuthenticated === true;
     state.extensionConnected = response.extensionConnected === true;
-    state.awaitingAuth = response.connected !== true && view !== "settings";
-
+    updateJobReadiness(extractCurrentJob());
+    syncVisibleRunStateFromExtensionSession();
     if (
-      view === "run" &&
-      response.connected !== true &&
-      Boolean(state.assets?.masterResumeContextAsset?.content?.trim()) &&
-      hasEnoughJobContext(state.currentJob)
-    ) {
-      const requirement = getConnectionRequirementStatus();
-      setRunStatus(
-        requirement.tone,
-        requirement.title,
-        requirement.detail,
-        requirement.actions,
-      );
-    } else if (
       response.connected === true &&
-      state.statusTone === "blocked" &&
-      /(sign[- ]in|required|connect extension)/i.test(state.statusTitle)
+      /(sign[- ]in|required|connect extension|opening google sign-in|connected)/i.test(
+        `${state.statusTitle} ${state.statusDetail}`,
+      )
     ) {
+      state.awaitingAuth = false;
       setRunStatus("neutral", "", "");
+      return true;
     }
 
     render();
@@ -2858,8 +4822,8 @@ async function saveTextAsset(file, type) {
   }
 }
 
-async function persistProviderSelection() {
-  const select = $(PROVIDER_SELECT_ID);
+async function persistProviderSelection(selectId = PROVIDER_SELECT_ID) {
+  const select = $(selectId);
   if (!select) return;
   const response = await sendMessage("SAVE_LLM_SETTINGS", {
     activeProfileId: select.value,
@@ -2873,19 +4837,27 @@ async function persistProviderSelection() {
     llmSettings: response.llmSettings,
   };
   renderSettings();
+  renderRunView();
 }
 
-async function persistSelectedProviderSettings() {
-  const profile = getSelectedProfile();
+async function persistSelectedProviderSettings(config = {}) {
+  const {
+    selectId = PROVIDER_SELECT_ID,
+    webInputId = PROVIDER_WEB_INPUT_ID,
+    apiBaseInputId = PROVIDER_API_BASE_INPUT_ID,
+    modelInputId = PROVIDER_MODEL_INPUT_ID,
+    apiKeyInputId = PROVIDER_API_KEY_INPUT_ID,
+  } = config;
+  const profile = getSelectedProfile(selectId);
   if (!profile) return;
 
   const profileUpdates =
     profile.mode === "web_automation"
-      ? { targetUrl: $(PROVIDER_WEB_INPUT_ID)?.value.trim() || "" }
+      ? { targetUrl: $(webInputId)?.value.trim() || "" }
       : {
-          apiBaseUrl: $(PROVIDER_API_BASE_INPUT_ID)?.value.trim() || "",
-          model: $(PROVIDER_MODEL_INPUT_ID)?.value.trim() || "",
-          apiKey: $(PROVIDER_API_KEY_INPUT_ID)?.value.trim() || "",
+          apiBaseUrl: $(apiBaseInputId)?.value.trim() || "",
+          model: $(modelInputId)?.value.trim() || "",
+          apiKey: readSecretInputValue(apiKeyInputId),
         };
 
   const response = await sendMessage("SAVE_LLM_SETTINGS", {
@@ -2899,6 +4871,9 @@ async function persistSelectedProviderSettings() {
     ...(state.assets || {}),
     llmSettings: response.llmSettings,
   };
+  endSecretEdit(apiKeyInputId);
+  renderSettings();
+  renderRunView();
 }
 
 function scheduleProviderSettingsSave() {
@@ -2945,6 +4920,43 @@ function scheduleRuntimeUrlsSave() {
   }, 350);
 }
 
+async function persistApifyFallbackSettings() {
+  const response = await sendMessage("SAVE_APIFY_FALLBACK_SETTINGS", {
+    enabled: $(APIFY_ENABLED_INPUT_ID)?.checked === true,
+    apiToken: readSecretInputValue(APIFY_TOKEN_INPUT_ID),
+  });
+  if (!response?.ok) {
+    throw new Error(
+      response?.error || "Failed to save Apify fallback settings.",
+    );
+  }
+  state.assets = {
+    ...(state.assets || {}),
+    apifyFallbackSettings:
+      response.apifyFallbackSettings || state.assets?.apifyFallbackSettings,
+  };
+  endSecretEdit(APIFY_TOKEN_INPUT_ID);
+  renderSettings();
+}
+
+function scheduleApifyFallbackSave() {
+  if (apifyFallbackSaveTimer) {
+    window.clearTimeout(apifyFallbackSaveTimer);
+  }
+  apifyFallbackSaveTimer = window.setTimeout(() => {
+    apifyFallbackSaveTimer = null;
+    persistApifyFallbackSettings().catch((error) => {
+      setRunStatus(
+        "error",
+        "Save failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to save Apify fallback settings.",
+      );
+    });
+  }, 250);
+}
+
 async function handleGenerateClick() {
   if (suppressNextClick) {
     suppressNextClick = false;
@@ -2963,22 +4975,60 @@ async function handleGenerateClick() {
   state.awaitingAuth = false;
   state.awaitingStoryboard = false;
   state.isRunning = true;
+  state.activeRunJob = cloneJobForRun(state.currentJob);
   state.launcherAlert = false;
+  clearScrapeRecoveryState();
   setRunStatus("running", "Starting run", "Preparing your tailored resume.");
 
   try {
+    const manualJobInput = shouldShowManualJdFallback()
+      ? buildManualJobInput()
+      : null;
     const response = await sendMessage("GENERATE_FOR_ACTIVE_JOB", {
       prompt1CustomInstruction: state.customMessage.trim(),
+      jobInput: manualJobInput,
+      activeRunJob: cloneJobForRun(state.currentJob),
     });
     if (response?.awaitingAuth) {
       state.isRunning = false;
       state.awaitingAuth = true;
       state.connectionState = response.connectionState || "signed_out";
-      const requirement = getConnectionRequirementStatus();
+      state.setupState = response.setupState ??
+        state.setupState ?? { state: "signed_out" };
+      const requirement = getSetupRequirementStatus(response.message) || {
+        tone: "blocked",
+        title: "Sign in with Google",
+        detail: response.message || "Sign in with Google to continue.",
+        actions: [
+          {
+            id: "connect",
+            label: "Sign in with Google",
+            variant: "primary",
+          },
+        ],
+      };
       setRunStatus(
         requirement.tone,
         requirement.title,
         response.message || requirement.detail,
+        requirement.actions,
+      );
+      return;
+    }
+    if (response?.setupState) {
+      state.isRunning = false;
+      state.activeRunJob = null;
+      state.setupState = response.setupState;
+      const requirement = getSetupRequirementStatus(response.message) || {
+        tone: "blocked",
+        title: "Finish setup",
+        detail: response.message || "Finish setup to continue.",
+        actions: [],
+      };
+      setRunStatus(
+        requirement.tone,
+        requirement.title,
+        requirement.detail,
         requirement.actions,
       );
       return;
@@ -2988,8 +5038,8 @@ async function handleGenerateClick() {
       state.awaitingStoryboard = true;
       setRunStatus(
         "warning",
-        "Storyboard missing",
-        response.message || "Continue without a storyboard?",
+        "Story bank missing",
+        response.message || "Continue without a story bank?",
         [
           { id: "continue-storyboard", label: "Continue", variant: "primary" },
           { id: "cancel-storyboard", label: "Cancel" },
@@ -3001,35 +5051,99 @@ async function handleGenerateClick() {
       throw new Error(response?.error || "Failed to generate tailored resume.");
     }
     state.isRunning = false;
+    clearScrapeRecoveryState();
     setRunStatus(
       "success",
       "Opening workspace",
-      "Your tailored resume is opening on the web.",
+      `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
     );
+    state.activeRunJob = null;
     await refreshBoardData();
   } catch (error) {
     state.isRunning = false;
-    setRunStatus(
-      "error",
-      "Run failed",
-      formatErrorText(
-        error instanceof Error
-          ? error.message
-          : "Failed to generate tailored resume.",
-      ),
-    );
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to generate tailored resume.";
+    if (isScrapeProblemMessage(message)) {
+      state.scrapeIssue = getScrapeRequirementStatus().detail;
+      setRunStatus("warning", "Couldn’t read full JD", state.scrapeIssue, []);
+      render();
+      return;
+    }
+    state.activeRunJob = null;
+    setRunStatus("error", "Run failed", formatErrorText(message));
   }
 }
 
 async function handleStatusAction(actionId) {
-  if (actionId === "open-settings") {
+  if (actionId === "open_settings" || actionId === "open-settings") {
     state.currentView = "settings";
     render();
+    const focusTarget =
+      state.setupState?.primaryAction?.focusTarget ||
+      state.setupState?.secondaryAction?.focusTarget ||
+      "";
+    const targetId =
+      focusTarget === "resume"
+        ? MASTER_RESUME_ACTION_ID
+        : focusTarget === "providerApiKey"
+          ? PROVIDER_API_KEY_INPUT_ID
+          : focusTarget === "providerModel"
+            ? PROVIDER_MODEL_INPUT_ID
+            : focusTarget === "providerApiBase"
+              ? PROVIDER_API_BASE_INPUT_ID
+              : focusTarget === "provider"
+                ? PROVIDER_SELECT_ID
+                : "";
+    if (targetId) {
+      const target = $(targetId);
+      if (focusTarget === "resume") {
+        target?.focus();
+      } else {
+        target?.focus();
+      }
+    }
+    return;
+  }
+
+  if (actionId === "upload_resume") {
+    state.currentView = "settings";
+    render();
+    $(MASTER_RESUME_INPUT_ID)?.click();
+    return;
+  }
+
+  if (actionId === "upload_storyboard") {
+    state.currentView = "settings";
+    render();
+    $(STORYBOARD_INPUT_ID)?.click();
+    return;
+  }
+
+  if (actionId === "configure_provider") {
+    state.currentView = "settings";
+    render();
+    const focusTarget = state.setupState?.primaryAction?.focusTarget;
+    const targetId =
+      focusTarget === "providerApiKey"
+        ? PROVIDER_API_KEY_INPUT_ID
+        : focusTarget === "providerModel"
+          ? PROVIDER_MODEL_INPUT_ID
+          : focusTarget === "providerApiBase"
+            ? PROVIDER_API_BASE_INPUT_ID
+            : PROVIDER_SELECT_ID;
+    $(targetId)?.focus();
     return;
   }
 
   if (actionId === "refresh-page") {
     window.location.reload();
+    return;
+  }
+
+  if (actionId === "open_history_on_web") {
+    window.open(getAppOrigin(), "_blank", "noopener,noreferrer");
     return;
   }
 
@@ -3065,25 +5179,27 @@ async function handleStatusAction(actionId) {
     }
     state.awaitingStoryboard = false;
     state.isRunning = true;
-    setRunStatus("running", "Continuing run", "Running without a storyboard.");
+    clearScrapeRecoveryState();
+    setRunStatus("running", "Continuing run", "Running without a story bank.");
     try {
       const response = await sendMessage(
         "CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD",
       );
       if (!response?.ok) {
         throw new Error(
-          response?.error || "Failed to continue without storyboard.",
+          response?.error || "Failed to continue without story bank.",
         );
       }
     } catch (error) {
       state.isRunning = false;
+      state.activeRunJob = null;
       setRunStatus(
         "error",
         "Run failed",
         formatErrorText(
           error instanceof Error
             ? error.message
-            : "Failed to continue without storyboard.",
+            : "Failed to continue without story bank.",
         ),
       );
     }
@@ -3094,6 +5210,48 @@ async function handleStatusAction(actionId) {
     state.awaitingStoryboard = false;
     await sendMessage("CLEAR_PENDING_EXTENSION_ACTION").catch(() => {});
     setRunStatus("neutral", "", "");
+  }
+}
+
+async function handleOnboardingAction(actionId, nextStep = "") {
+  if (!actionId) return;
+
+  if (actionId === "connect") {
+    const response = await sendMessage("OPEN_SIGN_IN");
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to open Google sign-in.");
+    }
+    return;
+  }
+
+  if (actionId === "upload_resume") {
+    $(MASTER_RESUME_INPUT_ID)?.click();
+    return;
+  }
+
+  if (actionId === "upload_storyboard") {
+    $(STORYBOARD_INPUT_ID)?.click();
+    return;
+  }
+
+  if (actionId === "onboarding_next" && nextStep) {
+    const response = await sendMessage("SET_ONBOARDING_STEP", {
+      step: nextStep,
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to continue onboarding.");
+    }
+    await refreshBoardData();
+    return;
+  }
+
+  if (actionId === "complete_onboarding") {
+    const response = await sendMessage("COMPLETE_ONBOARDING");
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to finish onboarding.");
+    }
+    setRunStatus("neutral", "", "");
+    await refreshBoardData();
   }
 }
 
@@ -3130,7 +5288,6 @@ function ensureRoot() {
         </div>
         <div class="resume-matcher-board__header-actions">
           <button id="${BOARD_HOME_ID}" class="resume-matcher-icon-button" type="button" aria-label="Run" title="Run">${icon("home")}</button>
-          <button id="${BOARD_RUNS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Runs" title="Runs">${icon("history")}</button>
           <button id="${BOARD_SETTINGS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Settings" title="Settings">${icon("settings")}</button>
           <button id="${BOARD_MINIMIZE_ID}" class="resume-matcher-icon-button" type="button" aria-label="Minimize" title="Minimize">${icon("minimize")}</button>
         </div>
@@ -3145,6 +5302,11 @@ function ensureRoot() {
               </div>
               <div id="${RUN_META_ID}" class="resume-matcher-run-meta"></div>
               <div id="${RUN_STATUS_ID}" class="resume-matcher-status-card" data-tone="neutral"></div>
+              <div id="${RUN_ONBOARDING_ID}" class="resume-matcher-onboarding" hidden></div>
+              <div id="${RUN_MANUAL_JD_FIELD_ID}" class="resume-matcher-field" hidden>
+                <label for="${RUN_MANUAL_JD_ID}">Paste job description manually</label>
+                <textarea id="${RUN_MANUAL_JD_ID}" rows="5" placeholder="If LinkedIn hides the full job description, paste it here to continue."></textarea>
+              </div>
               <div class="resume-matcher-field">
                 <label for="${RUN_NOTES_ID}">Custom message</label>
                 <textarea id="${RUN_NOTES_ID}" rows="2" placeholder="Want to tell me extra useful info for this run?"></textarea>
@@ -3156,26 +5318,6 @@ function ensureRoot() {
               <div id="${RUN_STATUS_ACTIONS_ID}" class="resume-matcher-button-row"></div>
             </div>
           </article>
-        </section>
-        <section id="${HISTORY_VIEW_ID}" class="resume-matcher-view">
-          <div class="resume-matcher-history-toolbar">
-            <div class="resume-matcher-history-search">
-              <input id="${HISTORY_SEARCH_ID}" type="search" placeholder="Search title or company" />
-              <div id="${HISTORY_FILTER_ID}" class="resume-matcher-history-filter" data-open="false">
-                <button type="button" id="${HISTORY_FILTER_ID}-button" class="resume-matcher-history-filter__button" aria-label="History sort options" title="Sort options">${icon("filter")}</button>
-                <div id="${HISTORY_FILTER_MENU_ID}" class="resume-matcher-history-filter__menu">
-                  <button type="button" id="${HISTORY_SORT_DESC_ID}" class="resume-matcher-history-filter__option">Descending</button>
-                  <button type="button" id="${HISTORY_SORT_ASC_ID}" class="resume-matcher-history-filter__option">Ascending</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div id="${HISTORY_LIST_ID}" class="resume-matcher-history-list"></div>
-          <div class="resume-matcher-history-pagination">
-            <button id="${HISTORY_PREV_ID}" type="button" aria-label="Previous page" title="Previous page">${icon("chevronLeft")}</button>
-            <span id="${HISTORY_PAGE_ID}">1/1</span>
-            <button id="${HISTORY_NEXT_ID}" type="button" aria-label="Next page" title="Next page">${icon("chevronRight")}</button>
-          </div>
         </section>
         <section id="${SETTINGS_VIEW_ID}" class="resume-matcher-view">
           <div class="resume-matcher-settings-stack">
@@ -3194,11 +5336,12 @@ function ensureRoot() {
                 <div class="resume-matcher-settings-item">
                   <div class="resume-matcher-file-row">
                     <div id="${STORYBOARD_LABEL_ID}" class="resume-matcher-file-chip is-placeholder">
-                      <span class="resume-matcher-file-chip__text">Storyboard</span>
-                      <button id="${STORYBOARD_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="Upload storyboard" title="Upload storyboard">${renderFileActionIcon("upload")}</button>
+                      <span class="resume-matcher-file-chip__text">Story bank</span>
+                      <button id="${STORYBOARD_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="Upload story bank" title="Upload story bank">${renderFileActionIcon("upload")}</button>
                     </div>
                     <input id="${STORYBOARD_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
                   </div>
+                  <a class="resume-matcher-settings-item__link" href="${STORY_BANK_GUIDE_URL}" target="_blank" rel="noopener noreferrer">Story bank helps tailoring. Learn more.</a>
                 </div>
                 <div class="resume-matcher-settings-item">
                   <div class="resume-matcher-settings-item__title">Google sign-in</div>
@@ -3234,8 +5377,30 @@ function ensureRoot() {
               <summary>Advanced</summary>
               <section class="resume-matcher-settings-group">
                 <div class="resume-matcher-settings-list">
+                  <div class="resume-matcher-settings-item resume-matcher-field--full">
+                    <div class="resume-matcher-settings-item__title">Apify fallback</div>
+                    <div class="resume-matcher-settings-substack resume-matcher-settings-substack--compact">
+                      <div class="resume-matcher-settings-item__detail">Used only if LinkedIn extraction fails.</div>
+                      <a class="resume-matcher-settings-item__link" href="https://apify.com/apimaestro/linkedin-job-detail" target="_blank" rel="noopener noreferrer">Get API token</a>
+                    </div>
+                    <label class="resume-matcher-inline-action resume-matcher-inline-action--compact" for="${APIFY_ENABLED_INPUT_ID}">
+                      <span class="resume-matcher-inline-action__label">Enable Apify</span>
+                      <input id="${APIFY_ENABLED_INPUT_ID}" class="resume-matcher-checkbox" type="checkbox" />
+                      <span class="resume-matcher-toggle" aria-hidden="true"></span>
+                    </label>
+                    <div id="${APIFY_TOKEN_ROW_ID}" class="resume-matcher-settings-substack" hidden>
+                      <div class="resume-matcher-settings-item">
+                        <div class="resume-matcher-settings-item__title">Apify API token</div>
+                        <div class="resume-matcher-secret-field">
+                          <input id="${APIFY_TOKEN_INPUT_ID}" type="password" placeholder="Paste your Apify API token" autocomplete="off" />
+                          <button id="${APIFY_TOKEN_TOGGLE_ID}" type="button" class="resume-matcher-secret-toggle" aria-label="Show token" title="Show token" hidden>${icon("eye")}</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   <div class="resume-matcher-settings-item">
                     <div class="resume-matcher-settings-item__title">Prompting</div>
+                    <div class="resume-matcher-settings-item__detail">Upload .txt only. Upload the main prompt only.</div>
                     <div class="resume-matcher-settings-substack">
                       ${PROMPT_FILE_DESCRIPTORS.map(
                         ({ templateName, label, defaultPath }) => `
@@ -3255,7 +5420,17 @@ function ensureRoot() {
                       ).join("")}
                     </div>
                   </div>
-                  <div class="resume-matcher-settings-grid">
+                  <div class="resume-matcher-advanced-actions resume-matcher-field--full">
+                    <button id="resume-matcher-open-history-web" type="button" class="resume-matcher-button">Open history</button>
+                    <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
+                    <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local data</button>
+                  </div>
+                  <label class="resume-matcher-inline-action resume-matcher-field--full" for="${CUSTOM_FEATURE_INPUT_ID}">
+                    <span class="resume-matcher-inline-action__label">Enable custom feature</span>
+                    <input id="${CUSTOM_FEATURE_INPUT_ID}" class="resume-matcher-checkbox" type="checkbox" />
+                    <span class="resume-matcher-toggle" aria-hidden="true"></span>
+                  </label>
+                  <div id="${RUNTIME_URLS_ROW_ID}" class="resume-matcher-settings-grid resume-matcher-settings-grid--single" hidden>
                     <div class="resume-matcher-settings-item">
                       <div class="resume-matcher-settings-item__title">App URL</div>
                       <input id="${APP_URL_INPUT_ID}" type="url" placeholder="App URL" />
@@ -3265,14 +5440,6 @@ function ensureRoot() {
                       <input id="${API_URL_INPUT_ID}" type="url" placeholder="API URL" />
                     </div>
                   </div>
-                  <div class="resume-matcher-advanced-actions resume-matcher-field--full">
-                    <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
-                    <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local data</button>
-                  </div>
-                  <label class="resume-matcher-inline-action resume-matcher-field--full" for="${CUSTOM_FEATURE_INPUT_ID}">
-                    <input id="${CUSTOM_FEATURE_INPUT_ID}" class="resume-matcher-checkbox" type="checkbox" />
-                    <span class="resume-matcher-inline-action__label">Enable custom feature</span>
-                  </label>
                 </div>
               </section>
             </details>
@@ -3307,11 +5474,6 @@ function ensureRoot() {
     render();
     await reconcileConnectionStatus("run");
   });
-  $(BOARD_RUNS_ID)?.addEventListener("click", () => {
-    state.currentView = state.currentView === "runs" ? "run" : "runs";
-    state.launcherAlert = false;
-    render();
-  });
   $(BOARD_SETTINGS_ID)?.addEventListener("click", async () => {
     state.currentView = state.currentView === "settings" ? "run" : "settings";
     state.launcherAlert = false;
@@ -3324,6 +5486,75 @@ function ensureRoot() {
   $(RUN_NOTES_ID)?.addEventListener("input", (event) => {
     state.customMessage = event.target.value || "";
     autoGrowTextarea(event.target);
+  });
+  $(RUN_ONBOARDING_ID)?.addEventListener("click", async (event) => {
+    const actionButton = event.target.closest("[data-onboarding-action]");
+    if (!actionButton) return;
+    event.preventDefault();
+    try {
+      await handleOnboardingAction(
+        actionButton.dataset.onboardingAction || "",
+        actionButton.dataset.nextStep || "",
+      );
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Setup failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to continue onboarding.",
+      );
+    }
+  });
+  $(RUN_ONBOARDING_ID)?.addEventListener("change", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    try {
+      if (target.id === "resume-matcher-onboarding-provider-select") {
+        await persistProviderSelection(target.id);
+        await refreshBoardData();
+      }
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Save failed",
+        error instanceof Error ? error.message : "Unable to save provider.",
+      );
+    }
+  });
+  $(RUN_ONBOARDING_ID)?.addEventListener("focusout", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const providerInputIds = new Set([
+      "resume-matcher-onboarding-provider-web-input",
+      "resume-matcher-onboarding-provider-api-base-input",
+      "resume-matcher-onboarding-provider-model-input",
+      "resume-matcher-onboarding-provider-api-key-input",
+    ]);
+    if (!providerInputIds.has(target.id)) return;
+    try {
+      await persistSelectedProviderSettings({
+        selectId: "resume-matcher-onboarding-provider-select",
+        webInputId: "resume-matcher-onboarding-provider-web-input",
+        apiBaseInputId: "resume-matcher-onboarding-provider-api-base-input",
+        modelInputId: "resume-matcher-onboarding-provider-model-input",
+        apiKeyInputId: "resume-matcher-onboarding-provider-api-key-input",
+      });
+      await refreshBoardData();
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Save failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to save provider settings.",
+      );
+    }
+  });
+  $(RUN_MANUAL_JD_ID)?.addEventListener("input", (event) => {
+    state.manualJobDescription = event.target.value || "";
+    autoGrowTextarea(event.target);
+    render();
   });
   $(MASTER_RESUME_INPUT_ID)?.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
@@ -3349,6 +5580,10 @@ function ensureRoot() {
             promptProfileId: state.assets?.activePromptProfileId || "profile1",
             filename: file.name,
             content: await file.text(),
+          });
+          void trackAnalyticsEvent("extension_prompt_uploaded", {
+            surface: "settings_view",
+            template_name: templateName,
           });
           event.target.value = "";
           await refreshBoardData();
@@ -3406,6 +5641,54 @@ function ensureRoot() {
   [APP_URL_INPUT_ID, API_URL_INPUT_ID].forEach((id) => {
     $(id)?.addEventListener("input", scheduleRuntimeUrlsSave);
   });
+  $(APIFY_ENABLED_INPUT_ID)?.addEventListener("change", () => {
+    state.assets = {
+      ...(state.assets || {}),
+      apifyFallbackSettings: {
+        ...(state.assets?.apifyFallbackSettings || {}),
+        enabled: $(APIFY_ENABLED_INPUT_ID)?.checked === true,
+      },
+    };
+    renderSettings();
+    scheduleApifyFallbackSave();
+  });
+  $(APIFY_TOKEN_INPUT_ID)?.addEventListener("input", (event) => {
+    secretDraftState[APIFY_TOKEN_INPUT_ID] = event.target.value || "";
+    scheduleApifyFallbackSave();
+  });
+  $(APIFY_TOKEN_TOGGLE_ID)?.addEventListener("click", (event) => {
+    event.preventDefault();
+    toggleSecretReveal(APIFY_TOKEN_INPUT_ID);
+  });
+  [
+    PROVIDER_API_KEY_INPUT_ID,
+    ONBOARDING_PROVIDER_API_KEY_INPUT_ID,
+    APIFY_TOKEN_INPUT_ID,
+  ].forEach((id) => {
+    $(id)?.addEventListener("focus", (event) => {
+      beginSecretEdit(event.target);
+    });
+    $(id)?.addEventListener("mousedown", (event) => {
+      beginSecretEdit(event.target);
+    });
+    $(id)?.addEventListener("copy", (event) => {
+      event.preventDefault();
+    });
+    $(id)?.addEventListener("cut", (event) => {
+      event.preventDefault();
+    });
+    $(id)?.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+    });
+    $(id)?.addEventListener("blur", () => {
+      if (
+        secretEditingState[id] === true &&
+        !(secretDraftState[id] || "").trim()
+      ) {
+        endSecretEdit(id);
+      }
+    });
+  });
   $(CUSTOM_FEATURE_INPUT_ID)?.addEventListener("change", async (event) => {
     await sendMessage("SAVE_CUSTOM_FEATURE_ENABLED", {
       enabled: event.target.checked,
@@ -3422,21 +5705,8 @@ function ensureRoot() {
     await sendMessage("RESET_DEFAULT_SETTINGS").catch(() => {});
     await refreshBoardData();
   });
-  $(HISTORY_SEARCH_ID)?.addEventListener("input", (event) => {
-    state.historySearch = event.target.value || "";
-    state.historyPage = 1;
-    renderHistory();
-  });
-  $(HISTORY_PREV_ID)?.addEventListener("click", () => {
-    if (state.historyPage <= 1) return;
-    state.historyPage -= 1;
-    renderHistory();
-  });
-  $(HISTORY_NEXT_ID)?.addEventListener("click", () => {
-    const { totalPages } = getVisibleHistory();
-    if (state.historyPage >= totalPages) return;
-    state.historyPage += 1;
-    renderHistory();
+  $("resume-matcher-open-history-web")?.addEventListener("click", () => {
+    window.open(getAppOrigin(), "_blank", "noopener,noreferrer");
   });
   root.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-status-action]");
@@ -3444,54 +5714,34 @@ function ensureRoot() {
       await handleStatusAction(button.dataset.statusAction);
       return;
     }
-    if (event.target.closest(`#${HISTORY_FILTER_ID}-button`)) {
-      state.historyFilterOpen = !state.historyFilterOpen;
-      renderHistory();
-      return;
-    }
-    if (event.target.closest(`#${HISTORY_SORT_ASC_ID}`)) {
-      state.historySortDirection = "asc";
-      state.historyFilterOpen = false;
-      state.historyPage = 1;
-      renderHistory();
-      return;
-    }
-    if (event.target.closest(`#${HISTORY_SORT_DESC_ID}`)) {
-      state.historySortDirection = "desc";
-      state.historyFilterOpen = false;
-      state.historyPage = 1;
-      renderHistory();
-      return;
-    }
-    const historyJobButton = event.target.closest("[data-history-job]");
-    if (historyJobButton) {
-      const entry = state.history[Number(historyJobButton.dataset.historyJob)];
-      const sourceUrl = getHistorySourceUrl(entry);
-      if (sourceUrl) {
-        window.open(sourceUrl, "_blank", "noopener,noreferrer");
-      }
-      return;
-    }
-    const historyButton = event.target.closest("[data-history-open]");
-    if (historyButton) {
-      event.preventDefault();
-      state.historyFilterOpen = false;
-      const entry = state.history[Number(historyButton.dataset.historyOpen)];
-      if (entry?.previewUrl) {
-        await sendMessage("OPEN_PREVIEW", {
-          previewUrl: entry.previewUrl,
-        }).catch(() => {});
-      }
-      return;
-    }
-    if (
-      !event.target.closest(`#${HISTORY_FILTER_ID}`) &&
-      state.historyFilterOpen
-    ) {
-      state.historyFilterOpen = false;
-      renderHistory();
+    const guideLink = event.target.closest(`a[href="${STORY_BANK_GUIDE_URL}"]`);
+    if (guideLink) {
+      void trackAnalyticsEvent("extension_story_bank_guide_clicked", {
+        surface:
+          state.currentView === "settings" ? "settings_view" : "run_view",
+      });
     }
   });
+  if (!selectedJobClickListenerAttached) {
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(`#${ROOT_ID}`)) return;
+      const expectedSourceUrl = getSelectedJobClickSourceUrl(target);
+      if (
+        expectedSourceUrl ||
+        target.closest(
+          ".job-card-container, .jobs-search-results__list-item, .scaffold-layout__list-item, [data-job-id]",
+        )
+      ) {
+        scheduleSelectedJobRefresh({
+          expectedSourceUrl,
+          delayMs: 420,
+        });
+      }
+    });
+    selectedJobClickListenerAttached = true;
+  }
 
   void applyStoredRootState(root);
   void refreshBoardData();
@@ -3559,6 +5809,22 @@ function updateStatusFromLog(level, scope, message, data) {
 
   const progress = getProgressMessage(scope, message, data);
   if (!progress) return;
+  if (
+    (scope === "Orchestrator" &&
+      (message === "Job extraction completed." ||
+        message === "Running Prompt 1." ||
+        message === "Running Prompt 2." ||
+        message === "Rendering Prompt 1." ||
+        message === "Rendering Prompt 2." ||
+        message === "Running Prompt 3." ||
+        message === "Opening generated resume preview.")) ||
+    (scope === "ResumeApi" &&
+      (message === "Uploading job description." ||
+        message === "Clone resume succeeded." ||
+        message === "Job upload succeeded."))
+  ) {
+    clearScrapeRecoveryState();
+  }
   const [title, detail] = progress;
   setRunStatus("running", title, detail);
 }
@@ -3566,11 +5832,17 @@ function updateStatusFromLog(level, scope, message, data) {
 function syncFloatingAction() {
   if (!isLinkedInJobPage()) {
     resetJobLoadingState();
+    if (selectedJobDetailObserver) {
+      selectedJobDetailObserver.disconnect();
+      selectedJobDetailObserver = null;
+      selectedJobDetailObservedRoot = null;
+    }
     removeRoot();
     return;
   }
   ensureRoot();
   updateJobReadiness(extractCurrentJob());
+  startSelectedJobDetailWatcher();
   render();
   void reconcileConnectionStatus("run");
 }
@@ -3582,10 +5854,10 @@ function startUrlWatcher() {
     lastUrl = location.href;
     resetJobLoadingState();
     updateJobReadiness(extractCurrentJob());
-    state.isRunning = false;
-    state.awaitingAuth = false;
-    state.awaitingStoryboard = false;
-    setRunStatus("neutral", "", "");
+    if (!state.isRunning && !state.awaitingAuth && !state.awaitingStoryboard) {
+      state.activeRunJob = null;
+      setRunStatus("neutral", "", "");
+    }
     syncFloatingAction();
   });
   urlObserver.observe(document.documentElement, {
@@ -3594,7 +5866,69 @@ function startUrlWatcher() {
   });
 }
 
+function startSelectedJobDetailWatcher() {
+  const nextRoot = getLinkedInJobDetailRoot();
+  if (!nextRoot) return;
+  if (selectedJobDetailObservedRoot === nextRoot && selectedJobDetailObserver) {
+    return;
+  }
+
+  if (selectedJobDetailObserver) {
+    selectedJobDetailObserver.disconnect();
+  }
+
+  selectedJobDetailObservedRoot = nextRoot;
+  selectedJobDetailObserver = new MutationObserver(() => {
+    const nextJob = extractCurrentJob();
+    if (
+      getCurrentJobSignature(nextJob) ===
+      getCurrentJobSignature(state.currentJob)
+    ) {
+      return;
+    }
+    scheduleSelectedJobRefresh({
+      expectedSourceUrl: nextJob?.sourceUrl || "",
+      delayMs: 260,
+    });
+  });
+  selectedJobDetailObserver.observe(nextRoot, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (
+    message?.type === "SCRAPE_JOB_PREVIEW" ||
+    message?.type === "SCRAPE_JOB_FULL"
+  ) {
+    const mode = message.type === "SCRAPE_JOB_FULL" ? "full" : "preview";
+    loadAdapterModule()
+      .then(({ getAdapter }) => {
+        const adapter = getAdapter(window.location.hostname);
+        if (!adapter) {
+          sendResponse({
+            ok: false,
+            error: "Unsupported page for job scraping.",
+          });
+          return null;
+        }
+        return adapter.snapshot(document, {
+          mode,
+          locationHref: window.location.href,
+        });
+      })
+      .then((snapshot) => {
+        if (!snapshot) return;
+        sendResponse({ ok: true, snapshot });
+      })
+      .catch((error) =>
+        sendResponse({ ok: false, error: error?.message || String(error) }),
+      );
+    return true;
+  }
+
   if (message?.type === "EXTENSION_SHOW_LAUNCHER") {
     void handleShowLauncher();
     sendResponse({ ok: true });
@@ -3612,6 +5946,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       message.payload?.connectionState || state.connectionState;
     if (state.connectionState !== "connected") {
       state.isRunning = false;
+      state.awaitingAuth = false;
+      state.activeRunJob = null;
+      state.currentView = "run";
+      openBoard("run", { skipConnectionCheck: true });
     }
     void reconcileConnectionStatus(state.currentView);
     sendResponse({ ok: true });
@@ -3622,12 +5960,37 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     state.isRunning = false;
     state.awaitingAuth = message.payload?.connectionState === "signed_out";
     state.connectionState = message.payload?.connectionState || "signed_out";
+    state.setupState = {
+      ...(state.setupState || {}),
+      state: "signed_out",
+      title: "You’ve been signed out",
+      detail:
+        message.payload?.message ||
+        "Sign in to continue tailoring this job. Your setup is still here.",
+      primaryAction: {
+        id: "connect",
+        label: "Continue with Google",
+      },
+    };
     openBoard("run");
-    const requirement = getConnectionRequirementStatus();
+    const requirement = getSetupRequirementStatus(message.payload?.message) || {
+      tone: "blocked",
+      title: "You’ve been signed out",
+      detail:
+        message.payload?.message ||
+        "Sign in to continue tailoring this job. Your setup is still here.",
+      actions: [
+        {
+          id: "connect",
+          label: "Continue with Google",
+          variant: "primary",
+        },
+      ],
+    };
     setRunStatus(
       requirement.tone,
       requirement.title,
-      message.payload?.message || requirement.detail,
+      requirement.detail,
       requirement.actions,
     );
     sendResponse({ ok: true });
@@ -3640,8 +6003,40 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     state.websiteAuthenticated = true;
     state.extensionConnected = true;
     openBoard("run");
-    setRunStatus("info", "Connected", "Resuming your run.");
-    void refreshBoardData();
+    setRunStatus("info", "Account signed in", "Continuing in the extension.");
+    void refreshBoardData().then(() => {
+      if (
+        state.connectionState === "connected" &&
+        /(account signed in|connected|opening google sign-in)/i.test(
+          `${state.statusTitle} ${state.statusDetail}`,
+        )
+      ) {
+        setRunStatus("neutral", "", "");
+      }
+    });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message?.type === "EXTENSION_SETUP_REQUIRED") {
+    state.isRunning = false;
+    state.awaitingAuth = false;
+    state.awaitingStoryboard = false;
+    state.activeRunJob = null;
+    state.setupState = message.payload?.setupState || state.setupState;
+    openBoard("run");
+    const requirement = getSetupRequirementStatus(message.payload?.message) || {
+      tone: "blocked",
+      title: "Finish setup",
+      detail: message.payload?.message || "Finish setup to continue.",
+      actions: [],
+    };
+    setRunStatus(
+      requirement.tone,
+      requirement.title,
+      requirement.detail,
+      requirement.actions,
+    );
     sendResponse({ ok: true });
     return true;
   }
@@ -3652,8 +6047,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     openBoard("run");
     setRunStatus(
       "warning",
-      "Storyboard missing",
-      message.payload?.message || "Continue without storyboard?",
+      "Story bank missing",
+      message.payload?.message || "Continue without story bank?",
       [
         { id: "continue-storyboard", label: "Continue", variant: "primary" },
         { id: "cancel-storyboard", label: "Cancel" },
@@ -3668,13 +6063,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     state.awaitingStoryboard = false;
     state.isRunning = false;
     if (message.payload?.ok) {
+      clearScrapeRecoveryState();
       setRunStatus(
         "success",
         "Opening workspace",
-        "Your tailored resume is opening on the web.",
+        `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
       );
+      state.activeRunJob = null;
       void refreshBoardData();
     } else {
+      if (isScrapeProblemMessage(message.payload?.error)) {
+        state.scrapeIssue = getScrapeRequirementStatus().detail;
+        setRunStatus("warning", "Couldn’t read full JD", state.scrapeIssue, []);
+        sendResponse({ ok: true });
+        return true;
+      }
+      state.activeRunJob = null;
       setRunStatus(
         "error",
         "Run failed",

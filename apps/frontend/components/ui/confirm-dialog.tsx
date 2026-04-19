@@ -114,12 +114,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <div className="flex items-start gap-4">
             {icon}
             <div className="flex-1">
-              <DialogTitle className="text-xl">
-                {title}
-              </DialogTitle>
-              <DialogDescription className="mt-2">
-                {description}
-              </DialogDescription>
+              <DialogTitle className="text-xl">{title}</DialogTitle>
+              <DialogDescription className="mt-2">{description}</DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -136,11 +132,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               {finalCancelLabel}
             </Button>
           )}
-          <Button
-            variant={buttonVariant}
-            onClick={handleConfirm}
-            disabled={confirmDisabled}
-          >
+          <Button variant={buttonVariant} onClick={handleConfirm} disabled={confirmDisabled}>
             {finalConfirmLabel}
           </Button>
         </DialogFooter>

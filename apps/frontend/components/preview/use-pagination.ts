@@ -73,7 +73,9 @@ export function usePagination({
       const fontSize = Number.parseFloat(computedStyle.fontSize || '0') || 12;
       const parsedLineHeight = Number.parseFloat(computedStyle.lineHeight || '');
       const effectiveLineHeight =
-        Number.isFinite(parsedLineHeight) && parsedLineHeight > 0 ? parsedLineHeight : fontSize * 1.5;
+        Number.isFinite(parsedLineHeight) && parsedLineHeight > 0
+          ? parsedLineHeight
+          : fontSize * 1.5;
       const calibrationPx = Math.max(
         MIN_PRINT_PREVIEW_CALIBRATION_PX[pageSize],
         effectiveLineHeight * 1.1

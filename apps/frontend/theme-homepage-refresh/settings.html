@@ -7,47 +7,120 @@
     <link rel="stylesheet" href="./tokens.css" />
     <link rel="stylesheet" href="./preview-shared.css" />
     <style>
-      .settings-shell { width:min(1120px,calc(100vw - 48px)); margin:0 auto; border:1px solid var(--thr-border-soft); background:rgba(247,245,238,0.96); box-shadow:var(--thr-shadow-md); }
-      .settings-head { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; padding:28px; border-bottom:1px solid var(--thr-border-hairline); background:white; }
-      .settings-body { padding:28px; display:flex; flex-direction:column; gap:32px; }
-      .status-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
-      .status-card,.settings-card { border:1px solid var(--thr-border-soft); background:white; padding:18px; box-shadow:var(--thr-shadow-sm); }
-      .settings-card h3 { margin:0; font-size:14px; letter-spacing:.12em; text-transform:uppercase; color:#2453ff; }
-      .seg-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; }
-      .seg { padding:10px 12px; border:1px solid var(--thr-border-soft); text-align:center; font-size:12px; text-transform:uppercase; background:white; }
-      .seg.active { background:#2453ff; color:white; }
-      @media (max-width: 980px){ .status-grid,.seg-grid{grid-template-columns:1fr 1fr;} }
+      .settings-shell {
+        width: min(1120px, calc(100vw - 48px));
+        margin: 0 auto;
+        border: 1px solid var(--thr-border-soft);
+        background: rgba(247, 245, 238, 0.96);
+        box-shadow: var(--thr-shadow-md);
+      }
+      .settings-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        padding: 28px;
+        border-bottom: 1px solid var(--thr-border-hairline);
+        background: white;
+      }
+      .settings-body {
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .status-card,
+      .settings-card {
+        border: 1px solid var(--thr-border-soft);
+        background: white;
+        padding: 18px;
+        box-shadow: var(--thr-shadow-sm);
+      }
+      .settings-card h3 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #2453ff;
+      }
+      .seg-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .seg {
+        padding: 10px 12px;
+        border: 1px solid var(--thr-border-soft);
+        text-align: center;
+        font-size: 12px;
+        text-transform: uppercase;
+        background: white;
+      }
+      .seg.active {
+        background: #2453ff;
+        color: white;
+      }
+      @media (max-width: 980px) {
+        .status-grid,
+        .seg-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
     </style>
   </head>
   <body class="thr-preview-page thr-mode-work">
     <div class="settings-shell">
       <div class="settings-head">
         <div>
-          <h1 class="thr-brand-title" style="font-size:48px;">Settings</h1>
-          <div class="thr-brand-subtitle">// Configure providers, health, features, and system state</div>
+          <h1 class="thr-brand-title" style="font-size: 48px">Settings</h1>
+          <div class="thr-brand-subtitle">
+            // Configure providers, health, features, and system state
+          </div>
         </div>
         <a class="thr-pill-action" href="./dashboard.html">Back</a>
       </div>
       <div class="settings-body">
         <section>
-          <div class="thr-mono" style="margin-bottom:12px;">System Status</div>
+          <div class="thr-mono" style="margin-bottom: 12px">System Status</div>
           <div class="status-grid">
-            <div class="status-card"><div class="thr-mono">LLM</div><div style="margin-top:8px;font-weight:700;">Healthy</div></div>
-            <div class="status-card"><div class="thr-mono">Database</div><div style="margin-top:8px;font-weight:700;">Connected</div></div>
-            <div class="status-card"><div class="thr-mono">Resumes</div><div style="margin-top:8px;font-size:30px;font-weight:700;">3</div></div>
-            <div class="status-card"><div class="thr-mono">Jobs</div><div style="margin-top:8px;font-size:30px;font-weight:700;">12</div></div>
+            <div class="status-card">
+              <div class="thr-mono">LLM</div>
+              <div style="margin-top: 8px; font-weight: 700">Healthy</div>
+            </div>
+            <div class="status-card">
+              <div class="thr-mono">Database</div>
+              <div style="margin-top: 8px; font-weight: 700">Connected</div>
+            </div>
+            <div class="status-card">
+              <div class="thr-mono">Resumes</div>
+              <div style="margin-top: 8px; font-size: 30px; font-weight: 700">3</div>
+            </div>
+            <div class="status-card">
+              <div class="thr-mono">Jobs</div>
+              <div style="margin-top: 8px; font-size: 30px; font-weight: 700">12</div>
+            </div>
           </div>
         </section>
 
         <section class="settings-card">
           <h3>LLM Configuration</h3>
-          <div style="margin-top:18px;">
-            <div class="thr-mono" style="margin-bottom:8px;">Provider</div>
+          <div style="margin-top: 18px">
+            <div class="thr-mono" style="margin-bottom: 8px">Provider</div>
             <div class="seg-grid">
-              <div class="seg active">OpenAI</div><div class="seg">Anthropic</div><div class="seg">OpenRouter</div><div class="seg">Gemini</div><div class="seg">DeepSeek</div><div class="seg">Ollama</div>
+              <div class="seg active">OpenAI</div>
+              <div class="seg">Anthropic</div>
+              <div class="seg">OpenRouter</div>
+              <div class="seg">Gemini</div>
+              <div class="seg">DeepSeek</div>
+              <div class="seg">Ollama</div>
             </div>
           </div>
-          <div style="margin-top:18px; display:grid; gap:12px;">
+          <div style="margin-top: 18px; display: grid; gap: 12px">
             <input class="thr-input" value="gpt-5-nano-2025-08-07" readonly />
             <input class="thr-input" value="Stored API key" readonly />
           </div>
@@ -55,12 +128,70 @@
 
         <section class="settings-card">
           <h3>Feature Flags</h3>
-          <div style="margin-top:18px; display:grid; gap:14px;">
-            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;"><div><strong>Cover Letters</strong><div class="thr-screen-note">Generate letter drafts automatically</div></div><div style="width:52px;height:30px;border-radius:999px;background:rgba(18,24,38,0.12);position:relative;"><span style="position:absolute;top:4px;left:26px;width:22px;height:22px;border-radius:999px;background:linear-gradient(135deg,#2453ff,#a8bcff);display:block;"></span></div></div>
-            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;"><div><strong>Outreach Messages</strong><div class="thr-screen-note">Enable recruiter messaging output</div></div><div style="width:52px;height:30px;border-radius:999px;background:rgba(18,24,38,0.12);position:relative;"><span style="position:absolute;top:4px;left:26px;width:22px;height:22px;border-radius:999px;background:linear-gradient(135deg,#2453ff,#a8bcff);display:block;"></span></div></div>
+          <div style="margin-top: 18px; display: grid; gap: 14px">
+            <div
+              style="display: flex; justify-content: space-between; gap: 12px; align-items: center"
+            >
+              <div>
+                <strong>Cover Letters</strong>
+                <div class="thr-screen-note">Generate letter drafts automatically</div>
+              </div>
+              <div
+                style="
+                  width: 52px;
+                  height: 30px;
+                  border-radius: 999px;
+                  background: rgba(18, 24, 38, 0.12);
+                  position: relative;
+                "
+              >
+                <span
+                  style="
+                    position: absolute;
+                    top: 4px;
+                    left: 26px;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 999px;
+                    background: linear-gradient(135deg, #2453ff, #a8bcff);
+                    display: block;
+                  "
+                ></span>
+              </div>
+            </div>
+            <div
+              style="display: flex; justify-content: space-between; gap: 12px; align-items: center"
+            >
+              <div>
+                <strong>Outreach Messages</strong>
+                <div class="thr-screen-note">Enable recruiter messaging output</div>
+              </div>
+              <div
+                style="
+                  width: 52px;
+                  height: 30px;
+                  border-radius: 999px;
+                  background: rgba(18, 24, 38, 0.12);
+                  position: relative;
+                "
+              >
+                <span
+                  style="
+                    position: absolute;
+                    top: 4px;
+                    left: 26px;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 999px;
+                    background: linear-gradient(135deg, #2453ff, #a8bcff);
+                    display: block;
+                  "
+                ></span>
+              </div>
+            </div>
           </div>
         </section>
       </div>
     </div>
   </body>
-  </html>
+</html>

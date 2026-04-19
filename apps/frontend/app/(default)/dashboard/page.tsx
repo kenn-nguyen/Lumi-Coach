@@ -18,6 +18,7 @@ import {
 import Link from 'next/link';
 import { useTranslations } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 // Optimized Imports for Performance (No Barrel Imports)
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
@@ -190,6 +191,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
+    captureEvent(POSTHOG_EVENTS.DASHBOARD_VIEWED);
     loadTailoredResumes();
   }, [authStatus, loadTailoredResumes]);
 
@@ -281,18 +283,15 @@ export default function DashboardPage() {
     }
   };
 
-  const persistTailorPromptPreference = useCallback(
-    (shouldHide: boolean) => {
-      if (shouldHide) {
-        localStorage.setItem(TAILOR_PROMPT_HIDDEN_KEY, 'true');
-        setTailorPromptDismissed(true);
-        return;
-      }
-      localStorage.removeItem(TAILOR_PROMPT_HIDDEN_KEY);
-      setTailorPromptDismissed(false);
-    },
-    []
-  );
+  const persistTailorPromptPreference = useCallback((shouldHide: boolean) => {
+    if (shouldHide) {
+      localStorage.setItem(TAILOR_PROMPT_HIDDEN_KEY, 'true');
+      setTailorPromptDismissed(true);
+      return;
+    }
+    localStorage.removeItem(TAILOR_PROMPT_HIDDEN_KEY);
+    setTailorPromptDismissed(false);
+  }, []);
 
   const handleTailorPromptOpenChange = (open: boolean) => {
     if (!open) {
@@ -404,37 +403,34 @@ export default function DashboardPage() {
     return filtered;
   }, [getResumeTitle, searchQuery, sortBy, tailoredResumes]);
 
-  const handleExportJson = useCallback(
-    async (resumeId: string, fallbackTitle: string) => {
-      try {
-        const data = await fetchResume(resumeId);
-        let payload: unknown = data.processed_resume ?? {};
-        if (!data.processed_resume && data.raw_resume?.content) {
-          try {
-            payload = JSON.parse(data.raw_resume.content);
-          } catch {
-            payload = data.raw_resume.content;
-          }
+  const handleExportJson = useCallback(async (resumeId: string, fallbackTitle: string) => {
+    try {
+      const data = await fetchResume(resumeId);
+      let payload: unknown = data.processed_resume ?? {};
+      if (!data.processed_resume && data.raw_resume?.content) {
+        try {
+          payload = JSON.parse(data.raw_resume.content);
+        } catch {
+          payload = data.raw_resume.content;
         }
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-        const safeTitle = (fallbackTitle || 'resume')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `${safeTitle || 'resume'}.json`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error('Failed to export resume JSON:', error);
       }
-    },
-    []
-  );
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const safeTitle = (fallbackTitle || 'resume')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${safeTitle || 'resume'}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export resume JSON:', error);
+    }
+  }, []);
 
   const renderStatusPill = (status: ResumeListItem['processing_status'] | ProcessingStatus) => {
     const baseClass =
@@ -446,7 +442,9 @@ export default function DashboardPage() {
       case 'pending':
         return <span className={cn(baseClass, 'bg-blue-50 text-blue-700')}>{status}</span>;
       default:
-        return <span className={cn(baseClass, 'bg-secondary text-muted-foreground')}>{status}</span>;
+        return (
+          <span className={cn(baseClass, 'bg-secondary text-muted-foreground')}>{status}</span>
+        );
     }
   };
 
@@ -707,9 +705,7 @@ export default function DashboardPage() {
                         <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
                       </div>
                       <div className="min-w-0 flex-1 py-0.5">
-                        <h3 className="truncate font-serif text-[1.2rem] leading-tight">
-                          {title}
-                        </h3>
+                        <h3 className="truncate font-serif text-[1.2rem] leading-tight">{title}</h3>
                         <p className="mt-1 whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-gray-500">
                           {t('dashboard.edited', {
                             date: formatDate(resume.updated_at || resume.created_at),

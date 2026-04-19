@@ -56,16 +56,19 @@ Do not change:
 Use only three panel roles:
 
 1. Standard card
+
 - list rows
 - settings groups
 - info modules
 
 2. Elevated shell
+
 - dashboard outer container
 - auth container
 - major page wrapper
 
 3. Work surface
+
 - editor side
 - preview side
 - document framing chrome

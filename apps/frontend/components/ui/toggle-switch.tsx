@@ -35,16 +35,16 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
       className={cn(
         'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2',
-        checked
-          ? 'border-primary/15 bg-primary'
-          : 'border-[#cfc7b8] bg-[#f3eee3]',
+        checked ? 'border-primary/15 bg-primary' : 'border-[#cfc7b8] bg-[#f3eee3]',
         disabled && 'opacity-50'
       )}
     >
       <span
         className={cn(
           'pointer-events-none block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200',
-          checked ? 'translate-x-6 border border-primary/10' : 'translate-x-1 border border-[#bcae96]'
+          checked
+            ? 'translate-x-6 border border-primary/10'
+            : 'translate-x-1 border border-[#bcae96]'
         )}
       />
     </button>

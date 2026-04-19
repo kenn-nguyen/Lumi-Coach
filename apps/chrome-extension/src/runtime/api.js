@@ -341,6 +341,102 @@ export async function uploadJobDescription(jobDescription, resumeId) {
   return payload;
 }
 
+export function normalizeBackendApifyFallbackPayload(
+  payload,
+  fallbackSourceUrl = "",
+) {
+  const rawText =
+    typeof payload?.raw_text === "string" ? payload.raw_text.trim() : "";
+  if (!rawText) {
+    throw new Error(
+      "Backend Apify fallback response did not include a readable job description.",
+    );
+  }
+
+  return {
+    source:
+      typeof payload?.source === "string" && payload.source.trim()
+        ? payload.source.trim()
+        : "apify_backend",
+    sourceUrl:
+      typeof payload?.source_url === "string" && payload.source_url.trim()
+        ? payload.source_url.trim()
+        : fallbackSourceUrl,
+    title: typeof payload?.title === "string" ? payload.title.trim() : "",
+    company:
+      typeof payload?.company === "string" ? payload.company.trim() : "",
+    location:
+      typeof payload?.location === "string" ? payload.location.trim() : "",
+    datePosted:
+      typeof payload?.date_posted === "string" && payload.date_posted.trim()
+        ? payload.date_posted.trim()
+        : null,
+    extractedAt: new Date().toISOString(),
+    rawText,
+    diagnostics: {
+      ...(payload?.diagnostics || {}),
+      source:
+        typeof payload?.source === "string" && payload.source.trim()
+          ? payload.source.trim()
+          : "apify_backend",
+      rawTextLength: rawText.length,
+    },
+  };
+}
+
+export async function fetchBackendApifyLinkedInFallback(sourceUrl) {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/jobs/linkedin-apify-fallback`;
+  logInfo("ResumeApi", "Requesting backend Apify LinkedIn fallback.", {
+    endpoint,
+    sourceUrl,
+  });
+  let response;
+  try {
+    response = await fetchWithAuth(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_url: sourceUrl }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(
+      "ResumeApi",
+      "Backend Apify fallback request failed before response.",
+      {
+        endpoint,
+        sourceUrl,
+        error: message,
+      },
+    );
+    throw new Error(
+      `Backend Apify fallback request failed before response at ${endpoint}: ${message}`,
+    );
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    logError("ResumeApi", "Backend Apify fallback returned a non-OK status.", {
+      endpoint,
+      sourceUrl,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(
+      `Backend Apify fallback failed (status ${response.status}): ${text}`,
+    );
+  }
+
+  const payload = await response.json();
+  const normalized = normalizeBackendApifyFallbackPayload(payload, sourceUrl);
+  logInfo("ResumeApi", "Backend Apify fallback succeeded.", {
+    sourceUrl,
+    rawTextLength: normalized.rawText.length,
+    responseSource: normalized.source,
+  });
+  return normalized;
+}
+
 export async function linkResumeToJobContext(
   originalResumeId,
   tailoredResumeId,
@@ -625,9 +721,16 @@ export async function renameResume(resumeId, title) {
   return payload;
 }
 
-export async function buildPreviewUrl(resumeId) {
+export async function buildPreviewUrl(resumeId, options = {}) {
   const { appOrigin } = await getRuntimeEndpoints();
-  return `${appOrigin}/resumes/${encodeURIComponent(resumeId)}`;
+  const url = new URL(`/resumes/${encodeURIComponent(resumeId)}`, appOrigin);
+  if (options.runId) {
+    url.searchParams.set("runId", String(options.runId));
+  }
+  if (options.source) {
+    url.searchParams.set("source", String(options.source));
+  }
+  return url.toString();
 }
 
 export async function openPreviewTab(previewUrl) {

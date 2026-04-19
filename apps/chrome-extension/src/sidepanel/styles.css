@@ -459,6 +459,16 @@ body {
   cursor: not-allowed;
 }
 
+.button--secondary {
+  background: #fff;
+}
+
+.setup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .history-list {
   display: grid;
   gap: 12px;

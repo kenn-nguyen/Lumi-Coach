@@ -7,9 +7,26 @@
     <link rel="stylesheet" href="./tokens.css" />
     <link rel="stylesheet" href="./preview-shared.css" />
     <style>
-      .connect-wrap { min-height: calc(100vh - 64px); display:grid; place-items:center; }
-      .connect-card { width:min(560px,calc(100vw - 48px)); border:1px solid var(--thr-border-soft); background:rgba(255,255,255,0.9); padding:36px; border-radius:var(--thr-radius-lg); box-shadow:var(--thr-shadow-lg); text-align:center; }
-      .connect-card h1 { margin:18px auto 10px; max-width:12ch; font-size:48px; letter-spacing:-0.05em; }
+      .connect-wrap {
+        min-height: calc(100vh - 64px);
+        display: grid;
+        place-items: center;
+      }
+      .connect-card {
+        width: min(560px, calc(100vw - 48px));
+        border: 1px solid var(--thr-border-soft);
+        background: rgba(255, 255, 255, 0.9);
+        padding: 36px;
+        border-radius: var(--thr-radius-lg);
+        box-shadow: var(--thr-shadow-lg);
+        text-align: center;
+      }
+      .connect-card h1 {
+        margin: 18px auto 10px;
+        max-width: 12ch;
+        font-size: 48px;
+        letter-spacing: -0.05em;
+      }
     </style>
   </head>
   <body class="thr-preview-page">
@@ -17,12 +34,15 @@
       <div class="connect-card">
         <div class="thr-eyebrow">Extension Handshake</div>
         <h1>Connecting your extension and returning you to LinkedIn.</h1>
-        <p class="thr-muted">This screen keeps the same logic and controls, but softens the chrome into a calm transition state that matches the homepage brand.</p>
-        <div class="thr-inline-actions" style="justify-content:center; margin-top:24px;">
+        <p class="thr-muted">
+          This screen keeps the same logic and controls, but softens the chrome into a calm
+          transition state that matches the homepage brand.
+        </p>
+        <div class="thr-inline-actions" style="justify-content: center; margin-top: 24px">
           <span class="thr-status thr-status--blue">Authorizing</span>
           <span class="thr-status thr-status--green">Ready To Return</span>
         </div>
       </div>
     </div>
   </body>
-  </html>
+</html>

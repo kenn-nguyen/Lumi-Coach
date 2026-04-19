@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 type SignInRedirectClientProps = {
   callbackUrl?: string;
@@ -39,6 +40,7 @@ function normalizePassiveRedirectTarget(callbackUrl?: string): string | null {
 
 export function SignInRedirectClient({ callbackUrl }: SignInRedirectClientProps) {
   const { status } = useSession();
+  const capturedRef = useRef(false);
 
   const fallbackUrl = useMemo(() => {
     if (typeof window === 'undefined') return '/';
@@ -49,6 +51,12 @@ export function SignInRedirectClient({ callbackUrl }: SignInRedirectClientProps)
 
   useEffect(() => {
     if (status !== 'authenticated') return;
+    if (!capturedRef.current) {
+      capturedRef.current = true;
+      captureEvent(POSTHOG_EVENTS.AUTH_SIGN_IN_SUCCEEDED, {
+        target_path: fallbackUrl,
+      });
+    }
     window.location.replace(fallbackUrl);
   }, [fallbackUrl, status]);
 

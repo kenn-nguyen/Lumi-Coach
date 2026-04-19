@@ -26,13 +26,13 @@ The right target is a product UI that inherits the homepage's discipline:
 The first pass improved the tone, but it still had three structural problems:
 
 1. It used too many visual materials.
-Glass, gradients, blur, soft cards, and oversized radii were all competing at once.
+   Glass, gradients, blur, soft cards, and oversized radii were all competing at once.
 
 2. It made every screen feel equally branded.
-That is the wrong model. Builder, viewer, and settings are work tools. They should be quieter than dashboard, sign-in, and connect.
+   That is the wrong model. Builder, viewer, and settings are work tools. They should be quieter than dashboard, sign-in, and connect.
 
 3. It described "premium" without operational rules.
-"Premium" is not gradients and rounded corners. In this app it should mean hierarchy, restraint, rhythm, and confidence.
+   "Premium" is not gradients and rounded corners. In this app it should mean hierarchy, restraint, rhythm, and confidence.
 
 ## Corrected Theme Direction
 
@@ -62,11 +62,13 @@ There should only be three surface roles:
 There should only be two screen modes:
 
 1. Brand-led
+
 - dashboard
 - sign-in
 - connect
 
 2. Work-led
+
 - builder
 - tailor
 - viewer

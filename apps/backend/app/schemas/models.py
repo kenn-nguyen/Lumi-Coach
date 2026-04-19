@@ -480,6 +480,25 @@ class JobUploadResponse(BaseModel):
     request: dict[str, Any]
 
 
+class LinkedInApifyFallbackRequest(BaseModel):
+    """Request to fetch a LinkedIn JD via the server-side Apify fallback."""
+
+    source_url: str = Field(min_length=1)
+
+
+class LinkedInApifyFallbackResponse(BaseModel):
+    """Normalized server-side Apify fallback payload for extension use."""
+
+    source: str = "apify_backend"
+    source_url: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    date_posted: str | None = None
+    raw_text: str
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+
+
 # Improvement Models
 class ImproveResumeRequest(BaseModel):
     """Request to improve/tailor a resume."""

@@ -46,7 +46,10 @@
     linear-gradient(rgba(36, 83, 255, 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(36, 83, 255, 0.06) 1px, transparent 1px),
     linear-gradient(180deg, #f9f6ef 0%, #f2eee4 100%);
-  background-size: 44px 44px, 44px 44px, auto;
+  background-size:
+    44px 44px,
+    44px 44px,
+    auto;
 }
 
 .thr-panel {

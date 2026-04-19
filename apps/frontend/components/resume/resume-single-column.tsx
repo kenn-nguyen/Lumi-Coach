@@ -50,7 +50,11 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
   // Helper function to render contact details
   const renderContactDetail = (label: string, value?: string | null, hrefPrefix: string = '') => {
     if (!value) return null;
-    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(label, value, hrefPrefix);
+    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(
+      label,
+      value,
+      hrefPrefix
+    );
 
     return (
       <span className="inline-flex items-center gap-1">

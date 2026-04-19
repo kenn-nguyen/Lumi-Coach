@@ -111,7 +111,10 @@ const DialogContent: React.FC<DialogContentProps> = ({ children, className }) =>
 
   return createPortal(
     <div className="fixed inset-0 z-50">
-      <div className="fixed inset-0 bg-[rgba(18,24,38,0.32)] backdrop-blur-[2px]" onClick={() => onOpenChange(false)} />
+      <div
+        className="fixed inset-0 bg-[rgba(18,24,38,0.32)] backdrop-blur-[2px]"
+        onClick={() => onOpenChange(false)}
+      />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <div
           className={cn(
@@ -176,7 +179,11 @@ const DialogDescription: React.FC<React.HTMLAttributes<HTMLParagraphElement>> = 
   className,
   children,
   ...props
-}) => <p className={cn('text-sm text-muted-foreground', className)} {...props}>{children}</p>;
+}) => (
+  <p className={cn('text-sm text-muted-foreground', className)} {...props}>
+    {children}
+  </p>
+);
 
 export {
   Dialog,

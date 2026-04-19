@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import Resume, { ResumeData } from '@/components/dashboard/resume-component';
@@ -22,6 +22,7 @@ import { useTranslations } from '@/lib/i18n';
 import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
 import { downloadBlobAsFile, openUrlInNewTab, sanitizeFilename } from '@/lib/utils/download';
+import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
@@ -30,6 +31,7 @@ export default function ResumeViewerPage() {
   const { t } = useTranslations();
   const { uiLanguage } = useLanguage();
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { decrementResumes, setHasMasterResume } = useStatusCache();
   const [resumeData, setResumeData] = useState<ResumeData | null>(null);
@@ -50,6 +52,8 @@ export default function ResumeViewerPage() {
   const [generationFeedback, setGenerationFeedback] = useState<GenerationFeedback | null>(null);
 
   const resumeId = params?.id as string;
+  const runId = searchParams.get('runId');
+  const source = searchParams.get('source');
 
   const localizedResumeData = useMemo(() => {
     if (!resumeData) return null;
@@ -103,6 +107,15 @@ export default function ResumeViewerPage() {
     loadResume();
     setIsMasterResume(localStorage.getItem('master_resume_id') === resumeId);
   }, [authStatus, resumeId, t]);
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || !resumeId || source !== 'extension') return;
+    captureEvent(POSTHOG_EVENTS.RESUME_WORKSPACE_OPENED, {
+      resume_id: resumeId,
+      run_id: runId,
+      source,
+    });
+  }, [authStatus, resumeId, runId, source]);
 
   const handleRetryProcessing = async () => {
     if (!resumeId) return;
@@ -248,9 +261,7 @@ export default function ResumeViewerPage() {
     return rawSummary.replace(/^[A-Z0-9][A-Z0-9 _-]{2,}:\s+/, '');
   }, [generationFeedback?.summary]);
 
-  const hasGenerationFeedback = Boolean(
-    displayFeedbackSummary || feedbackRows.length > 0
-  );
+  const hasGenerationFeedback = Boolean(displayFeedbackSummary || feedbackRows.length > 0);
 
   if (loading) {
     return (
@@ -393,9 +404,7 @@ export default function ResumeViewerPage() {
                   <p className="pt-0.5 text-xs font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     {t('resumeViewer.feedback.summaryLabel')}
                   </p>
-                  <p className="text-sm leading-6 text-foreground">
-                    {displayFeedbackSummary}
-                  </p>
+                  <p className="text-sm leading-6 text-foreground">{displayFeedbackSummary}</p>
                 </div>
               )}
               <div className="space-y-2 text-sm leading-5 text-foreground">
