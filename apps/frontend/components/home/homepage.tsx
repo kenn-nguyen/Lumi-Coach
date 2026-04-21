@@ -7,7 +7,7 @@ import { PublicHeader } from './public-header';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 const CHROME_WEB_STORE_URL =
-  'https://drive.google.com/file/d/1CwlwBkLCucZH_qXCygSE0Z1RcNNN1Mc9/view?usp=drive_link';
+  'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
 
 const heroSignals = [
   'For MBA recruiting',

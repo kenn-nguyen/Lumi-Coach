@@ -9,7 +9,7 @@ type PublicHeaderProps = {
 const baseLinkClassName =
   'inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition';
 const CHROME_WEB_STORE_URL =
-  'https://drive.google.com/file/d/1CwlwBkLCucZH_qXCygSE0Z1RcNNN1Mc9/view?usp=drive_link';
+  'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
 
 export function PublicHeader({ activeTab = null }: PublicHeaderProps): React.ReactElement {
   return (
