@@ -7,31 +7,37 @@ type PublicHeaderProps = {
 };
 
 const baseLinkClassName =
-  'inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition';
+  'inline-flex min-h-11 items-center justify-center rounded-full text-sm font-semibold transition';
 const CHROME_WEB_STORE_URL =
   'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
 
 export function PublicHeader({ activeTab = null }: PublicHeaderProps): React.ReactElement {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4 rounded-full border border-[#ecd3da]/90 bg-[rgba(255,248,249,0.76)] px-5 py-3 shadow-[0_24px_44px_rgba(86,15,40,0.08)] backdrop-blur-[18px]">
-      <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
-        <Link href="/" className="flex items-center gap-3">
-          <Image src="/logo.png" alt="Lumi Coach" width={40} height={40} className="size-10" />
-          <span className="text-xl font-semibold tracking-[-0.05em] text-[#32111d] sm:text-2xl">
+    <header className="flex items-center justify-between gap-4 rounded-full border border-[#ecd3da]/90 bg-[rgba(255,248,249,0.76)] px-5 py-3 shadow-[0_24px_44px_rgba(86,15,40,0.08)] backdrop-blur-[18px]">
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-3 md:flex-initial md:justify-start md:gap-4">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+          <Image
+            src="/logo.png"
+            alt="Lumi Coach"
+            width={40}
+            height={40}
+            className="size-8 sm:size-10"
+          />
+          <span className="truncate text-lg font-semibold tracking-[-0.05em] text-[#32111d] sm:text-2xl">
             Lumi Coach
           </span>
         </Link>
 
         <nav
           aria-label="Public pages"
-          className="flex items-center gap-2 border-l border-[#ead3d9]/90 pl-3 sm:pl-4"
+          className="flex shrink-0 items-center gap-2 border-l border-[#ead3d9]/90 pl-3 sm:pl-4"
         >
           <Link
             href="/story-bank"
             className={
               activeTab === 'story-bank'
-                ? `${baseLinkClassName} border border-[#e6cad2]/95 bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] text-[#fff7f9] shadow-[0_12px_26px_rgba(86,15,40,0.14)]`
-                : `${baseLinkClassName} text-[#6f102d] hover:bg-white/80 hover:text-[#32111d]`
+                ? `${baseLinkClassName} px-0 text-[#8e2247] md:border md:border-[#e6cad2]/95 md:bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] md:px-4 md:text-[#fff7f9] md:shadow-[0_12px_26px_rgba(86,15,40,0.14)]`
+                : `${baseLinkClassName} px-0 text-[#6f102d] hover:text-[#32111d] md:px-4 md:hover:bg-white/80`
             }
           >
             Story bank
@@ -39,7 +45,7 @@ export function PublicHeader({ activeTab = null }: PublicHeaderProps): React.Rea
         </nav>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="hidden items-center gap-3 md:flex">
         <a
           href={CHROME_WEB_STORE_URL}
           onClick={() =>
