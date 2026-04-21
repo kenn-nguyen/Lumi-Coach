@@ -233,7 +233,8 @@ export function getExtensionSetupState({
       state: "signed_out_returning",
       hasCompletedOnboarding: true,
       title: "You’ve been signed out",
-      detail: "Sign in to continue tailoring this job. Your setup is still here.",
+      detail:
+        "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.",
       primaryAction: {
         id: "connect",
         label: "Continue with Google",
@@ -284,8 +285,8 @@ export function getExtensionSetupState({
     mode: "run",
     state: "ready",
     hasCompletedOnboarding: true,
-    title: "Ready to tailor",
-    detail: "Start from the current LinkedIn job.",
+    title: "Job loaded",
+    detail: "Review the job, then tailor when you're ready.",
     secondaryAction: hasStoryboard
       ? null
       : {

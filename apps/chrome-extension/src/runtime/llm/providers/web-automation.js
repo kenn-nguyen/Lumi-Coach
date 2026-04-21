@@ -81,39 +81,26 @@ function getElapsedPhaseKey(elapsedMs) {
   return 'long_wait';
 }
 
+function formatElapsedSeconds(elapsedMs) {
+  const seconds = Math.max(1, Math.ceil(elapsedMs / 1000));
+  return `${seconds}s`;
+}
+
 function getElapsedPhaseLabel(elapsedMs, pollCount, config) {
-  const index = Math.max(0, pollCount - 1);
   const providerName = config.providerLabel;
   const phaseKey = getElapsedPhaseKey(elapsedMs);
-  const variants = {
-    popup_load: [
-      'Loading popup…',
-      `${providerName} loading…`,
-      'Preparing runner…',
-    ],
-    submit: [
-      'Finding composer…',
-      'Checking send control…',
-      'Submitting prompt…',
-    ],
-    first_response: [
-      'Waiting for response…',
-      `${providerName} is thinking…`,
-      'Waiting for first tokens…',
-    ],
-    streaming: [
-      'Streaming response…',
-      'Waiting for final output…',
-      'Finalizing response…',
-    ],
-    long_wait: [
-      `${providerName} still running…`,
-      'Waiting on final output…',
-      'Still processing…',
-    ],
+  const phrases = {
+    popup_load: `${providerName} loading…`,
+    submit: 'Submitting the prompt…',
+    first_response: `${providerName} is thinking…`,
+    streaming: 'Waiting for the response to finish…',
+    long_wait: `${providerName} is still running…`,
   };
-  const phrases = variants[phaseKey] ?? variants.long_wait;
-  return `${phrases[index % phrases.length]} Check ${pollCount}.`;
+  const phrase = phrases[phaseKey] ?? phrases.long_wait;
+  if (elapsedMs < 15000) {
+    return phrase;
+  }
+  return `${phrase} ${formatElapsedSeconds(elapsedMs)}.`;
 }
 
 function normalizeResultForLogging(result) {

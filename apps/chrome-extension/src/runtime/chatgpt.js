@@ -52,38 +52,25 @@ function getElapsedPhaseKey(elapsedMs) {
   return 'long_wait';
 }
 
+function formatElapsedSeconds(elapsedMs) {
+  const seconds = Math.max(1, Math.ceil(elapsedMs / 1000));
+  return `${seconds}s`;
+}
+
 function getElapsedPhaseLabel(elapsedMs, pollCount = 1) {
-  const index = Math.max(0, pollCount - 1);
   const phaseKey = getElapsedPhaseKey(elapsedMs);
-  const variants = {
-    popup_load: [
-      'Waiting for popup load…',
-      'Checking whether ChatGPT finished loading…',
-      'Looking for the first ready screen…',
-    ],
-    submit: [
-      'Finding composer and submitting…',
-      'Checking the input box and send controls…',
-      'Trying to hand Prompt 1 to ChatGPT…',
-    ],
-    first_response: [
-      'Waiting for first response text…',
-      'Checking whether ChatGPT started answering…',
-      'Looking for the first assistant tokens…',
-    ],
-    streaming: [
-      'Waiting for ChatGPT to finish…',
-      'Checking whether the response is still streaming…',
-      'Watching for the final answer to settle…',
-    ],
-    long_wait: [
-      'Still waiting on ChatGPT response…',
-      'Checking again for a finished answer…',
-      'Still polling the popup for a settled response…',
-    ],
+  const phrases = {
+    popup_load: 'Waiting for ChatGPT to load…',
+    submit: 'Submitting the prompt…',
+    first_response: 'Waiting for the first response…',
+    streaming: 'Waiting for ChatGPT to finish…',
+    long_wait: 'Still waiting on ChatGPT…',
   };
-  const phrases = variants[phaseKey] ?? variants.long_wait;
-  return `${phrases[index % phrases.length]} Check ${pollCount}.`;
+  const phrase = phrases[phaseKey] ?? phrases.long_wait;
+  if (elapsedMs < 15000) {
+    return phrase;
+  }
+  return `${phrase} ${formatElapsedSeconds(elapsedMs)}.`;
 }
 
 async function listWindowTabs(windowId) {

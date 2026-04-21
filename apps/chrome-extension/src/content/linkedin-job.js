@@ -39,6 +39,7 @@ const STORYBOARD_LABEL_ID = "resume-matcher-storyboard-label";
 const STORYBOARD_INPUT_ID = "resume-matcher-storyboard-input";
 const STORYBOARD_ACTION_ID = "resume-matcher-storyboard-action";
 const ACCOUNT_ACTION_ID = "resume-matcher-account-action";
+const ACCOUNT_DETAIL_ID = "resume-matcher-account-detail";
 const PROVIDER_SELECT_ID = "resume-matcher-provider-select";
 const PROVIDER_WEB_ROW_ID = "resume-matcher-provider-web-row";
 const PROVIDER_WEB_INPUT_ID = "resume-matcher-provider-web-input";
@@ -64,6 +65,7 @@ const CUSTOM_FEATURE_INPUT_ID = "resume-matcher-custom-feature";
 const RUNTIME_URLS_ROW_ID = "resume-matcher-runtime-urls";
 const RESET_LOCAL_ID = "resume-matcher-reset-local";
 const RESET_DEFAULTS_ID = "resume-matcher-reset-defaults";
+const EXPORT_DATA_ID = "resume-matcher-export-data";
 const STYLE_ID = "resume-matcher-floating-style";
 const POSITION_KEY = "resumeMatcherFloatingPosition";
 const DISMISSED_KEY = "resumeMatcherFloatingButtonDismissed";
@@ -83,41 +85,125 @@ const EDGE_GAP_TOTAL = EDGE_PADDING * 2;
 const APP_URL = "https://som-career-coach-iota.vercel.app/";
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
 const RUN_WAIT_MESSAGE_INTERVAL_MS = 10000;
+const RUN_PROGRESS_HEARTBEAT_FRESH_MS = 15000;
 const RUN_WAIT_MESSAGE_POOLS = {
-  default: ["Still working on this step.", "Reviewing the current pass."],
+  default: [
+    "Still working on this step.",
+    "Reviewing the current pass.",
+    "Taking another pass through the response.",
+    "Cleaning up the current output.",
+    "Checking the latest result before moving on.",
+  ],
   setup: [
     "Checking your setup.",
     "Connecting the run.",
     "Preparing the workspace.",
+    "Getting the extension and workspace aligned.",
+    "Making sure everything is ready to hand off.",
+    "Finishing the run setup.",
   ],
   bootstrap: [
     "Reading your uploaded resume.",
     "Structuring the main sections.",
     "Saving your base resume.",
+    "Normalizing the resume content.",
+    "Checking the extracted structure.",
+    "Preparing the base version for tailoring.",
   ],
   fitCheck: [
     "Reading the role.",
     "Pulling out the key requirements.",
     "Checking what matters most.",
+    "Separating must-haves from nice-to-haves.",
+    "Looking for the strongest recruiter signals.",
+    "Comparing the role against your background.",
   ],
   positioning: [
     "Matching your experience to the role.",
     "Choosing the strongest angles.",
     "Tightening the positioning.",
+    "Deciding what to emphasize first.",
+    "Looking for the best evidence to support the fit.",
+    "Shaping the narrative around the role.",
   ],
   draft: [
     "Writing the tailored resume.",
     "Sharpening the strongest bullets.",
     "Checking the draft for consistency.",
+    "Reworking the draft around the role priorities.",
+    "Tightening the wording and evidence.",
+    "Checking that the draft stays grounded in your background.",
   ],
   saving: [
     "Saving your resume.",
     "Finalizing the workspace.",
     "Opening your workspace.",
+    "Packaging the latest draft.",
+    "Applying the last updates before handoff.",
+    "Finishing the web handoff.",
   ],
 };
 let adapterModulePromise = null;
 let zipModulePromise = null;
+let runStatusHelpers = {
+  createExplicitRunStatus(kind, tone, title, detail = "", actions = []) {
+    if (!kind || kind === "none") return null;
+    return {
+      kind,
+      tone: tone || "neutral",
+      title: title || "",
+      detail: detail || "",
+      actions: Array.isArray(actions) ? actions : [],
+    };
+  },
+  resolveRunStatusBox({
+    explicitStatus = null,
+    preflightStatus = null,
+    runningDetail = "",
+  } = {}) {
+    if (explicitStatus?.kind && explicitStatus.kind !== "none") {
+      return {
+        ...explicitStatus,
+        detail:
+          explicitStatus.kind === "running" && runningDetail
+            ? runningDetail
+            : explicitStatus.detail || "",
+        actions: Array.isArray(explicitStatus.actions)
+          ? explicitStatus.actions
+          : [],
+      };
+    }
+    if (preflightStatus) {
+      return {
+        kind: "preflight",
+        actions: Array.isArray(preflightStatus.actions)
+          ? preflightStatus.actions
+          : [],
+        ...preflightStatus,
+      };
+    }
+    return null;
+  },
+  shouldRotateRunningStatus(explicitStatus) {
+    return explicitStatus?.kind === "running";
+  },
+  shouldClearExplicitStatusOnJobChange(explicitStatus) {
+    return ["success", "error", "interrupted"].includes(
+      explicitStatus?.kind || "",
+    );
+  },
+  isRehydratableExtensionSessionStatus(status) {
+    return new Set([
+      "starting",
+      "bootstrap_master",
+      "scraped",
+      "prompt1_done",
+      "prompt2_done",
+      "prompt3_done",
+      "validated",
+    ]).has(String(status || "").trim());
+  },
+};
 
 function loadAdapterModule() {
   if (!adapterModulePromise) {
@@ -133,6 +219,18 @@ function loadZipModule() {
     zipModulePromise = import(chrome.runtime.getURL("src/shared/zip.js"));
   }
   return zipModulePromise;
+}
+
+async function loadRunStatusHelpers() {
+  try {
+    runStatusHelpers = await import(
+      chrome.runtime.getURL("src/content/run-status.js")
+    );
+  } catch (error) {
+    logError("Failed to load run-status helpers.", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 const PROMPT_FILE_DESCRIPTORS = [
@@ -263,12 +361,20 @@ const ICONS = {
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path d="M8.2 5.5 12.8 10l-4.6 4.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`,
+  refresh: `
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M15.7 8.2A5.8 5.8 0 0 0 5.1 6.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M4.7 3.9v3.3H8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M4.3 11.8a5.8 5.8 0 0 0 10.6 1.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M15.3 16.1v-3.3H12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`,
 };
 
-let urlObserver = null;
 let selectedJobDetailObserver = null;
 let selectedJobDetailObservedRoot = null;
 let lastUrl = location.href;
+let routePollTimer = null;
+let lastRouteSignature = "";
 let pointerDragState = null;
 let suppressNextClick = false;
 let runtimeUrlsSaveTimer = null;
@@ -301,6 +407,7 @@ const state = {
   isRunning: false,
   awaitingAuth: false,
   awaitingStoryboard: false,
+  explicitRunStatus: null,
   statusTone: "neutral",
   statusTitle: "",
   statusDetail: "",
@@ -312,6 +419,7 @@ const state = {
   setupState: null,
   history: [],
   extensionState: null,
+  routeMode: "hidden",
   connectionState: "signed_out",
   websiteAuthenticated: false,
   extensionConnected: false,
@@ -322,10 +430,14 @@ const state = {
   scrapeIssue: "",
   storyboardHelpOpen: false,
   currentJob: null,
+  jobInspectionRequested: false,
   selectedJobRefreshing: false,
   selectedJobExpectedSourceUrl: "",
   selectedJobRefreshAttempts: 0,
   activeRunJob: null,
+  previewHandoffComplete: false,
+  lastProgressHeartbeatAt: 0,
+  runningDetailSource: "",
   historySearch: "",
   historySortDirection: "desc",
   historyPage: 1,
@@ -340,11 +452,62 @@ function logError(message, data) {
   console.error(`${LOG_PREFIX} ${message}`, data);
 }
 
-function isLinkedInJobPage() {
-  return (
-    location.hostname === "www.linkedin.com" &&
-    location.pathname.startsWith("/jobs/")
-  );
+function hasVisibleLauncherRoute() {
+  return state.routeMode !== "hidden";
+}
+
+function hasActiveSelectedJobRoute() {
+  return state.routeMode === "active";
+}
+
+function deriveFallbackRouteModeFromLocation() {
+  if (location.hostname !== "www.linkedin.com") {
+    return "hidden";
+  }
+
+  const pathname = location.pathname || "";
+  if (!pathname.startsWith("/jobs")) {
+    return "hidden";
+  }
+
+  const canonicalMatch = pathname.match(/^\/jobs\/view\/(\d+)\/?$/);
+  if (canonicalMatch) {
+    return "active";
+  }
+
+  try {
+    const parsed = new URL(location.href);
+    const currentJobId = parsed.searchParams.get("currentJobId")?.trim() || "";
+    if (/^\d+$/.test(currentJobId)) {
+      return "active";
+    }
+
+    if (
+      parsed.pathname.startsWith("/jobs/search") ||
+      parsed.pathname.startsWith("/jobs/collections/")
+    ) {
+      return "waiting";
+    }
+  } catch {
+    return "hidden";
+  }
+
+  return "hidden";
+}
+
+function getCurrentRouteSignature() {
+  const routeMode = deriveFallbackRouteModeFromLocation();
+  let selectedJobId = "";
+  try {
+    const parsed = new URL(location.href);
+    selectedJobId =
+      parsed.searchParams.get("currentJobId")?.trim() ||
+      parsed.pathname.match(/^\/jobs\/view\/(\d+)\/?$/)?.[1] ||
+      "";
+  } catch {
+    selectedJobId = "";
+  }
+  return `${routeMode}|${selectedJobId}|${location.pathname}|${location.search}`;
 }
 
 function $(id) {
@@ -687,6 +850,15 @@ function getAppOrigin() {
   return (state.assets?.appOrigin || APP_URL).trim().replace(/\/+$/, "");
 }
 
+function toAbsoluteAppUrl(url) {
+  if (!url) return "";
+  try {
+    return new URL(url, getAppOrigin()).toString();
+  } catch {
+    return String(url || "");
+  }
+}
+
 function renderFileActionIcon(action) {
   if (action === "upload") {
     return `<img class="resume-matcher-file-chip__icon-image" src="${chrome.runtime.getURL(UPLOAD_ICON_PATH)}" alt="" />`;
@@ -720,6 +892,73 @@ function promptDownloadId(templateName) {
 
 function promptInputId(templateName) {
   return `resume-matcher-${templateName}-input`;
+}
+
+function sanitizeDownloadTimestamp(value = new Date()) {
+  return value.toISOString().replace(/[:.]/g, "-");
+}
+
+function downloadJsonFile(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+function exportHistoryData() {
+  const exportedAt = new Date().toISOString();
+  const items = (Array.isArray(state.history) ? state.history : []).map((entry) => ({
+    runId: entry?.runId ?? null,
+    jdLink: entry?.sourceUrl ?? null,
+    jobTitle: entry?.title ?? null,
+    company: entry?.company ?? null,
+    location: entry?.location ?? null,
+    datePosted: entry?.datePosted ?? null,
+    generatedAt: entry?.generatedAt ?? null,
+    status: entry?.status ?? null,
+    resumeId: entry?.resumeId ?? null,
+    previewUrl: entry?.previewUrl ?? null,
+    providerId: entry?.providerId ?? null,
+    providerLabel: entry?.providerLabel ?? null,
+    providerVendor: entry?.providerVendor ?? null,
+    providerMode: entry?.providerMode ?? null,
+    jobSource: entry?.jobSource ?? null,
+    jobReadiness: entry?.jobReadiness ?? null,
+    descriptionProvenance: entry?.descriptionProvenance ?? null,
+    descriptionLength: entry?.descriptionLength ?? null,
+    scrapeConfidence: entry?.scrapeConfidence ?? null,
+    manualJobInputUsed: entry?.manualJobInputUsed ?? null,
+    customContextProvided: entry?.customContextProvided ?? null,
+    customContextLength: entry?.customContextLength ?? null,
+    storyboardPresent: entry?.storyboardPresent ?? null,
+    prompt1DurationMs: entry?.prompt1DurationMs ?? null,
+    prompt2DurationMs: entry?.prompt2DurationMs ?? null,
+    prompt3DurationMs: entry?.prompt3DurationMs ?? null,
+    patchDurationMs: entry?.patchDurationMs ?? null,
+    totalDurationMs: entry?.totalDurationMs ?? null,
+    prompt3ValidationErrorCount: entry?.prompt3ValidationErrorCount ?? null,
+    prompt1Output: entry?.prompt1Result ?? null,
+    prompt2Output: entry?.prompt2Result ?? null,
+    prompt3Output: entry?.prompt3Parsed ?? null,
+  }));
+
+  downloadJsonFile(
+    `lumi-coach-runs-${sanitizeDownloadTimestamp()}.json`,
+    {
+      appName: "Lumi Coach",
+      exportedAt,
+      format: "json",
+      itemCount: items.length,
+      items,
+    },
+  );
 }
 
 async function downloadDefaultPrompt(templateName) {
@@ -981,6 +1220,7 @@ function injectStyles() {
       -webkit-backdrop-filter: blur(30px) saturate(150%);
     }
 
+    #${ROOT_ID}[data-current-view="history"] #${BOARD_ID},
     #${ROOT_ID}[data-current-view="settings"] #${BOARD_ID},
     #${ROOT_ID}[data-onboarding-mode="true"] #${BOARD_ID} {
       width: min(${WIDE_BOARD_WIDTH}px, calc(100vw - ${EDGE_GAP_TOTAL}px));
@@ -1212,11 +1452,28 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      border: none;
+      padding: 0;
       background: #34c759;
       color: #ffffff;
       font-size: 12px;
       font-weight: 800;
       box-shadow: 0 4px 10px rgba(52, 199, 89, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+    }
+
+    .resume-matcher-run-ready svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .resume-matcher-run-ready.is-actionable {
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+
+    .resume-matcher-run-ready.is-actionable:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(123, 52, 16, 0.24), inset 0 1px 1px rgba(255, 255, 255, 0.28);
     }
 
     .resume-matcher-run-ready.is-muted {
@@ -1539,6 +1796,12 @@ function injectStyles() {
       display: none;
     }
 
+    .resume-matcher-run-shell .resume-matcher-field--notes label {
+      display: block;
+      color: rgba(88, 28, 52, 0.78);
+      letter-spacing: 0.08em;
+    }
+
     .resume-matcher-field input,
     .resume-matcher-field textarea,
     .resume-matcher-field select,
@@ -1614,6 +1877,31 @@ function injectStyles() {
       background: rgba(255, 255, 255, 0.84);
       border-color: rgba(0, 122, 255, 0.4);
       box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+    }
+
+    .resume-matcher-run-shell .resume-matcher-field--notes textarea {
+      border-color: rgba(208, 160, 176, 0.9);
+      background: #ffffff;
+      box-shadow:
+        0 10px 22px rgba(127, 29, 63, 0.06),
+        inset 0 1px 2px rgba(91, 26, 48, 0.03);
+      color: #4c1d2d;
+      caret-color: #982348;
+    }
+
+    .resume-matcher-run-shell .resume-matcher-field--notes textarea:hover {
+      border-color: rgba(168, 85, 110, 0.88);
+      box-shadow:
+        0 12px 24px rgba(127, 29, 63, 0.08),
+        inset 0 1px 2px rgba(91, 26, 48, 0.03);
+    }
+
+    .resume-matcher-run-shell .resume-matcher-field--notes textarea:focus {
+      background: #ffffff;
+      border-color: rgba(152, 35, 72, 0.78);
+      box-shadow:
+        0 0 0 3px rgba(168, 85, 110, 0.16),
+        0 14px 28px rgba(127, 29, 63, 0.08);
     }
 
     .resume-matcher-field__hint {
@@ -2110,6 +2398,10 @@ function injectStyles() {
     }
 
     .resume-matcher-history-item__link {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 0;
       color: #1f6fe5;
       font-size: 12px;
       font-weight: 700;
@@ -3072,8 +3364,13 @@ async function finishPointerDrag() {
     root.style.top = `${clampTop(pointerDragState.lastTop ?? pointerDragState.originTop, root)}px`;
     applyDockedHorizontalPosition(root, finalSide);
   }
-  if (pointerDragState.dragged) {
+  if (pointerDragState.dragged && !state.boardOpen) {
     suppressNextClick = true;
+    await persistPosition({
+      side: state.dockSide,
+      top: pointerDragState.lastTop ?? pointerDragState.originTop,
+    });
+  } else if (pointerDragState.dragged) {
     await persistPosition({
       side: state.dockSide,
       top: pointerDragState.lastTop ?? pointerDragState.originTop,
@@ -3175,14 +3472,30 @@ function openBoard(view = "run", options = {}) {
   render();
   syncDockedPosition($(ROOT_ID));
   if (!previousOpen || previousView !== view) {
-    void trackAnalyticsEvent(
+    const eventName =
       view === "settings"
         ? "extension_settings_viewed"
-        : "extension_board_opened",
-      { surface: view === "settings" ? "settings_view" : "run_view" },
+        : view === "history"
+          ? "extension_runs_viewed"
+          : "extension_board_opened";
+    const surface =
+      view === "settings"
+        ? "settings_view"
+        : view === "history"
+          ? "runs_view"
+          : "run_view";
+    void trackAnalyticsEvent(
+      eventName,
+      { surface },
     );
   }
-  if (!options.skipConnectionCheck && (view === "run" || view === "settings")) {
+  const shouldCheckConnection =
+    view === "settings" ? true : hasSelectedJobTarget();
+  if (
+    !options.skipConnectionCheck &&
+    shouldCheckConnection &&
+    (view === "run" || view === "history" || view === "settings")
+  ) {
     void reconcileConnectionStatus(view);
     return;
   }
@@ -3344,7 +3657,31 @@ function scheduleJobReadinessCheck() {
 }
 
 function updateJobReadiness(nextJob = extractCurrentJob()) {
+  const previousJobSignature = getCurrentJobSignature(state.currentJob);
+  const nextJobSignature = getCurrentJobSignature(nextJob);
   state.currentJob = nextJob;
+
+  if (
+    previousJobSignature &&
+    nextJobSignature &&
+    previousJobSignature !== nextJobSignature &&
+    !state.isRunning &&
+    !state.awaitingAuth &&
+    !state.awaitingStoryboard &&
+    runStatusHelpers.shouldClearExplicitStatusOnJobChange(state.explicitRunStatus)
+  ) {
+    clearExplicitRunStatus("job-change", { renderNow: false });
+  }
+
+  if (!hasSelectedJobTarget()) {
+    clearJobLoadTimer();
+    state.jobLoadState = "idle";
+    state.jobLoadStartedAt = null;
+    state.selectedJobRefreshing = false;
+    state.selectedJobExpectedSourceUrl = "";
+    state.selectedJobRefreshAttempts = 0;
+    return false;
+  }
 
   if (hasEnoughJobContext(nextJob)) {
     clearJobLoadTimer();
@@ -3415,7 +3752,7 @@ function isCurrentJobExpectedSelection(nextJob) {
 
 function performSelectedJobRefresh() {
   selectedJobRefreshTimer = null;
-  if (!isLinkedInJobPage()) return;
+  if (!hasVisibleLauncherRoute()) return;
 
   const nextJob = extractCurrentJob();
   const matchesExpected = isCurrentJobExpectedSelection(nextJob);
@@ -3425,6 +3762,7 @@ function performSelectedJobRefresh() {
 
   if (matchesExpected && nextHasEnoughContext) {
     render();
+    void reconcileConnectionStatus(state.currentView);
     return;
   }
 
@@ -3441,7 +3779,7 @@ function performSelectedJobRefresh() {
 }
 
 function scheduleSelectedJobRefresh(options = {}) {
-  if (!isLinkedInJobPage()) return;
+  if (!hasVisibleLauncherRoute()) return;
 
   const nextExpectedUrl = normalizeJobSourceUrl(
     options.expectedSourceUrl || "",
@@ -3487,7 +3825,7 @@ function getSetupRequirementStatus(messageOverride = "") {
         title: "You’ve been signed out",
         detail:
           messageOverride ||
-          "Sign in to continue tailoring this job. Your setup is still here.",
+          "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.",
         actions: [
           {
             id: "connect",
@@ -3550,8 +3888,8 @@ function getScrapeRequirementStatus(messageOverride = "") {
     detail:
       messageOverride ||
       (hasApifyToken
-        ? "I’ll keep trying fallback extraction. If it still misses, paste the JD below."
-        : "I couldn’t get the full JD. Enable Apify in Settings or paste the JD below."),
+        ? "Try refreshing LinkedIn first. If it still misses, I’ll keep trying fallback extraction or you can paste the JD below."
+        : "Try refreshing LinkedIn first. If it still misses, enable Apify in Settings or paste the JD below."),
     actions: [],
   };
 }
@@ -3615,6 +3953,32 @@ function normalizeJobSourceUrl(url) {
   }
 }
 
+function resolveSelectedJobSourceUrl() {
+  const href = window.location.href;
+  try {
+    const parsed = new URL(href);
+    const currentJobId = parsed.searchParams.get("currentJobId")?.trim();
+    if (currentJobId) {
+      return `${parsed.origin}/jobs/view/${currentJobId}/`;
+    }
+  } catch {}
+
+  const canonicalMatch = href.match(/\/jobs\/view\/(\d+)/);
+  if (canonicalMatch) {
+    return `${window.location.origin}/jobs/view/${canonicalMatch[1]}/`;
+  }
+
+  return "";
+}
+
+function hasSelectedJobTarget() {
+  return Boolean(resolveSelectedJobSourceUrl());
+}
+
+function isWaitingForJobSelection() {
+  return state.routeMode === "waiting";
+}
+
 function cloneJobForRun(job) {
   if (!job) return null;
   return {
@@ -3626,16 +3990,6 @@ function cloneJobForRun(job) {
   };
 }
 
-const ACTIVE_EXTENSION_SESSION_STATUSES = new Set([
-  "starting",
-  "bootstrap_master",
-  "scraped",
-  "prompt1_done",
-  "prompt2_done",
-  "prompt3_done",
-  "validated",
-]);
-
 function getRunStateFromExtensionSession() {
   const session = state.extensionState;
   if (!session) return null;
@@ -3645,7 +3999,7 @@ function getRunStateFromExtensionSession() {
     session.jobSnapshot || session.activeRunJob || null,
   );
 
-  if (ACTIVE_EXTENSION_SESSION_STATUSES.has(status)) {
+  if (runStatusHelpers.isRehydratableExtensionSessionStatus(status)) {
     const byStatus = {
       starting: {
         title: "Starting run",
@@ -3684,24 +4038,12 @@ function getRunStateFromExtensionSession() {
     };
   }
 
-  if (status === "patched" && activeRunJob) {
-    return {
-      isRunning: false,
-      tone: "success",
-      title: "Opening workspace",
-      detail: `Your tailored resume for ${getJobDisplayLabel(activeRunJob)} is opening on the web.`,
-      activeRunJob,
-    };
-  }
-
-  if (status === "error") {
-    return {
-      isRunning: false,
-      tone: "error",
-      title: "Run failed",
-      detail: formatErrorText(session.patchError || ""),
-      activeRunJob,
-    };
+  // Error sessions are persisted for history and diagnostics, but rehydrating
+  // them or the post-preview success state on a fresh board load creates
+  // misleading stale banners. Live failures/success still surface through
+  // the active response/log paths.
+  if (status === "error" || status === "patched") {
+    return null;
   }
 
   return null;
@@ -3721,10 +4063,16 @@ function syncVisibleRunStateFromExtensionSession() {
 
   state.isRunning = sessionState.isRunning;
   state.activeRunJob = sessionState.activeRunJob;
-  state.statusTone = sessionState.tone;
-  state.statusTitle = sessionState.title;
-  state.statusDetail = sessionState.detail;
-  state.statusActions = [];
+  applyExplicitRunStatus(
+    runStatusHelpers.createExplicitRunStatus(
+      "running",
+      sessionState.tone,
+      sessionState.title,
+      sessionState.detail,
+      [],
+    ),
+    { renderNow: false },
+  );
 }
 
 function getJobDisplayLabel(job) {
@@ -3751,7 +4099,7 @@ function doesActiveRunMatchCurrentJob() {
 }
 
 function canAttemptRecoveryRun() {
-  if (!isLinkedInJobPage()) return false;
+  if (!hasVisibleLauncherRoute()) return false;
   if (hasManualJobDescription()) return true;
 
   const job = state.currentJob || {};
@@ -3764,6 +4112,15 @@ function canAttemptRecoveryRun() {
 }
 
 function getRunBlockingState() {
+  if (isWaitingForJobSelection()) {
+    return {
+      tone: "info",
+      title: "Select a job to start",
+      detail: "Choose a job from the list, then I’ll load it here.",
+      actions: [],
+    };
+  }
+
   const setupRequirement = getSetupRequirementStatus();
   if (setupRequirement) {
     return setupRequirement;
@@ -3800,6 +4157,25 @@ function getRunBlockingState() {
   return null;
 }
 
+function getPreflightRunStatus() {
+  const blocked = getRunBlockingState();
+  if (blocked) {
+    return {
+      kind: "preflight",
+      ...blocked,
+    };
+  }
+
+  if (shouldShowManualJdFallback()) {
+    return {
+      kind: "preflight",
+      ...getScrapeRequirementStatus(state.scrapeIssue),
+    };
+  }
+
+  return null;
+}
+
 function isRunReady() {
   return (
     !getRunBlockingState() && !state.awaitingAuth && !state.awaitingStoryboard
@@ -3807,34 +4183,10 @@ function isRunReady() {
 }
 
 function extractCurrentJob() {
-  const normalizedSourceUrl = (() => {
-    const href = window.location.href;
-    try {
-      const parsed = new URL(href);
-      const currentJobId = parsed.searchParams.get("currentJobId")?.trim();
-      if (currentJobId) {
-        return `${parsed.origin}/jobs/view/${currentJobId}/`;
-      }
-    } catch {}
-
-    const canonicalMatch = href.match(/\/jobs\/view\/(\d+)/);
-    if (canonicalMatch) {
-      return `${window.location.origin}/jobs/view/${canonicalMatch[1]}/`;
-    }
-
-    const canonicalLink = document.querySelector(
-      'a[href*="/jobs/view/"][href*="currentJobId="], a[href*="/jobs/view/"]',
-    )?.href;
-    if (canonicalLink) {
-      const linkMatch = canonicalLink.match(/\/jobs\/view\/(\d+)/);
-      if (linkMatch) {
-        return `${window.location.origin}/jobs/view/${linkMatch[1]}/`;
-      }
-      return canonicalLink;
-    }
-
-    return href;
-  })();
+  const normalizedSourceUrl = resolveSelectedJobSourceUrl();
+  if (!normalizedSourceUrl) {
+    return null;
+  }
 
   const company = extractText([
     ".job-details-jobs-unified-top-card__company-name a",
@@ -3867,12 +4219,14 @@ function extractCurrentJob() {
   };
 }
 
-function getLinkedInJobDetailRoot() {
-  return (
-    document.querySelector(
-      ".jobs-search__job-details--container, .jobs-search__job-details, .scaffold-layout__detail, [data-testid='job-details']",
-    ) || document.querySelector("main")
+function getStrictLinkedInJobDetailRoot() {
+  return document.querySelector(
+    ".jobs-search__job-details--container, .jobs-search__job-details, .scaffold-layout__detail, [data-testid='job-details']",
   );
+}
+
+function getLinkedInJobDetailRoot() {
+  return getStrictLinkedInJobDetailRoot() || document.querySelector("main");
 }
 
 function getHistoryTitle(entry) {
@@ -3940,6 +4294,26 @@ function getHistorySourceUrl(entry) {
     return entry.jobKey.trim();
   }
   return "";
+}
+
+function getHistoryEntryByIndex(index) {
+  const parsedIndex = Number.parseInt(String(index || ""), 10);
+  if (Number.isNaN(parsedIndex) || parsedIndex < 0) return null;
+  return Array.isArray(state.history) ? state.history[parsedIndex] ?? null : null;
+}
+
+function openHistoryJob(index) {
+  const entry = getHistoryEntryByIndex(index);
+  const sourceUrl = getHistorySourceUrl(entry);
+  if (!sourceUrl) return;
+  window.open(sourceUrl, "_blank", "noopener,noreferrer");
+}
+
+function openHistoryResume(index) {
+  const entry = getHistoryEntryByIndex(index);
+  const previewUrl = toAbsoluteAppUrl(entry?.previewUrl || "");
+  if (!previewUrl) return;
+  window.open(previewUrl, "_blank", "noopener,noreferrer");
 }
 
 function getSelectedProfile(selectId = PROVIDER_SELECT_ID, settings = null) {
@@ -4145,104 +4519,58 @@ function renderOnboardingStep() {
   }
 }
 
+function getVisibleExplicitRunStatus() {
+  const explicitStatus = state.explicitRunStatus;
+  if (!explicitStatus) return null;
+
+  const isDifferentJob =
+    state.activeRunJob &&
+    (state.isRunning || state.awaitingStoryboard || state.awaitingAuth) &&
+    !doesActiveRunMatchCurrentJob();
+
+  if (!isDifferentJob) {
+    return explicitStatus;
+  }
+
+  if (explicitStatus.kind === "success") {
+    return {
+      ...explicitStatus,
+      title: "Workspace ready",
+      detail: `Opened the tailored resume for ${getJobDisplayLabel(state.activeRunJob)}.`,
+    };
+  }
+
+  if (explicitStatus.kind === "interrupted") {
+    return {
+      ...explicitStatus,
+      tone: "info",
+      title: state.awaitingStoryboard
+        ? "Story bank needed for another job"
+        : "Sign-in needed for another job",
+      detail: state.awaitingStoryboard
+        ? `Continue or upload a story bank for ${getJobDisplayLabel(state.activeRunJob)}.`
+        : `Sign in to continue ${getJobDisplayLabel(state.activeRunJob)}.`,
+    };
+  }
+
+  if (explicitStatus.kind === "running") {
+    return {
+      ...explicitStatus,
+      tone: "info",
+      title: "Tailoring in background",
+      detail: `${explicitStatus.title || "Still working"} for ${getJobDisplayLabel(state.activeRunJob)}.`,
+    };
+  }
+
+  return explicitStatus;
+}
+
 function getRunStatusCopy() {
-  if (state.awaitingAuth) {
-    return {
-      tone: state.statusTone || "info",
-      title: state.statusTitle || "Opening Google sign-in",
-      detail:
-        state.statusDetail || "We will bring you back here after sign-in.",
-      actions: [],
-    };
-  }
-
-  const blocked = getRunBlockingState();
-  if (blocked) {
-    return blocked;
-  }
-
-  if (state.statusTone === "error" && state.statusTitle) {
-    return {
-      tone: state.statusTone,
-      title: state.statusTitle,
-      detail: state.statusDetail,
-      actions: state.statusActions,
-    };
-  }
-
-  if (
-    state.statusTitle &&
-    (state.isRunning ||
-      state.statusTone === "success" ||
-      state.statusTone === "info" ||
-      state.statusTone === "running")
-  ) {
-    const isDifferentJob =
-      state.activeRunJob &&
-      (state.isRunning || state.awaitingStoryboard || state.awaitingAuth) &&
-      !doesActiveRunMatchCurrentJob();
-    if (isDifferentJob) {
-      return {
-        tone: state.statusTone === "success" ? "success" : "info",
-        title:
-          state.statusTone === "success"
-            ? "Workspace ready"
-            : state.awaitingStoryboard
-              ? "Story bank needed for another job"
-              : state.awaitingAuth
-                ? "Sign-in needed for another job"
-                : "Tailoring in background",
-        detail:
-          state.statusTone === "success"
-            ? `Opened the tailored resume for ${getJobDisplayLabel(state.activeRunJob)}.`
-            : state.awaitingStoryboard
-              ? `Continue or upload a story bank for ${getJobDisplayLabel(state.activeRunJob)}.`
-              : state.awaitingAuth
-                ? `Sign in to continue ${getJobDisplayLabel(state.activeRunJob)}.`
-                : `${state.statusTitle || "Still working"} for ${getJobDisplayLabel(state.activeRunJob)}.`,
-        actions: state.statusActions,
-      };
-    }
-    return {
-      tone: state.statusTone,
-      title: state.statusTitle,
-      detail:
-        state.statusTone === "running" && state.rotatingStatusDetail
-          ? state.rotatingStatusDetail
-          : state.statusDetail,
-      actions: state.statusActions,
-    };
-  }
-
-  if (state.awaitingStoryboard) {
-    return {
-      tone: "warning",
-      title: "Story bank missing",
-      detail: "Continue without a story bank or upload one in Settings.",
-      actions: [
-        { id: "continue-storyboard", label: "Continue", variant: "primary" },
-        { id: "cancel-storyboard", label: "Cancel" },
-      ],
-    };
-  }
-
-  if (shouldShowManualJdFallback()) {
-    return getScrapeRequirementStatus(state.scrapeIssue);
-  }
-
-  if (!state.statusTitle && state.statusTone === "neutral") {
-    return null;
-  }
-
-  return {
-    tone: state.statusTone,
-    title: state.statusTitle,
-    detail:
-      state.statusTone === "running" && state.rotatingStatusDetail
-        ? state.rotatingStatusDetail
-        : state.statusDetail,
-    actions: state.statusActions,
-  };
+  return runStatusHelpers.resolveRunStatusBox({
+    explicitStatus: getVisibleExplicitRunStatus(),
+    preflightStatus: getPreflightRunStatus(),
+    runningDetail: state.rotatingStatusDetail,
+  });
 }
 
 function stopRunningStatusRotation() {
@@ -4334,14 +4662,40 @@ function seedRunningStatusRotation(title, fallbackDetail = "") {
   state.rotatingStatusDetail = fallbackDetail || "";
 }
 
+function hasFreshProgressHeartbeat() {
+  return (
+    state.lastProgressHeartbeatAt > 0 &&
+    Date.now() - state.lastProgressHeartbeatAt < RUN_PROGRESS_HEARTBEAT_FRESH_MS
+  );
+}
+
 function scheduleNextRunningStatusRotation() {
-  if (!state.isRunning || state.statusTone !== "running") return;
+  if (
+    !state.isRunning ||
+    !runStatusHelpers.shouldRotateRunningStatus(state.explicitRunStatus)
+  ) {
+    return;
+  }
   runningStatusMessageTimer = window.setTimeout(() => {
     runningStatusMessageTimer = null;
-    if (!state.isRunning || state.statusTone !== "running") return;
-    const { key, messages } = getRunWaitMessagesForTitle(state.statusTitle);
+    if (
+      !state.isRunning ||
+      !runStatusHelpers.shouldRotateRunningStatus(state.explicitRunStatus)
+    ) {
+      return;
+    }
+    if (hasFreshProgressHeartbeat()) {
+      scheduleNextRunningStatusRotation();
+      return;
+    }
+    const { key, messages } = getRunWaitMessagesForTitle(
+      state.explicitRunStatus?.title,
+    );
     if (state.rotatingStatusPoolKey !== key) {
-      seedRunningStatusRotation(state.statusTitle, state.statusDetail);
+      seedRunningStatusRotation(
+        state.explicitRunStatus?.title,
+        state.explicitRunStatus?.detail,
+      );
       render();
       scheduleNextRunningStatusRotation();
       return;
@@ -4350,28 +4704,34 @@ function scheduleNextRunningStatusRotation() {
     const nextIndex =
       state.rotatingStatusIndex < 0
         ? 0
-        : Math.min(state.rotatingStatusIndex + 1, messages.length - 1);
+        : (state.rotatingStatusIndex + 1) % messages.length;
     state.rotatingStatusIndex = nextIndex;
     state.rotatingStatusDetail =
-      messages[nextIndex] || state.statusDetail || state.rotatingStatusDetail;
+      messages[nextIndex] ||
+      state.explicitRunStatus?.detail ||
+      state.rotatingStatusDetail;
     render();
-    if (nextIndex < messages.length - 1) {
-      scheduleNextRunningStatusRotation();
-    }
+    scheduleNextRunningStatusRotation();
   }, RUN_WAIT_MESSAGE_INTERVAL_MS);
 }
 
 function startRunningStatusRotation() {
-  if (!state.isRunning || state.statusTone !== "running") {
+  if (
+    !state.isRunning ||
+    !runStatusHelpers.shouldRotateRunningStatus(state.explicitRunStatus)
+  ) {
     stopRunningStatusRotation();
     return;
   }
-  const nextPoolKey = getRunWaitPoolKey(state.statusTitle);
+  const nextPoolKey = getRunWaitPoolKey(state.explicitRunStatus?.title);
   if (
     !state.rotatingStatusDetail ||
     state.rotatingStatusPoolKey !== nextPoolKey
   ) {
-    seedRunningStatusRotation(state.statusTitle, state.statusDetail);
+    seedRunningStatusRotation(
+      state.explicitRunStatus?.title,
+      state.explicitRunStatus?.detail,
+    );
   }
   if (!runningStatusMessageTimer) {
     scheduleNextRunningStatusRotation();
@@ -4382,20 +4742,91 @@ function clearScrapeRecoveryState() {
   state.scrapeIssue = "";
 }
 
-function setRunStatus(tone, title, detail = "", actions = []) {
-  state.statusTone = tone;
-  state.statusTitle = title || "";
-  state.statusDetail = detail || "";
-  state.statusActions = Array.isArray(actions) ? actions : [];
-  if (tone === "running" && state.isRunning) {
+function markPreviewHandoffComplete() {
+  state.previewHandoffComplete = true;
+  state.isRunning = false;
+  state.awaitingAuth = false;
+  state.awaitingStoryboard = false;
+  state.lastProgressHeartbeatAt = 0;
+  state.runningDetailSource = "";
+  stopRunningStatusRotation();
+}
+
+function applyExplicitRunStatus(nextStatus, options = {}) {
+  const { renderNow = true, source = "explicit" } = options;
+  const previousTitle = state.explicitRunStatus?.title || "";
+  const previousDetail = state.explicitRunStatus?.detail || "";
+  state.explicitRunStatus = nextStatus;
+  state.statusTone = nextStatus?.tone || "neutral";
+  state.statusTitle = nextStatus?.title || "";
+  state.statusDetail = nextStatus?.detail || "";
+  state.statusActions = Array.isArray(nextStatus?.actions)
+    ? nextStatus.actions
+    : [];
+
+  if (
+    runStatusHelpers.shouldRotateRunningStatus(nextStatus) &&
+    state.isRunning
+  ) {
+    const titleChanged = nextStatus?.title !== previousTitle;
+    if (source === "heartbeat") {
+      state.lastProgressHeartbeatAt = Date.now();
+      state.runningDetailSource = "heartbeat";
+    } else if (titleChanged) {
+      state.lastProgressHeartbeatAt = 0;
+      state.runningDetailSource = source;
+    } else if (source !== "heartbeat" && state.runningDetailSource !== "heartbeat") {
+      state.runningDetailSource = source;
+    }
+    if (
+      nextStatus?.detail &&
+      (nextStatus.title !== previousTitle || nextStatus.detail !== previousDetail)
+    ) {
+      state.rotatingStatusDetail = nextStatus.detail;
+    }
     startRunningStatusRotation();
   } else {
+    state.lastProgressHeartbeatAt = 0;
+    state.runningDetailSource = "";
     stopRunningStatusRotation();
   }
-  if (!state.boardOpen && tone === "error") {
+
+  if (!state.boardOpen && nextStatus?.kind === "error") {
     state.launcherAlert = true;
   }
-  render();
+
+  if (renderNow) {
+    render();
+  }
+}
+
+function setExplicitRunStatus(kind, tone, title, detail = "", actions = []) {
+  applyExplicitRunStatus(
+    runStatusHelpers.createExplicitRunStatus(
+      kind,
+      tone,
+      title,
+      detail,
+      actions,
+    ),
+    { source: kind === "running" ? "stage" : "explicit" },
+  );
+}
+
+function clearExplicitRunStatus(_reason = "", options = {}) {
+  applyExplicitRunStatus(null, options);
+}
+
+function setRunStatus(tone, title, detail = "", actions = []) {
+  const kind =
+    tone === "running"
+      ? "running"
+      : tone === "error"
+        ? "error"
+        : tone === "success"
+          ? "success"
+          : "interrupted";
+  setExplicitRunStatus(kind, tone, title, detail, actions);
 }
 
 function formatErrorText(message) {
@@ -4515,7 +4946,9 @@ function getProgressMessage(scope, message, data) {
 
   if (promptLabel && scope !== "Background") {
     const title = getUserFacingPromptLabel(promptLabel);
-    return [title, getPromptStageDetail(title, message)];
+    const phaseText =
+      typeof data?.phaseText === "string" ? data.phaseText.trim() : "";
+    return [title, phaseText || getPromptStageDetail(title, message)];
   }
 
   return null;
@@ -4558,7 +4991,12 @@ function renderHistory() {
 
   historyRoot.innerHTML = items
     .map(
-      ({ entry, originalIndex }) => `
+      ({ entry, originalIndex }) => {
+        const metaText = [formatDate(entry?.generatedAt), getHistoryStatus(entry)]
+          .filter(Boolean)
+          .join(" • ");
+        const hasPreview = Boolean(entry?.previewUrl);
+        return `
       <article class="resume-matcher-history-item">
         <div class="resume-matcher-history-item__top">
           <div>
@@ -4571,11 +5009,16 @@ function renderHistory() {
           </div>
         </div>
         <div class="resume-matcher-history-item__footer">
-          <div class="resume-matcher-history-item__meta">${escapeHtml(formatDate(entry.generatedAt))}</div>
-          <a href="#" class="resume-matcher-history-item__link" data-history-open="${originalIndex}">View resume</a>
+          <div class="resume-matcher-history-item__meta">${escapeHtml(metaText)}</div>
+          ${
+            hasPreview
+              ? `<button type="button" class="resume-matcher-history-item__link" data-history-open="${originalIndex}">View resume</button>`
+              : ""
+          }
         </div>
       </article>
-    `,
+    `;
+      },
     )
     .join("");
 
@@ -4626,6 +5069,9 @@ function renderProviderFields() {
 
 function renderSettings() {
   const assets = state.assets;
+  const hasActiveWorkspace = Boolean(assets?.activeAccountKey);
+  const accountControlsDisabled = !hasActiveWorkspace;
+  const accountLabel = assets?.extensionAuth?.user?.email?.trim() || "";
   const masterLabel = $(MASTER_RESUME_LABEL_ID);
   const storyboardLabel = $(STORYBOARD_LABEL_ID);
   if (masterLabel) {
@@ -4681,6 +5127,7 @@ function renderSettings() {
   }
 
   const accountButton = $(ACCOUNT_ACTION_ID);
+  const accountDetail = $(ACCOUNT_DETAIL_ID);
   if (accountButton) {
     const connected = state.connectionState === "connected";
     accountButton.classList.add("resume-matcher-google-button");
@@ -4689,8 +5136,46 @@ function renderSettings() {
     );
     accountButton.disabled = false;
   }
+  if (accountDetail) {
+    accountDetail.textContent =
+      state.connectionState === "connected"
+        ? accountLabel
+          ? `Signed in as ${accountLabel}. This account uses its own local workspace.`
+          : "Signed in. This account uses its own local workspace."
+        : "Sign in to activate this account’s local workspace.";
+  }
+
+  [
+    MASTER_RESUME_ACTION_ID,
+    MASTER_RESUME_INPUT_ID,
+    STORYBOARD_ACTION_ID,
+    STORYBOARD_INPUT_ID,
+    PROVIDER_SELECT_ID,
+    PROVIDER_WEB_INPUT_ID,
+    PROVIDER_API_BASE_INPUT_ID,
+    PROVIDER_MODEL_INPUT_ID,
+    PROVIDER_API_KEY_INPUT_ID,
+    PROVIDER_SAVE_ID,
+    APIFY_ENABLED_INPUT_ID,
+    APIFY_TOKEN_INPUT_ID,
+    APIFY_TOKEN_TOGGLE_ID,
+    APIFY_SAVE_ID,
+    RESET_LOCAL_ID,
+  ].forEach((id) => {
+    const control = $(id);
+    if (control) {
+      control.disabled = accountControlsDisabled;
+    }
+  });
+  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName }) => {
+    const promptInput = $(promptInputId(templateName));
+    if (promptInput) promptInput.disabled = accountControlsDisabled;
+    const promptAction = $(promptActionId(templateName));
+    if (promptAction) promptAction.disabled = accountControlsDisabled;
+  });
 
   $(MASTER_RESUME_ACTION_ID)?.addEventListener("click", async () => {
+    if (accountControlsDisabled) return;
     if (state.assets?.masterResumeContextAsset?.filename) {
       await sendMessage("CLEAR_MASTER_RESUME_CONTEXT").catch(() => {});
       await refreshBoardData();
@@ -4700,6 +5185,7 @@ function renderSettings() {
   });
 
   $(STORYBOARD_ACTION_ID)?.addEventListener("click", async () => {
+    if (accountControlsDisabled) return;
     if (state.assets?.storyboardAsset?.filename) {
       await sendMessage("CLEAR_STORYBOARD").catch(() => {});
       await refreshBoardData();
@@ -4709,6 +5195,7 @@ function renderSettings() {
   });
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label }) => {
     $(promptActionId(templateName))?.addEventListener("click", async () => {
+      if (accountControlsDisabled) return;
       const asset = state.assets?.[`${templateName}TemplateAsset`];
       if (asset?.filename) {
         await sendMessage("DELETE_PROMPT_TEMPLATE", {
@@ -4776,10 +5263,12 @@ function renderRunView() {
     (state.selectedJobRefreshing || !hasEnoughJobContext(state.currentJob));
   const hasScrapeProblem = shouldShowManualJdFallback();
   const hardBlocker = isHardPrerequisiteBlocker();
+  const waitingForSelection = isWaitingForJobSelection();
   const canRun = isRunReady();
   const onboardingMode = isOnboardingMode();
   const runningDifferentJob =
     state.isRunning && !doesActiveRunMatchCurrentJob();
+  const canRefreshJob = canManuallyRescrapeJob();
 
   if (onboardingRoot) {
     onboardingRoot.hidden = !onboardingMode;
@@ -4798,8 +5287,14 @@ function renderRunView() {
   }
 
   if (readyPill) {
-    readyPill.hidden = onboardingMode || hardBlocker;
-    readyPill.textContent = canRun ? "✓" : isLoadingJob ? "…" : "!";
+    readyPill.hidden = onboardingMode || hardBlocker || waitingForSelection;
+    readyPill.innerHTML = canRefreshJob
+      ? icon("refresh")
+      : canRun
+        ? "✓"
+        : isLoadingJob
+          ? "…"
+          : "!";
     const toneClass = canRun
       ? ""
       : isLoadingJob
@@ -4809,19 +5304,32 @@ function renderRunView() {
           : status?.tone === "blocked" || status?.tone === "warning"
             ? " is-warning"
             : " is-muted";
-    readyPill.className = `resume-matcher-run-ready${toneClass}`;
+    readyPill.className = `resume-matcher-run-ready${toneClass}${canRefreshJob ? " is-actionable" : ""}`;
+    readyPill.disabled = !canRefreshJob;
     readyPill.setAttribute(
       "aria-label",
-      canRun ? "Job ready" : isLoadingJob ? "Loading job" : "Needs setup",
+      canRefreshJob
+        ? "Refresh job details"
+        : canRun
+          ? "Job ready"
+          : isLoadingJob
+            ? "Loading job"
+            : "Needs setup",
     );
     readyPill.setAttribute(
       "title",
-      canRun ? "Job ready" : isLoadingJob ? "Loading job" : "Needs setup",
+      canRefreshJob
+        ? "Refresh job details"
+        : canRun
+          ? "Job ready"
+          : isLoadingJob
+            ? "Loading job"
+            : "Needs setup",
     );
   }
 
   if (jobMeta) {
-    jobMeta.hidden = onboardingMode || hardBlocker;
+    jobMeta.hidden = onboardingMode || hardBlocker || waitingForSelection;
     if (state.selectedJobRefreshing) {
       jobMeta.innerHTML = "";
     } else {
@@ -4848,19 +5356,21 @@ function renderRunView() {
     autoGrowTextarea(notes);
   }
   if (manualJdField) {
-    manualJdField.hidden = onboardingMode || hardBlocker || !hasScrapeProblem;
+    manualJdField.hidden =
+      onboardingMode || hardBlocker || waitingForSelection || !hasScrapeProblem;
   }
   if (manualJdInput && manualJdInput.value !== state.manualJobDescription) {
     manualJdInput.value = state.manualJobDescription;
     autoGrowTextarea(manualJdInput);
   }
   if (notesField) {
-    notesField.hidden = onboardingMode || hardBlocker;
+    notesField.hidden = onboardingMode || hardBlocker || waitingForSelection;
   }
 
   const primaryButton = $(RUN_PRIMARY_ID);
   if (primaryButton) {
-    primaryButton.disabled = onboardingMode || state.isRunning || !canRun;
+    primaryButton.disabled =
+      onboardingMode || waitingForSelection || state.isRunning || !canRun;
     primaryButton.textContent = state.isRunning
       ? runningDifferentJob
         ? "Working on other job"
@@ -4868,13 +5378,14 @@ function renderRunView() {
       : hasManualJobDescription() && hasScrapeProblem
         ? "Continue"
         : "Tailor";
-    primaryButton.hidden = onboardingMode || hardBlocker;
+    primaryButton.hidden = onboardingMode || hardBlocker || waitingForSelection;
   }
 
   const secondaryButton = $(RUN_SECONDARY_ID);
   if (secondaryButton) {
     secondaryButton.textContent = "Minimize";
-    secondaryButton.hidden = onboardingMode || hardBlocker;
+    secondaryButton.hidden =
+      onboardingMode || hardBlocker || waitingForSelection;
   }
 
   const mainActions = $(RUN_ACTIONS_ID);
@@ -4914,7 +5425,7 @@ function renderRunView() {
     );
     mainActions.classList.toggle(
       "is-hidden",
-      onboardingMode || hardBlocker || shouldHideMainActions,
+      onboardingMode || hardBlocker || waitingForSelection || shouldHideMainActions,
     );
   }
 
@@ -4922,6 +5433,8 @@ function renderRunView() {
   if (titleNode) {
     titleNode.textContent = onboardingMode
       ? state.setupState?.title || "Welcome"
+      : waitingForSelection
+        ? "Select a job"
       : hardBlocker
         ? state.setupState?.title || "Finish setup"
         : isLoadingJob
@@ -5011,10 +5524,13 @@ function syncRunningInteractivity() {
 
 function renderViews() {
   const runView = $(RUN_VIEW_ID);
+  const historyView = $(HISTORY_VIEW_ID);
   const settingsView = $(SETTINGS_VIEW_ID);
   runView?.classList.toggle("is-active", state.currentView === "run");
+  historyView?.classList.toggle("is-active", state.currentView === "history");
   settingsView?.classList.toggle("is-active", state.currentView === "settings");
-  $(BOARD_RUNS_ID)?.classList.toggle("is-active", state.currentView === "run");
+  $(BOARD_HOME_ID)?.classList.toggle("is-active", state.currentView === "run");
+  $(BOARD_RUNS_ID)?.classList.toggle("is-active", state.currentView === "history");
   $(BOARD_SETTINGS_ID)?.classList.toggle(
     "is-active",
     state.currentView === "settings",
@@ -5024,7 +5540,10 @@ function renderViews() {
 function render() {
   const root = ensureRoot();
   if (!root) return;
-  if (state.isRunning && state.statusTone === "running") {
+  if (
+    state.isRunning &&
+    runStatusHelpers.shouldRotateRunningStatus(state.explicitRunStatus)
+  ) {
     startRunningStatusRotation();
   } else {
     stopRunningStatusRotation();
@@ -5032,6 +5551,7 @@ function render() {
   renderRootFlags();
   renderViews();
   renderRunView();
+  renderHistory();
   renderSettings();
   syncRunningInteractivity();
 }
@@ -5046,9 +5566,15 @@ async function refreshBoardData() {
     state.setupState = response.setupState ?? state.setupState;
     state.history = response.history ?? [];
     state.extensionState = response.state ?? null;
-    updateJobReadiness(extractCurrentJob());
+    state.routeMode = response.route?.mode || "hidden";
+    if (state.jobInspectionRequested) {
+      updateJobReadiness(extractCurrentJob());
+    } else {
+      state.currentJob = null;
+      resetJobLoadingState();
+    }
     syncVisibleRunStateFromExtensionSession();
-    render();
+    syncFloatingAction({ recheckConnection: false });
   } catch (error) {
     logError("Failed to refresh board data.", {
       error: error instanceof Error ? error.message : String(error),
@@ -5066,25 +5592,20 @@ async function reconcileConnectionStatus() {
     state.setupState = response.setupState ?? state.setupState;
     state.history = response.history ?? state.history;
     state.extensionState = response.state ?? state.extensionState;
+    state.routeMode = response.route?.mode || state.routeMode;
     state.connectionState =
       response.connectionState ||
       (response.connected ? "connected" : "signed_out");
     state.websiteAuthenticated = response.websiteAuthenticated === true;
     state.extensionConnected = response.extensionConnected === true;
-    updateJobReadiness(extractCurrentJob());
-    syncVisibleRunStateFromExtensionSession();
-    if (
-      response.connected === true &&
-      /(sign[- ]in|required|connect extension|opening google sign-in|connected)/i.test(
-        `${state.statusTitle} ${state.statusDetail}`,
-      )
-    ) {
-      state.awaitingAuth = false;
-      setRunStatus("neutral", "", "");
-      return true;
+    if (state.jobInspectionRequested) {
+      updateJobReadiness(extractCurrentJob());
+    } else {
+      state.currentJob = null;
+      resetJobLoadingState();
     }
-
-    render();
+    syncVisibleRunStateFromExtensionSession();
+    syncFloatingAction({ recheckConnection: false });
     return response.connected === true;
   } catch (error) {
     logError("Failed to reconcile connection status.", {
@@ -5243,6 +5764,28 @@ function scheduleRuntimeUrlsSave() {
   }, 350);
 }
 
+function canManuallyRescrapeJob() {
+  if (
+    isOnboardingMode() ||
+    isHardPrerequisiteBlocker() ||
+    isWaitingForJobSelection() ||
+    state.isRunning
+  ) {
+    return false;
+  }
+
+  return Boolean(resolveSelectedJobSourceUrl());
+}
+
+function handleManualJobRescrape() {
+  const targetUrl = resolveSelectedJobSourceUrl();
+  if (!targetUrl || state.isRunning) {
+    return;
+  }
+
+  window.location.reload();
+}
+
 async function handleGenerateClick() {
   if (suppressNextClick) {
     suppressNextClick = false;
@@ -5252,6 +5795,7 @@ async function handleGenerateClick() {
 
   state.currentView = "run";
   openBoard("run", { skipConnectionCheck: true });
+  activateRunInspection({ recheckConnection: false });
   const connected = await reconcileConnectionStatus("run");
   if (!connected) {
     state.isRunning = false;
@@ -5261,20 +5805,33 @@ async function handleGenerateClick() {
   state.awaitingAuth = false;
   state.awaitingStoryboard = false;
   state.isRunning = true;
+  state.previewHandoffComplete = false;
   state.activeRunJob = cloneJobForRun(state.currentJob);
   state.launcherAlert = false;
   clearScrapeRecoveryState();
-  setRunStatus("running", "Starting run", "Preparing your tailored resume.");
+  setExplicitRunStatus(
+    "running",
+    "running",
+    "Starting run",
+    "Preparing your tailored resume.",
+  );
 
   try {
+    const prompt1CustomInstruction = state.customMessage.trim();
     const manualJobInput = shouldShowManualJdFallback()
       ? buildManualJobInput()
       : null;
     const response = await sendMessage("GENERATE_FOR_ACTIVE_JOB", {
-      prompt1CustomInstruction: state.customMessage.trim(),
+      prompt1CustomInstruction,
       jobInput: manualJobInput,
       activeRunJob: cloneJobForRun(state.currentJob),
     });
+    state.customMessage = "";
+    const notes = $(RUN_NOTES_ID);
+    if (notes) {
+      notes.value = "";
+      autoGrowTextarea(notes);
+    }
     if (response?.awaitingAuth) {
       state.isRunning = false;
       state.awaitingAuth = true;
@@ -5284,7 +5841,9 @@ async function handleGenerateClick() {
       const requirement = getSetupRequirementStatus(response.message) || {
         tone: "blocked",
         title: "Sign in with Google",
-        detail: response.message || "Sign in with Google to continue.",
+        detail:
+          response.message ||
+          "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.",
         actions: [
           {
             id: "connect",
@@ -5293,7 +5852,8 @@ async function handleGenerateClick() {
           },
         ],
       };
-      setRunStatus(
+      setExplicitRunStatus(
+        "interrupted",
         requirement.tone,
         requirement.title,
         response.message || requirement.detail,
@@ -5311,7 +5871,8 @@ async function handleGenerateClick() {
         detail: response.message || "Finish setup to continue.",
         actions: [],
       };
-      setRunStatus(
+      setExplicitRunStatus(
+        "interrupted",
         requirement.tone,
         requirement.title,
         requirement.detail,
@@ -5322,7 +5883,8 @@ async function handleGenerateClick() {
     if (response?.awaitingStoryboard) {
       state.isRunning = false;
       state.awaitingStoryboard = true;
-      setRunStatus(
+      setExplicitRunStatus(
+        "interrupted",
         "warning",
         "Story bank missing",
         response.message || "Continue without a story bank?",
@@ -5338,11 +5900,14 @@ async function handleGenerateClick() {
     }
     state.isRunning = false;
     clearScrapeRecoveryState();
-    setRunStatus(
-      "success",
-      "Opening workspace",
-      `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
-    );
+    if (!state.previewHandoffComplete) {
+      setExplicitRunStatus(
+        "success",
+        "success",
+        "Opening workspace",
+        `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
+      );
+    }
     state.activeRunJob = null;
     await refreshBoardData();
   } catch (error) {
@@ -5353,12 +5918,16 @@ async function handleGenerateClick() {
         : "Failed to generate tailored resume.";
     if (isScrapeProblemMessage(message)) {
       state.scrapeIssue = getScrapeRequirementStatus().detail;
-      setRunStatus("warning", "Couldn’t read full JD", state.scrapeIssue, []);
-      render();
+      clearExplicitRunStatus("scrape-recovery");
       return;
     }
     state.activeRunJob = null;
-    setRunStatus("error", "Run failed", formatErrorText(message));
+    setExplicitRunStatus(
+      "error",
+      "error",
+      "Run failed",
+      formatErrorText(message),
+    );
   }
 }
 
@@ -5435,7 +6004,8 @@ async function handleStatusAction(actionId) {
 
   if (actionId === "connect") {
     state.awaitingAuth = true;
-    setRunStatus(
+    setExplicitRunStatus(
+      "interrupted",
       "info",
       "Opening Google sign-in",
       "Checking your Google session.",
@@ -5447,7 +6017,8 @@ async function handleStatusAction(actionId) {
       }
     } catch (error) {
       state.awaitingAuth = false;
-      setRunStatus(
+      setExplicitRunStatus(
+        "error",
         "error",
         "Connect failed",
         error instanceof Error ? error.message : "Unable to open sign-in.",
@@ -5465,8 +6036,14 @@ async function handleStatusAction(actionId) {
     }
     state.awaitingStoryboard = false;
     state.isRunning = true;
+    state.previewHandoffComplete = false;
     clearScrapeRecoveryState();
-    setRunStatus("running", "Continuing run", "Running without a story bank.");
+    setExplicitRunStatus(
+      "running",
+      "running",
+      "Continuing run",
+      "Running without a story bank.",
+    );
     try {
       const response = await sendMessage(
         "CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD",
@@ -5479,7 +6056,8 @@ async function handleStatusAction(actionId) {
     } catch (error) {
       state.isRunning = false;
       state.activeRunJob = null;
-      setRunStatus(
+      setExplicitRunStatus(
+        "error",
         "error",
         "Run failed",
         formatErrorText(
@@ -5494,8 +6072,9 @@ async function handleStatusAction(actionId) {
 
   if (actionId === "cancel-storyboard") {
     state.awaitingStoryboard = false;
+    state.previewHandoffComplete = false;
     await sendMessage("CLEAR_PENDING_EXTENSION_ACTION").catch(() => {});
-    setRunStatus("neutral", "", "");
+    clearExplicitRunStatus("storyboard-cancelled");
   }
 }
 
@@ -5541,13 +6120,13 @@ async function handleOnboardingAction(actionId, nextStep = "") {
     if (!response?.ok) {
       throw new Error(response?.error || "Failed to finish onboarding.");
     }
-    setRunStatus("neutral", "", "");
+    clearExplicitRunStatus("onboarding-complete");
     await refreshBoardData();
   }
 }
 
 function ensureRoot() {
-  if (!isLinkedInJobPage()) {
+  if (!hasVisibleLauncherRoute()) {
     removeRoot();
     return null;
   }
@@ -5568,18 +6147,18 @@ function ensureRoot() {
     <section id="${BOARD_ID}" aria-label="Simplify board">
       <header class="resume-matcher-board__header">
         <div class="resume-matcher-board__brand">
-          <button id="${BOARD_WEBSITE_ID}" class="resume-matcher-board__logo" type="button" aria-label="Open Lumi Coach website" title="Open Lumi Coach">
+          <div id="${BOARD_WEBSITE_ID}" class="resume-matcher-board__logo" aria-hidden="true">
             <img src="${chrome.runtime.getURL(ICON_PATH)}" alt="" />
-          </button>
-          <button id="${BOARD_TITLE_ID}" class="resume-matcher-board__brand-link" type="button" aria-label="Open Lumi Coach website" title="Open Lumi Coach">
+          </div>
+          <div id="${BOARD_TITLE_ID}" class="resume-matcher-board__brand-link">
             <span class="resume-matcher-board__brand-text">
               <span class="resume-matcher-board__title">Lumi Coach</span>
             </span>
-          </button>
+          </div>
         </div>
         <div class="resume-matcher-board__header-actions">
-          <button id="${BOARD_HOME_ID}" class="resume-matcher-icon-button" type="button" aria-label="Dashboard" title="Dashboard">${icon("home")}</button>
-          <button id="${BOARD_RUNS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Run" title="Run">${icon("aiStar")}</button>
+          <button id="${BOARD_HOME_ID}" class="resume-matcher-icon-button" type="button" aria-label="Run" title="Run">${icon("aiStar")}</button>
+          <button id="${BOARD_RUNS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Runs" title="Runs">${icon("history")}</button>
           <button id="${BOARD_SETTINGS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Settings" title="Settings">${icon("settings")}</button>
           <button id="${BOARD_MINIMIZE_ID}" class="resume-matcher-icon-button" type="button" aria-label="Minimize" title="Minimize">${icon("minimize")}</button>
         </div>
@@ -5590,7 +6169,7 @@ function ensureRoot() {
             <div class="resume-matcher-run-shell__body">
               <div class="resume-matcher-run-job">
                 <h2 id="resume-matcher-job-title" class="resume-matcher-run-job__title">LinkedIn job</h2>
-                <span id="${RUN_READY_ID}" class="resume-matcher-run-ready is-muted">!</span>
+                <button id="${RUN_READY_ID}" type="button" class="resume-matcher-run-ready is-muted" aria-label="Needs setup" title="Needs setup">!</button>
               </div>
               <div id="${RUN_META_ID}" class="resume-matcher-run-meta"></div>
               <div id="${RUN_STATUS_ID}" class="resume-matcher-status-card" data-tone="neutral"></div>
@@ -5599,15 +6178,37 @@ function ensureRoot() {
                 <label for="${RUN_MANUAL_JD_ID}">Paste job description manually</label>
                 <textarea id="${RUN_MANUAL_JD_ID}" rows="5" placeholder="If LinkedIn hides the full job description, paste it here to continue."></textarea>
               </div>
-              <div class="resume-matcher-field">
-                <label for="${RUN_NOTES_ID}">Custom message</label>
-                <textarea id="${RUN_NOTES_ID}" rows="2" placeholder="Want to tell me extra useful info for this run?"></textarea>
+              <div class="resume-matcher-field resume-matcher-field--notes">
+                <label for="${RUN_NOTES_ID}">Helpful context</label>
+                <textarea id="${RUN_NOTES_ID}" rows="2" placeholder="Type ATS keywords, must-haves, recruiter hints, or LinkedIn signals."></textarea>
               </div>
               <div id="${RUN_ACTIONS_ID}" class="resume-matcher-button-row">
                 <button id="${RUN_SECONDARY_ID}" type="button" class="resume-matcher-button">Cancel</button>
                 <button id="${RUN_PRIMARY_ID}" type="button" class="resume-matcher-button is-primary">Tailor</button>
               </div>
               <div id="${RUN_STATUS_ACTIONS_ID}" class="resume-matcher-button-row"></div>
+            </div>
+          </article>
+        </section>
+        <section id="${HISTORY_VIEW_ID}" class="resume-matcher-view">
+          <article class="resume-matcher-section">
+            <div class="resume-matcher-history-toolbar">
+              <div class="resume-matcher-history-search">
+                <input id="${HISTORY_SEARCH_ID}" type="search" placeholder="Search runs" aria-label="Search runs" />
+                <div id="${HISTORY_FILTER_ID}" class="resume-matcher-history-filter" data-open="false">
+                  <button type="button" class="resume-matcher-history-filter__button" aria-label="Sort runs" title="Sort runs">${icon("filter")}</button>
+                  <div id="${HISTORY_FILTER_MENU_ID}" class="resume-matcher-history-filter__menu" role="menu" aria-label="Sort runs">
+                    <button id="${HISTORY_SORT_DESC_ID}" type="button" class="resume-matcher-history-filter__option" data-history-sort="desc">Newest first</button>
+                    <button id="${HISTORY_SORT_ASC_ID}" type="button" class="resume-matcher-history-filter__option" data-history-sort="asc">Oldest first</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="${HISTORY_LIST_ID}" class="resume-matcher-history-list"></div>
+            <div class="resume-matcher-history-pagination">
+              <button id="${HISTORY_PREV_ID}" type="button" aria-label="Previous page" title="Previous page">${icon("chevronLeft")}</button>
+              <span id="${HISTORY_PAGE_ID}">0/0</span>
+              <button id="${HISTORY_NEXT_ID}" type="button" aria-label="Next page" title="Next page">${icon("chevronRight")}</button>
             </div>
           </article>
         </section>
@@ -5637,6 +6238,7 @@ function ensureRoot() {
                 </div>
                 <div class="resume-matcher-settings-item">
                   <div class="resume-matcher-settings-item__title">Google sign-in</div>
+                  <div id="${ACCOUNT_DETAIL_ID}" class="resume-matcher-settings-item__detail">Sign in to activate this account’s local workspace.</div>
                   <div class="resume-matcher-google-connect">
                     <button id="${ACCOUNT_ACTION_ID}" type="button" class="resume-matcher-button resume-matcher-google-button">${renderGoogleButtonLabel("Sign in with Google")}</button>
                   </div>
@@ -5715,9 +6317,10 @@ function ensureRoot() {
                     </div>
                   </div>
                   <div class="resume-matcher-advanced-actions resume-matcher-field--full">
-                    <button id="resume-matcher-open-history-web" type="button" class="resume-matcher-button">Open history</button>
+                    <button id="resume-matcher-open-history-web" type="button" class="resume-matcher-button">Open runs</button>
+                    <button id="${EXPORT_DATA_ID}" type="button" class="resume-matcher-button">Export run data</button>
                     <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
-                    <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local data</button>
+                    <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local storage</button>
                   </div>
                   <label class="resume-matcher-inline-action resume-matcher-field--full" for="${CUSTOM_FEATURE_INPUT_ID}">
                     <span class="resume-matcher-inline-action__label">Enable custom feature</span>
@@ -5757,27 +6360,23 @@ function ensureRoot() {
     event.stopPropagation();
     dismissLauncher();
   });
-  $(BOARD_WEBSITE_ID)?.addEventListener("click", () => {
-    window.open(APP_URL, "_blank", "noopener,noreferrer");
-  });
-  $(BOARD_TITLE_ID)?.addEventListener("click", () => {
-    window.open(APP_URL, "_blank", "noopener,noreferrer");
-  });
   $(BOARD_HOME_ID)?.addEventListener("click", () => {
-    window.open(`${getAppOrigin()}/dashboard`, "_blank", "noopener,noreferrer");
+    openBoard("run", { skipConnectionCheck: true });
+    activateRunInspection();
   });
-  $(BOARD_RUNS_ID)?.addEventListener("click", async () => {
-    state.currentView = "run";
-    render();
-    await reconcileConnectionStatus("run");
+  $(BOARD_RUNS_ID)?.addEventListener("click", () => {
+    openBoard("history");
   });
-  $(BOARD_SETTINGS_ID)?.addEventListener("click", async () => {
-    state.currentView = state.currentView === "settings" ? "run" : "settings";
-    state.launcherAlert = false;
-    render();
-    await reconcileConnectionStatus(state.currentView);
+  $(BOARD_SETTINGS_ID)?.addEventListener("click", () => {
+    if (state.currentView === "settings") {
+      openBoard("run", { skipConnectionCheck: true });
+      activateRunInspection();
+      return;
+    }
+    openBoard("settings");
   });
   $(BOARD_MINIMIZE_ID)?.addEventListener("click", minimizeBoard);
+  $(RUN_READY_ID)?.addEventListener("click", handleManualJobRescrape);
   $(RUN_PRIMARY_ID)?.addEventListener("click", handleGenerateClick);
   $(RUN_SECONDARY_ID)?.addEventListener("click", minimizeBoard);
   $(RUN_NOTES_ID)?.addEventListener("input", (event) => {
@@ -5947,25 +6546,111 @@ function ensureRoot() {
     await refreshBoardData();
   });
   $(RESET_LOCAL_ID)?.addEventListener("click", async () => {
+    if (
+      !window.confirm(
+        "Clear this account’s local extension storage on this browser?",
+      )
+    ) {
+      return;
+    }
     await sendMessage("RESET_LOCAL_DATA").catch(() => {});
     state.customMessage = "";
     await refreshBoardData();
-    setRunStatus("neutral", "", "");
+    setRunStatus(
+      "info",
+      "Local storage cleared",
+      "This account’s local extension storage is now empty on this browser.",
+    );
   });
   $(RESET_DEFAULTS_ID)?.addEventListener("click", async () => {
     await sendMessage("RESET_DEFAULT_SETTINGS").catch(() => {});
     await refreshBoardData();
   });
+  $(EXPORT_DATA_ID)?.addEventListener("click", () => {
+    try {
+      exportHistoryData();
+      setRunStatus(
+        "info",
+        "Export downloaded",
+        "Downloaded this account’s run data as JSON.",
+      );
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Export failed",
+        error instanceof Error ? error.message : "Unable to export run data.",
+      );
+    }
+  });
   $("resume-matcher-open-history-web")?.addEventListener("click", () => {
-    window.open(getAppOrigin(), "_blank", "noopener,noreferrer");
+    openBoard("history");
   });
   root.addEventListener("click", async (event) => {
-    const button = event.target.closest("[data-status-action]");
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const historyJobButton = target.closest("[data-history-job]");
+    if (historyJobButton) {
+      event.preventDefault();
+      state.historyFilterOpen = false;
+      openHistoryJob(historyJobButton.dataset.historyJob);
+      return;
+    }
+
+    const historyOpenButton = target.closest("[data-history-open]");
+    if (historyOpenButton) {
+      event.preventDefault();
+      state.historyFilterOpen = false;
+      openHistoryResume(historyOpenButton.dataset.historyOpen);
+      return;
+    }
+
+    const historyFilterButton = target.closest(
+      ".resume-matcher-history-filter__button",
+    );
+    if (historyFilterButton) {
+      event.preventDefault();
+      state.historyFilterOpen = !state.historyFilterOpen;
+      renderHistory();
+      return;
+    }
+
+    const historySortButton = target.closest("[data-history-sort]");
+    if (historySortButton) {
+      event.preventDefault();
+      state.historySortDirection =
+        historySortButton.dataset.historySort === "asc" ? "asc" : "desc";
+      state.historyPage = 1;
+      state.historyFilterOpen = false;
+      renderHistory();
+      return;
+    }
+
+    if (target.closest(`#${HISTORY_PREV_ID}`)) {
+      event.preventDefault();
+      state.historyPage = Math.max(1, state.historyPage - 1);
+      renderHistory();
+      return;
+    }
+
+    if (target.closest(`#${HISTORY_NEXT_ID}`)) {
+      event.preventDefault();
+      state.historyPage += 1;
+      renderHistory();
+      return;
+    }
+
+    if (state.historyFilterOpen && !target.closest(`#${HISTORY_FILTER_ID}`)) {
+      state.historyFilterOpen = false;
+      renderHistory();
+    }
+
+    const button = target.closest("[data-status-action]");
     if (button) {
       await handleStatusAction(button.dataset.statusAction);
       return;
     }
-    const guideLink = event.target.closest(`a[href="${STORY_BANK_GUIDE_URL}"]`);
+    const guideLink = target.closest(`a[href="${STORY_BANK_GUIDE_URL}"]`);
     if (guideLink) {
       void trackAnalyticsEvent("extension_story_bank_guide_clicked", {
         surface:
@@ -5976,6 +6661,14 @@ function ensureRoot() {
   root.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
+
+    if (target.id === HISTORY_SEARCH_ID) {
+      state.historySearch = target.value || "";
+      state.historyPage = 1;
+      state.historyFilterOpen = false;
+      renderHistory();
+      return;
+    }
 
     if (target.id === APIFY_TOKEN_INPUT_ID) {
       secretDraftState[APIFY_TOKEN_INPUT_ID] = target.value || "";
@@ -6117,7 +6810,6 @@ function ensureRoot() {
   }
 
   void applyStoredRootState(root);
-  void refreshBoardData();
   return root;
 }
 
@@ -6127,12 +6819,23 @@ function handleGenerateClickOpenBoard(event) {
     return;
   }
   event.preventDefault();
-  openBoard("run");
+  openBoard("run", { skipConnectionCheck: true });
+  activateRunInspection();
 }
 
 function removeRoot() {
   pointerDragState = null;
   $(ROOT_ID)?.remove();
+}
+
+function stopSelectedJobDetailWatcher() {
+  if (!selectedJobDetailObserver) {
+    selectedJobDetailObservedRoot = null;
+    return;
+  }
+  selectedJobDetailObserver.disconnect();
+  selectedJobDetailObserver = null;
+  selectedJobDetailObservedRoot = null;
 }
 
 function handleViewportChange() {
@@ -6141,10 +6844,16 @@ function handleViewportChange() {
   syncDockedPosition(root);
 }
 
+function activateRunInspection(options = {}) {
+  const { recheckConnection = true } = options;
+  state.jobInspectionRequested = true;
+  syncFloatingAction({ recheckConnection });
+}
+
 async function handleShowLauncher() {
+  await refreshBoardData();
   ensureRoot();
   showLauncher();
-  await reconcileConnectionStatus("run");
 }
 
 function updateStatusFromLog(level, scope, message, data) {
@@ -6166,6 +6875,10 @@ function updateStatusFromLog(level, scope, message, data) {
     console.info(formatted);
   } else {
     console.info(formatted, data);
+  }
+
+  if (state.previewHandoffComplete) {
+    return;
   }
 
   if (level === "error") {
@@ -6198,45 +6911,104 @@ function updateStatusFromLog(level, scope, message, data) {
   ) {
     clearScrapeRecoveryState();
   }
+  if (scope === "Orchestrator" && message === "Opening generated resume preview.") {
+    markPreviewHandoffComplete();
+    setExplicitRunStatus(
+      "success",
+      "success",
+      "Opening workspace",
+      `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
+    );
+    return;
+  }
   const [title, detail] = progress;
-  setRunStatus("running", title, detail);
+  applyExplicitRunStatus(
+    runStatusHelpers.createExplicitRunStatus(
+      "running",
+      "running",
+      title,
+      detail,
+      [],
+    ),
+    {
+      source:
+        typeof data?.phaseText === "string" && data.phaseText.trim()
+          ? "heartbeat"
+          : "stage",
+    },
+  );
 }
 
-function syncFloatingAction() {
-  if (!isLinkedInJobPage()) {
+function syncFloatingAction(options = {}) {
+  const { recheckConnection = true } = options;
+  if (!hasVisibleLauncherRoute()) {
+    state.jobInspectionRequested = false;
     resetJobLoadingState();
-    if (selectedJobDetailObserver) {
-      selectedJobDetailObserver.disconnect();
-      selectedJobDetailObserver = null;
-      selectedJobDetailObservedRoot = null;
-    }
+    state.currentJob = null;
+    stopSelectedJobDetailWatcher();
     removeRoot();
     return;
   }
   ensureRoot();
-  updateJobReadiness(extractCurrentJob());
+  if (!state.jobInspectionRequested) {
+    state.currentJob = null;
+    resetJobLoadingState();
+    stopSelectedJobDetailWatcher();
+    render();
+    return;
+  }
+  const nextJob = extractCurrentJob();
+  updateJobReadiness(nextJob);
   startSelectedJobDetailWatcher();
   render();
-  void reconcileConnectionStatus("run");
+  if (recheckConnection && hasActiveSelectedJobRoute() && nextJob) {
+    void reconcileConnectionStatus("run");
+  }
 }
 
-function startUrlWatcher() {
-  if (urlObserver) return;
-  urlObserver = new MutationObserver(() => {
-    if (location.href === lastUrl) return;
-    lastUrl = location.href;
-    resetJobLoadingState();
+function reconcileRouteState(options = {}) {
+  const { force = false, recheckConnection = true } = options;
+  if (!force && location.href === lastUrl) return;
+  const previousJobSignature = getCurrentJobSignature(state.currentJob);
+  lastUrl = location.href;
+  lastRouteSignature = getCurrentRouteSignature();
+  resetJobLoadingState();
+  if (state.jobInspectionRequested) {
     updateJobReadiness(extractCurrentJob());
-    if (!state.isRunning && !state.awaitingAuth && !state.awaitingStoryboard) {
-      state.activeRunJob = null;
-      setRunStatus("neutral", "", "");
+  } else {
+    state.currentJob = null;
+  }
+  if (!state.isRunning && !state.awaitingAuth && !state.awaitingStoryboard) {
+    state.activeRunJob = null;
+    if (
+      previousJobSignature &&
+      !getCurrentJobSignature(state.currentJob) &&
+      runStatusHelpers.shouldClearExplicitStatusOnJobChange(state.explicitRunStatus)
+    ) {
+      clearExplicitRunStatus("route-change", { renderNow: false });
     }
-    syncFloatingAction();
-  });
-  urlObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-  });
+  }
+  syncFloatingAction({ recheckConnection });
+}
+
+function startUrlFallbackPolling() {
+  if (routePollTimer) {
+    return;
+  }
+
+  lastRouteSignature = getCurrentRouteSignature();
+  routePollTimer = window.setInterval(() => {
+    const nextSignature = getCurrentRouteSignature();
+    if (nextSignature === lastRouteSignature) {
+      return;
+    }
+
+    const nextMode = deriveFallbackRouteModeFromLocation();
+    if (state.routeMode !== nextMode) {
+      state.routeMode = nextMode;
+    }
+    reconcileRouteState({ force: true });
+  }, 1000);
 }
 
 function startSelectedJobDetailWatcher() {
@@ -6272,6 +7044,11 @@ function startSelectedJobDetailWatcher() {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "EXTENSION_PING") {
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (
     message?.type === "SCRAPE_JOB_PREVIEW" ||
     message?.type === "SCRAPE_JOB_FULL"
@@ -6314,10 +7091,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "EXTENSION_ROUTE_CHANGED") {
+    state.routeMode = message.payload?.route?.mode || "hidden";
+    reconcileRouteState({ force: true });
+    sendResponse({ ok: true });
+    return true;
+  }
+
   if (message?.type === "EXTENSION_CONNECTION_STATE_CHANGED") {
     state.connectionState =
       message.payload?.connectionState || state.connectionState;
-    if (state.connectionState !== "connected") {
+    const accountChanged = message.payload?.accountChanged === true;
+    if (accountChanged) {
+      state.isRunning = false;
+      state.awaitingAuth = false;
+      state.awaitingStoryboard = false;
+      state.activeRunJob = null;
+      state.currentView = "run";
+      openBoard("run", { skipConnectionCheck: true });
+      setExplicitRunStatus(
+        "interrupted",
+        "info",
+        "Different account detected",
+        message.payload?.message ||
+          "You’re signed in with a different account. This account uses its own local extension workspace.",
+      );
+    } else if (state.connectionState !== "connected") {
       state.isRunning = false;
       state.awaitingAuth = false;
       state.activeRunJob = null;
@@ -6339,7 +7138,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       title: "You’ve been signed out",
       detail:
         message.payload?.message ||
-        "Sign in to continue tailoring this job. Your setup is still here.",
+        "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.",
       primaryAction: {
         id: "connect",
         label: "Continue with Google",
@@ -6351,7 +7150,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       title: "You’ve been signed out",
       detail:
         message.payload?.message ||
-        "Sign in to continue tailoring this job. Your setup is still here.",
+        "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.",
       actions: [
         {
           id: "connect",
@@ -6360,7 +7159,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         },
       ],
     };
-    setRunStatus(
+    setExplicitRunStatus(
+      "interrupted",
       requirement.tone,
       requirement.title,
       requirement.detail,
@@ -6376,17 +7176,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     state.websiteAuthenticated = true;
     state.extensionConnected = true;
     openBoard("run");
-    setRunStatus("info", "Account signed in", "Continuing in the extension.");
-    void refreshBoardData().then(() => {
-      if (
-        state.connectionState === "connected" &&
-        /(account signed in|connected|opening google sign-in)/i.test(
-          `${state.statusTitle} ${state.statusDetail}`,
-        )
-      ) {
-        setRunStatus("neutral", "", "");
-      }
-    });
+    clearExplicitRunStatus("auth-completed");
+    void refreshBoardData();
     sendResponse({ ok: true });
     return true;
   }
@@ -6404,7 +7195,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       detail: message.payload?.message || "Finish setup to continue.",
       actions: [],
     };
-    setRunStatus(
+    setExplicitRunStatus(
+      "interrupted",
       requirement.tone,
       requirement.title,
       requirement.detail,
@@ -6418,7 +7210,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     state.isRunning = false;
     state.awaitingStoryboard = true;
     openBoard("run");
-    setRunStatus(
+    setExplicitRunStatus(
+      "interrupted",
       "warning",
       "Story bank missing",
       message.payload?.message || "Continue without story bank?",
@@ -6432,27 +7225,35 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === "EXTENSION_RESUMED_GENERATION_RESULT") {
+    if (state.previewHandoffComplete) {
+      sendResponse({ ok: true });
+      return true;
+    }
     state.awaitingAuth = false;
     state.awaitingStoryboard = false;
     state.isRunning = false;
     if (message.payload?.ok) {
       clearScrapeRecoveryState();
-      setRunStatus(
-        "success",
-        "Opening workspace",
-        `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
-      );
+      if (!state.previewHandoffComplete) {
+        setExplicitRunStatus(
+          "success",
+          "success",
+          "Opening workspace",
+          `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
+        );
+      }
       state.activeRunJob = null;
       void refreshBoardData();
     } else {
       if (isScrapeProblemMessage(message.payload?.error)) {
         state.scrapeIssue = getScrapeRequirementStatus().detail;
-        setRunStatus("warning", "Couldn’t read full JD", state.scrapeIssue, []);
+        clearExplicitRunStatus("scrape-recovery");
         sendResponse({ ok: true });
         return true;
       }
       state.activeRunJob = null;
-      setRunStatus(
+      setExplicitRunStatus(
+        "error",
         "error",
         "Run failed",
         formatErrorText(
@@ -6466,15 +7267,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "EXTENSION_PREVIEW_OPENED") {
     state.launcherAlert = false;
+    markPreviewHandoffComplete();
     state.activeRunJob = null;
-    if (
-      !state.isRunning &&
-      !state.awaitingAuth &&
-      !state.awaitingStoryboard &&
-      state.statusTone === "success" &&
-      /opening workspace|workspace ready/i.test(state.statusTitle || "")
-    ) {
-      setRunStatus("neutral", "", "");
+    if (state.explicitRunStatus?.kind === "success") {
+      clearExplicitRunStatus("preview-opened");
     } else {
       render();
     }
@@ -6496,10 +7292,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
-void chrome.runtime
-  .sendMessage({ type: "REGISTER_LOG_VIEWER" })
-  .catch(() => {});
+void loadRunStatusHelpers().finally(() => {
+  void chrome.runtime
+    .sendMessage({ type: "REGISTER_LOG_VIEWER" })
+    .catch(() => {});
 
-window.addEventListener("resize", handleViewportChange);
-syncFloatingAction();
-startUrlWatcher();
+  window.addEventListener("resize", handleViewportChange);
+  void refreshBoardData();
+  startUrlFallbackPolling();
+});

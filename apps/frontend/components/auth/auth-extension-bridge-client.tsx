@@ -10,6 +10,7 @@ import {
   getKnownExtensionState,
   saveKnownExtensionState,
 } from '@/lib/auth/extension-bridge';
+import { clearSignOutInProgress, isSignOutInProgress } from '@/lib/auth/cross-tab-session';
 import { replaySignOutDebug } from '@/lib/auth/signout-debug';
 
 type ChromeSendResult = {
@@ -101,6 +102,11 @@ export function AuthExtensionBridgeClient() {
     };
 
     const syncAuthenticatedState = async () => {
+      if (isSignOutInProgress()) {
+        lastAttemptRef.current = null;
+        return;
+      }
+
       try {
         const response = await fetch('/api/auth/extension-token', {
           cache: 'no-store',
@@ -144,6 +150,7 @@ export function AuthExtensionBridgeClient() {
           bridgeState?.sourceTabId || knownState?.sourceTabId
         );
         clearExtensionBridgeState();
+        clearSignOutInProgress();
       } catch (error) {
         if (cancelled) return;
         console.warn('[ResumeMatcherAuthBridge] Automatic extension connection failed.', error);
@@ -154,6 +161,7 @@ export function AuthExtensionBridgeClient() {
     if (status === 'authenticated') {
       void syncAuthenticatedState();
     } else {
+      clearSignOutInProgress();
       void sendSignedOut();
     }
 

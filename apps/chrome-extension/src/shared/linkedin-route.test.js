@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+import {
+  classifyLinkedInJobsRoute,
+  isLinkedInJobsShellUrl,
+  LINKEDIN_ROUTE_MODE,
+} from "./linkedin-route.js";
+
+describe("isLinkedInJobsShellUrl", () => {
+  it("matches LinkedIn jobs shell URLs including the exact root path", () => {
+    expect(isLinkedInJobsShellUrl("https://www.linkedin.com/jobs")).toBe(true);
+    expect(isLinkedInJobsShellUrl("https://www.linkedin.com/jobs/")).toBe(true);
+    expect(
+      isLinkedInJobsShellUrl(
+        "https://www.linkedin.com/jobs/collections/recommended/?currentJobId=1",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects non-jobs or non-LinkedIn URLs", () => {
+    expect(isLinkedInJobsShellUrl("https://www.linkedin.com/feed/")).toBe(false);
+    expect(isLinkedInJobsShellUrl("https://example.com/jobs")).toBe(false);
+  });
+});
+
+describe("classifyLinkedInJobsRoute", () => {
+  it("classifies the exact jobs root as hidden", () => {
+    expect(
+      classifyLinkedInJobsRoute("https://www.linkedin.com/jobs").mode,
+    ).toBe(LINKEDIN_ROUTE_MODE.hidden);
+  });
+
+  it("classifies jobs search pages without a selected job as waiting", () => {
+    const route = classifyLinkedInJobsRoute(
+      "https://www.linkedin.com/jobs/search/?keywords=product",
+    );
+    expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.waiting);
+    expect(route.isBrowsingSurface).toBe(true);
+    expect(route.isSelectedJob).toBe(false);
+  });
+
+  it("classifies collection pages without a selected job as waiting", () => {
+    const route = classifyLinkedInJobsRoute(
+      "https://www.linkedin.com/jobs/collections/top-startups/",
+    );
+    expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.waiting);
+    expect(route.isBrowsingSurface).toBe(true);
+  });
+
+  it("classifies currentJobId URLs as active", () => {
+    const route = classifyLinkedInJobsRoute(
+      "https://www.linkedin.com/jobs/search/?currentJobId=4271361827",
+    );
+    expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.active);
+    expect(route.selectedJobId).toBe("4271361827");
+    expect(route.canonicalJobUrl).toBe(
+      "https://www.linkedin.com/jobs/view/4271361827/",
+    );
+  });
+
+  it("classifies canonical view URLs as active", () => {
+    const route = classifyLinkedInJobsRoute(
+      "https://www.linkedin.com/jobs/view/4394207970/",
+    );
+    expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.active);
+    expect(route.selectedJobId).toBe("4394207970");
+  });
+});

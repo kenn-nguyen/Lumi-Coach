@@ -946,6 +946,14 @@ export async function generateResumeForLinkedInJob(
   jobInput = null,
 ) {
   logInfo("Orchestrator", "Generate flow started.", { tabId });
+  const runStartedMs = Date.now();
+  const customContext = prompt1CustomInstruction.trim();
+  const customContextProvided = customContext.length > 0;
+  const manualJobInputUsed = Boolean(jobInput?.rawText?.trim());
+  let prompt1DurationMs = null;
+  let prompt2DurationMs = null;
+  let prompt3DurationMs = null;
+  let patchDurationMs = null;
   logInfo("Orchestrator", "Loading local assets.");
   const {
     masterResumeContextAsset,
@@ -1101,6 +1109,7 @@ export async function generateResumeForLinkedInJob(
   logPromptDebug("Prompt 1", "input", prompt1);
 
   logInfo("Orchestrator", "Running Prompt 1.");
+  const prompt1StartedMs = Date.now();
   await captureExtensionEvent("prompt_stage_started", {
     surface: "run_view",
     run_id: runId,
@@ -1112,6 +1121,7 @@ export async function generateResumeForLinkedInJob(
     promptLabel: "Prompt 1",
     systemPrompt,
   });
+  prompt1DurationMs = Date.now() - prompt1StartedMs;
   if (prompt1Run.status !== "success") {
     logError("Orchestrator", "Prompt 1 failed.", prompt1Run);
     await captureExtensionEvent("prompt_stage_failed", {
@@ -1143,6 +1153,7 @@ export async function generateResumeForLinkedInJob(
   const prompt2 = await renderPrompt2(promptContext, activeLlmProfile);
   logPromptDebug("Prompt 2", "input", prompt2);
   logInfo("Orchestrator", "Running Prompt 2.");
+  const prompt2StartedMs = Date.now();
   await captureExtensionEvent("prompt_stage_started", {
     surface: "run_view",
     run_id: runId,
@@ -1154,6 +1165,7 @@ export async function generateResumeForLinkedInJob(
     promptLabel: "Prompt 2",
     systemPrompt,
   });
+  prompt2DurationMs = Date.now() - prompt2StartedMs;
   if (prompt2Run.status !== "success") {
     logError("Orchestrator", "Prompt 2 failed.", prompt2Run);
     await captureExtensionEvent("prompt_stage_failed", {
@@ -1184,6 +1196,7 @@ export async function generateResumeForLinkedInJob(
   const prompt3 = await renderPrompt3(promptContext, activeLlmProfile);
   logPromptDebug("Prompt 3", "input", prompt3);
   logInfo("Orchestrator", "Running Prompt 3.");
+  const prompt3StartedMs = Date.now();
   await captureExtensionEvent("prompt_stage_started", {
     surface: "run_view",
     run_id: runId,
@@ -1202,6 +1215,7 @@ export async function generateResumeForLinkedInJob(
     prompt3Run.status === "success"
       ? prompt3Run.rawText
       : (prompt3Run.partialRawText ?? "");
+  prompt3DurationMs = Date.now() - prompt3StartedMs;
   await setExtensionState({ prompt3Raw, status: SESSION_STATUS.prompt3Done });
   if (prompt3Run.status !== "success") {
     logError("Orchestrator", "Prompt 3 failed.", prompt3Run);
@@ -1307,11 +1321,51 @@ export async function generateResumeForLinkedInJob(
     stage_label: "write_tailored_resume",
   });
 
+  function createHistoryEntry(status, previewUrl) {
+    return {
+      jobKey: jobSnapshot.sourceUrl,
+      sourceUrl: jobSnapshot.sourceUrl,
+      title: jobSnapshot.title,
+      company: jobSnapshot.company,
+      location: jobSnapshot.location ?? null,
+      datePosted: jobSnapshot.datePosted ?? null,
+      generatedAt: new Date().toISOString(),
+      resumeId,
+      previewUrl,
+      status,
+      runId,
+      providerId: activeLlmProfile.id,
+      providerLabel: activeLlmProfile.label,
+      providerVendor: activeLlmProfile.vendor ?? null,
+      providerMode: activeLlmProfile.mode ?? null,
+      jobSource: jobSnapshot.source ?? null,
+      jobReadiness: jobSnapshot.readiness ?? null,
+      descriptionProvenance: jobSnapshot.provenance?.description ?? null,
+      descriptionLength: jobSnapshot.quality?.descriptionLength ?? null,
+      scrapeConfidence: jobSnapshot.quality?.confidence ?? null,
+      manualJobInputUsed,
+      customContextProvided,
+      customContextLength: customContext.length,
+      storyboardPresent: Boolean(storyboard),
+      prompt1DurationMs,
+      prompt2DurationMs,
+      prompt3DurationMs,
+      patchDurationMs,
+      totalDurationMs: Date.now() - runStartedMs,
+      prompt3ValidationErrorCount: validationErrors.length,
+      prompt1Result,
+      prompt2Result,
+      prompt3Parsed,
+    };
+  }
+
   try {
     logInfo("Orchestrator", "Patching generated resume.");
+    const patchStartedMs = Date.now();
     await patchResume(resumeId, prompt3Parsed, prompt3Feedback, {
       prompt2: prompt2Result,
     });
+    patchDurationMs = Date.now() - patchStartedMs;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to patch resume.";
@@ -1320,20 +1374,15 @@ export async function generateResumeForLinkedInJob(
       patchError: message,
       status: SESSION_STATUS.error,
     });
-    await upsertHistoryEntry({
-      jobKey: jobSnapshot.sourceUrl,
-      sourceUrl: jobSnapshot.sourceUrl,
-      title: jobSnapshot.title,
-      company: jobSnapshot.company,
-      datePosted: jobSnapshot.datePosted ?? null,
-      generatedAt: new Date().toISOString(),
-      resumeId,
-      previewUrl: await buildPreviewUrl(resumeId, {
-        runId,
-        source: "extension",
-      }),
-      status: "patch_failed",
-    });
+    await upsertHistoryEntry(
+      createHistoryEntry(
+        "patch_failed",
+        await buildPreviewUrl(resumeId, {
+          runId,
+          source: "extension",
+        }),
+      ),
+    );
     throw error;
   }
 
@@ -1365,20 +1414,15 @@ export async function generateResumeForLinkedInJob(
       status: SESSION_STATUS.error,
       jobContextLinked: false,
     });
-    await upsertHistoryEntry({
-      jobKey: jobSnapshot.sourceUrl,
-      sourceUrl: jobSnapshot.sourceUrl,
-      title: jobSnapshot.title,
-      company: jobSnapshot.company,
-      datePosted: jobSnapshot.datePosted ?? null,
-      generatedAt: new Date().toISOString(),
-      resumeId,
-      previewUrl: await buildPreviewUrl(resumeId, {
-        runId,
-        source: "extension",
-      }),
-      status: "job_context_link_failed",
-    });
+    await upsertHistoryEntry(
+      createHistoryEntry(
+        "job_context_link_failed",
+        await buildPreviewUrl(resumeId, {
+          runId,
+          source: "extension",
+        }),
+      ),
+    );
     throw error;
   }
 
@@ -1438,17 +1482,7 @@ export async function generateResumeForLinkedInJob(
     resumeId,
     previewUrl,
   });
-  await upsertHistoryEntry({
-    jobKey: jobSnapshot.sourceUrl,
-    sourceUrl: jobSnapshot.sourceUrl,
-    title: jobSnapshot.title,
-    company: jobSnapshot.company,
-    datePosted: jobSnapshot.datePosted ?? null,
-    generatedAt: new Date().toISOString(),
-    resumeId,
-    previewUrl,
-    status: "generated",
-  });
+  await upsertHistoryEntry(createHistoryEntry("generated", previewUrl));
   await captureExtensionEvent("tailor_completed", {
     surface: "run_view",
     run_id: runId,

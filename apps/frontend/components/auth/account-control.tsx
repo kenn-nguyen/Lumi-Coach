@@ -5,7 +5,7 @@ import { signOut, useSession } from 'next-auth/react';
 import User from 'lucide-react/dist/esm/icons/user';
 import LogOut from 'lucide-react/dist/esm/icons/log-out';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
-import { broadcastSessionInvalidation } from '@/lib/auth/cross-tab-session';
+import { broadcastSessionInvalidation, markSignOutInProgress } from '@/lib/auth/cross-tab-session';
 import { cn } from '@/lib/utils';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
@@ -93,6 +93,7 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
             type="button"
             onClick={() => {
               captureEvent(POSTHOG_EVENTS.AUTH_SIGN_OUT_CLICKED);
+              markSignOutInProgress();
               broadcastSessionInvalidation();
               signOut({ callbackUrl: '/sign-in' });
             }}

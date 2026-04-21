@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { signOut, useSession } from 'next-auth/react';
-import { broadcastSessionInvalidation } from '@/lib/auth/cross-tab-session';
+import { broadcastSessionInvalidation, markSignOutInProgress } from '@/lib/auth/cross-tab-session';
 import { replaySignOutDebug, recordSignOutDebug } from '@/lib/auth/signout-debug';
 
 export function SignOutForm() {
@@ -31,6 +31,7 @@ export function SignOutForm() {
         callbackUrl: '/signed-out',
         redirectMode: 'next-auth-default',
       });
+      markSignOutInProgress();
       broadcastSessionInvalidation();
       await signOut({ callbackUrl: '/signed-out' });
     })();

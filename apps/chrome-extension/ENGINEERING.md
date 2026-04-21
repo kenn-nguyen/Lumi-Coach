@@ -112,9 +112,18 @@ Recommended rule:
 
 Persist only what is needed for resume generation, retry, and history.
 
-Global assets:
-- current master resume id or app master auto-detection
+Device-global assets only:
+- app origin
+- API origin
+- feature flags
+- launcher position and other browser-local UI placement
+
+Account-scoped assets:
+- current master resume context
 - current storyboard
+- prompt templates and prompt profile selection
+- provider / LLM settings
+- onboarding progress
 
 Session checkpoints:
 - job snapshot
@@ -122,6 +131,8 @@ Session checkpoints:
 - validation errors
 - patch payload
 - patch error
+- pending action
+- extension session state
 
 History:
 - job title
@@ -130,6 +141,13 @@ History:
 - resume id
 - preview link
 - status
+
+Isolation requirements:
+- account-scoped local data must be keyed by signed-in user identity
+- do not reuse one shared local workspace across different signed-in users
+- a pending action created under account A must never resume under account B
+- if website session and extension auth disagree on user identity, treat that as an account switch and re-sync auth before considering the extension connected
+- do not expose the existence or identity of other locally stored accounts in the UI
 
 Do not store unnecessary duplicated payloads.
 
@@ -202,6 +220,20 @@ When coding in this extension, agents should follow these rules:
 - Side panel should show status and simple actions only
 - Do not build complex management UI in the MVP
 - Prefer clarity over density
+- Keep launcher visibility and job activation as separate concerns:
+  - launcher may appear on browsing surfaces
+  - scraping and run activation require a concrete selected job
+- Browsing surfaces without a selected job must show a dormant `Run` state:
+  - `Select a job to start`
+  - `Choose a job from the list, then I’ll load it here.`
+- Plain LinkedIn jobs home (`/jobs`, `/jobs/`) should not mount the extension surface
+- Route handling requirements:
+  - background is the source of truth for LinkedIn jobs route changes
+  - before route or launcher messages are sent, background must verify the content script is present in the target tab and inject it if needed
+  - content script may keep a fallback URL poller at `1s` cadence for LinkedIn jobs pages only
+  - that fallback poller must stay cheap:
+    - compare only a route signature
+    - do not scrape the page, reconcile auth, or perform expensive UI work unless the signature changed
 
 ### API Discipline
 
@@ -219,7 +251,6 @@ For MVP, a good structure is:
 - `src/shared/types/`
 - `src/shared/`
 - `src/background/` or background coordinator module
-- `src/sidepanel/`
 - `src/integrations/resume-matcher/`
 
 The current scaffold does not need all of these fully built yet.

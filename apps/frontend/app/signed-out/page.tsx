@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { clearSignOutInProgress } from '@/lib/auth/cross-tab-session';
 import { recordSignOutDebug, replaySignOutDebug } from '@/lib/auth/signout-debug';
 
 export default function SignedOutPage() {
@@ -41,6 +42,7 @@ export default function SignedOutPage() {
         });
 
         if (!authenticated && !redirectedRef.current) {
+          clearSignOutInProgress();
           redirectedRef.current = true;
           window.setTimeout(() => {
             recordSignOutDebug('signed-out-page-redirect-to-signin');

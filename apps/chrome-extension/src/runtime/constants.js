@@ -4,6 +4,9 @@ export const DEFAULT_CHATGPT_TARGET_URL =
   "https://chatgpt.com/?temporary-chat=true";
 
 export const STORAGE_KEYS = {
+  accountStorageVersion: "accountStorageVersion",
+  activeAccountKey: "activeAccountKey",
+  legacyScopedData: "legacyScopedData",
   masterResumeContextAsset: "masterResumeContextAsset",
   storyboardAsset: "storyboardAsset",
   apifyFallbackSettings: "apifyFallbackSettings",

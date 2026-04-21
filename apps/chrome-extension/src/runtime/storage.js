@@ -4,6 +4,7 @@ import {
   SESSION_STATUS,
   STORAGE_KEYS,
 } from "./constants.js";
+import { deriveAccountKeyFromUser } from "./account.js";
 import {
   getDefaultLlmSettings,
   mergeLlmSettings,
@@ -12,6 +13,31 @@ import {
 
 const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
 const ONBOARDING_STEPS = ["intro", "sign_in", "assets", "provider", "done"];
+const ACCOUNT_STORAGE_VERSION = 1;
+const MAX_HISTORY_ENTRIES = 1000;
+const LEGACY_ACCOUNT_SCOPED_KEYS = [
+  STORAGE_KEYS.masterResumeContextAsset,
+  STORAGE_KEYS.storyboardAsset,
+  STORAGE_KEYS.promptTemplateProfiles,
+  STORAGE_KEYS.prompt1TemplateAsset,
+  STORAGE_KEYS.prompt2TemplateAsset,
+  STORAGE_KEYS.prompt3TemplateAsset,
+  STORAGE_KEYS.llmSettings,
+  STORAGE_KEYS.chatGptTargetUrl,
+  STORAGE_KEYS.onboardingProgress,
+  STORAGE_KEYS.apifyFallbackSettings,
+  STORAGE_KEYS.extensionPendingAction,
+  STORAGE_KEYS.extensionSession,
+  STORAGE_KEYS.historyEntries,
+  STORAGE_KEYS.lastError,
+];
+const ACCOUNT_SETTINGS_SCOPED_KEYS = [
+  STORAGE_KEYS.promptTemplateProfiles,
+  STORAGE_KEYS.llmSettings,
+  STORAGE_KEYS.chatGptTargetUrl,
+  STORAGE_KEYS.onboardingProgress,
+  STORAGE_KEYS.apifyFallbackSettings,
+];
 
 function getDefaultOnboardingProgress() {
   return {
@@ -46,6 +72,34 @@ function getDefaultPromptTemplateProfiles() {
 
 function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function getDefaultExtensionState() {
+  return {
+    sessionId: null,
+    sourceTabId: null,
+    selectedResumeId: null,
+    status: SESSION_STATUS.idle,
+    llmProfileId: null,
+    llmProfileLabel: null,
+    activeRunJob: null,
+    jobSnapshot: null,
+    jobId: null,
+    originalResumeId: null,
+    tailoredResumeId: null,
+    previewUrl: null,
+    jobContextLinked: false,
+    resumeSource: null,
+    prompt1Result: null,
+    prompt2Result: null,
+    prompt3Raw: null,
+    prompt3Parsed: null,
+    prompt3Feedback: null,
+    prompt3ValidationErrors: [],
+    patchPayload: null,
+    patchError: null,
+    updatedAt: null,
+  };
 }
 
 function mergePromptTemplateProfiles(storedProfiles, legacyAssets = {}) {
@@ -107,6 +161,213 @@ function storageGet(keys) {
 
 function storageSet(values) {
   return chrome.storage.local.set(values);
+}
+
+function buildScopedStorageKey(accountKey, storageKey) {
+  return `account::${accountKey}::${storageKey}`;
+}
+
+function normalizeStoredAccountKey(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+function buildScopedStorageEntries(accountKey, values) {
+  return Object.fromEntries(
+    Object.entries(values)
+      .filter(([, value]) => value !== undefined)
+      .map(([storageKey, value]) => [
+        buildScopedStorageKey(accountKey, storageKey),
+        value,
+      ]),
+  );
+}
+
+function hasLegacyScopedValue(storageKey, value) {
+  if (value === undefined) return false;
+  if (storageKey === STORAGE_KEYS.lastError) {
+    return typeof value === "string" && value.trim().length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return value !== null;
+}
+
+function pickLegacyScopedData(data) {
+  const next = {};
+  let hasAny = false;
+
+  for (const storageKey of LEGACY_ACCOUNT_SCOPED_KEYS) {
+    if (!(storageKey in data)) continue;
+    const value = data[storageKey];
+    if (value === undefined) continue;
+    next[storageKey] = value;
+    if (hasLegacyScopedValue(storageKey, value)) {
+      hasAny = true;
+    }
+  }
+
+  return {
+    hasAny,
+    data: next,
+  };
+}
+
+async function getExtensionAuthRaw() {
+  const data = await storageGet(STORAGE_KEYS.extensionAuth);
+  return data[STORAGE_KEYS.extensionAuth] ?? null;
+}
+
+async function ensureAccountStorageMigrated(preferredAccountKey = null) {
+  const normalizedPreferredAccountKey =
+    normalizeStoredAccountKey(preferredAccountKey);
+  const data = await storageGet([
+    STORAGE_KEYS.accountStorageVersion,
+    STORAGE_KEYS.activeAccountKey,
+    STORAGE_KEYS.extensionAuth,
+    ...LEGACY_ACCOUNT_SCOPED_KEYS,
+  ]);
+
+  if (data[STORAGE_KEYS.accountStorageVersion] === ACCOUNT_STORAGE_VERSION) {
+    return;
+  }
+
+  const authAccountKey =
+    normalizedPreferredAccountKey ||
+    deriveAccountKeyFromUser(data[STORAGE_KEYS.extensionAuth]?.user);
+  const legacy = pickLegacyScopedData(data);
+  const updates = {
+    [STORAGE_KEYS.accountStorageVersion]: ACCOUNT_STORAGE_VERSION,
+  };
+
+  if (!legacy.hasAny) {
+    if (authAccountKey) {
+      updates[STORAGE_KEYS.activeAccountKey] = authAccountKey;
+    }
+    await storageSet(updates);
+    return;
+  }
+
+  if (authAccountKey) {
+    Object.assign(
+      updates,
+      buildScopedStorageEntries(authAccountKey, legacy.data),
+      {
+        [STORAGE_KEYS.activeAccountKey]: authAccountKey,
+      },
+    );
+  } else {
+    updates[STORAGE_KEYS.legacyScopedData] = legacy.data;
+  }
+
+  await storageSet(updates);
+  await chrome.storage.local.remove(LEGACY_ACCOUNT_SCOPED_KEYS);
+}
+
+async function getCurrentAccountKey() {
+  const rawAuth = await getExtensionAuthRaw();
+  const preferredAccountKey = deriveAccountKeyFromUser(rawAuth?.user);
+  await ensureAccountStorageMigrated(preferredAccountKey);
+  const data = await storageGet(STORAGE_KEYS.activeAccountKey);
+  const storedAccountKey = normalizeStoredAccountKey(
+    data[STORAGE_KEYS.activeAccountKey],
+  );
+  if (storedAccountKey || !preferredAccountKey) {
+    return storedAccountKey;
+  }
+
+  await storageSet({ [STORAGE_KEYS.activeAccountKey]: preferredAccountKey });
+  return preferredAccountKey;
+}
+
+async function getScopedStorageValues(storageKeys, accountKey = null) {
+  const resolvedAccountKey =
+    normalizeStoredAccountKey(accountKey) || (await getCurrentAccountKey());
+  if (!resolvedAccountKey) {
+    return {};
+  }
+
+  const data = await storageGet(
+    storageKeys.map((storageKey) =>
+      buildScopedStorageKey(resolvedAccountKey, storageKey),
+    ),
+  );
+
+  return Object.fromEntries(
+    storageKeys.map((storageKey) => [
+      storageKey,
+      data[buildScopedStorageKey(resolvedAccountKey, storageKey)],
+    ]),
+  );
+}
+
+async function setScopedStorageValues(values, accountKey = null) {
+  const resolvedAccountKey =
+    normalizeStoredAccountKey(accountKey) || (await getCurrentAccountKey());
+  if (!resolvedAccountKey) {
+    return null;
+  }
+
+  const entries = buildScopedStorageEntries(resolvedAccountKey, values);
+  if (Object.keys(entries).length) {
+    await storageSet(entries);
+  }
+
+  return resolvedAccountKey;
+}
+
+async function removeScopedStorageKeys(storageKeys, accountKey = null) {
+  const resolvedAccountKey =
+    normalizeStoredAccountKey(accountKey) || (await getCurrentAccountKey());
+  if (!resolvedAccountKey) {
+    return;
+  }
+
+  await chrome.storage.local.remove(
+    storageKeys.map((storageKey) =>
+      buildScopedStorageKey(resolvedAccountKey, storageKey),
+    ),
+  );
+}
+
+async function getExtensionStateForAccount(accountKey) {
+  const data = await getScopedStorageValues(
+    [STORAGE_KEYS.extensionSession, STORAGE_KEYS.lastError],
+    accountKey,
+  );
+  return data[STORAGE_KEYS.extensionSession] ?? getDefaultExtensionState();
+}
+
+async function clearDisconnectStateForAccount(accountKey) {
+  const resolvedAccountKey = normalizeStoredAccountKey(accountKey);
+  if (!resolvedAccountKey) return;
+
+  await removeScopedStorageKeys(
+    [STORAGE_KEYS.extensionPendingAction],
+    resolvedAccountKey,
+  );
+
+  const currentState = await getExtensionStateForAccount(resolvedAccountKey);
+  if (!ACTIVE_SESSION_STATUSES.has(currentState.status)) {
+    return;
+  }
+
+  await setScopedStorageValues(
+    {
+      [STORAGE_KEYS.extensionSession]: {
+        ...currentState,
+        status: SESSION_STATUS.idle,
+        sourceTabId: null,
+        activeRunJob: null,
+        previewUrl: null,
+        patchError: null,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+    resolvedAccountKey,
+  );
 }
 
 const ACTIVE_SESSION_STATUSES = new Set([
@@ -178,32 +439,43 @@ async function syncBrowserActionState(extensionState) {
 }
 
 export async function getUserAssets() {
-  const data = await storageGet([
-    STORAGE_KEYS.masterResumeContextAsset,
-    STORAGE_KEYS.storyboardAsset,
-    STORAGE_KEYS.promptTemplateProfiles,
-    STORAGE_KEYS.prompt1TemplateAsset,
-    STORAGE_KEYS.prompt2TemplateAsset,
-    STORAGE_KEYS.prompt3TemplateAsset,
-    STORAGE_KEYS.llmSettings,
-    STORAGE_KEYS.chatGptTargetUrl,
-    STORAGE_KEYS.appOrigin,
-    STORAGE_KEYS.apiOrigin,
-    STORAGE_KEYS.customFeatureEnabled,
-    STORAGE_KEYS.extensionAuth,
-    STORAGE_KEYS.onboardingProgress,
-    STORAGE_KEYS.apifyFallbackSettings,
+  const accountKey = await getCurrentAccountKey();
+  const [globalData, scopedData] = await Promise.all([
+    storageGet([
+      STORAGE_KEYS.appOrigin,
+      STORAGE_KEYS.apiOrigin,
+      STORAGE_KEYS.customFeatureEnabled,
+      STORAGE_KEYS.extensionAuth,
+    ]),
+    getScopedStorageValues(
+      [
+        STORAGE_KEYS.masterResumeContextAsset,
+        STORAGE_KEYS.storyboardAsset,
+        STORAGE_KEYS.promptTemplateProfiles,
+        STORAGE_KEYS.prompt1TemplateAsset,
+        STORAGE_KEYS.prompt2TemplateAsset,
+        STORAGE_KEYS.prompt3TemplateAsset,
+        STORAGE_KEYS.llmSettings,
+        STORAGE_KEYS.chatGptTargetUrl,
+        STORAGE_KEYS.onboardingProgress,
+        STORAGE_KEYS.apifyFallbackSettings,
+      ],
+      accountKey,
+    ),
   ]);
   const llmSettings = mergeLlmSettings(
-    data[STORAGE_KEYS.llmSettings],
-    data[STORAGE_KEYS.chatGptTargetUrl],
+    scopedData[STORAGE_KEYS.llmSettings],
+    scopedData[STORAGE_KEYS.chatGptTargetUrl],
   );
   const promptTemplateProfiles = mergePromptTemplateProfiles(
-    data[STORAGE_KEYS.promptTemplateProfiles],
+    scopedData[STORAGE_KEYS.promptTemplateProfiles],
     {
-      prompt1TemplateAsset: data[STORAGE_KEYS.prompt1TemplateAsset] ?? null,
-      prompt2TemplateAsset: data[STORAGE_KEYS.prompt2TemplateAsset] ?? null,
-      prompt3TemplateAsset: data[STORAGE_KEYS.prompt3TemplateAsset] ?? null,
+      prompt1TemplateAsset:
+        scopedData[STORAGE_KEYS.prompt1TemplateAsset] ?? null,
+      prompt2TemplateAsset:
+        scopedData[STORAGE_KEYS.prompt2TemplateAsset] ?? null,
+      prompt3TemplateAsset:
+        scopedData[STORAGE_KEYS.prompt3TemplateAsset] ?? null,
     },
   );
   const activePromptProfileId = promptTemplateProfiles.activeProfileId;
@@ -211,9 +483,10 @@ export async function getUserAssets() {
     promptTemplateProfiles.profiles[activePromptProfileId] ??
     getDefaultPromptTemplateProfiles().profiles.profile1;
   return {
+    activeAccountKey: accountKey,
     masterResumeContextAsset:
-      data[STORAGE_KEYS.masterResumeContextAsset] ?? null,
-    storyboardAsset: data[STORAGE_KEYS.storyboardAsset] ?? null,
+      scopedData[STORAGE_KEYS.masterResumeContextAsset] ?? null,
+    storyboardAsset: scopedData[STORAGE_KEYS.storyboardAsset] ?? null,
     promptTemplateProfiles,
     activePromptProfileId,
     prompt1TemplateAsset: activePromptProfile.prompt1TemplateAsset ?? null,
@@ -222,15 +495,16 @@ export async function getUserAssets() {
     systemPromptTemplateAsset:
       activePromptProfile.systemPromptTemplateAsset ?? null,
     llmSettings,
-    appOrigin: data[STORAGE_KEYS.appOrigin] ?? DEFAULT_APP_ORIGIN,
-    apiOrigin: data[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
-    customFeatureEnabled: data[STORAGE_KEYS.customFeatureEnabled] === true,
-    extensionAuth: data[STORAGE_KEYS.extensionAuth] ?? null,
+    appOrigin: globalData[STORAGE_KEYS.appOrigin] ?? DEFAULT_APP_ORIGIN,
+    apiOrigin: globalData[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
+    customFeatureEnabled:
+      globalData[STORAGE_KEYS.customFeatureEnabled] === true,
+    extensionAuth: globalData[STORAGE_KEYS.extensionAuth] ?? null,
     onboardingProgress: normalizeOnboardingProgress(
-      data[STORAGE_KEYS.onboardingProgress],
+      scopedData[STORAGE_KEYS.onboardingProgress],
     ),
     apifyFallbackSettings: normalizeApifyFallbackSettings(
-      data[STORAGE_KEYS.apifyFallbackSettings],
+      scopedData[STORAGE_KEYS.apifyFallbackSettings],
     ),
   };
 }
@@ -271,7 +545,7 @@ export function normalizeOnboardingProgress(storedProgress) {
 }
 
 export async function getOnboardingProgress() {
-  const data = await storageGet(STORAGE_KEYS.onboardingProgress);
+  const data = await getScopedStorageValues([STORAGE_KEYS.onboardingProgress]);
   return normalizeOnboardingProgress(data[STORAGE_KEYS.onboardingProgress]);
 }
 
@@ -281,7 +555,9 @@ export async function setOnboardingProgress(progress) {
     ...current,
     ...progress,
   });
-  await storageSet({ [STORAGE_KEYS.onboardingProgress]: next });
+  await setScopedStorageValues({
+    [STORAGE_KEYS.onboardingProgress]: next,
+  });
   return next;
 }
 
@@ -293,17 +569,24 @@ export async function completeOnboarding() {
 }
 
 export async function getExtensionAuth() {
-  const data = await storageGet(STORAGE_KEYS.extensionAuth);
-  return data[STORAGE_KEYS.extensionAuth] ?? null;
+  await ensureAccountStorageMigrated();
+  return getExtensionAuthRaw();
 }
 
 export async function setExtensionAuth(auth) {
+  await ensureAccountStorageMigrated(deriveAccountKeyFromUser(auth?.user));
   await storageSet({ [STORAGE_KEYS.extensionAuth]: auth });
   return auth;
 }
 
 export async function clearExtensionAuth() {
-  await chrome.storage.local.remove(STORAGE_KEYS.extensionAuth);
+  const activeAccountKey = await getCurrentAccountKey();
+  await clearDisconnectStateForAccount(activeAccountKey);
+  await chrome.storage.local.remove([
+    STORAGE_KEYS.extensionAuth,
+    STORAGE_KEYS.activeAccountKey,
+  ]);
+  await syncBrowserActionState({ status: SESSION_STATUS.idle });
 }
 
 export async function hasValidExtensionAuth() {
@@ -314,16 +597,35 @@ export async function hasValidExtensionAuth() {
 }
 
 export async function getPendingExtensionAction() {
+  const accountData = await getScopedStorageValues([
+    STORAGE_KEYS.extensionPendingAction,
+  ]);
+  if (accountData[STORAGE_KEYS.extensionPendingAction]) {
+    return accountData[STORAGE_KEYS.extensionPendingAction];
+  }
+
   const data = await storageGet(STORAGE_KEYS.extensionPendingAction);
   return data[STORAGE_KEYS.extensionPendingAction] ?? null;
 }
 
 export async function setPendingExtensionAction(action) {
-  await storageSet({ [STORAGE_KEYS.extensionPendingAction]: action });
+  const accountKey = await getCurrentAccountKey();
+  if (accountKey) {
+    await setScopedStorageValues({
+      [STORAGE_KEYS.extensionPendingAction]: action,
+    }, accountKey);
+    await chrome.storage.local.remove(STORAGE_KEYS.extensionPendingAction);
+    return action;
+  }
+
+  await storageSet({
+    [STORAGE_KEYS.extensionPendingAction]: action,
+  });
   return action;
 }
 
 export async function clearPendingExtensionAction() {
+  await removeScopedStorageKeys([STORAGE_KEYS.extensionPendingAction]);
   await chrome.storage.local.remove(STORAGE_KEYS.extensionPendingAction);
 }
 
@@ -333,11 +635,13 @@ function normalizeOrigin(value, fallback) {
 }
 
 export async function setStoryboardAsset(asset) {
-  await storageSet({ [STORAGE_KEYS.storyboardAsset]: asset });
+  await setScopedStorageValues({ [STORAGE_KEYS.storyboardAsset]: asset });
 }
 
 export async function setMasterResumeContextAsset(asset) {
-  await storageSet({ [STORAGE_KEYS.masterResumeContextAsset]: asset });
+  await setScopedStorageValues({
+    [STORAGE_KEYS.masterResumeContextAsset]: asset,
+  });
 }
 
 export async function setPromptTemplateAsset(
@@ -359,7 +663,9 @@ export async function setPromptTemplateAsset(
     ...next.profiles[activeProfileId],
     [profileField]: asset,
   };
-  await storageSet({ [STORAGE_KEYS.promptTemplateProfiles]: next });
+  await setScopedStorageValues({
+    [STORAGE_KEYS.promptTemplateProfiles]: next,
+  });
 }
 
 export async function savePromptTemplateProfileSelection(profileId) {
@@ -369,7 +675,9 @@ export async function savePromptTemplateProfileSelection(profileId) {
   const currentAssets = await getUserAssets();
   const next = cloneValue(currentAssets.promptTemplateProfiles);
   next.activeProfileId = profileId;
-  await storageSet({ [STORAGE_KEYS.promptTemplateProfiles]: next });
+  await setScopedStorageValues({
+    [STORAGE_KEYS.promptTemplateProfiles]: next,
+  });
   return next;
 }
 
@@ -385,12 +693,14 @@ export async function savePromptTemplateProfileBundle(profileId, uploads) {
     ...uploads,
   };
   next.activeProfileId = profileId;
-  await storageSet({ [STORAGE_KEYS.promptTemplateProfiles]: next });
+  await setScopedStorageValues({
+    [STORAGE_KEYS.promptTemplateProfiles]: next,
+  });
   return next;
 }
 
 async function getStoredLlmSettings() {
-  const data = await storageGet([
+  const data = await getScopedStorageValues([
     STORAGE_KEYS.llmSettings,
     STORAGE_KEYS.chatGptTargetUrl,
   ]);
@@ -403,7 +713,7 @@ async function getStoredLlmSettings() {
 export async function saveLlmSettings(activeProfileId, profileUpdates) {
   const current = await getStoredLlmSettings();
   const next = updateLlmSettings(current, activeProfileId, profileUpdates);
-  await storageSet({
+  await setScopedStorageValues({
     [STORAGE_KEYS.llmSettings]: next,
   });
   return next;
@@ -415,7 +725,7 @@ export async function saveApifyFallbackSettings(nextSettings) {
     ...current.apifyFallbackSettings,
     ...nextSettings,
   });
-  await storageSet({
+  await setScopedStorageValues({
     [STORAGE_KEYS.apifyFallbackSettings]: merged,
   });
   return merged;
@@ -429,7 +739,7 @@ export async function setChatGptTargetUrl(url) {
       normalizedUrl ||
       getDefaultLlmSettings().profiles["chatgpt:web_automation"].targetUrl,
   });
-  await storageSet({
+  await setScopedStorageValues({
     [STORAGE_KEYS.llmSettings]: next,
     [STORAGE_KEYS.chatGptTargetUrl]: normalizedUrl,
   });
@@ -454,37 +764,11 @@ export async function setCustomFeatureEnabled(enabled) {
 }
 
 export async function getExtensionState() {
-  const data = await storageGet([
+  const data = await getScopedStorageValues([
     STORAGE_KEYS.extensionSession,
     STORAGE_KEYS.lastError,
   ]);
-  return (
-    data[STORAGE_KEYS.extensionSession] ?? {
-      sessionId: null,
-      sourceTabId: null,
-      selectedResumeId: null,
-      status: SESSION_STATUS.idle,
-      llmProfileId: null,
-      llmProfileLabel: null,
-      activeRunJob: null,
-      jobSnapshot: null,
-      jobId: null,
-      originalResumeId: null,
-      tailoredResumeId: null,
-      previewUrl: null,
-      jobContextLinked: false,
-      resumeSource: null,
-      prompt1Result: null,
-      prompt2Result: null,
-      prompt3Raw: null,
-      prompt3Parsed: null,
-      prompt3Feedback: null,
-      prompt3ValidationErrors: [],
-      patchPayload: null,
-      patchError: null,
-      updatedAt: null,
-    }
-  );
+  return data[STORAGE_KEYS.extensionSession] ?? getDefaultExtensionState();
 }
 
 export async function setExtensionState(nextState) {
@@ -493,18 +777,18 @@ export async function setExtensionState(nextState) {
     ...nextState,
     updatedAt: new Date().toISOString(),
   };
-  await storageSet({ [STORAGE_KEYS.extensionSession]: merged });
+  await setScopedStorageValues({ [STORAGE_KEYS.extensionSession]: merged });
   await syncBrowserActionState(merged);
   return merged;
 }
 
 export async function setLastError(message) {
-  await storageSet({ [STORAGE_KEYS.lastError]: message });
+  await setScopedStorageValues({ [STORAGE_KEYS.lastError]: message });
   await setExtensionState({ status: SESSION_STATUS.error });
 }
 
 export async function getHistoryEntries() {
-  const data = await storageGet(STORAGE_KEYS.historyEntries);
+  const data = await getScopedStorageValues([STORAGE_KEYS.historyEntries]);
   return data[STORAGE_KEYS.historyEntries] ?? [];
 }
 
@@ -513,49 +797,80 @@ export async function upsertHistoryEntry(entry) {
   const next = [
     entry,
     ...current.filter((item) => item.jobKey !== entry.jobKey),
-  ];
-  await storageSet({ [STORAGE_KEYS.historyEntries]: next });
+  ].slice(0, MAX_HISTORY_ENTRIES);
+  await setScopedStorageValues({ [STORAGE_KEYS.historyEntries]: next });
   return next;
 }
 
+export async function getActiveAccountKey() {
+  return getCurrentAccountKey();
+}
+
+export async function activateAccountWorkspace(user) {
+  const nextAccountKey = deriveAccountKeyFromUser(user);
+  await ensureAccountStorageMigrated(nextAccountKey);
+  const previousData = await storageGet(STORAGE_KEYS.activeAccountKey);
+  const previousAccountKey = normalizeStoredAccountKey(
+    previousData[STORAGE_KEYS.activeAccountKey],
+  );
+
+  if (nextAccountKey) {
+    await storageSet({ [STORAGE_KEYS.activeAccountKey]: nextAccountKey });
+  } else {
+    await chrome.storage.local.remove(STORAGE_KEYS.activeAccountKey);
+  }
+
+  return {
+    previousAccountKey,
+    accountKey: nextAccountKey,
+    switched:
+      Boolean(previousAccountKey) &&
+      Boolean(nextAccountKey) &&
+      previousAccountKey !== nextAccountKey,
+  };
+}
+
+export async function clearAccountDisconnectState(accountKey) {
+  await clearDisconnectStateForAccount(accountKey);
+}
+
 export async function clearExtensionLocalData() {
+  await removeScopedStorageKeys(LEGACY_ACCOUNT_SCOPED_KEYS);
+  await chrome.storage.local.remove(STORAGE_KEYS.extensionPendingAction);
+  await syncBrowserActionState({ status: SESSION_STATUS.idle });
+}
+
+export async function clearAllExtensionLocalData() {
+  const allStored = await storageGet(null);
+  const scopedKeys = Object.keys(allStored).filter((storageKey) =>
+    storageKey.startsWith("account::"),
+  );
+
   await chrome.storage.local.remove([
     "masterResumeId",
     "resumeMatcherFloatingButtonTopOffset",
-    STORAGE_KEYS.masterResumeContextAsset,
-    STORAGE_KEYS.storyboardAsset,
-    STORAGE_KEYS.promptTemplateProfiles,
-    STORAGE_KEYS.prompt1TemplateAsset,
-    STORAGE_KEYS.prompt2TemplateAsset,
-    STORAGE_KEYS.prompt3TemplateAsset,
-    STORAGE_KEYS.llmSettings,
-    STORAGE_KEYS.chatGptTargetUrl,
+    STORAGE_KEYS.accountStorageVersion,
+    STORAGE_KEYS.activeAccountKey,
+    STORAGE_KEYS.legacyScopedData,
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
     STORAGE_KEYS.extensionAuth,
-    STORAGE_KEYS.onboardingProgress,
-    STORAGE_KEYS.apifyFallbackSettings,
     STORAGE_KEYS.analyticsState,
     STORAGE_KEYS.extensionPendingAction,
-    STORAGE_KEYS.extensionSession,
-    STORAGE_KEYS.historyEntries,
-    STORAGE_KEYS.lastError,
+    ...LEGACY_ACCOUNT_SCOPED_KEYS,
+    ...scopedKeys,
   ]);
   await syncBrowserActionState({ status: SESSION_STATUS.idle });
 }
 
 export async function resetExtensionSettingsToDefault() {
+  await removeScopedStorageKeys(ACCOUNT_SETTINGS_SCOPED_KEYS);
   await chrome.storage.local.remove([
     "resumeMatcherFloatingButtonTopOffset",
-    STORAGE_KEYS.promptTemplateProfiles,
-    STORAGE_KEYS.llmSettings,
-    STORAGE_KEYS.chatGptTargetUrl,
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
     STORAGE_KEYS.customFeatureEnabled,
-    STORAGE_KEYS.apifyFallbackSettings,
-    STORAGE_KEYS.extensionAuth,
   ]);
   await syncBrowserActionState(await getExtensionState());
 }

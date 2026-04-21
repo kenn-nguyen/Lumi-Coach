@@ -13,12 +13,26 @@ import {
   verifyWebsiteSession,
 } from "./runtime/api.js";
 import { SESSION_STATUS } from "./runtime/constants.js";
+import {
+  areSameAccountUsers,
+  deriveAccountKeyFromUser,
+} from "./runtime/account.js";
+import {
+  classifyLinkedInJobsRoute,
+  isLinkedInJobsShellUrl,
+  LINKEDIN_ROUTE_MODE,
+} from "./shared/linkedin-route.js";
 import { getExtensionSetupState } from "./runtime/setup-state.js";
 import {
+  activateAccountWorkspace,
+  clearAccountDisconnectState,
   clearExtensionAuth,
+  clearAllExtensionLocalData,
   clearPendingExtensionAction,
   clearExtensionLocalData,
   completeOnboarding,
+  getActiveAccountKey,
+  getExtensionAuth,
   getExtensionState,
   getHistoryEntries,
   getOnboardingProgress,
@@ -45,17 +59,95 @@ import {
 
 let suppressSourceFocusUntil = 0;
 
+function getSignedOutWorkspaceMessage() {
+  return "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.";
+}
+
+function getAccountSwitchMessage() {
+  return "You’re signed in with a different account. This account uses its own local extension workspace.";
+}
+
+function hasAccountMismatch(extensionAuth, websiteSession) {
+  if (!extensionAuth?.user || !websiteSession?.user) {
+    return false;
+  }
+
+  return !areSameAccountUsers(extensionAuth.user, websiteSession.user);
+}
+
+async function applyExtensionAuthPayload(payload) {
+  const previousAuth = await getExtensionAuth();
+  const previousAccountKey =
+    deriveAccountKeyFromUser(previousAuth?.user) ??
+    (await getActiveAccountKey());
+  const nextAccountKey = deriveAccountKeyFromUser(payload?.user);
+  const accountChanged =
+    Boolean(previousAccountKey) &&
+    Boolean(nextAccountKey) &&
+    previousAccountKey !== nextAccountKey;
+
+  logInfo("Background", "Applying extension auth payload.", {
+    previousAccountKey,
+    nextAccountKey,
+    previousUser: previousAuth?.user
+      ? {
+          id: previousAuth.user.id ?? null,
+          email: previousAuth.user.email ?? null,
+        }
+      : null,
+    nextUser: payload?.user
+      ? {
+          id: payload.user.id ?? null,
+          email: payload.user.email ?? null,
+        }
+      : null,
+    accountChanged,
+  });
+
+  if (accountChanged && previousAccountKey) {
+    await clearAccountDisconnectState(previousAccountKey);
+  }
+
+  await setExtensionAuth({
+    token: payload.token,
+    expiresAt: payload.expiresAt,
+    user: payload.user ?? null,
+    connectedAt: new Date().toISOString(),
+  });
+  const activation = await activateAccountWorkspace(payload.user ?? null);
+  const activeAccountKey = await getActiveAccountKey();
+
+  logInfo("Background", "Extension auth payload applied.", {
+    previousAccountKey,
+    nextAccountKey,
+    activeAccountKey,
+    activation,
+  });
+
+  return {
+    accountChanged:
+      accountChanged || activation.switched === true,
+    previousAccountKey,
+    accountKey: nextAccountKey,
+  };
+}
+
 async function getConnectionSnapshot({ trySync = true } = {}) {
   let extensionConnected = false;
   let websiteAuthenticated = false;
+  let extensionAuth = null;
 
   try {
+    extensionAuth = await getExtensionAuth();
     extensionConnected = await hasValidExtensionAuth();
     const websiteSession = await verifyWebsiteSession();
     websiteAuthenticated = websiteSession?.authenticated === true;
-    if (trySync && !extensionConnected && websiteAuthenticated) {
+    const accountMismatch = hasAccountMismatch(extensionAuth, websiteSession);
+    if (trySync && websiteAuthenticated && (!extensionConnected || accountMismatch)) {
       const synced = await syncExtensionAuthFromWebsite();
       extensionConnected = Boolean(synced?.token);
+    } else if (accountMismatch) {
+      extensionConnected = false;
     }
   } catch {
     extensionConnected = false;
@@ -71,7 +163,7 @@ async function getConnectionSnapshot({ trySync = true } = {}) {
   };
 }
 
-async function getRuntimeSnapshot({ trySync = true } = {}) {
+async function getRuntimeSnapshot({ trySync = true, currentUrl = "" } = {}) {
   const [extensionState, assets, history, connection, onboardingProgress] =
     await Promise.all([
       getExtensionState(),
@@ -86,6 +178,7 @@ async function getRuntimeSnapshot({ trySync = true } = {}) {
     state: extensionState,
     assets,
     history,
+    route: classifyLinkedInJobsRoute(currentUrl),
     ...connection,
     setupState: getExtensionSetupState({
       assets,
@@ -97,30 +190,96 @@ async function getRuntimeSnapshot({ trySync = true } = {}) {
 }
 
 async function syncExtensionAuthFromWebsite() {
+  logInfo("Background", "Starting website-to-extension auth sync.");
   const payload = await fetchExtensionAccessToken();
   if (!payload?.token || !payload?.expiresAt) {
+    logWarn("Background", "Website auth sync returned no usable token.", {
+      hasToken: Boolean(payload?.token),
+      hasExpiry: Boolean(payload?.expiresAt),
+      user: payload?.user
+        ? {
+            id: payload.user.id ?? null,
+            email: payload.user.email ?? null,
+          }
+        : null,
+    });
     return null;
   }
 
-  await setExtensionAuth({
-    token: payload.token,
-    expiresAt: payload.expiresAt,
-    user: payload.user ?? null,
-    connectedAt: new Date().toISOString(),
+  const transition = await applyExtensionAuthPayload(payload);
+  logInfo("Background", "Website-to-extension auth sync completed.", {
+    accountChanged: transition.accountChanged === true,
+    previousAccountKey: transition.previousAccountKey ?? null,
+    accountKey: transition.accountKey ?? null,
   });
-
-  return payload;
+  return {
+    ...payload,
+    ...transition,
+  };
 }
 
 async function broadcastLinkedInMessage(message) {
   const tabs = await chrome.tabs
-    .query({ url: ["https://www.linkedin.com/jobs/*"] })
+    .query({ url: ["https://www.linkedin.com/*"] })
     .catch(() => []);
   await Promise.all(
     tabs
+      .filter((tab) => isLinkedInJobsShellUrl(tab.url || tab.pendingUrl || ""))
       .filter((tab) => typeof tab.id === "number")
       .map((tab) => chrome.tabs.sendMessage(tab.id, message).catch(() => {})),
   );
+}
+
+async function ensureLinkedInContentScript(tabId, url) {
+  if (typeof tabId !== "number" || !isLinkedInJobsShellUrl(url)) {
+    return false;
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: "EXTENSION_PING",
+    });
+    if (response?.ok) {
+      return true;
+    }
+  } catch {
+    // Fall through to programmatic injection.
+  }
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["src/content/linkedin-job.js"],
+    });
+    return true;
+  } catch (error) {
+    logWarn("Background", "Failed to ensure LinkedIn content script.", {
+      tabId,
+      url,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+async function sendLinkedInRouteChange(tabId, url) {
+  if (typeof tabId !== "number" || !isLinkedInJobsShellUrl(url)) {
+    return;
+  }
+
+  const ready = await ensureLinkedInContentScript(tabId, url);
+  if (!ready) {
+    return;
+  }
+
+  await chrome.tabs
+    .sendMessage(tabId, {
+      type: "EXTENSION_ROUTE_CHANGED",
+      payload: {
+        route: classifyLinkedInJobsRoute(url),
+      },
+    })
+    .catch(() => {});
 }
 
 async function consumePatchedSuccess(extensionState = null) {
@@ -155,7 +314,10 @@ async function consumePatchedSuccess(extensionState = null) {
 }
 
 async function ensureExtensionAuthForAction(pendingAction, options = {}) {
-  const hasAuth = await hasValidExtensionAuth();
+  const [hasAuth, extensionAuth] = await Promise.all([
+    hasValidExtensionAuth(),
+    getExtensionAuth(),
+  ]);
   if (!hasAuth) {
     let websiteAuthenticated = false;
     try {
@@ -184,7 +346,7 @@ async function ensureExtensionAuthForAction(pendingAction, options = {}) {
     return {
       connected: false,
       connectionState: "signed_out",
-      message: "Sign in with Google to continue.",
+      message: getSignedOutWorkspaceMessage(),
     };
   }
 
@@ -193,15 +355,43 @@ async function ensureExtensionAuthForAction(pendingAction, options = {}) {
   }
 
   const websiteSession = await verifyWebsiteSession();
-  if (websiteSession?.authenticated) {
+  if (!websiteSession?.authenticated) {
+    await setPendingExtensionAction(pendingAction);
+    return {
+      connected: false,
+      connectionState: "signed_out",
+      message: getSignedOutWorkspaceMessage(),
+    };
+  }
+
+  if (!hasAccountMismatch(extensionAuth, websiteSession)) {
     return { connected: true, connectionState: "connected" };
   }
 
   await setPendingExtensionAction(pendingAction);
+  try {
+    const synced = await syncExtensionAuthFromWebsite();
+    if (synced?.token) {
+      return {
+        connected: true,
+        connectionState: "connected",
+        accountChanged: synced.accountChanged === true,
+      };
+    }
+  } catch (error) {
+    logError(
+      "Background",
+      "Automatic extension auth sync failed after account mismatch.",
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+  }
+
   return {
     connected: false,
     connectionState: "signed_out",
-    message: "You are signed out of Lumi Coach. Sign in to continue.",
+    message: getSignedOutWorkspaceMessage(),
   };
 }
 
@@ -412,6 +602,11 @@ chrome.action.onClicked.addListener(async (tab) => {
     if (sourceTabId) {
       await focusSourceTab(sourceTabId);
       try {
+        const sourceTab = await chrome.tabs.get(sourceTabId).catch(() => null);
+        await ensureLinkedInContentScript(
+          sourceTabId,
+          sourceTab?.url || sourceTab?.pendingUrl || "",
+        );
         await chrome.tabs.sendMessage(sourceTabId, {
           type: "EXTENSION_SHOW_LAUNCHER",
         });
@@ -428,11 +623,13 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
 
-  if (!tab?.id || !tab.url?.startsWith("https://www.linkedin.com/jobs/")) {
+  const route = classifyLinkedInJobsRoute(tab?.url || tab?.pendingUrl || "");
+  if (!tab?.id || route.mode === LINKEDIN_ROUTE_MODE.hidden) {
     return;
   }
 
   try {
+    await ensureLinkedInContentScript(tab.id, tab?.url || tab?.pendingUrl || "");
     await chrome.tabs.sendMessage(tab.id, { type: "EXTENSION_SHOW_LAUNCHER" });
   } catch (error) {
     logError(
@@ -462,10 +659,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true };
 
       case "GET_STATE":
-        return getRuntimeSnapshot();
+        return getRuntimeSnapshot({
+          currentUrl: sender?.tab?.url || sender?.tab?.pendingUrl || "",
+        });
 
       case "CHECK_CONNECTION_STATUS":
-        return getRuntimeSnapshot();
+        return getRuntimeSnapshot({
+          currentUrl: sender?.tab?.url || sender?.tab?.pendingUrl || "",
+        });
 
       case "CLEAR_EXTENSION_AUTH":
         await clearExtensionAuth();
@@ -576,6 +777,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         clearPromptTemplateCache();
         return { ok: true };
 
+      case "RESET_BROWSER_DATA":
+        await clearAllExtensionLocalData();
+        clearPromptTemplateCache();
+        return { ok: true };
+
       case "RESET_DEFAULT_SETTINGS":
         await resetExtensionSettingsToDefault();
         return { ok: true };
@@ -603,7 +809,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ok: true,
             awaitingAuth: true,
             connectionState: authGate.connectionState || "signed_out",
-            message: authGate.message || "Sign in with Google to continue.",
+            message: authGate.message || getSignedOutWorkspaceMessage(),
           };
         }
         const assets = await getUserAssets();
@@ -706,7 +912,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               ok: true,
               awaitingAuth: true,
               connectionState: "signed_out",
-              message: "Sign in with Google to continue.",
+              message: getSignedOutWorkspaceMessage(),
             };
           }
           throw error;
@@ -740,12 +946,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case "FOCUS_LINKEDIN_JOB_TAB": {
         const tabs = await chrome.tabs.query({
-          url: ["https://www.linkedin.com/jobs/*"],
+          url: ["https://www.linkedin.com/*"],
         });
+        const jobTabs = tabs.filter((tab) =>
+          isLinkedInJobsShellUrl(tab.url || tab.pendingUrl || ""),
+        );
         const targetTab =
-          tabs.find((tab) => tab.active && tab.lastFocusedWindow) ||
-          tabs.find((tab) => tab.active) ||
-          tabs[0];
+          jobTabs.find((tab) => tab.active && tab.lastFocusedWindow) ||
+          jobTabs.find((tab) => tab.active) ||
+          jobTabs[0];
         if (!targetTab?.id) {
           return { ok: false, error: "Open a LinkedIn job page first." };
         }
@@ -795,33 +1004,57 @@ chrome.runtime.onMessageExternal.addListener(
 
       switch (message?.type) {
         case "SOM_EXTENSION_AUTH_SYNC":
-        case "SOM_EXTENSION_CONNECT_COMPLETE":
-          const pendingAction = await getPendingExtensionAction();
-          await setExtensionAuth({
+        case "SOM_EXTENSION_CONNECT_COMPLETE": {
+          logInfo("Background", "Received external auth sync message.", {
+            type: message?.type,
+            senderUrl,
+            sourceTabId: message.payload?.sourceTabId ?? null,
+            user: message.payload?.user
+              ? {
+                  id: message.payload.user.id ?? null,
+                  email: message.payload.user.email ?? null,
+                }
+              : null,
+          });
+          const transition = await applyExtensionAuthPayload({
             token: message.payload?.token,
             expiresAt: message.payload?.expiresAt,
             user: message.payload?.user ?? null,
-            connectedAt: new Date().toISOString(),
           });
           sendResponse({ ok: true });
           await broadcastLinkedInMessage({
             type: "EXTENSION_CONNECTION_STATE_CHANGED",
-            payload: { connectionState: "connected" },
+            payload: {
+              connectionState: "connected",
+              accountChanged: transition.accountChanged === true,
+              message:
+                transition.accountChanged === true
+                  ? getAccountSwitchMessage()
+                  : "",
+            },
           });
           await resumePendingExtensionAction({ skipWebsiteSessionCheck: true });
           return;
+        }
 
         case "SOM_EXTENSION_SIGNED_OUT":
+          logInfo("Background", "Received external sign-out sync message.", {
+            type: message?.type,
+            senderUrl,
+            activeAccountKeyBeforeClear: await getActiveAccountKey(),
+          });
           suppressSourceFocusUntil = 0;
           await clearExtensionAuth();
           await clearPendingExtensionAction();
+          logInfo("Background", "Extension sign-out sync completed.", {
+            activeAccountKeyAfterClear: await getActiveAccountKey(),
+          });
           sendResponse({ ok: true });
           await broadcastLinkedInMessage({
             type: "EXTENSION_CONNECTION_STATE_CHANGED",
             payload: {
               connectionState: "signed_out",
-              message:
-                "Sign in to continue tailoring this job. Your setup is still here.",
+              message: getSignedOutWorkspaceMessage(),
             },
           });
           return;
@@ -856,7 +1089,11 @@ chrome.runtime.onMessageExternal.addListener(
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (!tab?.url?.startsWith("https://www.linkedin.com/jobs/")) return;
+    const url = tab?.url || tab?.pendingUrl || "";
+    const route = classifyLinkedInJobsRoute(url);
+    if (!route.isJobsShell) return;
+    await sendLinkedInRouteChange(tabId, url);
+    if (route.mode !== LINKEDIN_ROUTE_MODE.active) return;
     await chrome.tabs
       .sendMessage(tabId, { type: "EXTENSION_RECHECK_CONNECTION" })
       .catch(() => {});
@@ -864,3 +1101,21 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
     // Ignore activation races for closed or inaccessible tabs.
   }
 });
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  const url = changeInfo.url || tab?.url || tab?.pendingUrl || "";
+  if (!isLinkedInJobsShellUrl(url)) {
+    return;
+  }
+
+  if (typeof changeInfo.url === "string" || changeInfo.status === "complete") {
+    await sendLinkedInRouteChange(tabId, url);
+  }
+});
+
+if (chrome.webNavigation?.onHistoryStateUpdated) {
+  chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
+    if (details.frameId !== 0) return;
+    await sendLinkedInRouteChange(details.tabId, details.url);
+  });
+}

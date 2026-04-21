@@ -10,7 +10,7 @@ Planned flow:
 - Create one job-specific `resume_id`
 - Patch the tailored JSON into that record
 - Open the resume preview page in SOM Career Coach
-- Use the side panel as an admin board for assets, status, and history
+- Use the floating board for assets, runs, and settings
 
 Current interaction contract:
 - default visible state is the floating launcher icon
@@ -32,6 +32,34 @@ Current interaction contract:
 - clicking the logo opens `https://som-career-coach-iota.vercel.app/`
 - the home icon returns to `Run`
 
+Jobs surface visibility contract:
+- hide the extension on plain LinkedIn jobs home:
+  - `/jobs`
+  - `/jobs/`
+- show the floating launcher on LinkedIn jobs browsing surfaces:
+  - `/jobs/search...`
+  - `/jobs/collections/...`
+  - direct selected-job pages such as `/jobs/view/<id>`
+  - any LinkedIn jobs URL carrying `currentJobId=<id>`
+- on browsing surfaces with no selected job id yet, show the launcher and board but keep `Run` dormant
+- dormant `Run` state must say:
+  - `Select a job to start`
+  - `Choose a job from the list, then I’ll load it here.`
+- while dormant with no selected job, the extension must not:
+  - scrape the job
+  - auto-check auth for `Run`
+  - auto-start or auto-resume a run
+- once a concrete selected job exists, the extension may enter:
+  - `Loading job`
+  - then normal setup / ready / running states
+- route detection must not rely on LinkedIn DOM churn alone:
+  - background should notify the content script about LinkedIn jobs route changes
+  - before sending route updates or launcher commands, background must ensure the LinkedIn content script is actually attached to the tab
+- keep a lightweight fallback route watcher in the content script:
+  - while on LinkedIn jobs surfaces, poll the URL signature every `1s`
+  - the poller must only compare route state such as mode, pathname, query, and selected job id
+  - the poller must not scrape, re-auth, or rerender unless the route signature actually changed
+
 Product model:
 - launcher = minimized surface
 - run = operational console
@@ -46,6 +74,27 @@ Product model:
 - there is no dedicated extension connect page
 - there is no manual `Connect` step in normal flow
 - App URL and API URL live under `Advanced`, not the default settings surface
+
+Account isolation contract:
+- the currently signed-in website user owns the active extension workspace
+- account-bound local extension data must be isolated per signed-in user
+- one user must never see, resume, or overwrite another user’s local extension state
+- account-bound local data includes:
+  - master resume context
+  - storyboard
+  - prompt templates and prompt profile selection
+  - provider / LLM settings
+  - onboarding progress
+  - pending action
+  - extension run session
+  - history
+  - last error
+- signing out clears extension auth and stops resumable work for that account, but does not expose another account’s local data
+- switching from account A to account B must activate B’s isolated workspace and must not resume A’s pending run
+- settings must keep two destructive scopes distinct:
+  - `Clear this account`
+  - `Clear this browser`
+- do not collapse these back into one shared destructive reset without explicit product approval
 
 UI state contract:
 - `Ready` / `Success`
