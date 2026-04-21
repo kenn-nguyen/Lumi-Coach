@@ -17,7 +17,8 @@ const RUN_NOTES_ID = "resume-matcher-run-notes";
 const RUN_MANUAL_JD_FIELD_ID = "resume-matcher-manual-jd-field";
 const RUN_MANUAL_JD_ID = "resume-matcher-manual-jd";
 const RUN_PRIMARY_ID = "resume-matcher-run-primary";
-const RUN_SECONDARY_ID = "resume-matcher-run-secondary";
+const RUN_CANCEL_ROW_ID = "resume-matcher-run-cancel-row";
+const RUN_CANCEL_ID = "resume-matcher-run-cancel";
 const RUN_ACTIONS_ID = "resume-matcher-run-actions";
 const RUN_STATUS_ID = "resume-matcher-run-status";
 const RUN_STATUS_ACTIONS_ID = "resume-matcher-run-status-actions";
@@ -405,6 +406,7 @@ const state = {
   dockSide: "right",
   launcherAlert: false,
   isRunning: false,
+  isCanceling: false,
   awaitingAuth: false,
   awaitingStoryboard: false,
   explicitRunStatus: null,
@@ -435,6 +437,7 @@ const state = {
   selectedJobExpectedSourceUrl: "",
   selectedJobRefreshAttempts: 0,
   activeRunJob: null,
+  activeRunId: null,
   previewHandoffComplete: false,
   lastProgressHeartbeatAt: 0,
   runningDetailSource: "",
@@ -2096,6 +2099,35 @@ function injectStyles() {
 
     .resume-matcher-run-shell .resume-matcher-button.is-primary {
       flex: 1;
+    }
+
+    .resume-matcher-run-cancel-row {
+      display: flex;
+      justify-content: center;
+      margin-top: -4px;
+    }
+
+    .resume-matcher-run-cancel-row[hidden] {
+      display: none;
+    }
+
+    .resume-matcher-run-cancel {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: rgba(74, 35, 51, 0.78);
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.2;
+      padding: 2px 0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .resume-matcher-run-cancel:disabled {
+      cursor: default;
+      opacity: 0.55;
     }
 
     .resume-matcher-button.is-danger {
@@ -3998,6 +4030,20 @@ function getRunStateFromExtensionSession() {
   const activeRunJob = cloneJobForRun(
     session.jobSnapshot || session.activeRunJob || null,
   );
+  const runId = session.sessionId || null;
+
+  if (status === "canceling") {
+    return {
+      isRunning: false,
+      isCanceling: true,
+      tone: "info",
+      kind: "interrupted",
+      title: "Canceling...",
+      detail: "Stopping this run.",
+      activeRunJob,
+      runId,
+    };
+  }
 
   if (runStatusHelpers.isRehydratableExtensionSessionStatus(status)) {
     const byStatus = {
@@ -4032,9 +4078,24 @@ function getRunStateFromExtensionSession() {
     };
     return {
       isRunning: true,
+      isCanceling: status === "canceling",
       tone: "running",
       activeRunJob,
+      runId,
       ...(byStatus[status] || byStatus.starting),
+    };
+  }
+
+  if (status === "canceled") {
+    return {
+      isRunning: false,
+      isCanceling: false,
+      tone: "info",
+      kind: "canceled",
+      title: "Run canceled",
+      detail: "This run was stopped before the resume was opened.",
+      activeRunJob,
+      runId,
     };
   }
 
@@ -4050,22 +4111,28 @@ function getRunStateFromExtensionSession() {
 }
 
 function syncVisibleRunStateFromExtensionSession() {
-  if (state.isRunning || state.awaitingAuth || state.awaitingStoryboard) return;
+  if (state.isRunning || state.isCanceling || state.awaitingAuth || state.awaitingStoryboard) return;
   if (getSetupRequirementStatus() || isHardPrerequisiteBlocker()) {
     state.activeRunJob = null;
     return;
   }
   const sessionState = getRunStateFromExtensionSession();
   if (!sessionState) {
+    state.isCanceling = false;
+    if (state.extensionState?.status !== "canceled") {
+      state.activeRunId = null;
+    }
     state.activeRunJob = null;
     return;
   }
 
   state.isRunning = sessionState.isRunning;
+  state.isCanceling = sessionState.isCanceling === true;
   state.activeRunJob = sessionState.activeRunJob;
+  state.activeRunId = sessionState.runId || state.activeRunId || null;
   applyExplicitRunStatus(
     runStatusHelpers.createExplicitRunStatus(
-      "running",
+      sessionState.kind || "running",
       sessionState.tone,
       sessionState.title,
       sessionState.detail,
@@ -4525,6 +4592,7 @@ function getVisibleExplicitRunStatus() {
 
   const isDifferentJob =
     state.activeRunJob &&
+    !state.isCanceling &&
     (state.isRunning || state.awaitingStoryboard || state.awaitingAuth) &&
     !doesActiveRunMatchCurrentJob();
 
@@ -4745,11 +4813,68 @@ function clearScrapeRecoveryState() {
 function markPreviewHandoffComplete() {
   state.previewHandoffComplete = true;
   state.isRunning = false;
+  state.isCanceling = false;
   state.awaitingAuth = false;
   state.awaitingStoryboard = false;
+  state.activeRunId = null;
   state.lastProgressHeartbeatAt = 0;
   state.runningDetailSource = "";
   stopRunningStatusRotation();
+}
+
+function getCurrentRunPhaseLabel() {
+  if (state.awaitingStoryboard) return "awaiting_storyboard";
+  if (state.awaitingAuth) return "awaiting_auth";
+  if (state.isCanceling) return "canceling";
+  return "running";
+}
+
+function isRunCancelable() {
+  if (!state.activeRunId) return false;
+  if (state.previewHandoffComplete) return false;
+  if (state.explicitRunStatus?.kind === "success") return false;
+  if (state.explicitRunStatus?.kind === "canceled") return false;
+  return (
+    state.isRunning ||
+    state.isCanceling ||
+    state.awaitingAuth ||
+    state.awaitingStoryboard ||
+    state.extensionState?.status === "canceling"
+  );
+}
+
+function shouldHandleRunScopedMessage(runId = null) {
+  if (!runId) return true;
+  if (state.activeRunId && state.activeRunId === runId) return true;
+  if (state.extensionState?.sessionId && state.extensionState.sessionId === runId) {
+    return true;
+  }
+  return !state.activeRunId;
+}
+
+function applyCanceledRunState(runId = null, options = {}) {
+  if (!shouldHandleRunScopedMessage(runId)) {
+    return false;
+  }
+
+  state.isRunning = false;
+  state.isCanceling = false;
+  state.awaitingAuth = false;
+  state.awaitingStoryboard = false;
+  state.previewHandoffComplete = false;
+  state.lastProgressHeartbeatAt = 0;
+  state.runningDetailSource = "";
+  stopRunningStatusRotation();
+  state.activeRunId = null;
+  state.activeRunJob = null;
+
+  setExplicitRunStatus(
+    "canceled",
+    "info",
+    "Run canceled",
+    options.detail || "This run was stopped before the resume was opened.",
+  );
+  return true;
 }
 
 function applyExplicitRunStatus(nextStatus, options = {}) {
@@ -5370,22 +5495,34 @@ function renderRunView() {
   const primaryButton = $(RUN_PRIMARY_ID);
   if (primaryButton) {
     primaryButton.disabled =
-      onboardingMode || waitingForSelection || state.isRunning || !canRun;
+      onboardingMode ||
+      waitingForSelection ||
+      state.isRunning ||
+      state.isCanceling ||
+      !canRun;
     primaryButton.textContent = state.isRunning
       ? runningDifferentJob
         ? "Working on other job"
         : "Running…"
+      : state.isCanceling
+        ? "Canceling..."
       : hasManualJobDescription() && hasScrapeProblem
         ? "Continue"
         : "Tailor";
     primaryButton.hidden = onboardingMode || hardBlocker || waitingForSelection;
   }
 
-  const secondaryButton = $(RUN_SECONDARY_ID);
-  if (secondaryButton) {
-    secondaryButton.textContent = "Minimize";
-    secondaryButton.hidden =
-      onboardingMode || hardBlocker || waitingForSelection;
+  const cancelRow = $(RUN_CANCEL_ROW_ID);
+  const cancelButton = $(RUN_CANCEL_ID);
+  if (cancelRow && cancelButton) {
+    const showCancel =
+      !onboardingMode &&
+      !hardBlocker &&
+      !waitingForSelection &&
+      isRunCancelable();
+    cancelRow.hidden = !showCancel;
+    cancelButton.disabled = state.isCanceling;
+    cancelButton.textContent = state.isCanceling ? "Canceling..." : "Cancel run";
   }
 
   const mainActions = $(RUN_ACTIONS_ID);
@@ -5421,7 +5558,9 @@ function renderRunView() {
   if (mainActions) {
     const shouldHideMainActions = Boolean(
       status?.actions?.length &&
-      (status.tone === "blocked" || status.tone === "warning"),
+      (status.tone === "blocked" || status.tone === "warning") &&
+      !state.awaitingAuth &&
+      !state.awaitingStoryboard,
     );
     mainActions.classList.toggle(
       "is-hidden",
@@ -5472,7 +5611,7 @@ function syncRunningInteractivity() {
     BOARD_HOME_ID,
     BOARD_SETTINGS_ID,
     BOARD_MINIMIZE_ID,
-    RUN_SECONDARY_ID,
+    RUN_CANCEL_ID,
   ]);
 
   const controls = board.querySelectorAll("button, input, textarea, select, a");
@@ -5486,7 +5625,7 @@ function syncRunningInteractivity() {
       control instanceof HTMLTextAreaElement ||
       control instanceof HTMLSelectElement
     ) {
-      if (state.isRunning && isInRunView && !allowWhileRunning) {
+      if ((state.isRunning || state.isCanceling) && isInRunView && !allowWhileRunning) {
         if (!control.dataset.runningDisabled) {
           control.dataset.runningDisabled = control.disabled ? "true" : "false";
         }
@@ -5499,7 +5638,7 @@ function syncRunningInteractivity() {
     }
 
     if (!(control instanceof HTMLAnchorElement)) return;
-    if (state.isRunning && isInRunView && !allowWhileRunning) {
+    if ((state.isRunning || state.isCanceling) && isInRunView && !allowWhileRunning) {
       control.dataset.runningPointerEvents = control.style.pointerEvents || "";
       control.dataset.runningOpacity = control.style.opacity || "";
       control.dataset.runningTabIndex = String(control.tabIndex);
@@ -5786,6 +5925,46 @@ function handleManualJobRescrape() {
   window.location.reload();
 }
 
+async function requestCancelActiveRun() {
+  if (!isRunCancelable() || state.isCanceling) {
+    return;
+  }
+
+  state.isCanceling = true;
+  setExplicitRunStatus(
+    "interrupted",
+    "info",
+    "Canceling...",
+    "Stopping this run.",
+  );
+
+  try {
+    const response = await sendMessage("CANCEL_ACTIVE_RUN", {
+      runId: state.activeRunId,
+      phase: getCurrentRunPhaseLabel(),
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to cancel the active run.");
+    }
+    if (response.canceled === false) {
+      state.isCanceling = false;
+      await refreshBoardData();
+      return;
+    }
+    if (response.immediate) {
+      applyCanceledRunState(response.runId || state.activeRunId);
+    }
+  } catch (error) {
+    state.isCanceling = false;
+    setExplicitRunStatus(
+      "error",
+      "error",
+      "Cancel failed",
+      error instanceof Error ? error.message : "Unable to cancel the active run.",
+    );
+  }
+}
+
 async function handleGenerateClick() {
   if (suppressNextClick) {
     suppressNextClick = false;
@@ -5804,8 +5983,10 @@ async function handleGenerateClick() {
 
   state.awaitingAuth = false;
   state.awaitingStoryboard = false;
+  state.isCanceling = false;
   state.isRunning = true;
   state.previewHandoffComplete = false;
+  state.activeRunId = crypto.randomUUID();
   state.activeRunJob = cloneJobForRun(state.currentJob);
   state.launcherAlert = false;
   clearScrapeRecoveryState();
@@ -5822,6 +6003,7 @@ async function handleGenerateClick() {
       ? buildManualJobInput()
       : null;
     const response = await sendMessage("GENERATE_FOR_ACTIVE_JOB", {
+      runId: state.activeRunId,
       prompt1CustomInstruction,
       jobInput: manualJobInput,
       activeRunJob: cloneJobForRun(state.currentJob),
@@ -5831,6 +6013,9 @@ async function handleGenerateClick() {
     if (notes) {
       notes.value = "";
       autoGrowTextarea(notes);
+    }
+    if (response?.runId) {
+      state.activeRunId = response.runId;
     }
     if (response?.awaitingAuth) {
       state.isRunning = false;
@@ -5888,17 +6073,20 @@ async function handleGenerateClick() {
         "warning",
         "Story bank missing",
         response.message || "Continue without a story bank?",
-        [
-          { id: "continue-storyboard", label: "Continue", variant: "primary" },
-          { id: "cancel-storyboard", label: "Cancel" },
-        ],
+        [{ id: "continue-storyboard", label: "Continue", variant: "primary" }],
       );
+      return;
+    }
+    if (response?.canceled) {
+      applyCanceledRunState(response.runId || state.activeRunId);
+      await refreshBoardData();
       return;
     }
     if (!response?.ok) {
       throw new Error(response?.error || "Failed to generate tailored resume.");
     }
     state.isRunning = false;
+    state.isCanceling = false;
     clearScrapeRecoveryState();
     if (!state.previewHandoffComplete) {
       setExplicitRunStatus(
@@ -5908,10 +6096,12 @@ async function handleGenerateClick() {
         `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
       );
     }
+    state.activeRunId = null;
     state.activeRunJob = null;
     await refreshBoardData();
   } catch (error) {
     state.isRunning = false;
+    state.isCanceling = false;
     const message =
       error instanceof Error
         ? error.message
@@ -5921,6 +6111,7 @@ async function handleGenerateClick() {
       clearExplicitRunStatus("scrape-recovery");
       return;
     }
+    state.activeRunId = null;
     state.activeRunJob = null;
     setExplicitRunStatus(
       "error",
@@ -6035,6 +6226,7 @@ async function handleStatusAction(actionId) {
       return;
     }
     state.awaitingStoryboard = false;
+    state.isCanceling = false;
     state.isRunning = true;
     state.previewHandoffComplete = false;
     clearScrapeRecoveryState();
@@ -6048,6 +6240,14 @@ async function handleStatusAction(actionId) {
       const response = await sendMessage(
         "CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD",
       );
+      if (response?.runId) {
+        state.activeRunId = response.runId;
+      }
+      if (response?.canceled) {
+        applyCanceledRunState(response.runId || state.activeRunId);
+        await refreshBoardData();
+        return;
+      }
       if (!response?.ok) {
         throw new Error(
           response?.error || "Failed to continue without story bank.",
@@ -6055,6 +6255,8 @@ async function handleStatusAction(actionId) {
       }
     } catch (error) {
       state.isRunning = false;
+      state.isCanceling = false;
+      state.activeRunId = null;
       state.activeRunJob = null;
       setExplicitRunStatus(
         "error",
@@ -6071,10 +6273,7 @@ async function handleStatusAction(actionId) {
   }
 
   if (actionId === "cancel-storyboard") {
-    state.awaitingStoryboard = false;
-    state.previewHandoffComplete = false;
-    await sendMessage("CLEAR_PENDING_EXTENSION_ACTION").catch(() => {});
-    clearExplicitRunStatus("storyboard-cancelled");
+    await requestCancelActiveRun();
   }
 }
 
@@ -6183,8 +6382,10 @@ function ensureRoot() {
                 <textarea id="${RUN_NOTES_ID}" rows="2" placeholder="Type ATS keywords, must-haves, recruiter hints, or LinkedIn signals."></textarea>
               </div>
               <div id="${RUN_ACTIONS_ID}" class="resume-matcher-button-row">
-                <button id="${RUN_SECONDARY_ID}" type="button" class="resume-matcher-button">Cancel</button>
                 <button id="${RUN_PRIMARY_ID}" type="button" class="resume-matcher-button is-primary">Tailor</button>
+              </div>
+              <div id="${RUN_CANCEL_ROW_ID}" class="resume-matcher-run-cancel-row" hidden>
+                <button id="${RUN_CANCEL_ID}" type="button" class="resume-matcher-run-cancel">Cancel run</button>
               </div>
               <div id="${RUN_STATUS_ACTIONS_ID}" class="resume-matcher-button-row"></div>
             </div>
@@ -6378,7 +6579,7 @@ function ensureRoot() {
   $(BOARD_MINIMIZE_ID)?.addEventListener("click", minimizeBoard);
   $(RUN_READY_ID)?.addEventListener("click", handleManualJobRescrape);
   $(RUN_PRIMARY_ID)?.addEventListener("click", handleGenerateClick);
-  $(RUN_SECONDARY_ID)?.addEventListener("click", minimizeBoard);
+  $(RUN_CANCEL_ID)?.addEventListener("click", requestCancelActiveRun);
   $(RUN_NOTES_ID)?.addEventListener("input", (event) => {
     state.customMessage = event.target.value || "";
     autoGrowTextarea(event.target);
@@ -6877,14 +7078,25 @@ function updateStatusFromLog(level, scope, message, data) {
     console.info(formatted, data);
   }
 
+  const scopedRunId = data?.run_id ?? data?.runId ?? null;
+  if (!shouldHandleRunScopedMessage(scopedRunId)) {
+    return;
+  }
+
   if (state.previewHandoffComplete) {
+    return;
+  }
+
+  if (state.explicitRunStatus?.kind === "canceled" || state.isCanceling) {
     return;
   }
 
   if (level === "error") {
     state.isRunning = false;
+    state.isCanceling = false;
     state.awaitingAuth = false;
     state.awaitingStoryboard = false;
+    state.activeRunId = null;
     setRunStatus(
       "error",
       "Run failed",
@@ -7104,8 +7316,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const accountChanged = message.payload?.accountChanged === true;
     if (accountChanged) {
       state.isRunning = false;
+      state.isCanceling = false;
       state.awaitingAuth = false;
       state.awaitingStoryboard = false;
+      state.activeRunId = null;
       state.activeRunJob = null;
       state.currentView = "run";
       openBoard("run", { skipConnectionCheck: true });
@@ -7118,7 +7332,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       );
     } else if (state.connectionState !== "connected") {
       state.isRunning = false;
+      state.isCanceling = false;
       state.awaitingAuth = false;
+      state.activeRunId = null;
       state.activeRunJob = null;
       state.currentView = "run";
       openBoard("run", { skipConnectionCheck: true });
@@ -7129,8 +7345,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === "EXTENSION_AUTH_REQUIRED") {
+    if (!shouldHandleRunScopedMessage(message.payload?.runId ?? null)) {
+      sendResponse({ ok: true });
+      return true;
+    }
     state.isRunning = false;
+    state.isCanceling = false;
     state.awaitingAuth = message.payload?.connectionState === "signed_out";
+    state.activeRunId = message.payload?.runId || state.activeRunId;
     state.connectionState = message.payload?.connectionState || "signed_out";
     state.setupState = {
       ...(state.setupState || {}),
@@ -7172,6 +7394,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "EXTENSION_AUTH_COMPLETED") {
     state.awaitingAuth = false;
+    state.isCanceling = false;
     state.connectionState = "connected";
     state.websiteAuthenticated = true;
     state.extensionConnected = true;
@@ -7183,9 +7406,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === "EXTENSION_SETUP_REQUIRED") {
+    if (!shouldHandleRunScopedMessage(message.payload?.runId ?? null)) {
+      sendResponse({ ok: true });
+      return true;
+    }
     state.isRunning = false;
+    state.isCanceling = false;
     state.awaitingAuth = false;
     state.awaitingStoryboard = false;
+    state.activeRunId = message.payload?.runId || state.activeRunId;
     state.activeRunJob = null;
     state.setupState = message.payload?.setupState || state.setupState;
     openBoard("run");
@@ -7207,31 +7436,44 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === "EXTENSION_STORYBOARD_RECOMMENDATION") {
+    if (!shouldHandleRunScopedMessage(message.payload?.runId ?? null)) {
+      sendResponse({ ok: true });
+      return true;
+    }
     state.isRunning = false;
+    state.isCanceling = false;
     state.awaitingStoryboard = true;
+    state.activeRunId = message.payload?.runId || state.activeRunId;
     openBoard("run");
     setExplicitRunStatus(
       "interrupted",
       "warning",
       "Story bank missing",
       message.payload?.message || "Continue without story bank?",
-      [
-        { id: "continue-storyboard", label: "Continue", variant: "primary" },
-        { id: "cancel-storyboard", label: "Cancel" },
-      ],
+      [{ id: "continue-storyboard", label: "Continue", variant: "primary" }],
     );
     sendResponse({ ok: true });
     return true;
   }
 
   if (message?.type === "EXTENSION_RESUMED_GENERATION_RESULT") {
-    if (state.previewHandoffComplete) {
+    if (
+      state.previewHandoffComplete ||
+      state.explicitRunStatus?.kind === "canceled" ||
+      !shouldHandleRunScopedMessage(message.payload?.runId ?? null)
+    ) {
       sendResponse({ ok: true });
       return true;
     }
     state.awaitingAuth = false;
     state.awaitingStoryboard = false;
+    state.isCanceling = false;
     state.isRunning = false;
+    if (message.payload?.canceled) {
+      applyCanceledRunState(message.payload?.runId ?? state.activeRunId);
+      sendResponse({ ok: true });
+      return true;
+    }
     if (message.payload?.ok) {
       clearScrapeRecoveryState();
       if (!state.previewHandoffComplete) {
@@ -7242,6 +7484,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           `Your tailored resume for ${getJobDisplayLabel(state.activeRunJob)} is opening on the web.`,
         );
       }
+      state.activeRunId = null;
       state.activeRunJob = null;
       void refreshBoardData();
     } else {
@@ -7251,6 +7494,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true });
         return true;
       }
+      state.activeRunId = null;
       state.activeRunJob = null;
       setExplicitRunStatus(
         "error",
@@ -7261,6 +7505,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         ),
       );
     }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message?.type === "EXTENSION_RUN_CANCELED") {
+    if (!shouldHandleRunScopedMessage(message.payload?.runId ?? null)) {
+      sendResponse({ ok: true });
+      return true;
+    }
+    applyCanceledRunState(message.payload?.runId ?? state.activeRunId);
+    void refreshBoardData();
     sendResponse({ ok: true });
     return true;
   }

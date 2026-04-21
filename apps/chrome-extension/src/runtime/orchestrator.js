@@ -41,6 +41,12 @@ import {
 import { captureExtensionEvent } from "./analytics.js";
 import { getActiveLlmProfile } from "./llm/profiles.js";
 import { runPrompt } from "./llm/runners.js";
+import {
+  createRunAbortSignal,
+  isRunCanceledError,
+  markRunPreviewHandoffStarted,
+  throwIfRunCanceled,
+} from "./run-control.js";
 
 export async function saveStoryboardAsset(payload) {
   await setStoryboardAsset({
@@ -48,6 +54,19 @@ export async function saveStoryboardAsset(payload) {
     content: payload.content,
     uploadedAt: new Date().toISOString(),
   });
+}
+
+function createCancelHelpers(runId) {
+  return {
+    signal() {
+      return runId ? createRunAbortSignal(runId) : undefined;
+    },
+    throwIfCanceled(stage) {
+      if (runId) {
+        throwIfRunCanceled(runId, stage);
+      }
+    },
+  };
 }
 
 async function getActiveLinkedInTabId(tabId) {
@@ -823,7 +842,9 @@ async function bootstrapMasterResumeFromMarkdown({
   systemPrompt,
   activeRunJob,
   sourceTabId,
+  runId,
 }) {
+  const cancel = createCancelHelpers(runId);
   const localResumeMarkdown = masterResumeContextAsset?.content?.trim();
   if (!localResumeMarkdown) {
     const message =
@@ -845,6 +866,7 @@ async function bootstrapMasterResumeFromMarkdown({
   });
 
   try {
+    cancel.throwIfCanceled("base resume setup");
     const prompt4 = await renderPrompt4(
       {
         currentResume: localResumeMarkdown,
@@ -859,16 +881,22 @@ async function bootstrapMasterResumeFromMarkdown({
       profile: activeLlmProfile,
       promptLabel: "Prompt 4",
       systemPrompt,
+      runId,
+      signal: cancel.signal(),
       validateResponse: validatePrompt4RawOutput,
       buildRepairPrompt: buildPrompt4RepairPrompt,
       maxRepairAttempts: 1,
     });
+    cancel.throwIfCanceled("Prompt 4");
 
     const prompt4Raw =
       prompt4Run.status === "success"
         ? prompt4Run.rawText
         : (prompt4Run.partialRawText ?? "");
 
+    if (prompt4Run.status === "canceled") {
+      throwIfRunCanceled(runId, "Prompt 4");
+    }
     if (prompt4Run.status !== "success") {
       logError("Orchestrator", "Prompt 4 failed.", prompt4Run);
       throw new Error(`Prompt 4 failed: ${prompt4Run.message}`);
@@ -897,7 +925,9 @@ async function bootstrapMasterResumeFromMarkdown({
     const uploadResponse = await uploadStructuredResume(
       buildBootstrappedMasterFilename(masterResumeContextAsset),
       parsedResumeData,
+      { signal: cancel.signal() },
     );
+    cancel.throwIfCanceled("base resume upload");
     if (!uploadResponse?.resume_id) {
       throw new Error(
         "Prompt 4 finished, but Lumi Coach did not return a master resume id.",
@@ -910,6 +940,9 @@ async function bootstrapMasterResumeFromMarkdown({
     });
     return uploadResponse.resume_id;
   } catch (error) {
+    if (isRunCanceledError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     await setExtensionState({
       patchError: message,
@@ -925,8 +958,12 @@ async function resolveBaseResumeId({
   systemPrompt,
   activeRunJob,
   sourceTabId,
+  runId,
 }) {
-  const resumeList = await listResumes(true);
+  const cancel = createCancelHelpers(runId);
+  cancel.throwIfCanceled("base resume lookup");
+  const resumeList = await listResumes(true, { signal: cancel.signal() });
+  cancel.throwIfCanceled("base resume lookup");
   const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
   if (!masterResume?.resume_id) {
     return bootstrapMasterResumeFromMarkdown({
@@ -935,6 +972,7 @@ async function resolveBaseResumeId({
       systemPrompt,
       activeRunJob,
       sourceTabId,
+      runId,
     });
   }
   return masterResume.resume_id;
@@ -967,9 +1005,12 @@ export async function generateResumeForLinkedInJob(
   const systemPrompt = systemPromptTemplateAsset?.content?.trim() || "";
   const currentExtensionState = await getExtensionState();
   const runId = currentExtensionState?.sessionId ?? null;
+  const cancel = createCancelHelpers(runId);
 
+  cancel.throwIfCanceled("job tab resolution");
   const activeTabId = await getActiveLinkedInTabId(tabId);
   logInfo("Orchestrator", "Using active LinkedIn tab.", { activeTabId });
+  cancel.throwIfCanceled("job extraction");
   const jobSnapshot = await resolveValidatedJobSnapshot({
     activeTabId,
     jobInput,
@@ -977,6 +1018,7 @@ export async function generateResumeForLinkedInJob(
     systemPrompt,
     apifyFallbackSettings,
   });
+  cancel.throwIfCanceled("job extraction");
   logInfo("Orchestrator", "Job extraction completed.", {
     source: jobSnapshot.source,
     sourceUrl: jobSnapshot.sourceUrl,
@@ -1011,6 +1053,7 @@ export async function generateResumeForLinkedInJob(
     systemPrompt,
     activeRunJob,
     sourceTabId: activeTabId,
+    runId,
   });
   logInfo("Orchestrator", "Resolved base resume for cloning.", {
     baseResumeId,
@@ -1023,10 +1066,13 @@ export async function generateResumeForLinkedInJob(
     },
   );
   const uploadedJobDescription = buildStoredJobDescription(jobSnapshot);
+  cancel.throwIfCanceled("job upload");
   const jobUploadResponse = await uploadJobDescription(
     uploadedJobDescription,
     baseResumeId,
+    { signal: cancel.signal() },
   );
+  cancel.throwIfCanceled("job upload");
   const jobId = jobUploadResponse?.job_id?.[0];
   if (!jobId) {
     throw new Error("Job upload response did not include a job id.");
@@ -1051,9 +1097,19 @@ export async function generateResumeForLinkedInJob(
     prompt3ValidationErrors: [],
     patchPayload: null,
     patchError: null,
+    prompt1DurationMs: null,
+    prompt2DurationMs: null,
+    prompt3DurationMs: null,
+    patchDurationMs: null,
+    cancelReason: null,
+    cancelPhase: null,
   });
 
-  const cloneResponse = await cloneResume(baseResumeId);
+  cancel.throwIfCanceled("resume clone");
+  const cloneResponse = await cloneResume(baseResumeId, {
+    signal: cancel.signal(),
+  });
+  cancel.throwIfCanceled("resume clone");
   const resumeId = cloneResponse?.data?.resume_id;
   if (!resumeId) {
     throw new Error("Clone response did not include a resume id.");
@@ -1067,13 +1123,18 @@ export async function generateResumeForLinkedInJob(
     selectedResumeId: resumeId,
     tailoredResumeId: resumeId,
   });
+  cancel.throwIfCanceled("resume fetch");
   const fetchedResume = cloneResponse?.data
     ? cloneResponse
-    : await fetchResumeById(resumeId);
+    : await fetchResumeById(resumeId, { signal: cancel.signal() });
+  cancel.throwIfCanceled("resume fetch");
   let featureConfig;
   try {
-    featureConfig = await fetchFeatureConfig();
+    featureConfig = await fetchFeatureConfig({ signal: cancel.signal() });
   } catch (error) {
+    if (isRunCanceledError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logInfo(
       "Orchestrator",
@@ -1110,6 +1171,7 @@ export async function generateResumeForLinkedInJob(
 
   logInfo("Orchestrator", "Running Prompt 1.");
   const prompt1StartedMs = Date.now();
+  cancel.throwIfCanceled("Prompt 1");
   await captureExtensionEvent("prompt_stage_started", {
     surface: "run_view",
     run_id: runId,
@@ -1120,8 +1182,14 @@ export async function generateResumeForLinkedInJob(
     profile: activeLlmProfile,
     promptLabel: "Prompt 1",
     systemPrompt,
+    runId,
+    signal: cancel.signal(),
   });
   prompt1DurationMs = Date.now() - prompt1StartedMs;
+  cancel.throwIfCanceled("Prompt 1");
+  if (prompt1Run.status === "canceled") {
+    throwIfRunCanceled(runId, "Prompt 1");
+  }
   if (prompt1Run.status !== "success") {
     logError("Orchestrator", "Prompt 1 failed.", prompt1Run);
     await captureExtensionEvent("prompt_stage_failed", {
@@ -1139,6 +1207,7 @@ export async function generateResumeForLinkedInJob(
   promptContext.prompt1Json = prompt1Result;
   await setExtensionState({
     prompt1Result,
+    prompt1DurationMs,
     status: SESSION_STATUS.prompt1Done,
     resumeSource: currentResume,
   });
@@ -1154,6 +1223,7 @@ export async function generateResumeForLinkedInJob(
   logPromptDebug("Prompt 2", "input", prompt2);
   logInfo("Orchestrator", "Running Prompt 2.");
   const prompt2StartedMs = Date.now();
+  cancel.throwIfCanceled("Prompt 2");
   await captureExtensionEvent("prompt_stage_started", {
     surface: "run_view",
     run_id: runId,
@@ -1164,8 +1234,14 @@ export async function generateResumeForLinkedInJob(
     profile: activeLlmProfile,
     promptLabel: "Prompt 2",
     systemPrompt,
+    runId,
+    signal: cancel.signal(),
   });
   prompt2DurationMs = Date.now() - prompt2StartedMs;
+  cancel.throwIfCanceled("Prompt 2");
+  if (prompt2Run.status === "canceled") {
+    throwIfRunCanceled(runId, "Prompt 2");
+  }
   if (prompt2Run.status !== "success") {
     logError("Orchestrator", "Prompt 2 failed.", prompt2Run);
     await captureExtensionEvent("prompt_stage_failed", {
@@ -1183,6 +1259,7 @@ export async function generateResumeForLinkedInJob(
   promptContext.prompt2Json = prompt2Result;
   await setExtensionState({
     prompt2Result,
+    prompt2DurationMs,
     status: SESSION_STATUS.prompt2Done,
   });
   await captureExtensionEvent("prompt_stage_succeeded", {
@@ -1197,6 +1274,7 @@ export async function generateResumeForLinkedInJob(
   logPromptDebug("Prompt 3", "input", prompt3);
   logInfo("Orchestrator", "Running Prompt 3.");
   const prompt3StartedMs = Date.now();
+  cancel.throwIfCanceled("Prompt 3");
   await captureExtensionEvent("prompt_stage_started", {
     surface: "run_view",
     run_id: runId,
@@ -1207,6 +1285,8 @@ export async function generateResumeForLinkedInJob(
     profile: activeLlmProfile,
     promptLabel: "Prompt 3",
     systemPrompt,
+    runId,
+    signal: cancel.signal(),
     validateResponse: validatePrompt3RawOutput,
     buildRepairPrompt: buildPrompt3RepairPrompt,
     maxRepairAttempts: 1,
@@ -1216,7 +1296,15 @@ export async function generateResumeForLinkedInJob(
       ? prompt3Run.rawText
       : (prompt3Run.partialRawText ?? "");
   prompt3DurationMs = Date.now() - prompt3StartedMs;
-  await setExtensionState({ prompt3Raw, status: SESSION_STATUS.prompt3Done });
+  await setExtensionState({
+    prompt3Raw,
+    prompt3DurationMs,
+    status: SESSION_STATUS.prompt3Done,
+  });
+  cancel.throwIfCanceled("Prompt 3");
+  if (prompt3Run.status === "canceled") {
+    throwIfRunCanceled(runId, "Prompt 3");
+  }
   if (prompt3Run.status !== "success") {
     logError("Orchestrator", "Prompt 3 failed.", prompt3Run);
     await captureExtensionEvent("prompt_stage_failed", {
@@ -1293,6 +1381,7 @@ export async function generateResumeForLinkedInJob(
     prompt3Feedback,
     prompt3ValidationErrors: validationErrors,
     patchPayload,
+    prompt3DurationMs,
     status:
       validationErrors.length === 0
         ? SESSION_STATUS.validated
@@ -1361,12 +1450,18 @@ export async function generateResumeForLinkedInJob(
 
   try {
     logInfo("Orchestrator", "Patching generated resume.");
+    cancel.throwIfCanceled("resume patch");
     const patchStartedMs = Date.now();
     await patchResume(resumeId, prompt3Parsed, prompt3Feedback, {
       prompt2: prompt2Result,
-    });
+    }, { signal: cancel.signal() });
     patchDurationMs = Date.now() - patchStartedMs;
+    await setExtensionState({ patchDurationMs });
+    cancel.throwIfCanceled("resume patch");
   } catch (error) {
+    if (isRunCanceledError(error)) {
+      throw error;
+    }
     const message =
       error instanceof Error ? error.message : "Failed to patch resume.";
     logError("Orchestrator", "Resume patch failed.", { resumeId, message });
@@ -1392,9 +1487,16 @@ export async function generateResumeForLinkedInJob(
       resumeId,
       jobId,
     });
-    await linkResumeToJobContext(baseResumeId, resumeId, jobId);
+    cancel.throwIfCanceled("job-context link");
+    await linkResumeToJobContext(baseResumeId, resumeId, jobId, {
+      signal: cancel.signal(),
+    });
+    cancel.throwIfCanceled("job-context link");
     await setExtensionState({ jobContextLinked: true });
   } catch (error) {
+    if (isRunCanceledError(error)) {
+      throw error;
+    }
     const message =
       error instanceof Error
         ? error.message
@@ -1431,8 +1533,13 @@ export async function generateResumeForLinkedInJob(
       "Orchestrator",
       "Ensuring cover letter and outreach features are enabled.",
     );
-    await enableContentGenerationFeatures();
+    cancel.throwIfCanceled("feature enablement");
+    await enableContentGenerationFeatures({ signal: cancel.signal() });
+    cancel.throwIfCanceled("feature enablement");
   } catch (error) {
+    if (isRunCanceledError(error)) {
+      throw error;
+    }
     const message =
       error instanceof Error
         ? error.message
@@ -1457,8 +1564,15 @@ export async function generateResumeForLinkedInJob(
       logInfo("Orchestrator", "Renaming generated resume.", {
         title: generatedResumeTitle,
       });
-      await renameResume(resumeId, generatedResumeTitle);
+      cancel.throwIfCanceled("resume rename");
+      await renameResume(resumeId, generatedResumeTitle, {
+        signal: cancel.signal(),
+      });
+      cancel.throwIfCanceled("resume rename");
     } catch (error) {
+      if (isRunCanceledError(error)) {
+        throw error;
+      }
       const message =
         error instanceof Error ? error.message : "Failed to rename resume.";
       logError("Orchestrator", "Resume rename failed after successful patch.", {
@@ -1469,19 +1583,22 @@ export async function generateResumeForLinkedInJob(
     }
   }
 
+  cancel.throwIfCanceled("preview handoff");
   const previewUrl = await buildPreviewUrl(resumeId, {
     runId,
     source: "extension",
-  });
+  }, { signal: cancel.signal() });
   await setExtensionState({
     status: SESSION_STATUS.patched,
     patchError: null,
     previewUrl,
+    patchDurationMs,
   });
   logInfo("Orchestrator", "Opening generated resume preview.", {
     resumeId,
     previewUrl,
   });
+  markRunPreviewHandoffStarted(runId);
   await upsertHistoryEntry(createHistoryEntry("generated", previewUrl));
   await captureExtensionEvent("tailor_completed", {
     surface: "run_view",

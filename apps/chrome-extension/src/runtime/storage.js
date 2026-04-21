@@ -98,6 +98,12 @@ function getDefaultExtensionState() {
     prompt3ValidationErrors: [],
     patchPayload: null,
     patchError: null,
+    prompt1DurationMs: null,
+    prompt2DurationMs: null,
+    prompt3DurationMs: null,
+    patchDurationMs: null,
+    cancelReason: null,
+    cancelPhase: null,
     updatedAt: null,
   };
 }

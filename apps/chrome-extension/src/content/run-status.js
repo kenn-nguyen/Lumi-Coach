@@ -6,6 +6,7 @@ export const ACTIVE_REHYDRATABLE_SESSION_STATUSES = new Set([
   "prompt2_done",
   "prompt3_done",
   "validated",
+  "canceling",
 ]);
 
 export function createExplicitRunStatus(
@@ -64,7 +65,7 @@ export function shouldRotateRunningStatus(explicitStatus) {
 }
 
 export function shouldClearExplicitStatusOnJobChange(explicitStatus) {
-  return ["success", "error", "interrupted"].includes(
+  return ["success", "error", "interrupted", "canceled"].includes(
     explicitStatus?.kind || "",
   );
 }

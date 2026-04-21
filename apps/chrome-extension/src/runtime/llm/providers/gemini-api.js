@@ -1,5 +1,12 @@
 import { logError, logInfo } from '../../log.js';
 
+function isAbortError(error) {
+  if (!error) return false;
+  if (error.name === 'AbortError') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /abort|canceled/i.test(message);
+}
+
 function extractGeminiText(payload) {
   const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
   const firstCandidate = candidates.find((candidate) => Array.isArray(candidate?.content?.parts));
@@ -16,7 +23,7 @@ function extractGeminiText(payload) {
   return textParts.join('\n\n');
 }
 
-async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt = '' }) {
+async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt = '', signal }) {
   logInfo('GeminiApi', 'Sending prompt to Gemini API.', {
     promptLabel,
     model,
@@ -28,6 +35,7 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
   try {
     response = await fetch(endpoint, {
       method: 'POST',
+      signal,
       headers: {
         'content-type': 'application/json',
         'x-goog-api-key': apiKey,
@@ -50,6 +58,12 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
       }),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      return {
+        status: 'canceled',
+        message: 'Run canceled.',
+      };
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError('GeminiApi', 'Gemini API request failed before response.', {
       promptLabel,
@@ -135,6 +149,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
     ? profile.apiBaseUrl.trim().replace(/\/+$/, '')
     : 'https://generativelanguage.googleapis.com/v1beta/models';
   const systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
+  const signal = options.signal;
 
   if (!apiKey) {
     return {
@@ -144,7 +159,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
   }
 
   const endpoint = `${apiBaseUrl}/${encodeURIComponent(model)}:generateContent`;
-  let result = await callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt });
+  let result = await callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt, signal });
   const validateResponse = typeof options.validateResponse === 'function' ? options.validateResponse : null;
   const buildRepairPrompt = typeof options.buildRepairPrompt === 'function' ? options.buildRepairPrompt : null;
   const maxRepairAttempts = Number.isInteger(options.maxRepairAttempts)
@@ -184,6 +199,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
         endpoint,
         promptLabel: `${promptLabel} Repair`,
         systemPrompt,
+        signal,
       });
       if (result.status !== 'success') {
         return result;

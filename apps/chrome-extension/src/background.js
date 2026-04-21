@@ -55,7 +55,17 @@ import {
   savePromptTemplateProfileSelection,
   setStoryboardAsset,
   setPromptTemplateAsset,
+  upsertHistoryEntry,
 } from "./runtime/storage.js";
+import {
+  clearActiveRun,
+  ensureActiveRun,
+  getActiveRun,
+  isRunCanceledError,
+  markRunTerminal,
+  requestActiveRunCancel,
+  updateActiveRun,
+} from "./runtime/run-control.js";
 
 let suppressSourceFocusUntil = 0;
 
@@ -105,6 +115,10 @@ async function applyExtensionAuthPayload(payload) {
   });
 
   if (accountChanged && previousAccountKey) {
+    await cancelActiveRun({
+      reason: "account_switched",
+      phase: "account_switch",
+    });
     await clearAccountDisconnectState(previousAccountKey);
   }
 
@@ -228,6 +242,147 @@ async function broadcastLinkedInMessage(message) {
       .filter((tab) => typeof tab.id === "number")
       .map((tab) => chrome.tabs.sendMessage(tab.id, message).catch(() => {})),
   );
+}
+
+function getCurrentRunSourceUrl(extensionState) {
+  return (
+    extensionState?.jobSnapshot?.sourceUrl ||
+    extensionState?.activeRunJob?.sourceUrl ||
+    ""
+  );
+}
+
+function getCurrentRunLocation(extensionState) {
+  return (
+    extensionState?.jobSnapshot?.location ||
+    extensionState?.activeRunJob?.location ||
+    null
+  );
+}
+
+async function finalizeCanceledRun(run, options = {}) {
+  if (!run?.runId) return;
+
+  const extensionState = await getExtensionState().catch(() => null);
+  const currentRunId = extensionState?.sessionId ?? null;
+  const shouldPersistSession = currentRunId === run.runId || !currentRunId;
+  const cancelReason = options.reason ?? run.cancelReason ?? "user";
+  const cancelPhase = options.phase ?? run.cancelPhase ?? run.phase ?? "running";
+
+  if (shouldPersistSession) {
+    const nextState = {
+      sessionId: run.runId,
+      sourceTabId: run.sourceTabId ?? extensionState?.sourceTabId ?? null,
+      activeRunJob: run.activeRunJob ?? extensionState?.activeRunJob ?? null,
+      previewUrl: null,
+      patchError: null,
+      status: SESSION_STATUS.canceled,
+      cancelReason,
+      cancelPhase,
+    };
+    await setExtensionState(nextState);
+  }
+
+  const sourceUrl = getCurrentRunSourceUrl(extensionState);
+  if (sourceUrl) {
+    await upsertHistoryEntry({
+      jobKey: sourceUrl,
+      sourceUrl,
+      title:
+        extensionState?.jobSnapshot?.title ||
+        extensionState?.activeRunJob?.title ||
+        "Untitled role",
+      company:
+        extensionState?.jobSnapshot?.company ||
+        extensionState?.activeRunJob?.company ||
+        "Unknown company",
+      location: getCurrentRunLocation(extensionState),
+      datePosted: extensionState?.jobSnapshot?.datePosted ?? null,
+      generatedAt: new Date().toISOString(),
+      resumeId: extensionState?.tailoredResumeId ?? null,
+      previewUrl: null,
+      status: "canceled",
+      runId: run.runId,
+      providerId: extensionState?.llmProfileId ?? null,
+      providerLabel: extensionState?.llmProfileLabel ?? null,
+      providerVendor: null,
+      providerMode: null,
+      jobSource: extensionState?.jobSnapshot?.source ?? null,
+      jobReadiness: extensionState?.jobSnapshot?.readiness ?? null,
+      descriptionProvenance:
+        extensionState?.jobSnapshot?.provenance?.description ?? null,
+      descriptionLength:
+        extensionState?.jobSnapshot?.quality?.descriptionLength ?? null,
+      scrapeConfidence:
+        extensionState?.jobSnapshot?.quality?.confidence ?? null,
+      manualJobInputUsed:
+        extensionState?.jobSnapshot?.source === "manual_text" ||
+        extensionState?.jobSnapshot?.diagnostics?.manualOverride === true,
+      customContextProvided: false,
+      customContextLength: 0,
+      storyboardPresent: false,
+      prompt1DurationMs: extensionState?.prompt1DurationMs ?? null,
+      prompt2DurationMs: extensionState?.prompt2DurationMs ?? null,
+      prompt3DurationMs: extensionState?.prompt3DurationMs ?? null,
+      patchDurationMs: extensionState?.patchDurationMs ?? null,
+      totalDurationMs:
+        typeof run.cancelRequestedAt === "number"
+          ? Math.max(0, run.cancelRequestedAt - (run.startedAt ?? run.cancelRequestedAt))
+          : null,
+      prompt3ValidationErrorCount:
+        Array.isArray(extensionState?.prompt3ValidationErrors)
+          ? extensionState.prompt3ValidationErrors.length
+          : 0,
+      prompt1Result: extensionState?.prompt1Result ?? null,
+      prompt2Result: extensionState?.prompt2Result ?? null,
+      prompt3Parsed: extensionState?.prompt3Parsed ?? null,
+      cancelReason,
+      cancelPhase,
+    });
+  }
+
+  await clearPendingExtensionAction();
+  await captureExtensionEvent("tailor_canceled", {
+    surface: "run_view",
+    run_id: run.runId,
+    source_tab_id: run.sourceTabId ?? null,
+    cancel_reason: cancelReason,
+    cancel_phase: cancelPhase,
+  }).catch(() => {});
+  markRunTerminal(run.runId, "canceled");
+  const cancelMessage = {
+    type: "EXTENSION_RUN_CANCELED",
+    payload: {
+      runId: run.runId,
+      reason: cancelReason,
+      phase: cancelPhase,
+    },
+  };
+  if (run.sourceTabId) {
+    await chrome.tabs.sendMessage(run.sourceTabId, cancelMessage).catch(() => {});
+  } else {
+    await broadcastLinkedInMessage(cancelMessage);
+  }
+  clearActiveRun(run.runId);
+}
+
+async function cancelActiveRun(options = {}) {
+  const run = getActiveRun();
+  if (!run) {
+    return { ok: true, canceled: false, reason: "no_active_run" };
+  }
+
+  const cancelResult = await requestActiveRunCancel(options);
+  if (cancelResult.canceled && cancelResult.immediate) {
+    await finalizeCanceledRun(run, options);
+  } else if (cancelResult.canceled) {
+    await setExtensionState({
+      status: SESSION_STATUS.canceling,
+      cancelReason: options.reason ?? run.cancelReason ?? "user",
+      cancelPhase: options.phase ?? run.cancelPhase ?? run.phase ?? "running",
+    }).catch(() => {});
+  }
+  return cancelResult;
 }
 
 async function ensureLinkedInContentScript(tabId, url) {
@@ -452,16 +607,27 @@ async function resumePendingExtensionAction(options = {}) {
   if (!pendingAction) return;
 
   if (pendingAction.type === "generate_active_job") {
+    const runId = pendingAction.runId ?? crypto.randomUUID();
     const tabId = pendingAction.tabId ?? null;
+    ensureActiveRun({
+      runId,
+      sourceTabId: tabId,
+      activeRunJob: pendingAction.activeRunJob ?? null,
+      phase: "preflight",
+      inFlight: false,
+      cancelable: true,
+    });
     const authGate = await ensureExtensionAuthForAction(pendingAction, {
       skipWebsiteSessionCheck: options.skipWebsiteSessionCheck === true,
     });
     if (!authGate.connected) {
+      updateActiveRun(runId, { phase: "awaiting_auth", inFlight: false });
       if (tabId) {
         chrome.tabs
           .sendMessage(tabId, {
             type: "EXTENSION_AUTH_REQUIRED",
             payload: {
+              runId,
               connectionState: authGate.connectionState || "signed_out",
               message: authGate.message || "Sign in to Lumi Coach to continue.",
             },
@@ -478,6 +644,7 @@ async function resumePendingExtensionAction(options = {}) {
       onboardingProgress: await getOnboardingProgress(),
     });
     if (setupState?.state === "missing_resume") {
+      updateActiveRun(runId, { phase: "setup_required", inFlight: false });
       if (tabId) {
         chrome.tabs
           .sendMessage(tabId, {
@@ -492,6 +659,7 @@ async function resumePendingExtensionAction(options = {}) {
       return;
     }
     if (setupState?.state === "missing_provider_config") {
+      updateActiveRun(runId, { phase: "setup_required", inFlight: false });
       if (tabId) {
         chrome.tabs
           .sendMessage(tabId, {
@@ -508,11 +676,15 @@ async function resumePendingExtensionAction(options = {}) {
       return;
     }
     if (!options.allowWithoutStoryboard && !(await hasStoryboardAsset())) {
+      updateActiveRun(runId, { phase: "awaiting_storyboard", inFlight: false });
       if (tabId) {
         chrome.tabs
           .sendMessage(tabId, {
             type: "EXTENSION_STORYBOARD_RECOMMENDATION",
-            payload: { message: getStoryboardRecommendationMessage() },
+            payload: {
+              runId,
+              message: getStoryboardRecommendationMessage(),
+            },
           })
           .catch(() => {});
       }
@@ -522,13 +694,20 @@ async function resumePendingExtensionAction(options = {}) {
     await clearPendingExtensionAction();
     setLogRelayTabId(tabId);
     try {
+      updateActiveRun(runId, { phase: "running", inFlight: true });
       await setExtensionState({
-        sessionId: crypto.randomUUID(),
+        sessionId: runId,
         sourceTabId: tabId,
         activeRunJob: pendingAction.activeRunJob ?? null,
         status: SESSION_STATUS.starting,
         previewUrl: null,
         patchError: null,
+        prompt1DurationMs: null,
+        prompt2DurationMs: null,
+        prompt3DurationMs: null,
+        patchDurationMs: null,
+        cancelReason: null,
+        cancelPhase: null,
       });
       const runtimeState = await getExtensionState();
       await captureExtensionEvent("tailor_started", {
@@ -542,15 +721,31 @@ async function resumePendingExtensionAction(options = {}) {
         pendingAction.prompt1CustomInstruction ?? "",
         pendingAction.jobInput ?? null,
       );
+      markRunTerminal(runId, "completed");
+      clearActiveRun(runId);
       if (tabId) {
         chrome.tabs
           .sendMessage(tabId, {
             type: "EXTENSION_RESUMED_GENERATION_RESULT",
-            payload: { ok: true },
+            payload: { ok: true, runId },
           })
           .catch(() => {});
       }
     } catch (error) {
+      if (isRunCanceledError(error)) {
+        await finalizeCanceledRun(getActiveRun(runId) || { runId }, {
+          reason: "user",
+        });
+        if (tabId) {
+          chrome.tabs
+            .sendMessage(tabId, {
+              type: "EXTENSION_RESUMED_GENERATION_RESULT",
+              payload: { ok: true, canceled: true, runId },
+            })
+            .catch(() => {});
+        }
+        return;
+      }
       const runtimeState = await getExtensionState();
       await captureExtensionEvent("tailor_failed", {
         surface: "run_view",
@@ -567,6 +762,7 @@ async function resumePendingExtensionAction(options = {}) {
             type: "EXTENSION_RESUMED_GENERATION_RESULT",
             payload: {
               ok: false,
+              runId,
               error:
                 error instanceof Error
                   ? error.message
@@ -575,6 +771,7 @@ async function resumePendingExtensionAction(options = {}) {
           })
           .catch(() => {});
       }
+      clearActiveRun(runId);
       throw error;
     }
   }
@@ -786,6 +983,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await resetExtensionSettingsToDefault();
         return { ok: true };
 
+      case "CANCEL_ACTIVE_RUN": {
+        const cancelResult = await cancelActiveRun({
+          runId: message.payload?.runId ?? null,
+          reason: "user",
+          phase: message.payload?.phase ?? "running",
+        });
+        return { ok: true, ...cancelResult };
+      }
+
       case "TRACK_ANALYTICS_EVENT":
         await captureExtensionEvent(
           message.payload?.event,
@@ -794,7 +1000,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true };
 
       case "GENERATE_FOR_ACTIVE_JOB": {
+        const runId =
+          message.payload?.runId ||
+          crypto.randomUUID();
         const pendingAction = {
+          runId,
           type: "generate_active_job",
           tabId: message.payload?.tabId ?? sender?.tab?.id ?? null,
           prompt1CustomInstruction:
@@ -802,12 +1012,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           jobInput: message.payload?.jobInput ?? null,
           activeRunJob: message.payload?.activeRunJob ?? null,
         };
+        ensureActiveRun({
+          runId,
+          sourceTabId: pendingAction.tabId,
+          activeRunJob: pendingAction.activeRunJob ?? null,
+          phase: "preflight",
+          inFlight: false,
+          cancelable: true,
+          startedAt: Date.now(),
+        });
         setLogRelayTabId(message.payload?.tabId ?? sender?.tab?.id ?? null);
         const authGate = await ensureExtensionAuthForAction(pendingAction);
         if (!authGate.connected) {
+          updateActiveRun(runId, { phase: "awaiting_auth", inFlight: false });
+          await setExtensionState({
+            sessionId: runId,
+            sourceTabId: pendingAction.tabId,
+            activeRunJob: pendingAction.activeRunJob ?? null,
+            status: SESSION_STATUS.idle,
+            previewUrl: null,
+            patchError: null,
+            cancelReason: null,
+            cancelPhase: null,
+          });
           return {
             ok: true,
             awaitingAuth: true,
+            runId,
             connectionState: authGate.connectionState || "signed_out",
             message: authGate.message || getSignedOutWorkspaceMessage(),
           };
@@ -821,8 +1052,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         if (setupState?.state === "missing_resume") {
           await setPendingExtensionAction(pendingAction);
+          updateActiveRun(runId, { phase: "setup_required", inFlight: false });
           return {
             ok: true,
+            runId,
             setupState,
             message:
               setupState.detail || getMissingMasterResumeContextMessage(),
@@ -830,8 +1063,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         if (setupState?.state === "missing_provider_config") {
           await setPendingExtensionAction(pendingAction);
+          updateActiveRun(runId, { phase: "setup_required", inFlight: false });
           return {
             ok: true,
+            runId,
             setupState,
             message:
               setupState.detail ||
@@ -843,20 +1078,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           !(await hasStoryboardAsset())
         ) {
           await setPendingExtensionAction(pendingAction);
+          updateActiveRun(runId, {
+            phase: "awaiting_storyboard",
+            inFlight: false,
+          });
+          await setExtensionState({
+            sessionId: runId,
+            sourceTabId: pendingAction.tabId,
+            activeRunJob: pendingAction.activeRunJob ?? null,
+            status: SESSION_STATUS.idle,
+            previewUrl: null,
+            patchError: null,
+            cancelReason: null,
+            cancelPhase: null,
+          });
           return {
             ok: true,
             awaitingStoryboard: true,
+            runId,
             message: getStoryboardRecommendationMessage(),
           };
         }
         try {
+          updateActiveRun(runId, { phase: "running", inFlight: true });
           await setExtensionState({
-            sessionId: crypto.randomUUID(),
+            sessionId: runId,
             sourceTabId: pendingAction.tabId,
             activeRunJob: pendingAction.activeRunJob ?? null,
             status: SESSION_STATUS.starting,
             previewUrl: null,
             patchError: null,
+            prompt1DurationMs: null,
+            prompt2DurationMs: null,
+            prompt3DurationMs: null,
+            patchDurationMs: null,
+            cancelReason: null,
+            cancelPhase: null,
           });
           const runtimeState = await getExtensionState();
           await captureExtensionEvent("tailor_started", {
@@ -869,8 +1126,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             message.payload?.prompt1CustomInstruction ?? "",
             message.payload?.jobInput ?? null,
           );
-          return { ok: true, result };
+          markRunTerminal(runId, "completed");
+          clearActiveRun(runId);
+          return { ok: true, result, runId };
         } catch (error) {
+          if (isRunCanceledError(error)) {
+            await finalizeCanceledRun(getActiveRun(runId) || { runId }, {
+              reason: "user",
+            });
+            return { ok: true, canceled: true, runId };
+          }
           const runtimeState = await getExtensionState();
           await captureExtensionEvent("tailor_failed", {
             surface: "run_view",
@@ -887,15 +1152,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               try {
                 const synced = await syncExtensionAuthFromWebsite();
                 if (synced) {
+                  updateActiveRun(runId, { phase: "running", inFlight: true });
                   const result = await generateResumeForLinkedInJob(
                     message.payload?.tabId ?? sender?.tab?.id,
                     message.payload?.prompt1CustomInstruction ?? "",
                     message.payload?.jobInput ?? null,
                   );
                   await clearPendingExtensionAction();
-                  return { ok: true, result };
+                  markRunTerminal(runId, "completed");
+                  clearActiveRun(runId);
+                  return { ok: true, result, runId };
                 }
               } catch (syncError) {
+                if (isRunCanceledError(syncError)) {
+                  await finalizeCanceledRun(getActiveRun(runId) || { runId }, {
+                    reason: "user",
+                  });
+                  return { ok: true, canceled: true, runId };
+                }
                 logError(
                   "Background",
                   "Automatic auth repair failed after reconnect-required error.",
@@ -911,10 +1185,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return {
               ok: true,
               awaitingAuth: true,
+              runId,
               connectionState: "signed_out",
               message: getSignedOutWorkspaceMessage(),
             };
           }
+          clearActiveRun(runId);
           throw error;
         }
       }
@@ -970,6 +1246,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   run()
     .then((result) => sendResponse(result))
     .catch(async (error) => {
+      if (
+        (message?.type === "GENERATE_FOR_ACTIVE_JOB" ||
+          message?.type === "CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD") &&
+        isRunCanceledError(error)
+      ) {
+        sendResponse({ ok: true, canceled: true });
+        return;
+      }
       const messageText =
         error instanceof Error ? error.message : "Unknown extension error.";
       const shouldDowngradeGenerateFailure =
@@ -1044,6 +1328,10 @@ chrome.runtime.onMessageExternal.addListener(
             activeAccountKeyBeforeClear: await getActiveAccountKey(),
           });
           suppressSourceFocusUntil = 0;
+          await cancelActiveRun({
+            reason: "signed_out",
+            phase: "sign_out",
+          });
           await clearExtensionAuth();
           await clearPendingExtensionAction();
           logInfo("Background", "Extension sign-out sync completed.", {

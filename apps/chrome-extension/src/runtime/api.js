@@ -33,6 +33,13 @@ function toAbsoluteUrl(url, appOrigin) {
     : `${appOrigin}${url}`;
 }
 
+function isAbortError(error) {
+  if (!error) return false;
+  if (error.name === "AbortError") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /abort|canceled/i.test(message);
+}
+
 export async function verifyWebsiteSession() {
   const { appOrigin } = await getRuntimeEndpoints();
   const endpoint = `${appOrigin}/api/auth/session-status`;
@@ -183,14 +190,17 @@ async function fetchWithAuth(endpoint, options = {}) {
   return response;
 }
 
-export async function listResumes(includeMaster = false) {
+export async function listResumes(includeMaster = false, requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/list${includeMaster ? "?include_master=true" : ""}`;
   logInfo("ResumeApi", "Listing resumes.", { endpoint, includeMaster });
   let response;
   try {
-    response = await fetchWithAuth(endpoint);
+    response = await fetchWithAuth(endpoint, requestOptions);
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "List resumes request failed before response.", {
       endpoint,
@@ -219,7 +229,11 @@ export async function listResumes(includeMaster = false) {
   return payload;
 }
 
-export async function uploadStructuredResume(filename, resumeData) {
+export async function uploadStructuredResume(
+  filename,
+  resumeData,
+  requestOptions = {},
+) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/upload`;
   const safeFilename =
@@ -244,10 +258,14 @@ export async function uploadStructuredResume(filename, resumeData) {
   let response;
   try {
     response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
       method: "POST",
       body: formData,
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "Structured resume upload failed before response.", {
       endpoint,
@@ -285,14 +303,20 @@ export async function uploadStructuredResume(filename, resumeData) {
   return payload;
 }
 
-export async function cloneResume(resumeId) {
+export async function cloneResume(resumeId, requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}/clone`;
   logInfo("ResumeApi", "Cloning resume.", { resumeId, endpoint });
   let response;
   try {
-    response = await fetchWithAuth(endpoint, { method: "POST" });
+    response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
+      method: "POST",
+    });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "Clone request failed before response.", {
       resumeId,
@@ -323,14 +347,17 @@ export async function cloneResume(resumeId) {
   return payload;
 }
 
-export async function fetchResumeById(resumeId) {
+export async function fetchResumeById(resumeId, requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes?resume_id=${encodeURIComponent(resumeId)}`;
   logInfo("ResumeApi", "Fetching resume by id.", { resumeId, endpoint });
   let response;
   try {
-    response = await fetchWithAuth(endpoint);
+    response = await fetchWithAuth(endpoint, requestOptions);
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "Fetch resume request failed before response.", {
       resumeId,
@@ -357,7 +384,11 @@ export async function fetchResumeById(resumeId) {
   return payload;
 }
 
-export async function uploadJobDescription(jobDescription, resumeId) {
+export async function uploadJobDescription(
+  jobDescription,
+  resumeId,
+  requestOptions = {},
+) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/jobs/upload`;
   logInfo("ResumeApi", "Uploading job description.", {
@@ -368,6 +399,7 @@ export async function uploadJobDescription(jobDescription, resumeId) {
   let response;
   try {
     response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -376,6 +408,9 @@ export async function uploadJobDescription(jobDescription, resumeId) {
       }),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "Job upload request failed before response.", {
       endpoint,
@@ -506,6 +541,7 @@ export async function linkResumeToJobContext(
   originalResumeId,
   tailoredResumeId,
   jobId,
+  requestOptions = {},
 ) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/link-job-context`;
@@ -518,6 +554,7 @@ export async function linkResumeToJobContext(
   let response;
   try {
     response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -527,6 +564,9 @@ export async function linkResumeToJobContext(
       }),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "Job-context link request failed before response.", {
       endpoint,
@@ -562,13 +602,14 @@ export async function linkResumeToJobContext(
   return payload;
 }
 
-export async function enableContentGenerationFeatures() {
+export async function enableContentGenerationFeatures(requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/config/features`;
   logInfo("ResumeApi", "Enabling content-generation features.", { endpoint });
   let response;
   try {
     response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -577,6 +618,9 @@ export async function enableContentGenerationFeatures() {
       }),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logWarn("ResumeApi", "Feature toggle request failed before response.", {
       endpoint,
@@ -602,14 +646,17 @@ export async function enableContentGenerationFeatures() {
   return payload;
 }
 
-export async function fetchFeatureConfig() {
+export async function fetchFeatureConfig(requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/config/features`;
   logInfo("ResumeApi", "Fetching feature configuration.", { endpoint });
   let response;
   try {
-    response = await fetchWithAuth(endpoint);
+    response = await fetchWithAuth(endpoint, requestOptions);
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logWarn(
       "ResumeApi",
@@ -644,6 +691,7 @@ export async function patchResume(
   resumeData,
   generationFeedback = null,
   generationArtifacts = null,
+  requestOptions = {},
 ) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}`;
@@ -661,11 +709,15 @@ export async function patchResume(
   let response;
   try {
     response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestPayload),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "Patch request failed before response.", {
       resumeId,
@@ -748,18 +800,22 @@ export async function overwriteMasterResume(resumeData) {
   return payload;
 }
 
-export async function renameResume(resumeId, title) {
+export async function renameResume(resumeId, title, requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}/title`;
   logInfo("ResumeApi", "Renaming resume.", { resumeId, endpoint, title });
   let response;
   try {
     response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError("ResumeApi", "Rename request failed before response.", {
       resumeId,

@@ -40,5 +40,7 @@ export const SESSION_STATUS = {
   prompt3Done: "prompt3_done",
   validated: "validated",
   patched: "patched",
+  canceling: "canceling",
+  canceled: "canceled",
   error: "error",
 };

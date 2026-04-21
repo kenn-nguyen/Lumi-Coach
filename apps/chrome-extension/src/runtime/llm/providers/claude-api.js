@@ -2,6 +2,13 @@ import { logError, logInfo } from '../../log.js';
 
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
 
+function isAbortError(error) {
+  if (!error) return false;
+  if (error.name === 'AbortError') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /abort|canceled/i.test(message);
+}
+
 function extractClaudeText(payload) {
   const blocks = Array.isArray(payload?.content) ? payload.content : [];
   const textBlocks = blocks
@@ -16,7 +23,7 @@ function extractClaudeText(payload) {
   return textBlocks.join('\n\n');
 }
 
-async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt = '' }) {
+async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt = '', signal }) {
   logInfo('ClaudeApi', 'Sending prompt to Claude API.', {
     promptLabel,
     model,
@@ -28,6 +35,7 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
   try {
     response = await fetch(apiBaseUrl, {
       method: 'POST',
+      signal,
       headers: {
         'content-type': 'application/json',
         'x-api-key': apiKey,
@@ -47,6 +55,12 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
       }),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      return {
+        status: 'canceled',
+        message: 'Run canceled.',
+      };
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError('ClaudeApi', 'Claude API request failed before response.', {
       promptLabel,
@@ -135,6 +149,7 @@ export async function runClaudeApiPrompt(prompt, options = {}) {
     ? profile.apiBaseUrl.trim()
     : 'https://api.anthropic.com/v1/messages';
   const systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
+  const signal = options.signal;
 
   if (!apiKey) {
     return {
@@ -142,7 +157,7 @@ export async function runClaudeApiPrompt(prompt, options = {}) {
       message: 'Claude API key is required for the active runner.',
     };
   }
-  let result = await callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt });
+  let result = await callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt, signal });
   const validateResponse = typeof options.validateResponse === 'function' ? options.validateResponse : null;
   const buildRepairPrompt = typeof options.buildRepairPrompt === 'function' ? options.buildRepairPrompt : null;
   const maxRepairAttempts = Number.isInteger(options.maxRepairAttempts)
@@ -182,6 +197,7 @@ export async function runClaudeApiPrompt(prompt, options = {}) {
         apiBaseUrl,
         promptLabel: `${promptLabel} Repair`,
         systemPrompt,
+        signal,
       });
       if (result.status !== 'success') {
         return result;

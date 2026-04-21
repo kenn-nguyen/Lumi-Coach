@@ -1,6 +1,7 @@
 import { DEFAULT_CHATGPT_TARGET_URL } from './constants.js';
 import { extractJsonFromText } from './json.js';
 import { logError, logInfo } from './log.js';
+import { registerRunCleanup } from './run-control.js';
 
 function getRuntimeError() {
   return chrome.runtime.lastError?.message;
@@ -14,6 +15,14 @@ function buildRunTargetUrl(targetUrl) {
   } catch {
     return targetUrl;
   }
+}
+
+function isPopupClosedError(error) {
+  if (!error) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /no tab with id|no window with id|tab was closed|window was closed|target closed|cannot access a chrome-extension/i.test(
+    message,
+  );
 }
 
 async function openPopupWindow(targetUrl) {
@@ -81,6 +90,9 @@ async function waitForChatGptTab(windowId, timeoutMs = 30000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const tabs = await listWindowTabs(windowId);
+    if (!tabs.length && Date.now() - startedAt > 500) {
+      throw new Error('ChatGPT popup was closed before the tab finished loading.');
+    }
     const tab = tabs.find((candidate) => candidate.id && (candidate.url?.startsWith('https://chatgpt.com') || candidate.url?.startsWith('https://chat.openai.com')));
     if (tab?.id && tab.status === 'complete') {
       return tab.id;
@@ -770,6 +782,7 @@ async function openChatGptSession(options = {}) {
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? null;
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? null;
   const warmupDelayMs = options.warmupDelayMs ?? 1500;
+  const runId = options.runId ?? null;
   logInfo('ChatGptAutomation', 'Opening ChatGPT popup.', {
     promptLabel,
     targetUrl,
@@ -780,6 +793,11 @@ async function openChatGptSession(options = {}) {
   });
   const popupWindowId = await openPopupWindow(targetUrl);
   logInfo('ChatGptAutomation', 'ChatGPT popup created.', { promptLabel, popupWindowId });
+  const unregisterCleanup = runId
+    ? registerRunCleanup(runId, async () => {
+        await closeWindow(popupWindowId);
+      })
+    : () => {};
   try {
     logInfo('ChatGptAutomation', 'Waiting for ChatGPT tab to finish loading.', { promptLabel, popupWindowId });
     const tabId = await waitForChatGptTab(popupWindowId);
@@ -792,8 +810,9 @@ async function openChatGptSession(options = {}) {
       });
       await wait(warmupDelayMs);
     }
-    return { popupWindowId, tabId, targetUrl, promptLabel };
+    return { popupWindowId, tabId, targetUrl, promptLabel, unregisterCleanup };
   } catch (error) {
+    unregisterCleanup();
     await closeWindow(popupWindowId);
     throw error;
   }
@@ -858,6 +877,12 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       clearInterval(progressPoll);
     }
   } catch (error) {
+    if (isPopupClosedError(error)) {
+      return {
+        status: 'canceled',
+        message: 'Run canceled.',
+      };
+    }
     const message = error instanceof Error ? error.message : String(error);
     logError('ChatGptAutomation', 'Script injection failed.', {
       promptLabel,
@@ -879,6 +904,12 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
   });
 
   if (!result) {
+    if (!tab) {
+      return {
+        status: 'canceled',
+        message: 'Run canceled.',
+      };
+    }
     throw new Error(`Prompt automation did not return a result. Tab URL: ${tab?.url ?? 'unknown'}`);
   }
   if (result.status !== 'success') {
@@ -888,6 +919,7 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
 }
 
 async function closeChatGptSession(session) {
+  session?.unregisterCleanup?.();
   if (session?.popupWindowId) {
     await closeWindow(session.popupWindowId);
   }

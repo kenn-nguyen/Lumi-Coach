@@ -163,6 +163,16 @@ describe("run-status", () => {
     expect(
       shouldClearExplicitStatusOnJobChange(
         createExplicitRunStatus(
+          "canceled",
+          "info",
+          "Run canceled",
+          "Stopped before preview handoff.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      shouldClearExplicitStatusOnJobChange(
+        createExplicitRunStatus(
           "running",
           "running",
           "Resume draft",
@@ -174,8 +184,10 @@ describe("run-status", () => {
 
   it("rehydrates only active in-progress extension session statuses", () => {
     expect(isRehydratableExtensionSessionStatus("starting")).toBe(true);
+    expect(isRehydratableExtensionSessionStatus("canceling")).toBe(true);
     expect(isRehydratableExtensionSessionStatus("prompt2_done")).toBe(true);
     expect(isRehydratableExtensionSessionStatus("validated")).toBe(true);
+    expect(isRehydratableExtensionSessionStatus("canceled")).toBe(false);
     expect(isRehydratableExtensionSessionStatus("patched")).toBe(false);
     expect(isRehydratableExtensionSessionStatus("error")).toBe(false);
   });
