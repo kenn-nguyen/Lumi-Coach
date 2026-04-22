@@ -112,27 +112,6 @@ To test locally:
 2. enable developer mode
 3. load the `apps/chrome-extension` directory as an unpacked extension
 
-## Docker
-
-Docker images are published to:
-
-- `ghcr.io/kenn-nguyen/lumi-coach`
-
-Example:
-
-```bash
-docker run --name lumi-coach \
-  -p 3000:3000 \
-  -v lumi-coach-data:/app/backend/data \
-  ghcr.io/kenn-nguyen/lumi-coach:latest
-```
-
-Endpoints:
-
-- App: [http://localhost:3000](http://localhost:3000)
-- API health: [http://localhost:3000/api/v1/health](http://localhost:3000/api/v1/health)
-- API docs: [http://localhost:3000/docs](http://localhost:3000/docs)
-
 ## Contributing
 
 Contributions are welcome.
