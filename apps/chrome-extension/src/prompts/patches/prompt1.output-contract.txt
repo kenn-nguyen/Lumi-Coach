@@ -9,33 +9,62 @@ Output contract:
 
 Return JSON in this exact shape:
 {
-  "role": "",
-  "seniority": "",
-  "domain": "",
+  "target_role": "",
+  "target_seniority": "",
+  "target_domain": "",
   "company_context": "",
   "role_archetype": "",
 
-  "hard_filters": [],
+  "must_have_keywords": [
+    {
+      "keyword": "",
+      "priority": 0,
+      "type": "exact",
+      "where_to_use": []
+    }
+  ],
+  "nice_to_have_keywords": [
+    {
+      "keyword": "",
+      "priority": 0,
+      "type": "exact",
+      "where_to_use": []
+    }
+  ],
+
+  "exact_phrases_to_mirror": [],
+  "required_qualifications": [],
   "preferred_qualifications": [],
+  "core_responsibilities": [],
 
   "recruiter_hooks": [],
   "hiring_manager_proof": [],
 
-  "ats_terms": [],
-  "phrases_to_mirror": [],
+  "domain_terms": [],
+  "metrics_kpis": [],
   "tools_platforms": [],
-  "domain_context": [],
+  "soft_skills": [],
+  "keywords_to_repeat_naturally": [],
 
-  "likely_interview_themes": [],
+  "section_targets": {
+    "headline": [],
+    "summary": [],
+    "experience": [],
+    "skills": []
+  },
 
-  "deprioritize": [],
   "do_not_fake": [],
+  "deprioritize": [],
   "jd_notes": []
 }
 
 Additional output rules:
 - All scalar fields must be strings.
-- All list fields must contain short strings only.
-- Order list items from highest to lowest importance.
-- Do not invent requirements, tools, or domain context not supported by the JD.
-
+- `must_have_keywords` and `nice_to_have_keywords` must contain objects only.
+- `priority` must be an integer from 1 to 10.
+- `type` must be either `exact` or `inferred`.
+- `where_to_use` must be an array containing only: `headline`, `summary`, `experience`, `skills`.
+- All other list fields must contain short strings only.
+- Order all arrays from highest to lowest importance.
+- Do not invent requirements, tools, domain context, or qualifications not supported by the JD.
+- Be broad but selective: preserve useful downstream ATS coverage without over-compressing.
