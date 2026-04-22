@@ -23,6 +23,8 @@ import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
 import { downloadBlobAsFile, openUrlInNewTab, sanitizeFilename } from '@/lib/utils/download';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
+import { loadSavedTemplateSettings } from '@/lib/utils/template-settings';
+import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
@@ -50,6 +52,8 @@ export default function ResumeViewerPage() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState('');
   const [generationFeedback, setGenerationFeedback] = useState<GenerationFeedback | null>(null);
+  const [templateSettings, setTemplateSettings] =
+    useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
 
   const resumeId = params?.id as string;
   const runId = searchParams.get('runId');
@@ -107,6 +111,10 @@ export default function ResumeViewerPage() {
     loadResume();
     setIsMasterResume(localStorage.getItem('master_resume_id') === resumeId);
   }, [authStatus, resumeId, t]);
+
+  useEffect(() => {
+    setTemplateSettings(loadSavedTemplateSettings());
+  }, []);
 
   useEffect(() => {
     if (authStatus !== 'authenticated' || !resumeId || source !== 'extension') return;
@@ -185,14 +193,14 @@ export default function ResumeViewerPage() {
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      const blob = await downloadResumePdf(resumeId, undefined, uiLanguage);
+      const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage);
       const filename = sanitizeFilename(resumeTitle, resumeId, 'resume');
       downloadBlobAsFile(blob, filename);
       setShowDownloadSuccessDialog(true);
     } catch (err) {
       console.error('Failed to download resume:', err);
       if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
-        const fallbackUrl = getResumePdfUrl(resumeId, undefined, uiLanguage);
+        const fallbackUrl = getResumePdfUrl(resumeId, templateSettings, uiLanguage);
         const didOpen = openUrlInNewTab(fallbackUrl);
         if (!didOpen) {
           alert(t('common.popupBlocked', { url: fallbackUrl }));

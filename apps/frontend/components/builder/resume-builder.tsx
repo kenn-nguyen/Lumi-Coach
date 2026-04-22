@@ -57,12 +57,15 @@ import {
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/context/language-context';
 import { buildResumeFilename, downloadBlobAsFile, openUrlInNewTab } from '@/lib/utils/download';
+import {
+  loadSavedTemplateSettings,
+  TEMPLATE_SETTINGS_STORAGE_KEY,
+} from '@/lib/utils/template-settings';
 import type { RegenerateItemInput } from '@/lib/api/enrichment';
 
 type TabId = 'resume' | 'cover-letter' | 'outreach' | 'jd-match' | 'ai-strategy-match';
 
 const STORAGE_KEY = 'resume_builder_draft';
-const SETTINGS_STORAGE_KEY = 'resume_builder_settings';
 const SPLIT_STORAGE_KEY = 'resume_builder_editor_width';
 
 const DEFAULT_EDITOR_WIDTH_BY_TAB: Record<TabId, number> = {
@@ -299,26 +302,12 @@ const ResumeBuilderContent = () => {
 
   // Load template settings from localStorage on mount
   useEffect(() => {
-    const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings);
-        setTemplateSettings({
-          ...DEFAULT_TEMPLATE_SETTINGS,
-          ...parsed,
-          margins: { ...DEFAULT_TEMPLATE_SETTINGS.margins, ...parsed.margins },
-          spacing: { ...DEFAULT_TEMPLATE_SETTINGS.spacing, ...parsed.spacing },
-          fontSize: { ...DEFAULT_TEMPLATE_SETTINGS.fontSize, ...parsed.fontSize },
-        });
-      } catch {
-        // Use defaults
-      }
-    }
+    setTemplateSettings(loadSavedTemplateSettings());
   }, []);
 
   // Save template settings to localStorage when they change
   useEffect(() => {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(templateSettings));
+    localStorage.setItem(TEMPLATE_SETTINGS_STORAGE_KEY, JSON.stringify(templateSettings));
   }, [templateSettings]);
 
   useEffect(() => {

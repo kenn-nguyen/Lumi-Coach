@@ -1,282 +1,157 @@
-<div align="center">
+# Lumi Coach
 
-[![Resume Matcher](assets/header.png)](https://www.resumematcher.fyi)
+Lumi Coach is an AI-powered resume tailoring platform built around a simple workflow: start from a live LinkedIn job, generate a targeted resume, then review and refine the result in the web workspace.
 
-# Resume Matcher
+[Chrome Web Store](https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb) · [Web App](https://som-career-coach-iota.vercel.app/) · [Privacy Policy](https://som-career-coach-iota.vercel.app/privacy)
 
-[𝙹𝚘𝚒𝚗 𝙳𝚒𝚜𝚌𝚘𝚛𝚍](https://dsc.gg/resume-matcher) ✦ [𝚆𝚎𝚋𝚜𝚒𝚝𝚎](https://resumematcher.fyi) ✦ [𝙷𝚘𝚠 𝚝𝚘 𝙸𝚗𝚜𝚝𝚊𝚕𝚕](https://resumematcher.fyi/docs/installation) ✦ [𝙲𝚘𝚗𝚝𝚛𝚒𝚋𝚞𝚝𝚘𝚛𝚜](#contributors) ✦ [𝚂𝚙𝚘𝚗𝚜𝚘𝚛](#sponsor-resume-matcher) ✦ [𝚃𝚠𝚒𝚝𝚝𝚎𝚛/𝚇](https://twitter.com/srbhrai) ✦ [𝙻𝚒𝚗𝚔𝚎𝚍𝙸𝚗](https://www.linkedin.com/company/resume-matcher/) ✦ [𝙲𝚛𝚎𝚊𝚝𝚘𝚛](https://srbhr.com)
+## Overview
 
-**English** | [Español](README.es.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+This repository powers the Lumi Coach web app and Chrome extension.
 
-Create tailored resumes for each job application with AI-powered suggestions. Works locally with Ollama or connect to your favorite LLM provider via API.
+Lumi Coach is designed for fast, structured job-application workflows:
+- capture job context directly from LinkedIn
+- run multi-step AI tailoring against a master resume
+- open the generated draft in the web workspace for review
+- export polished resumes and related artifacts
 
-![Resume Matcher Demo](assets/Resume_Matcher_Demo_2.gif)
+The product combines:
+- a **Chrome extension** for LinkedIn-triggered job capture and resume runs
+- a **Next.js web app** for editing, previewing, and managing resumes
+- a **FastAPI backend** for resume APIs, PDF generation, and orchestration support
 
-</div>
+## How It Works
 
-<br>
+1. Upload or create your master resume.
+2. Open a live LinkedIn job posting.
+3. Launch Lumi Coach from the extension.
+4. Run the tailoring workflow.
+5. Review the generated resume in the Lumi Coach workspace.
+6. Export the final PDF.
 
-<div align="center">
+## Core Features
 
-![Stars](https://img.shields.io/github/stars/srbhr/Resume-Matcher?labelColor=F0F0E8&style=for-the-badge&color=1d4ed8)
-![Apache 2.0](https://img.shields.io/github/license/srbhr/Resume-Matcher?labelColor=F0F0E8&style=for-the-badge&color=1d4ed8) ![Forks](https://img.shields.io/github/forks/srbhr/Resume-Matcher?labelColor=F0F0E8&style=for-the-badge&color=1d4ed8) ![version](https://img.shields.io/badge/Version-1.2%20Nightvision%20-FFF?labelColor=F0F0E8&style=for-the-badge&color=1d4ed8)
+### LinkedIn-triggered tailoring
+Start from a real LinkedIn job page instead of copying job descriptions between tabs.
 
-[![Discord](https://img.shields.io/discord/1122069176962531400?labelColor=F0F0E8&logo=discord&logoColor=1d4ed8&style=for-the-badge&color=1d4ed8)](https://dsc.gg/resume-matcher) [![Website](https://img.shields.io/badge/website-Resume%20Matcher-FFF?labelColor=F0F0E8&style=for-the-badge&color=1d4ed8)](https://resumematcher.fyi) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Resume%20Matcher-FFF?labelColor=F0F0E8&logo=LinkedIn&style=for-the-badge&color=1d4ed8)](https://www.linkedin.com/company/resume-matcher/)
+### Multi-step AI orchestration
+Lumi Coach uses structured prompt chaining and provider integrations to analyze the role, position the candidate, and draft a tailored resume.
 
-<a href="https://trendshift.io/repositories/565" target="_blank"><img src="https://trendshift.io/api/badge/repositories/565" alt="srbhr%2FResume-Matcher | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+### Resume workspace
+Review, edit, rename, preview, and export tailored resumes in the web app.
 
-![Vercel OSS Program](https://vercel.com/oss/program-badge.svg)
+### Chrome extension workflow
+The extension handles job capture, account-aware local storage, run status, retry/refresh behavior, and exportable run analytics.
 
-</div>
+### PDF export
+Generate print-ready resumes with configurable template and page settings.
 
-> \[!IMPORTANT]
->
-> This project is in active development. New features are being added continuously, and we welcome contributions from the community. If you have any suggestions or feature requests, please feel free to open an issue on GitHub or discuss it on our [Discord](https://dsc.gg/resume-matcher) server.
+## Product Notes
 
-## Getting Started
+- Lumi Coach is optimized around LinkedIn job workflows.
+- The extension uses account-isolated local storage on the browser.
+- The web app and extension support authenticated handoff between the run flow and the resume workspace.
 
-Resume Matcher works by creating a master resume that you can use to tailor for each job application. Installation instructions here: [How to Install](#how-to-install)
+## Tech Stack
 
-### How It Works
+| Layer | Stack |
+|-------|-------|
+| Frontend | Next.js 16, React 19, TypeScript |
+| Backend | FastAPI, Python 3.13+, LiteLLM |
+| Database | TinyDB |
+| Styling | Tailwind CSS v4 |
+| PDF Rendering | Playwright / headless Chromium |
+| Browser Extension | Chrome Extension (Manifest V3) |
 
-1. **Upload** your master resume (PDF or DOCX)
-2. **Paste** a job description you're targeting
-3. **Review** AI-generated improvements and tailored content
-4. **Cover Letter** generator for the job application
-5. **Customize** the layout and sections to fit your style
-6. **Export** as a professional PDF with your preferred template
+## Repository Structure
 
-### Stay Connected
+```text
+apps/
+├── backend/           FastAPI API, orchestration, PDF rendering
+├── frontend/          Next.js web app
+└── chrome-extension/  LinkedIn workflow extension
 
-[![Discord](assets/resume_matcher_discord.png)](https://dsc.gg/resume-matcher)
+docs/                  Internal architecture, design, and agent docs
+assets/                Repository assets
+```
 
-Join our [Discord](https://dsc.gg/resume-matcher) for discussions, feature requests, and community support.
-
-[![LinkedIn](assets/resume_matcher_linkedin.png)](https://www.linkedin.com/company/resume-matcher/)
-
-Follow us on [LinkedIn](https://www.linkedin.com/company/resume-matcher/) for updates.
-
-![Star Resume Matcher](assets/star_resume_matcher.png)
-
-Star the repo to support development and get notified of new releases.
-
-## Sponsors
-
-![sponsors](assets/sponsors.png)
-
-We are grateful to our sponsors who help keep this project going. If you find Resume Matcher helpful, please consider [**sponsoring us**](https://github.com/sponsors/srbhr) to ensure continued development and improvements.
-
-| Sponsor | Description |
-|---------|-------------|
-| [Apideck](https://apideck.com?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) | One API to connect your app to 200+ SaaS platforms (accounting, HRIS, CRM, file storage). Build integrations once, not 50 times. 🌐 [apideck.com](https://apideck.com?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) |
-| [Vercel](https://vercel.com?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) | Resume Matcher is a part of Vercel OSS // Summer 2025 Program 🌐 [vercel.com](https://vercel.com?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) |
-| [Cubic.dev](https://cubic.dev?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) | Cubic provides PR reviews for Resume Matcher 🌐 [cubic.dev](https://cubic.dev?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) |
-| [Kilo Code](https://kilo.ai?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) | Kilo Code provides AI code reviews and coding credits to Resume Matcher 🌐 [kilo.ai](https://kilo.ai?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) |
-| [ZanReal](https://zanreal.com/?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) | ZanReal is an AI-driven development company building scalable cloud solutions, from strategy and UX to DevOps, helping teams ship faster and turn ideas into production. 🌐 [zanreal.com](https://zanreal.com/?utm_source=resumematcher&utm_medium=github&utm_campaign=sponsors) |
-
-<a id="support-the-development-by-donating"></a>
-
-## Sponsor Resume Matcher
-
-![donate](assets/supporting_resume_matcher.png)
-
-Please read our [Sponsorship Guide]([docs/agent/80-sponsorship/sponsorship-guide.md](https://resumematcher.fyi/docs/sponsoring)) for details on how your sponsorship helps the project. You will receive a special thank you in the ReadME and on our website.
-
-| Platform  | Link                                   |
-|-----------|----------------------------------------|
-| GitHub    | [![GitHub Sponsors](https://img.shields.io/github/sponsors/srbhr?style=for-the-badge&color=1d4ed8&labelColor=F0F0E8&logo=github&logoColor=black)](https://github.com/sponsors/srbhr) |
-| Buy Me a Coffee | [![BuyMeACoffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&color=1d4ed8&labelColor=F0F0E8&logoColor=black)](https://www.buymeacoffee.com/srbhr) |
-
-## Creators' Note
-
-[![srbhr](assets/creators_note.png)](https://srbhr.com)
-
-Thank you for checking out Resume Matcher. If you want to connect, collaborate, or just say hi, feel free to reach out!
-~ **Saurabh Rai** ✨
-
-You can follow me on:
-
-- Website: [https://srbhr.com](https://srbhr.com)
-- Linkedin: [https://www.linkedin.com/in/srbhr/](https://www.linkedin.com/in/srbhr/)
-- Twitter: [https://twitter.com/srbhrai](https://twitter.com/srbhrai)
-- GitHub: [https://github.com/srbhr](https://github.com/srbhr)
-
-## Key Features
-
-![resume_matcher_features](assets/features.png)
-
-### Core Features
-
-**Master Resume**: Create a comprehensive master resume to draw from your existing one.
-
-![Job Description Input](assets/step_2.png)
-
-### Resume Builder
-
-![Resume Builder](assets/step_5.png)
-
-Paste in a job description and get AI-powered resume tailored for that specific role.
-
-You can:
-
-- Modify suggested content
-- Add/remove sections
-- Rearrange sections via drag-and-drop
-- Choose from multiple resume templates
-
-### Cover Letter Generator
-
-Generate tailored cover letters based on the job description and your resume.
-
-![Cover Letter](assets/cover_letter.png)
-
-### Resume Scoring & Keyword Highlighting
-
-Analyze your resume against the job description with a match score, keyword highlighting, and suggestions for improvement.
-
-![Resume Scoring and Keyword Highlight](assets/keyword_highlighter.png)
-
-### PDF Export
-
-Export your tailored resume and cover letter in PDF.
-
-### Templates
-
-| Template Name | Preview | Description |
-|---------------|---------|-------------|
-| **Classic Single Column** | ![Classic Template](assets/pdf-templates/single-column.jpg) | A traditional and clean layout suitable for most industries. [𝐕𝐢𝐞𝐰 𝐏𝐃𝐅](assets/pdf-templates/single-column.pdf) |
-| **Modern Single Column** | ![Modern Template](assets/pdf-templates/modern-single-column.jpg) | A contemporary design with a focus on readability and aesthetics. [𝐕𝐢𝐞𝐰 𝐏𝐃𝐅](assets/pdf-templates/modern-single-column.pdf)|
-| **Classic Two Column** | ![Classic Two Column Template](assets/pdf-templates/two-column.jpg) | A structured layout that separates sections for clarity. [𝐕𝐢𝐞𝐰 𝐏𝐃𝐅](assets/pdf-templates/two-column.pdf)|
-| **Modern Two Column** | ![Modern Two Column Template](assets/pdf-templates/modern-two-column.jpg) | A sleek design that utilizes two columns for better organization. [𝐕𝐢𝐞𝐰 𝐏𝐃𝐅](assets/pdf-templates/modern-two-column.pdf)|
-
-### Internationalization
-
-- **Multi-Language UI**: Interface available in English, Spanish, Chinese, Japanese, and Portuguese (Brazilian)
-- **Multi-Language Content**: Generate resumes and cover letters in your preferred language
-
-### Roadmap
-
-If you have any suggestions or feature requests, please feel free to open an issue on GitHub or discuss it on our [Discord](https://dsc.gg/resume-matcher) server.
-
-- AI Canvas for crafting impactful, metric-driven resume content
-- Email template generator for job applications
-- Multi-job description optimization
-
-<a id="how-to-install"></a>
-
-## How to Install
-
-![Installation](assets/how_to_install_resumematcher.png)
-
-For detailed setup instructions, see **[SETUP.md](SETUP.md)** (English) or: [Español](SETUP.es.md), [简体中文](SETUP.zh-CN.md), [日本語](SETUP.ja.md).
+## Local Development
 
 ### Prerequisites
 
-| Tool | Version | Installation |
-|------|---------|--------------|
-| Python | 3.13+ | [python.org](https://python.org) |
-| Node.js | 22+ | [nodejs.org](https://nodejs.org) |
-| uv | Latest | [astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/) |
+- Python 3.13+
+- Node.js 22+
+- `uv`
 
 ### Quick Start
 
-Fastest for MacOS, WSL and Ubuntu users:
-
 ```bash
 # Clone the repository
-git clone https://github.com/srbhr/Resume-Matcher.git
-cd Resume-Matcher
+git clone https://github.com/kenn-nguyen/Lumi-Coach.git
+cd Lumi-Coach
 
-# Backend (Terminal 1)
+# Backend
 cd apps/backend
-cp .env.example .env        # Configure your AI provider
-uv sync                      # Install dependencies
+cp .env.example .env
+uv sync
 uv run uvicorn app.main:app --reload --port 8000
 
-# Frontend (Terminal 2)
-cd apps/frontend
+# Frontend
+cd ../frontend
 npm install
 npm run dev
 ```
 
-Open **<http://localhost:3000>** and configure your AI provider in Settings.
+Open [http://localhost:3000](http://localhost:3000).
 
-### Supported AI Providers
+### Chrome Extension Development
 
-| Provider | Local/Cloud | Notes |
-|----------|-------------|-------|
-| **Ollama** | Local | Free, runs on your machine |
-| **OpenAI** | Cloud | GPT-5 Nano, GPT-4o |
-| **Anthropic** | Cloud | Claude Haiku 4.5 |
-| **Google Gemini** | Cloud | Gemini 3 Flash |
-| **OpenRouter** | Cloud | Access to multiple models |
-| **DeepSeek** | Cloud | DeepSeek Chat |
+The extension source lives in [`apps/chrome-extension`](apps/chrome-extension).
 
-### Docker Deployment
+To test locally:
+1. open Chrome extension management
+2. enable developer mode
+3. load the `apps/chrome-extension` directory as an unpacked extension
 
-Official Docker images are published for `linux/amd64` and `linux/arm64` on:
+## Docker
 
-- `ghcr.io/srbhr/resume-matcher`
-- `srbhr/resume-matcher`
+Docker images are published to:
 
-Run on a single public port (`3000`) with API available at `/api`:
+- `ghcr.io/kenn-nguyen/lumi-coach`
+
+Example:
 
 ```bash
-docker run --name resume-matcher \
+docker run --name lumi-coach \
   -p 3000:3000 \
-  -v resume-data:/app/backend/data \
-  ghcr.io/srbhr/resume-matcher:latest
+  -v lumi-coach-data:/app/backend/data \
+  ghcr.io/kenn-nguyen/lumi-coach:latest
 ```
-
-Prefer pinning a version in production, for example `ghcr.io/srbhr/resume-matcher:1.2.0` or
-`ghcr.io/srbhr/resume-matcher:1.2`.
 
 Endpoints:
 
-- App: <http://localhost:3000>
-- API health check: <http://localhost:3000/api/v1/health>
-- API docs: <http://localhost:3000/docs>
+- App: [http://localhost:3000](http://localhost:3000)
+- API health: [http://localhost:3000/api/v1/health](http://localhost:3000/api/v1/health)
+- API docs: [http://localhost:3000/docs](http://localhost:3000/docs)
 
-> **Using Ollama with Docker?** Use `http://host.docker.internal:11434` as the Ollama URL instead of `localhost`.
+## Contributing
 
-### Tech Stack
+Contributions are welcome.
 
-| Component | Technology |
-|-----------|------------|
-| Backend | FastAPI, Python 3.13+, LiteLLM |
-| Frontend | Next.js 16, React 19, TypeScript |
-| Database | TinyDB (JSON file storage) |
-| Styling | Tailwind CSS 4, Swiss International Style |
-| PDF | Headless Chromium via Playwright |
+If you want to work on Lumi Coach:
+- open an issue or discussion for bugs and feature ideas
+- follow the repo conventions in [`AGENTS.md`](AGENTS.md)
+- run frontend lint/formatting before submitting changes
 
-## Join Us and Contribute
+## Privacy
 
-![how to contribute](assets/how_to_contribute.png)
+Lumi Coach is built to support authenticated resume tailoring workflows across the web app and Chrome extension.
 
-We welcome contributions from everyone! Whether you're a developer, designer, or just someone who wants to help out. All the contributors are listed in the [about page](https://resumematcher.fyi/about) on our website and on the GitHub Readme here.
+- extension-local data stays on the user’s browser unless a feature explicitly sends it to Lumi Coach services or the selected AI provider
+- saved provider keys in the extension are not uploaded just because they are stored locally
+- account switching in the extension uses isolated local workspaces
 
-Check out the roadmap if you would like to work on the features that are planned for the future. If you have any suggestions or feature requests, please feel free to open an issue on GitHub and discuss it on our [Discord](https://dsc.gg/resume-matcher) server.
+See the full policy here: [Privacy Policy](https://som-career-coach-iota.vercel.app/privacy)
 
-<a id="contributors"></a>
+## License
 
-## Contributors
-
-![Contributors](assets/contributors.png)
-
-<a href="https://github.com/srbhr/Resume-Matcher/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=srbhr/Resume-Matcher" />
-</a>
-
-<br/>
-
-<details>
-  <summary><kbd>Star History</kbd></summary>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=srbhr/resume-matcher&theme=dark&type=Date">
-    <img width="100%" src="https://api.star-history.com/svg?repos=srbhr/resume-matcher&theme=dark&type=Date">
-  </picture>
-</details>
-
-## Resume Matcher is a part of [Vercel Open Source Program](https://vercel.com/oss)
-
-![Vercel OSS Program](https://vercel.com/oss/program-badge.svg)
+This project is licensed under the Apache 2.0 License. See [LICENSE](LICENSE) for details.
