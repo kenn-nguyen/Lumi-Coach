@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Geist, Space_Grotesk } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import { AuthExtensionBridgeClient } from '@/components/auth/auth-extension-bridge-client';
 import { AuthSessionProvider } from '@/components/auth/auth-session-provider';
 import { PostHogProvider } from '@/components/analytics/posthog-provider';
@@ -101,6 +102,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </PostHogProvider>
           </Suspense>
         </AuthSessionProvider>
+        <Analytics />
       </body>
     </html>
   );
