@@ -6538,6 +6538,18 @@ function ensureRoot() {
                       <input id="${API_URL_INPUT_ID}" type="url" placeholder="API URL" />
                     </div>
                   </div>
+                  <div class="resume-matcher-settings-item__detail resume-matcher-field--full">
+                    Send me a message:
+                    <a href="https://www.linkedin.com/in/kenn-nguyen/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+                  </div>
+                  <div class="resume-matcher-settings-item__detail resume-matcher-field--full">
+                    Give feedback:
+                    <a href="https://lumicoach.userjot.com/?cursor=1&order=top&limit=10" target="_blank" rel="noopener noreferrer">UserJot</a>
+                  </div>
+                  <div class="resume-matcher-settings-item__detail resume-matcher-field--full">
+                    Join our community:
+                    <a href="https://chat.whatsapp.com/Ep41UDOTd3A4Lu78mxcEkQ?mode=gi_t" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+                  </div>
                 </div>
               </section>
             </details>

@@ -339,6 +339,39 @@ export default function Homepage(): React.ReactElement {
             sounding rushed.
           </p>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <p className="text-sm text-[#6a4251]">
+              Send me a message:{' '}
+              <a
+                href="https://www.linkedin.com/in/kenn-nguyen/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-[#5d1530] transition hover:text-[#32111d]"
+              >
+                LinkedIn
+              </a>
+            </p>
+            <p className="text-sm text-[#6a4251]">
+              Give feedback:{' '}
+              <a
+                href="https://lumicoach.userjot.com/?cursor=1&order=top&limit=10"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-[#5d1530] transition hover:text-[#32111d]"
+              >
+                UserJot
+              </a>
+            </p>
+            <p className="text-sm text-[#6a4251]">
+              Join our community:{' '}
+              <a
+                href="https://chat.whatsapp.com/Ep41UDOTd3A4Lu78mxcEkQ?mode=gi_t"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-[#5d1530] transition hover:text-[#32111d]"
+              >
+                WhatsApp
+              </a>
+            </p>
             <Link
               href="/privacy"
               className="font-medium text-[#5d1530] transition hover:text-[#32111d]"
