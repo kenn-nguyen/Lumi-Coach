@@ -10,6 +10,7 @@ import {
   mergeLlmSettings,
   updateLlmSettings,
 } from "./llm/profiles.js";
+import { isUserEditablePromptTemplateName } from "./prompt-defaults.js";
 
 const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
 const ONBOARDING_STEPS = ["intro", "sign_in", "assets", "provider", "done"];
@@ -22,6 +23,9 @@ const LEGACY_ACCOUNT_SCOPED_KEYS = [
   STORAGE_KEYS.prompt1TemplateAsset,
   STORAGE_KEYS.prompt2TemplateAsset,
   STORAGE_KEYS.prompt3TemplateAsset,
+  STORAGE_KEYS.serverPromptArtifacts,
+  STORAGE_KEYS.serverPromptManifest,
+  STORAGE_KEYS.serverPromptLastSyncedAt,
   STORAGE_KEYS.llmSettings,
   STORAGE_KEYS.chatGptTargetUrl,
   STORAGE_KEYS.onboardingProgress,
@@ -33,6 +37,9 @@ const LEGACY_ACCOUNT_SCOPED_KEYS = [
 ];
 const ACCOUNT_SETTINGS_SCOPED_KEYS = [
   STORAGE_KEYS.promptTemplateProfiles,
+  STORAGE_KEYS.serverPromptArtifacts,
+  STORAGE_KEYS.serverPromptManifest,
+  STORAGE_KEYS.serverPromptLastSyncedAt,
   STORAGE_KEYS.llmSettings,
   STORAGE_KEYS.chatGptTargetUrl,
   STORAGE_KEYS.onboardingProgress,
@@ -70,6 +77,37 @@ function getDefaultPromptTemplateProfiles() {
   };
 }
 
+function normalizePromptArtifactMap(storedArtifacts) {
+  if (!storedArtifacts || typeof storedArtifacts !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(storedArtifacts).filter(
+      ([key, value]) =>
+        typeof key === "string" &&
+        key.trim().length > 0 &&
+        typeof value === "string",
+    ),
+  );
+}
+
+function normalizePromptManifest(storedManifest) {
+  if (!storedManifest || typeof storedManifest !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(storedManifest).filter(
+      ([key, value]) =>
+        typeof key === "string" &&
+        key.trim().length > 0 &&
+        typeof value === "string" &&
+        value.trim().length > 0,
+    ),
+  );
+}
+
 function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -90,8 +128,16 @@ function getDefaultExtensionState() {
     previewUrl: null,
     jobContextLinked: false,
     resumeSource: null,
+    prompt4Input: null,
+    prompt4Raw: null,
+    prompt4Result: null,
+    prompt1Input: null,
+    prompt1Raw: null,
     prompt1Result: null,
+    prompt2Input: null,
+    prompt2Raw: null,
     prompt2Result: null,
+    prompt3Input: null,
     prompt3Raw: null,
     prompt3Parsed: null,
     prompt3Feedback: null,
@@ -655,6 +701,9 @@ export async function setPromptTemplateAsset(
   asset,
   promptProfileId = null,
 ) {
+  if (!isUserEditablePromptTemplateName(templateName)) {
+    throw new Error(`Prompt template "${templateName}" is system-managed and cannot be edited.`);
+  }
   const profileField = `${templateName}TemplateAsset`;
   if (!(profileField in getDefaultPromptTemplateProfiles().profiles.profile1)) {
     throw new Error(`Unknown prompt template name "${templateName}".`);
@@ -694,15 +743,73 @@ export async function savePromptTemplateProfileBundle(profileId, uploads) {
   const currentAssets = await getUserAssets();
   const next = cloneValue(currentAssets.promptTemplateProfiles);
   const currentProfile = next.profiles[profileId] ?? {};
+  const allowedUploads = Object.fromEntries(
+    Object.entries(uploads || {}).filter(([field]) =>
+      ["prompt1TemplateAsset", "prompt2TemplateAsset", "prompt3TemplateAsset"].includes(field),
+    ),
+  );
   next.profiles[profileId] = {
     ...currentProfile,
-    ...uploads,
+    ...allowedUploads,
   };
   next.activeProfileId = profileId;
   await setScopedStorageValues({
     [STORAGE_KEYS.promptTemplateProfiles]: next,
   });
   return next;
+}
+
+export async function getServerPromptDefaults() {
+  const data = await getScopedStorageValues([
+    STORAGE_KEYS.serverPromptArtifacts,
+    STORAGE_KEYS.serverPromptManifest,
+    STORAGE_KEYS.serverPromptLastSyncedAt,
+  ]);
+
+  return {
+    artifacts: normalizePromptArtifactMap(
+      data[STORAGE_KEYS.serverPromptArtifacts],
+    ),
+    manifest: normalizePromptManifest(data[STORAGE_KEYS.serverPromptManifest]),
+    lastSyncedAt:
+      typeof data[STORAGE_KEYS.serverPromptLastSyncedAt] === "string"
+        ? data[STORAGE_KEYS.serverPromptLastSyncedAt]
+        : null,
+  };
+}
+
+export async function applyServerPromptDefaultsSyncResult(syncResult) {
+  const current = await getServerPromptDefaults();
+  const changed = normalizePromptArtifactMap(syncResult?.changed);
+  const removed = Array.isArray(syncResult?.removed)
+    ? syncResult.removed.filter(
+        (value) => typeof value === "string" && value.trim().length > 0,
+      )
+    : [];
+  const nextArtifacts = {
+    ...current.artifacts,
+    ...changed,
+  };
+
+  for (const artifactKey of removed) {
+    delete nextArtifacts[artifactKey];
+  }
+
+  const nextManifest = normalizePromptManifest(syncResult?.manifest);
+  const nextSyncedAt = new Date().toISOString();
+
+  await setScopedStorageValues({
+    [STORAGE_KEYS.serverPromptArtifacts]: nextArtifacts,
+    [STORAGE_KEYS.serverPromptManifest]: nextManifest,
+    [STORAGE_KEYS.serverPromptLastSyncedAt]: nextSyncedAt,
+  });
+
+  return {
+    artifacts: nextArtifacts,
+    manifest: nextManifest,
+    lastSyncedAt: nextSyncedAt,
+    changedKeys: [...Object.keys(changed), ...removed],
+  };
 }
 
 async function getStoredLlmSettings() {

@@ -693,6 +693,20 @@ class PromptConfigResponse(BaseModel):
     prompt_options: list[PromptOption]
 
 
+class ExtensionPromptSyncRequest(BaseModel):
+    """Request to sync extension-managed prompt artifacts."""
+
+    manifest: dict[str, str] = Field(default_factory=dict)
+
+
+class ExtensionPromptSyncResponse(BaseModel):
+    """Delta response for extension-managed prompt artifacts."""
+
+    changed: dict[str, str] = Field(default_factory=dict)
+    removed: list[str] = Field(default_factory=list)
+    manifest: dict[str, str] = Field(default_factory=dict)
+
+
 # API Key Management Models
 class ApiKeyProviderStatus(BaseModel):
     """Status of a single API key provider."""

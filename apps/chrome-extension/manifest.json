@@ -22,7 +22,8 @@
     "https://generativelanguage.googleapis.com/*",
     "https://*.posthog.com/*",
     "https://som-career-coach.onrender.com/*",
-    "https://som-career-coach-iota.vercel.app/*"
+    "https://lumi.ceo/*",
+    "https://www.lumi.ceo/*"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -30,7 +31,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.linkedin.com/jobs*"],
+      "matches": ["https://*/*", "http://*/*"],
       "js": ["src/content/linkedin-job.js"],
       "run_at": "document_idle"
     }
@@ -44,7 +45,7 @@
     }
   },
   "externally_connectable": {
-    "matches": ["https://*.vercel.app/*"]
+    "matches": ["https://lumi.ceo/*", "https://www.lumi.ceo/*"]
   },
   "web_accessible_resources": [
     {
@@ -53,6 +54,7 @@
         "src/prompts/patches/*.txt",
         "src/assets/*.gif",
         "src/assets/*.png",
+        "src/content/run-status.js",
         "src/content/site-adapters/index.js",
         "src/content/site-adapters/linkedin/*.js",
         "src/content/site-adapters/shared/*.js",

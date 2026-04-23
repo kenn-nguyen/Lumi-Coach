@@ -190,6 +190,72 @@ async function fetchWithAuth(endpoint, options = {}) {
   return response;
 }
 
+export async function syncExtensionPromptDefaults(manifest = {}) {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/config/extension-prompts/sync`;
+  logInfo("PromptDefaultsApi", "Syncing server-managed prompt defaults.", {
+    endpoint,
+    manifestCount:
+      manifest && typeof manifest === "object" ? Object.keys(manifest).length : 0,
+  });
+
+  let response;
+  try {
+    response = await fetchWithAuth(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manifest:
+          manifest && typeof manifest === "object" ? manifest : {},
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(
+      "PromptDefaultsApi",
+      "Prompt defaults sync failed before response.",
+      {
+        endpoint,
+        error: message,
+      },
+    );
+    throw new Error(
+      `Prompt defaults sync failed before response at ${endpoint}: ${message}`,
+    );
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    logError(
+      "PromptDefaultsApi",
+      "Prompt defaults sync returned a non-OK status.",
+      {
+        endpoint,
+        status: response.status,
+        body: text,
+      },
+    );
+    throw new Error(
+      `Failed to sync prompt defaults (status ${response.status}): ${text}`,
+    );
+  }
+
+  const payload = await response.json();
+  return {
+    changed:
+      payload?.changed && typeof payload.changed === "object"
+        ? payload.changed
+        : {},
+    removed: Array.isArray(payload?.removed) ? payload.removed : [],
+    manifest:
+      payload?.manifest && typeof payload.manifest === "object"
+        ? payload.manifest
+        : {},
+  };
+}
+
 export async function listResumes(includeMaster = false, requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/list${includeMaster ? "?include_master=true" : ""}`;

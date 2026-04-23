@@ -7,13 +7,18 @@ import {
 } from "./json.js";
 import { evaluateJobDescriptionGuardrail } from "./job-guardrail.js";
 import {
+  loadSystemPromptGuardrails,
   renderPrompt1,
   renderPrompt2,
   renderPrompt3,
   renderPrompt4,
 } from "./prompt-loader.js";
 import { scrapeLinkedInJob } from "./linkedin.js";
-import { validateResumeData } from "./validation.js";
+import {
+  validatePrompt1Data,
+  validatePrompt2Data,
+  validateResumeData,
+} from "./validation.js";
 import {
   buildPreviewUrl,
   cloneResume,
@@ -38,6 +43,9 @@ import {
   setStoryboardAsset,
   upsertHistoryEntry,
 } from "./storage.js";
+import {
+  alignSectionMetaToSourceResume,
+} from "./resume-structure.js";
 import { captureExtensionEvent } from "./analytics.js";
 import { getActiveLlmProfile } from "./llm/profiles.js";
 import { runPrompt } from "./llm/runners.js";
@@ -85,6 +93,17 @@ async function getActiveLinkedInTabId(tabId) {
     );
   }
   return activeTab.id;
+}
+
+async function getResolvableTabId(tabId) {
+  if (typeof tabId === "number") {
+    return tabId;
+  }
+  const tabs = await chrome.tabs.query({
+    active: true,
+    lastFocusedWindow: true,
+  });
+  return tabs[0]?.id ?? null;
 }
 
 async function buildJobSnapshot(activeTabId, jobInput = null) {
@@ -750,6 +769,87 @@ function prefixGenerationFeedbackSummary(feedback, profile) {
   };
 }
 
+function buildStructuredPromptValidationResult(rawText, validator, extractor = null) {
+  try {
+    const parsed = typeof extractor === "function"
+      ? extractor(rawText)
+      : extractJsonFromText(rawText, {
+          validate: (candidate) => validator(candidate).length === 0,
+        });
+    const validationErrors = validator(parsed);
+    if (validationErrors.length > 0) {
+      return {
+        valid: false,
+        message: validationErrors.join(" | "),
+      };
+    }
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to parse JSON from model output.",
+    };
+  }
+}
+
+function formatPreviousInvalidOutput(previousRawText) {
+  const content =
+    typeof previousRawText === "string" && previousRawText.trim()
+      ? previousRawText.trim()
+      : "(empty response)";
+  return [
+    "Previous invalid response:",
+    content,
+  ].join("\n");
+}
+
+function validatePrompt1RawOutput(rawText) {
+  return buildStructuredPromptValidationResult(rawText, validatePrompt1Data);
+}
+
+function buildPrompt1RepairPrompt({
+  validationMessage,
+  promptLabel,
+  attempt,
+  previousRawText,
+}) {
+  return [
+    `Your previous ${promptLabel ?? "Prompt 1"} response was invalid.`,
+    `Validation issue: ${validationMessage}`,
+    "Return corrected JSON only.",
+    "Do not include markdown fences, commentary, or prose before or after the JSON.",
+    "Return exactly one JSON object that matches the Prompt 1 output contract.",
+    "Keep the same JD analysis and ATS extraction intent; only fix the schema/content contract issues.",
+    formatPreviousInvalidOutput(previousRawText),
+    `This is repair attempt ${attempt}.`,
+  ].join("\n\n");
+}
+
+function validatePrompt2RawOutput(rawText) {
+  return buildStructuredPromptValidationResult(rawText, validatePrompt2Data);
+}
+
+function buildPrompt2RepairPrompt({
+  validationMessage,
+  promptLabel,
+  attempt,
+  previousRawText,
+}) {
+  return [
+    `Your previous ${promptLabel ?? "Prompt 2"} response was invalid.`,
+    `Validation issue: ${validationMessage}`,
+    "Return corrected JSON only.",
+    "Do not include markdown fences, commentary, or prose before or after the JSON.",
+    "Return exactly one JSON object that matches the Prompt 2 output contract.",
+    "Keep the same positioning strategy and evidence constraints; only fix the schema/content contract issues.",
+    formatPreviousInvalidOutput(previousRawText),
+    `This is repair attempt ${attempt}.`,
+  ].join("\n\n");
+}
+
 function validatePrompt3RawOutput(rawText) {
   try {
     const prompt3Result = extractPrompt3PayloadFromText(rawText);
@@ -772,7 +872,12 @@ function validatePrompt3RawOutput(rawText) {
   }
 }
 
-function buildPrompt3RepairPrompt({ validationMessage, promptLabel, attempt }) {
+function buildPrompt3RepairPrompt({
+  validationMessage,
+  promptLabel,
+  attempt,
+  previousRawText,
+}) {
   return [
     `Your previous ${promptLabel ?? "Prompt 3"} response was invalid.`,
     `Validation issue: ${validationMessage}`,
@@ -783,8 +888,9 @@ function buildPrompt3RepairPrompt({ validationMessage, promptLabel, attempt }) {
     "Do not use the em dash character `—`; use a normal hyphen `-` instead.",
     "Do not end resume bullet strings with a period `.`.",
     "Do not return the empty schema template. Reuse the same resume content you already generated, but fix the JSON format and schema issues.",
+    formatPreviousInvalidOutput(previousRawText),
     `This is repair attempt ${attempt}.`,
-  ].join("\n");
+  ].join("\n\n");
 }
 
 function validatePrompt4RawOutput(rawText) {
@@ -811,7 +917,12 @@ function validatePrompt4RawOutput(rawText) {
   }
 }
 
-function buildPrompt4RepairPrompt({ validationMessage, promptLabel, attempt }) {
+function buildPrompt4RepairPrompt({
+  validationMessage,
+  promptLabel,
+  attempt,
+  previousRawText,
+}) {
   return [
     `Your previous ${promptLabel ?? "Prompt 4"} response was invalid.`,
     `Validation issue: ${validationMessage}`,
@@ -820,9 +931,15 @@ function buildPrompt4RepairPrompt({ validationMessage, promptLabel, attempt }) {
     "Return only the ResumeData object itself. Do not wrap it in `resume_data`.",
     "Do not include `generation_feedback`, explanations, notes, or any other top-level keys.",
     "Do not use the em dash character `—`; use a normal hyphen `-` instead.",
+    "Every `sectionMeta` item must be a full object with these fields: `id`, `key`, `displayName`, `sectionType`, `isDefault`, `isVisible`, `order`.",
+    "`sectionMeta[].id`, `sectionMeta[].key`, and `sectionMeta[].displayName` must be strings.",
+    "`sectionMeta[].sectionType` must be one of `personalInfo`, `text`, `itemList`, or `stringList`.",
+    "`sectionMeta[].isDefault` and `sectionMeta[].isVisible` must be booleans.",
+    "`sectionMeta[].order` must be an integer.",
     "Do not return the empty schema template. Reuse the same resume facts you already extracted, but fix the JSON format and schema issues.",
+    formatPreviousInvalidOutput(previousRawText),
     `This is repair attempt ${attempt}.`,
-  ].join("\n");
+  ].join("\n\n");
 }
 
 function buildBootstrappedMasterFilename(asset) {
@@ -863,6 +980,9 @@ async function bootstrapMasterResumeFromMarkdown({
     activeRunJob,
     patchError: null,
     status: SESSION_STATUS.bootstrapMaster,
+    prompt4Input: null,
+    prompt4Raw: null,
+    prompt4Result: null,
   });
 
   try {
@@ -874,6 +994,11 @@ async function bootstrapMasterResumeFromMarkdown({
       },
       activeLlmProfile,
     );
+    await setExtensionState({
+      prompt4Input: prompt4,
+      prompt4Raw: null,
+      prompt4Result: null,
+    });
     logPromptDebug("Prompt 4", "input", prompt4);
     logInfo("Orchestrator", "Running Prompt 4.");
 
@@ -893,6 +1018,10 @@ async function bootstrapMasterResumeFromMarkdown({
       prompt4Run.status === "success"
         ? prompt4Run.rawText
         : (prompt4Run.partialRawText ?? "");
+    await setExtensionState({
+      prompt4Input: prompt4,
+      prompt4Raw,
+    });
 
     if (prompt4Run.status === "canceled") {
       throwIfRunCanceled(runId, "Prompt 4");
@@ -915,6 +1044,9 @@ async function bootstrapMasterResumeFromMarkdown({
     const parsedResumeData = normalizePrompt3ResumeData(
       extractPrompt4ResumeDataFromText(prompt4Raw),
     );
+    await setExtensionState({
+      prompt4Result: parsedResumeData,
+    });
     const validationErrors = validateResumeData(parsedResumeData);
     if (validationErrors.length > 0) {
       throw new Error(
@@ -938,7 +1070,12 @@ async function bootstrapMasterResumeFromMarkdown({
       resumeId: uploadResponse.resume_id,
       processingStatus: uploadResponse.processing_status ?? null,
     });
-    return uploadResponse.resume_id;
+    return {
+      resumeId: uploadResponse.resume_id,
+      prompt4Input: prompt4,
+      prompt4Raw,
+      prompt4Result: parsedResumeData,
+    };
   } catch (error) {
     if (isRunCanceledError(error)) {
       throw error;
@@ -975,7 +1112,12 @@ async function resolveBaseResumeId({
       runId,
     });
   }
-  return masterResume.resume_id;
+  return {
+    resumeId: masterResume.resume_id,
+    prompt4Input: null,
+    prompt4Raw: null,
+    prompt4Result: null,
+  };
 }
 
 export async function generateResumeForLinkedInJob(
@@ -988,28 +1130,38 @@ export async function generateResumeForLinkedInJob(
   const customContext = prompt1CustomInstruction.trim();
   const customContextProvided = customContext.length > 0;
   const manualJobInputUsed = Boolean(jobInput?.rawText?.trim());
+  let prompt4Input = null;
+  let prompt4Raw = null;
+  let prompt4Result = null;
+  let prompt1Input = null;
   let prompt1DurationMs = null;
+  let prompt2Input = null;
   let prompt2DurationMs = null;
+  let prompt3Input = null;
   let prompt3DurationMs = null;
   let patchDurationMs = null;
   logInfo("Orchestrator", "Loading local assets.");
   const {
     masterResumeContextAsset,
     storyboardAsset,
-    systemPromptTemplateAsset,
     llmSettings,
     customFeatureEnabled,
     apifyFallbackSettings,
   } = await getUserAssets();
   const activeLlmProfile = getActiveLlmProfile(llmSettings);
-  const systemPrompt = systemPromptTemplateAsset?.content?.trim() || "";
+  const systemPrompt = await loadSystemPromptGuardrails();
   const currentExtensionState = await getExtensionState();
   const runId = currentExtensionState?.sessionId ?? null;
   const cancel = createCancelHelpers(runId);
 
   cancel.throwIfCanceled("job tab resolution");
-  const activeTabId = await getActiveLinkedInTabId(tabId);
-  logInfo("Orchestrator", "Using active LinkedIn tab.", { activeTabId });
+  const activeTabId = manualJobInputUsed
+    ? await getResolvableTabId(tabId)
+    : await getActiveLinkedInTabId(tabId);
+  logInfo("Orchestrator", "Using source tab.", {
+    activeTabId,
+    manualJobInputUsed,
+  });
   cancel.throwIfCanceled("job extraction");
   const jobSnapshot = await resolveValidatedJobSnapshot({
     activeTabId,
@@ -1047,7 +1199,7 @@ export async function generateResumeForLinkedInJob(
     datePosted: jobSnapshot.datePosted ?? null,
     sourceUrl: jobSnapshot.sourceUrl,
   };
-  const baseResumeId = await resolveBaseResumeId({
+  const baseResumeResolution = await resolveBaseResumeId({
     masterResumeContextAsset,
     activeLlmProfile,
     systemPrompt,
@@ -1055,6 +1207,10 @@ export async function generateResumeForLinkedInJob(
     sourceTabId: activeTabId,
     runId,
   });
+  const baseResumeId = baseResumeResolution.resumeId;
+  prompt4Input = baseResumeResolution.prompt4Input ?? null;
+  prompt4Raw = baseResumeResolution.prompt4Raw ?? null;
+  prompt4Result = baseResumeResolution.prompt4Result ?? null;
   logInfo("Orchestrator", "Resolved base resume for cloning.", {
     baseResumeId,
   });
@@ -1089,8 +1245,16 @@ export async function generateResumeForLinkedInJob(
     tailoredResumeId: null,
     previewUrl: null,
     jobContextLinked: false,
+    prompt4Input,
+    prompt4Raw,
+    prompt4Result,
+    prompt1Input: null,
+    prompt1Raw: null,
     prompt1Result: null,
+    prompt2Input: null,
+    prompt2Raw: null,
     prompt2Result: null,
+    prompt3Input: null,
     prompt3Raw: null,
     prompt3Parsed: null,
     prompt3Feedback: null,
@@ -1167,6 +1331,10 @@ export async function generateResumeForLinkedInJob(
 
   logInfo("Orchestrator", "Rendering Prompt 1.");
   const prompt1 = await renderPrompt1(promptContext, activeLlmProfile);
+  prompt1Input = prompt1;
+  await setExtensionState({
+    prompt1Input,
+  });
   logPromptDebug("Prompt 1", "input", prompt1);
 
   logInfo("Orchestrator", "Running Prompt 1.");
@@ -1184,9 +1352,20 @@ export async function generateResumeForLinkedInJob(
     systemPrompt,
     runId,
     signal: cancel.signal(),
+    validateResponse: validatePrompt1RawOutput,
+    buildRepairPrompt: buildPrompt1RepairPrompt,
+    maxRepairAttempts: 1,
   });
   prompt1DurationMs = Date.now() - prompt1StartedMs;
   cancel.throwIfCanceled("Prompt 1");
+  const prompt1Raw =
+    prompt1Run.status === "success"
+      ? prompt1Run.rawText
+      : (prompt1Run.partialRawText ?? "");
+  await setExtensionState({
+    prompt1Raw,
+    prompt1DurationMs,
+  });
   if (prompt1Run.status === "canceled") {
     throwIfRunCanceled(runId, "Prompt 1");
   }
@@ -1201,11 +1380,28 @@ export async function generateResumeForLinkedInJob(
     });
     throw new Error(`Prompt 1 failed: ${prompt1Run.message}`);
   }
+  if (prompt1Run.validationError) {
+    logError("Orchestrator", "Prompt 1 failed validation after repair.", {
+      validationError: prompt1Run.validationError,
+      conversationUrl: prompt1Run.conversationUrl ?? null,
+    });
+    await captureExtensionEvent("prompt_stage_failed", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 1,
+      stage_label: "analyze_jd",
+      error_message: prompt1Run.validationError,
+    });
+    throw new Error(`Prompt 1 failed: ${prompt1Run.validationError}`);
+  }
   logInfo("Orchestrator", "Parsing Prompt 1 output.");
-  logPromptDebug("Prompt 1", "output", prompt1Run.rawText);
-  const prompt1Result = extractJsonFromText(prompt1Run.rawText);
+  logPromptDebug("Prompt 1", "output", prompt1Raw);
+  const prompt1Result = extractJsonFromText(prompt1Raw, {
+    validate: (candidate) => validatePrompt1Data(candidate).length === 0,
+  });
   promptContext.prompt1Json = prompt1Result;
   await setExtensionState({
+    prompt1Raw,
     prompt1Result,
     prompt1DurationMs,
     status: SESSION_STATUS.prompt1Done,
@@ -1220,6 +1416,10 @@ export async function generateResumeForLinkedInJob(
 
   logInfo("Orchestrator", "Rendering Prompt 2.");
   const prompt2 = await renderPrompt2(promptContext, activeLlmProfile);
+  prompt2Input = prompt2;
+  await setExtensionState({
+    prompt2Input,
+  });
   logPromptDebug("Prompt 2", "input", prompt2);
   logInfo("Orchestrator", "Running Prompt 2.");
   const prompt2StartedMs = Date.now();
@@ -1236,9 +1436,20 @@ export async function generateResumeForLinkedInJob(
     systemPrompt,
     runId,
     signal: cancel.signal(),
+    validateResponse: validatePrompt2RawOutput,
+    buildRepairPrompt: buildPrompt2RepairPrompt,
+    maxRepairAttempts: 1,
   });
   prompt2DurationMs = Date.now() - prompt2StartedMs;
   cancel.throwIfCanceled("Prompt 2");
+  const prompt2Raw =
+    prompt2Run.status === "success"
+      ? prompt2Run.rawText
+      : (prompt2Run.partialRawText ?? "");
+  await setExtensionState({
+    prompt2Raw,
+    prompt2DurationMs,
+  });
   if (prompt2Run.status === "canceled") {
     throwIfRunCanceled(runId, "Prompt 2");
   }
@@ -1253,11 +1464,28 @@ export async function generateResumeForLinkedInJob(
     });
     throw new Error(`Prompt 2 failed: ${prompt2Run.message}`);
   }
+  if (prompt2Run.validationError) {
+    logError("Orchestrator", "Prompt 2 failed validation after repair.", {
+      validationError: prompt2Run.validationError,
+      conversationUrl: prompt2Run.conversationUrl ?? null,
+    });
+    await captureExtensionEvent("prompt_stage_failed", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 2,
+      stage_label: "strategize_positioning",
+      error_message: prompt2Run.validationError,
+    });
+    throw new Error(`Prompt 2 failed: ${prompt2Run.validationError}`);
+  }
   logInfo("Orchestrator", "Parsing Prompt 2 output.");
-  logPromptDebug("Prompt 2", "output", prompt2Run.rawText);
-  const prompt2Result = extractJsonFromText(prompt2Run.rawText);
+  logPromptDebug("Prompt 2", "output", prompt2Raw);
+  const prompt2Result = extractJsonFromText(prompt2Raw, {
+    validate: (candidate) => validatePrompt2Data(candidate).length === 0,
+  });
   promptContext.prompt2Json = prompt2Result;
   await setExtensionState({
+    prompt2Raw,
     prompt2Result,
     prompt2DurationMs,
     status: SESSION_STATUS.prompt2Done,
@@ -1271,6 +1499,10 @@ export async function generateResumeForLinkedInJob(
 
   logInfo("Orchestrator", "Rendering Prompt 3.");
   const prompt3 = await renderPrompt3(promptContext, activeLlmProfile);
+  prompt3Input = prompt3;
+  await setExtensionState({
+    prompt3Input,
+  });
   logPromptDebug("Prompt 3", "input", prompt3);
   logInfo("Orchestrator", "Running Prompt 3.");
   const prompt3StartedMs = Date.now();
@@ -1337,13 +1569,17 @@ export async function generateResumeForLinkedInJob(
   const normalizedPrompt3Resume = normalizePrompt3ResumeData(
     prompt3Result.resumeData,
   );
-  const prompt3Parsed = applyKennNguyenCustomFeature(
+  const prompt3WithPreservedFacts = applyKennNguyenCustomFeature(
     preserveGeneratedResumeFacts(
       masterResumeData,
       normalizedPrompt3Resume,
       preserveFactsEnabled,
     ),
     customFeatureEnabled,
+  );
+  const prompt3Parsed = alignSectionMetaToSourceResume(
+    masterResumeData,
+    prompt3WithPreservedFacts,
   );
   if (
     customFeatureEnabled &&
@@ -1442,9 +1678,19 @@ export async function generateResumeForLinkedInJob(
       patchDurationMs,
       totalDurationMs: Date.now() - runStartedMs,
       prompt3ValidationErrorCount: validationErrors.length,
+      prompt4Input,
+      prompt4Raw,
+      prompt4Result,
+      prompt1Input,
+      prompt1Raw,
       prompt1Result,
+      prompt2Input,
+      prompt2Raw,
       prompt2Result,
+      prompt3Input,
+      prompt3Raw,
       prompt3Parsed,
+      prompt3Feedback,
     };
   }
 

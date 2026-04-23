@@ -1,5 +1,6 @@
 export const LINKEDIN_ROUTE_MODE = Object.freeze({
   hidden: "hidden",
+  manual: "manual",
   waiting: "waiting",
   active: "active",
 });
@@ -23,7 +24,7 @@ export function isLinkedInJobsShellUrl(urlValue) {
 
 export function classifyLinkedInJobsRoute(urlValue) {
   const fallback = {
-    mode: LINKEDIN_ROUTE_MODE.hidden,
+    mode: LINKEDIN_ROUTE_MODE.manual,
     isJobsShell: false,
     isBrowsingSurface: false,
     isSelectedJob: false,
@@ -71,7 +72,7 @@ export function classifyLinkedInJobsRoute(urlValue) {
       mode:
         !isRoot && isBrowsingSurface
           ? LINKEDIN_ROUTE_MODE.waiting
-          : LINKEDIN_ROUTE_MODE.hidden,
+          : LINKEDIN_ROUTE_MODE.manual,
       isJobsShell: true,
       isBrowsingSurface,
       isSelectedJob: false,

@@ -10,6 +10,7 @@ import {
   openPreviewTab,
   openWebsiteSignInTab,
   openWebsiteSignOutTab,
+  syncExtensionPromptDefaults,
   verifyWebsiteSession,
 } from "./runtime/api.js";
 import { SESSION_STATUS } from "./runtime/constants.js";
@@ -38,8 +39,10 @@ import {
   getOnboardingProgress,
   getUserAssets,
   getPendingExtensionAction,
+  getServerPromptDefaults,
   hasValidExtensionAuth,
   resetExtensionSettingsToDefault,
+  applyServerPromptDefaultsSyncResult,
   saveApifyFallbackSettings,
   saveLlmSettings,
   setApiOrigin,
@@ -57,6 +60,12 @@ import {
   setPromptTemplateAsset,
   upsertHistoryEntry,
 } from "./runtime/storage.js";
+import {
+  getPackagedPromptArtifactText,
+  getPromptArtifactDefinition,
+  getPromptArtifactKeysForTemplate,
+  getPromptDownloadConfig,
+} from "./runtime/prompt-defaults.js";
 import {
   clearActiveRun,
   ensureActiveRun,
@@ -160,6 +169,13 @@ async function getConnectionSnapshot({ trySync = true } = {}) {
     if (trySync && websiteAuthenticated && (!extensionConnected || accountMismatch)) {
       const synced = await syncExtensionAuthFromWebsite();
       extensionConnected = Boolean(synced?.token);
+      if (extensionConnected) {
+        void syncDefaultPromptArtifacts().catch((error) => {
+          logWarn("Background", "Prompt defaults sync after auth sync failed.", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
     } else if (accountMismatch) {
       extensionConnected = false;
     }
@@ -232,13 +248,117 @@ async function syncExtensionAuthFromWebsite() {
   };
 }
 
-async function broadcastLinkedInMessage(message) {
-  const tabs = await chrome.tabs
-    .query({ url: ["https://www.linkedin.com/*"] })
-    .catch(() => []);
+async function syncDefaultPromptArtifacts() {
+  const hasAuth = await hasValidExtensionAuth().catch(() => false);
+  if (!hasAuth) {
+    return {
+      ok: false,
+      skipped: true,
+    };
+  }
+  const cache = await getServerPromptDefaults();
+  try {
+    const syncResult = await syncExtensionPromptDefaults(cache.manifest);
+    const applied = await applyServerPromptDefaultsSyncResult(syncResult);
+    if (applied.changedKeys.length > 0) {
+      clearPromptTemplateCache();
+    }
+    return {
+      ok: true,
+      changedKeys: applied.changedKeys,
+      lastSyncedAt: applied.lastSyncedAt,
+      degraded: false,
+    };
+  } catch (error) {
+    logWarn("Background", "Prompt defaults sync failed; keeping cached/default prompts.", {
+      error: error instanceof Error ? error.message : String(error),
+      cachedArtifactCount: Object.keys(cache.artifacts ?? {}).length,
+      hasCachedManifest: Object.keys(cache.manifest ?? {}).length > 0,
+    });
+    return {
+      ok: true,
+      changedKeys: [],
+      lastSyncedAt: cache.lastSyncedAt ?? null,
+      degraded: true,
+      usedCachedDefaults: Object.keys(cache.artifacts ?? {}).length > 0,
+    };
+  }
+}
+
+async function buildDefaultPromptDownload(templateName) {
+  const config = getPromptDownloadConfig(templateName);
+  if (!config) {
+    throw new Error(`Unknown prompt template "${templateName}".`);
+  }
+
+  let cache = await getServerPromptDefaults();
+  const artifactKeys = getPromptArtifactKeysForTemplate(templateName);
+  const missingArtifact = artifactKeys.some(
+    (artifactKey) => typeof cache.artifacts?.[artifactKey] !== "string",
+  );
+
+  if (missingArtifact) {
+    try {
+      await syncDefaultPromptArtifacts();
+      cache = await getServerPromptDefaults();
+    } catch (error) {
+      logWarn("Background", "Prompt defaults sync failed before download fallback.", {
+        templateName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const entries = [];
+  for (const artifactKey of artifactKeys) {
+    const definition = getPromptArtifactDefinition(artifactKey);
+    if (!definition?.fileName) {
+      continue;
+    }
+
+    let content = cache.artifacts?.[artifactKey];
+    if (typeof content !== "string") {
+      content = await getPackagedPromptArtifactText(artifactKey).catch(() => "");
+    }
+    if (typeof content !== "string" || content.length === 0) {
+      continue;
+    }
+    entries.push({
+      name: definition.fileName,
+      content,
+    });
+  }
+
+  if (entries.length === 0) {
+    throw new Error(`Failed to load default prompt files for ${templateName}.`);
+  }
+
+  return {
+    ok: true,
+    downloadName: config.downloadName,
+    entries,
+  };
+}
+
+function isSupportedContentScriptUrl(url = "") {
+  if (typeof url !== "string" || url.length === 0) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function broadcastContentScriptMessage(message) {
+  const tabs = await chrome.tabs.query({}).catch(() => []);
   await Promise.all(
     tabs
-      .filter((tab) => isLinkedInJobsShellUrl(tab.url || tab.pendingUrl || ""))
+      .filter((tab) =>
+        isSupportedContentScriptUrl(tab.url || tab.pendingUrl || ""),
+      )
       .filter((tab) => typeof tab.id === "number")
       .map((tab) => chrome.tabs.sendMessage(tab.id, message).catch(() => {})),
   );
@@ -333,9 +453,19 @@ async function finalizeCanceledRun(run, options = {}) {
         Array.isArray(extensionState?.prompt3ValidationErrors)
           ? extensionState.prompt3ValidationErrors.length
           : 0,
+      prompt4Input: extensionState?.prompt4Input ?? null,
+      prompt4Raw: extensionState?.prompt4Raw ?? null,
+      prompt4Result: extensionState?.prompt4Result ?? null,
+      prompt1Input: extensionState?.prompt1Input ?? null,
+      prompt1Raw: extensionState?.prompt1Raw ?? null,
       prompt1Result: extensionState?.prompt1Result ?? null,
+      prompt2Input: extensionState?.prompt2Input ?? null,
+      prompt2Raw: extensionState?.prompt2Raw ?? null,
       prompt2Result: extensionState?.prompt2Result ?? null,
+      prompt3Input: extensionState?.prompt3Input ?? null,
+      prompt3Raw: extensionState?.prompt3Raw ?? null,
       prompt3Parsed: extensionState?.prompt3Parsed ?? null,
+      prompt3Feedback: extensionState?.prompt3Feedback ?? null,
       cancelReason,
       cancelPhase,
     });
@@ -361,7 +491,7 @@ async function finalizeCanceledRun(run, options = {}) {
   if (run.sourceTabId) {
     await chrome.tabs.sendMessage(run.sourceTabId, cancelMessage).catch(() => {});
   } else {
-    await broadcastLinkedInMessage(cancelMessage);
+    await broadcastContentScriptMessage(cancelMessage);
   }
   clearActiveRun(run.runId);
 }
@@ -462,10 +592,9 @@ async function consumePatchedSuccess(extensionState = null) {
 
   if (sourceTabId) {
     await chrome.tabs.sendMessage(sourceTabId, message).catch(() => {});
-    return;
   }
 
-  await broadcastLinkedInMessage(message);
+  await broadcastContentScriptMessage(message);
 }
 
 async function ensureExtensionAuthForAction(pendingAction, options = {}) {
@@ -865,6 +994,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           currentUrl: sender?.tab?.url || sender?.tab?.pendingUrl || "",
         });
 
+      case "SYNC_DEFAULT_PROMPTS":
+        return syncDefaultPromptArtifacts();
+
+      case "GET_DEFAULT_PROMPT_DOWNLOAD":
+        return buildDefaultPromptDownload(message.payload?.templateName);
+
       case "CLEAR_EXTENSION_AUTH":
         await clearExtensionAuth();
         await clearPendingExtensionAction();
@@ -893,17 +1028,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true };
 
       case "SAVE_PROMPT_TEMPLATE":
-        await setPromptTemplateAsset(
-          message.payload?.templateName,
-          {
-            filename: message.payload?.filename,
-            content: message.payload?.content,
-            uploadedAt: new Date().toISOString(),
-          },
-          message.payload?.promptProfileId,
-        );
-        clearPromptTemplateCache();
-        return { ok: true };
+        try {
+          await setPromptTemplateAsset(
+            message.payload?.templateName,
+            {
+              filename: message.payload?.filename,
+              content: message.payload?.content,
+              uploadedAt: new Date().toISOString(),
+            },
+            message.payload?.promptProfileId,
+          );
+          clearPromptTemplateCache();
+          return { ok: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to save prompt template.",
+          };
+        }
 
       case "SAVE_PROMPT_PROFILE_SELECTION":
         clearPromptTemplateCache();
@@ -915,13 +1060,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         };
 
       case "DELETE_PROMPT_TEMPLATE":
-        clearPromptTemplateCache();
-        await setPromptTemplateAsset(
-          message.payload?.templateName,
-          null,
-          message.payload?.promptProfileId,
-        );
-        return { ok: true };
+        try {
+          clearPromptTemplateCache();
+          await setPromptTemplateAsset(
+            message.payload?.templateName,
+            null,
+            message.payload?.promptProfileId,
+          );
+          return { ok: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to delete prompt template.",
+          };
+        }
 
       case "SAVE_CHATGPT_URL":
         await setChatGptTargetUrl(message.payload?.url);
@@ -1306,7 +1461,7 @@ chrome.runtime.onMessageExternal.addListener(
             user: message.payload?.user ?? null,
           });
           sendResponse({ ok: true });
-          await broadcastLinkedInMessage({
+          await broadcastContentScriptMessage({
             type: "EXTENSION_CONNECTION_STATE_CHANGED",
             payload: {
               connectionState: "connected",
@@ -1338,7 +1493,7 @@ chrome.runtime.onMessageExternal.addListener(
             activeAccountKeyAfterClear: await getActiveAccountKey(),
           });
           sendResponse({ ok: true });
-          await broadcastLinkedInMessage({
+          await broadcastContentScriptMessage({
             type: "EXTENSION_CONNECTION_STATE_CHANGED",
             payload: {
               connectionState: "signed_out",

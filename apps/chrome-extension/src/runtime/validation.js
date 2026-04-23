@@ -2,6 +2,10 @@ function isString(value) {
   return typeof value === 'string';
 }
 
+function isInteger(value) {
+  return Number.isInteger(value);
+}
+
 function isNullableString(value) {
   return value == null || typeof value === 'string';
 }
@@ -12,6 +16,240 @@ function isStringArray(value) {
 
 function hasMeaningfulText(value) {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateExactKeys(value, label, allowedKeys, errors) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push(`${label} must be an object.`);
+    return;
+  }
+
+  const allowed = new Set(allowedKeys);
+  Object.keys(value).forEach((key) => {
+    if (!allowed.has(key)) {
+      errors.push(`${label}.${key} is not allowed.`);
+    }
+  });
+}
+
+function validateStringArrayField(value, label, errors) {
+  if (!isStringArray(value)) {
+    errors.push(`${label} must be an array of strings.`);
+  }
+}
+
+function validateKeywordObjects(items, label, errors) {
+  const validWhereToUse = new Set(['headline', 'summary', 'experience', 'skills']);
+  const validTypes = new Set(['exact', 'inferred']);
+
+  if (!Array.isArray(items)) {
+    errors.push(`${label} must be an array.`);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      errors.push(`${label}[${index}] must be an object.`);
+      return;
+    }
+
+    validateExactKeys(
+      item,
+      `${label}[${index}]`,
+      ['keyword', 'priority', 'type', 'where_to_use'],
+      errors,
+    );
+
+    if (!isString(item.keyword)) {
+      errors.push(`${label}[${index}].keyword must be a string.`);
+    }
+    if (!isInteger(item.priority) || item.priority < 1 || item.priority > 10) {
+      errors.push(`${label}[${index}].priority must be an integer from 1 to 10.`);
+    }
+    if (!validTypes.has(item.type)) {
+      errors.push(`${label}[${index}].type must be exactly "exact" or "inferred".`);
+    }
+    if (!Array.isArray(item.where_to_use)) {
+      errors.push(`${label}[${index}].where_to_use must be an array.`);
+    } else {
+      item.where_to_use.forEach((where, whereIndex) => {
+        if (!validWhereToUse.has(where)) {
+          errors.push(
+            `${label}[${index}].where_to_use[${whereIndex}] must be one of headline, summary, experience, skills.`,
+          );
+        }
+      });
+    }
+  });
+}
+
+function validateSignalMap(items, label, errors) {
+  const validSupport = new Set(['direct', 'adjacent', 'unsupported']);
+
+  if (!Array.isArray(items)) {
+    errors.push(`${label} must be an array.`);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      errors.push(`${label}[${index}] must be an object.`);
+      return;
+    }
+
+    validateExactKeys(
+      item,
+      `${label}[${index}]`,
+      ['signal', 'support', 'evidence', 'surface_in'],
+      errors,
+    );
+
+    if (!isString(item.signal)) {
+      errors.push(`${label}[${index}].signal must be a string.`);
+    }
+    if (!validSupport.has(item.support)) {
+      errors.push(`${label}[${index}].support must be exactly one of direct, adjacent, unsupported.`);
+    }
+    validateStringArrayField(item.evidence, `${label}[${index}].evidence`, errors);
+    validateStringArrayField(item.surface_in, `${label}[${index}].surface_in`, errors);
+  });
+}
+
+function validateSelectedStorylines(items, label, errors) {
+  const validStrength = new Set(['high', 'medium']);
+
+  if (!Array.isArray(items)) {
+    errors.push(`${label} must be an array.`);
+    return;
+  }
+
+  if (items.length < 3 || items.length > 5) {
+    errors.push(`${label} must contain between 3 and 5 items.`);
+  }
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      errors.push(`${label}[${index}] must be an object.`);
+      return;
+    }
+
+    validateExactKeys(
+      item,
+      `${label}[${index}]`,
+      ['label', 'strength', 'angles', 'proof_points', 'anchor_role', 'anchor_bullet', 'guardrail'],
+      errors,
+    );
+
+    if (!isString(item.label)) errors.push(`${label}[${index}].label must be a string.`);
+    if (!validStrength.has(item.strength)) {
+      errors.push(`${label}[${index}].strength must be exactly "high" or "medium".`);
+    }
+    validateStringArrayField(item.angles, `${label}[${index}].angles`, errors);
+    validateStringArrayField(item.proof_points, `${label}[${index}].proof_points`, errors);
+    if (!isString(item.anchor_role) || !item.anchor_role.trim()) {
+      errors.push(`${label}[${index}].anchor_role must be a non-empty string.`);
+    }
+    if (!isString(item.anchor_bullet) || !item.anchor_bullet.trim()) {
+      errors.push(`${label}[${index}].anchor_bullet must be a non-empty string.`);
+    }
+    if (!isString(item.guardrail) || !item.guardrail.trim()) {
+      errors.push(`${label}[${index}].guardrail must be a non-empty string.`);
+    }
+  });
+}
+
+function validateExperienceEmphasis(items, label, errors) {
+  const validActions = new Set(['keep', 'rewrite_all']);
+
+  if (!Array.isArray(items)) {
+    errors.push(`${label} must be an array.`);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      errors.push(`${label}[${index}] must be an object.`);
+      return;
+    }
+
+    validateExactKeys(
+      item,
+      `${label}[${index}]`,
+      ['role', 'default_action', 'themes_to_emphasize', 'proof_points', 'deemphasize', 'guardrail'],
+      errors,
+    );
+
+    if (!isString(item.role)) errors.push(`${label}[${index}].role must be a string.`);
+    if (!validActions.has(item.default_action)) {
+      errors.push(`${label}[${index}].default_action must be exactly "keep" or "rewrite_all".`);
+    }
+    validateStringArrayField(item.themes_to_emphasize, `${label}[${index}].themes_to_emphasize`, errors);
+    validateStringArrayField(item.proof_points, `${label}[${index}].proof_points`, errors);
+    validateStringArrayField(item.deemphasize, `${label}[${index}].deemphasize`, errors);
+    if (!isString(item.guardrail)) errors.push(`${label}[${index}].guardrail must be a string.`);
+  });
+}
+
+function validateBulletRewriteInstructions(items, label, errors) {
+  const validActions = new Set(['rewrite', 'add']);
+
+  if (!Array.isArray(items)) {
+    errors.push(`${label} must be an array.`);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      errors.push(`${label}[${index}] must be an object.`);
+      return;
+    }
+
+    validateExactKeys(
+      item,
+      `${label}[${index}]`,
+      ['role', 'action', 'bullet_anchor', 'instruction'],
+      errors,
+    );
+
+    if (!isString(item.role)) errors.push(`${label}[${index}].role must be a string.`);
+    if (!validActions.has(item.action)) {
+      errors.push(`${label}[${index}].action must be exactly "rewrite" or "add".`);
+    }
+    if (!isString(item.bullet_anchor)) {
+      errors.push(`${label}[${index}].bullet_anchor must be a string.`);
+    }
+    if (!isString(item.instruction)) {
+      errors.push(`${label}[${index}].instruction must be a string.`);
+    }
+  });
+}
+
+function validateEducationNotes(items, label, errors) {
+  if (!Array.isArray(items)) {
+    errors.push(`${label} must be an array.`);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      errors.push(`${label}[${index}] must be an object.`);
+      return;
+    }
+
+    validateExactKeys(
+      item,
+      `${label}[${index}]`,
+      ['institution', 'instruction'],
+      errors,
+    );
+
+    if (!isString(item.institution)) {
+      errors.push(`${label}[${index}].institution must be a string.`);
+    }
+    if (!isString(item.instruction)) {
+      errors.push(`${label}[${index}].instruction must be a string.`);
+    }
+  });
 }
 
 function arrayHasMeaningfulText(value) {
@@ -249,6 +487,169 @@ export function validateResumeData(data) {
   if (errors.length === 0 && looksLikeEmptyResumeTemplate(data)) {
     errors.push('Resume data appears to be an empty schema template.');
   }
+
+  return errors;
+}
+
+export function validatePrompt1Data(data) {
+  const errors = [];
+  const allowedTopLevelKeys = [
+    'target_role',
+    'target_seniority',
+    'target_domain',
+    'company_context',
+    'role_archetype',
+    'must_have_keywords',
+    'nice_to_have_keywords',
+    'exact_phrases_to_mirror',
+    'required_qualifications',
+    'preferred_qualifications',
+    'core_responsibilities',
+    'recruiter_hooks',
+    'hiring_manager_proof',
+    'domain_terms',
+    'metrics_kpis',
+    'tools_platforms',
+    'soft_skills',
+    'keywords_to_repeat_naturally',
+    'section_targets',
+    'do_not_fake',
+    'deprioritize',
+    'jd_notes',
+  ];
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return ['Prompt 1 data must be an object.'];
+  }
+
+  validateExactKeys(data, 'prompt1', allowedTopLevelKeys, errors);
+
+  [
+    'target_role',
+    'target_seniority',
+    'target_domain',
+    'company_context',
+    'role_archetype',
+  ].forEach((field) => {
+    if (!isString(data[field])) {
+      errors.push(`prompt1.${field} must be a string.`);
+    }
+  });
+
+  validateKeywordObjects(data.must_have_keywords, 'prompt1.must_have_keywords', errors);
+  validateKeywordObjects(data.nice_to_have_keywords, 'prompt1.nice_to_have_keywords', errors);
+
+  [
+    'exact_phrases_to_mirror',
+    'required_qualifications',
+    'preferred_qualifications',
+    'core_responsibilities',
+    'recruiter_hooks',
+    'hiring_manager_proof',
+    'domain_terms',
+    'metrics_kpis',
+    'tools_platforms',
+    'soft_skills',
+    'keywords_to_repeat_naturally',
+    'do_not_fake',
+    'deprioritize',
+    'jd_notes',
+  ].forEach((field) => {
+    validateStringArrayField(data[field], `prompt1.${field}`, errors);
+  });
+
+  if (!data.section_targets || typeof data.section_targets !== 'object' || Array.isArray(data.section_targets)) {
+    errors.push('prompt1.section_targets must be an object.');
+  } else {
+    validateExactKeys(
+      data.section_targets,
+      'prompt1.section_targets',
+      ['headline', 'summary', 'experience', 'skills'],
+      errors,
+    );
+    ['headline', 'summary', 'experience', 'skills'].forEach((field) => {
+      validateStringArrayField(data.section_targets[field], `prompt1.section_targets.${field}`, errors);
+    });
+  }
+
+  return errors;
+}
+
+export function validatePrompt2Data(data) {
+  const errors = [];
+  const allowedTopLevelKeys = [
+    'validated_role',
+    'validated_domain',
+    'positioning_thesis',
+    'top_resume_goals',
+    'recommended_title',
+    'summary_lead',
+    'summary_focus',
+    'summary_sentences',
+    'voice',
+    'adjacent_framing',
+    'signal_map',
+    'selected_storylines',
+    'experience_emphasis',
+    'bullet_rewrite_instructions',
+    'education_notes',
+    'final_skills_list',
+    'phrases_to_mirror',
+    'cannot_claim',
+    'skills_to_avoid',
+    'signals_to_avoid',
+    'gaps',
+  ];
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return ['Prompt 2 data must be an object.'];
+  }
+
+  validateExactKeys(data, 'prompt2', allowedTopLevelKeys, errors);
+
+  [
+    'validated_role',
+    'validated_domain',
+    'positioning_thesis',
+    'recommended_title',
+    'summary_lead',
+    'voice',
+    'adjacent_framing',
+  ].forEach((field) => {
+    if (!isString(data[field])) {
+      errors.push(`prompt2.${field} must be a string.`);
+    }
+  });
+
+  validateStringArrayField(data.top_resume_goals, 'prompt2.top_resume_goals', errors);
+  if (Array.isArray(data.top_resume_goals) && data.top_resume_goals.length !== 3) {
+    errors.push('prompt2.top_resume_goals must contain exactly 3 items.');
+  }
+  validateStringArrayField(data.summary_focus, 'prompt2.summary_focus', errors);
+  if (!isInteger(data.summary_sentences) || data.summary_sentences !== 2) {
+    errors.push('prompt2.summary_sentences must be exactly 2.');
+  }
+
+  validateSignalMap(data.signal_map, 'prompt2.signal_map', errors);
+  validateSelectedStorylines(data.selected_storylines, 'prompt2.selected_storylines', errors);
+  validateExperienceEmphasis(data.experience_emphasis, 'prompt2.experience_emphasis', errors);
+  validateBulletRewriteInstructions(
+    data.bullet_rewrite_instructions,
+    'prompt2.bullet_rewrite_instructions',
+    errors,
+  );
+  validateEducationNotes(data.education_notes, 'prompt2.education_notes', errors);
+
+  [
+    'final_skills_list',
+    'phrases_to_mirror',
+    'cannot_claim',
+    'skills_to_avoid',
+    'signals_to_avoid',
+    'gaps',
+  ].forEach((field) => {
+    validateStringArrayField(data[field], `prompt2.${field}`, errors);
+  });
 
   return errors;
 }

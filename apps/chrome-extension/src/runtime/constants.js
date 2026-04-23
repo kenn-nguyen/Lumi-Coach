@@ -1,4 +1,4 @@
-export const DEFAULT_APP_ORIGIN = "https://som-career-coach-iota.vercel.app";
+export const DEFAULT_APP_ORIGIN = "https://lumi.ceo";
 export const DEFAULT_API_ORIGIN = "https://som-career-coach.onrender.com";
 export const DEFAULT_CHATGPT_TARGET_URL =
   "https://chatgpt.com/?temporary-chat=true";
@@ -14,6 +14,9 @@ export const STORAGE_KEYS = {
   prompt2TemplateAsset: "prompt2TemplateAsset",
   prompt3TemplateAsset: "prompt3TemplateAsset",
   promptTemplateProfiles: "promptTemplateProfiles",
+  serverPromptArtifacts: "serverPromptArtifacts",
+  serverPromptManifest: "serverPromptManifest",
+  serverPromptLastSyncedAt: "serverPromptLastSyncedAt",
   llmSettings: "llmSettings",
   chatGptTargetUrl: "chatGptTargetUrl",
   appOrigin: "appOrigin",

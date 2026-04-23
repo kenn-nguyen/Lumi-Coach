@@ -23,10 +23,10 @@ describe("isLinkedInJobsShellUrl", () => {
 });
 
 describe("classifyLinkedInJobsRoute", () => {
-  it("classifies the exact jobs root as hidden", () => {
+  it("classifies the exact jobs root as manual", () => {
     expect(
       classifyLinkedInJobsRoute("https://www.linkedin.com/jobs").mode,
-    ).toBe(LINKEDIN_ROUTE_MODE.hidden);
+    ).toBe(LINKEDIN_ROUTE_MODE.manual);
   });
 
   it("classifies jobs search pages without a selected job as waiting", () => {
@@ -63,5 +63,19 @@ describe("classifyLinkedInJobsRoute", () => {
     );
     expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.active);
     expect(route.selectedJobId).toBe("4394207970");
+  });
+
+  it("classifies non-jobs LinkedIn pages as manual", () => {
+    const route = classifyLinkedInJobsRoute(
+      "https://www.linkedin.com/feed/",
+    );
+    expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.manual);
+    expect(route.isJobsShell).toBe(false);
+  });
+
+  it("classifies non-LinkedIn websites as manual", () => {
+    const route = classifyLinkedInJobsRoute("https://example.com/careers");
+    expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.manual);
+    expect(route.isJobsShell).toBe(false);
   });
 });

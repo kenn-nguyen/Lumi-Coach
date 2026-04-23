@@ -4,13 +4,16 @@ import { deriveAccountKeyFromUser } from "./account.js";
 import { STORAGE_KEYS } from "./constants.js";
 import {
   activateAccountWorkspace,
+  applyServerPromptDefaultsSyncResult,
   clearAllExtensionLocalData,
   clearExtensionAuth,
   clearExtensionLocalData,
   getActiveAccountKey,
   getHistoryEntries,
   getPendingExtensionAction,
+  getServerPromptDefaults,
   getUserAssets,
+  setPromptTemplateAsset,
   setExtensionAuth,
   setMasterResumeContextAsset,
   setPendingExtensionAction,
@@ -234,5 +237,80 @@ describe("account-scoped extension storage", () => {
     expect(entries).toHaveLength(1000);
     expect(entries[0]?.jobKey).toBe("job-1004");
     expect(entries.at(-1)?.jobKey).toBe("job-5");
+  });
+
+  it("stores server-managed prompt artifacts separately from user overrides", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+
+    const syncResult = await applyServerPromptDefaultsSyncResult({
+      changed: {
+        "prompt1.template": "SERVER PROMPT 1",
+        "system.guardrails": "SERVER SYSTEM",
+      },
+      removed: [],
+      manifest: {
+        "prompt1.template": "hash-1",
+        "system.guardrails": "hash-2",
+      },
+    });
+
+    expect(syncResult.changedKeys).toEqual([
+      "prompt1.template",
+      "system.guardrails",
+    ]);
+    expect(await getServerPromptDefaults()).toEqual({
+      artifacts: {
+        "prompt1.template": "SERVER PROMPT 1",
+        "system.guardrails": "SERVER SYSTEM",
+      },
+      manifest: {
+        "prompt1.template": "hash-1",
+        "system.guardrails": "hash-2",
+      },
+      lastSyncedAt: expect.any(String),
+    });
+    expect((await getUserAssets()).prompt1TemplateAsset).toBeNull();
+  });
+
+  it("rejects user overrides for system-managed guardrails", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+
+    await expect(
+      setPromptTemplateAsset("systemPrompt", {
+        filename: "system.txt",
+        content: "override",
+      }),
+    ).rejects.toThrow("system-managed");
+  });
+
+  it("removes deleted server-managed prompt artifacts during sync", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+    await applyServerPromptDefaultsSyncResult({
+      changed: {
+        "prompt1.template": "SERVER PROMPT 1",
+        "prompt1.output_contract": "CONTRACT",
+      },
+      removed: [],
+      manifest: {
+        "prompt1.template": "hash-1",
+        "prompt1.output_contract": "hash-2",
+      },
+    });
+
+    const syncResult = await applyServerPromptDefaultsSyncResult({
+      changed: {},
+      removed: ["prompt1.output_contract"],
+      manifest: {
+        "prompt1.template": "hash-1",
+      },
+    });
+
+    expect(syncResult.changedKeys).toContain("prompt1.output_contract");
+    expect((await getServerPromptDefaults()).artifacts).toEqual({
+      "prompt1.template": "SERVER PROMPT 1",
+    });
   });
 });

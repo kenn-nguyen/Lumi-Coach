@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.security import AuthenticatedUser, require_current_user
 
 
 @pytest.fixture
@@ -32,6 +33,20 @@ class TestLlmConfig:
         assert data["provider"] == "openai"
         # API key should be masked
         assert "****" in data["api_key"] or "*" in data["api_key"]
+
+
+@pytest.fixture(autouse=True)
+def override_auth():
+    async def _fake_user():
+        return AuthenticatedUser(
+            user_id="user-123",
+            email="tester@example.com",
+            name="Test User",
+        )
+
+    app.dependency_overrides[require_current_user] = _fake_user
+    yield
+    app.dependency_overrides.pop(require_current_user, None)
 
     @patch("app.routers.config._save_config")
     @patch("app.routers.config._load_config")
@@ -160,3 +175,61 @@ class TestResetDatabase:
         async with client:
             resp = await client.post("/api/v1/config/reset")
         assert resp.status_code == 422
+
+
+class TestExtensionPromptSync:
+    """POST /api/v1/config/extension-prompts/sync"""
+
+    @patch("app.routers.config._get_extension_prompt_artifacts")
+    async def test_returns_only_changed_artifacts(self, mock_artifacts, client):
+        mock_artifacts.return_value = {
+            "prompt1.template": "PROMPT 1",
+            "prompt1.output_contract": "CONTRACT 1",
+            "system.guardrails": "SYSTEM",
+        }
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/config/extension-prompts/sync",
+                json={
+                    "manifest": {
+                        "prompt1.template": "stale-hash",
+                        "removed.key": "old-hash",
+                    },
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["changed"] == {
+            "prompt1.template": "PROMPT 1",
+            "prompt1.output_contract": "CONTRACT 1",
+            "system.guardrails": "SYSTEM",
+        }
+        assert data["removed"] == ["removed.key"]
+        assert set(data["manifest"].keys()) == {
+            "prompt1.template",
+            "prompt1.output_contract",
+            "system.guardrails",
+        }
+
+    @patch("app.routers.config._get_extension_prompt_artifacts")
+    async def test_returns_empty_changed_when_manifest_matches(
+        self, mock_artifacts, client
+    ):
+        mock_artifacts.return_value = {
+            "prompt1.template": "PROMPT 1",
+        }
+
+        with patch("app.routers.config._hash_prompt_artifact", return_value="same-hash"):
+            async with client:
+                resp = await client.post(
+                    "/api/v1/config/extension-prompts/sync",
+                    json={"manifest": {"prompt1.template": "same-hash"}},
+                )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["changed"] == {}
+        assert data["removed"] == []
+        assert data["manifest"] == {"prompt1.template": "same-hash"}

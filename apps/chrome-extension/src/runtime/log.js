@@ -1,8 +1,11 @@
 const LOG_PREFIX = '[ResumeMatcherExt]';
-let relayTabId = null;
+const relayTabIds = new Set();
 
 export function setLogRelayTabId(tabId) {
-  relayTabId = tabId ?? null;
+  if (typeof tabId !== 'number') {
+    return;
+  }
+  relayTabIds.add(tabId);
 }
 
 function formatMessage(scope, message) {
@@ -10,16 +13,20 @@ function formatMessage(scope, message) {
 }
 
 function relayLog(level, scope, message, data) {
-  if (!relayTabId || typeof chrome === 'undefined' || !chrome.tabs?.sendMessage) {
+  if (relayTabIds.size === 0 || typeof chrome === 'undefined' || !chrome.tabs?.sendMessage) {
     return;
   }
 
-  void chrome.tabs
-    .sendMessage(relayTabId, {
-      type: 'LOG_EVENT',
-      payload: { level, scope, message, data },
-    })
-    .catch(() => {});
+  for (const tabId of [...relayTabIds]) {
+    void chrome.tabs
+      .sendMessage(tabId, {
+        type: 'LOG_EVENT',
+        payload: { level, scope, message, data },
+      })
+      .catch(() => {
+        relayTabIds.delete(tabId);
+      });
+  }
 }
 
 export function logInfo(scope, message, data) {

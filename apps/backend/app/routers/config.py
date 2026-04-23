@@ -1,5 +1,6 @@
 """LLM configuration endpoints."""
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -22,6 +23,8 @@ from app.schemas import (
     ApiKeyStatusResponse,
     ApiKeysUpdateRequest,
     ApiKeysUpdateResponse,
+    ExtensionPromptSyncRequest,
+    ExtensionPromptSyncResponse,
     ResetDatabaseRequest,
 )
 from app.prompts import DEFAULT_IMPROVE_PROMPT_ID, IMPROVE_PROMPT_OPTIONS
@@ -75,6 +78,62 @@ def _mask_api_key(key: str) -> str:
 def _get_prompt_options() -> list[PromptOption]:
     """Return available prompt options for resume tailoring."""
     return [PromptOption(**option) for option in IMPROVE_PROMPT_OPTIONS]
+
+
+def _get_extension_prompts_root() -> Path:
+    """Return the backend-owned path containing extension prompt defaults."""
+    return Path(__file__).resolve().parents[1] / "prompts" / "extension_defaults"
+
+
+def _read_extension_prompt_file(relative_path: str) -> str:
+    """Read an extension prompt artifact from the repo."""
+    return (_get_extension_prompts_root() / relative_path).read_text()
+
+
+def _get_extension_prompt_artifacts() -> dict[str, str]:
+    """Build the full extension prompt artifact map."""
+    patch_keys = (
+        "chatgpt-web",
+        "claude-web",
+        "claude-api",
+        "chatgpt-api",
+        "gemini-web",
+        "gemini-api",
+    )
+    artifacts: dict[str, str] = {
+        "prompt1.template": _read_extension_prompt_file("prompt1.txt"),
+        "prompt1.output_contract": _read_extension_prompt_file(
+            "patches/prompt1.output-contract.txt"
+        ),
+        "prompt2.template": _read_extension_prompt_file("prompt2.txt"),
+        "prompt2.output_contract": _read_extension_prompt_file(
+            "patches/prompt2.output-contract.txt"
+        ),
+        "prompt3.template": _read_extension_prompt_file("prompt3.txt"),
+        "prompt3.output_contract": _read_extension_prompt_file(
+            "patches/prompt3.output-contract.txt"
+        ),
+        "prompt4.template": _read_extension_prompt_file("prompt4.txt"),
+        "prompt4.output_contract": _read_extension_prompt_file(
+            "patches/prompt4.output-contract.txt"
+        ),
+        "system.guardrails": _read_extension_prompt_file(
+            "patches/system.guardrails.txt"
+        ),
+    }
+
+    for prompt_name in ("prompt1", "prompt2", "prompt3"):
+        for patch_key in patch_keys:
+            artifacts[f"{prompt_name}.patch.{patch_key}"] = _read_extension_prompt_file(
+                f"patches/{prompt_name}.{patch_key}.txt"
+            )
+
+    return artifacts
+
+
+def _hash_prompt_artifact(content: str) -> str:
+    """Hash prompt artifact content for sync comparisons."""
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 async def _log_llm_health_check(config: LLMConfig) -> None:
@@ -337,6 +396,38 @@ async def update_prompt_config(
     return PromptConfigResponse(
         default_prompt_id=default_prompt_id,
         prompt_options=options,
+    )
+
+
+@router.post(
+    "/extension-prompts/sync",
+    response_model=ExtensionPromptSyncResponse,
+)
+async def sync_extension_prompts(
+    request: ExtensionPromptSyncRequest,
+) -> ExtensionPromptSyncResponse:
+    """Return only the extension prompt artifacts that changed."""
+    artifacts = _get_extension_prompt_artifacts()
+    manifest = {
+        artifact_key: _hash_prompt_artifact(content)
+        for artifact_key, content in artifacts.items()
+    }
+    local_manifest = request.manifest if isinstance(request.manifest, dict) else {}
+    changed = {
+        artifact_key: content
+        for artifact_key, content in artifacts.items()
+        if local_manifest.get(artifact_key) != manifest[artifact_key]
+    }
+    removed = sorted(
+        artifact_key
+        for artifact_key in local_manifest
+        if artifact_key not in manifest
+    )
+
+    return ExtensionPromptSyncResponse(
+        changed=changed,
+        removed=removed,
+        manifest=manifest,
     )
 
 

@@ -1,66 +1,15 @@
-import { getUserAssets } from "./storage.js";
-
-const TEMPLATE_PATHS = {
-  prompt1: "src/prompts/prompt1.txt",
-  prompt2: "src/prompts/prompt2.txt",
-  prompt3: "src/prompts/prompt3.txt",
-  prompt4: "src/prompts/prompt4.txt",
-};
-
-const PATCH_PATHS = {
-  prompt1: {
-    "chatgpt-web": "src/prompts/patches/prompt1.chatgpt-web.txt",
-    "claude-web": "src/prompts/patches/prompt1.claude-web.txt",
-    "claude-api": "src/prompts/patches/prompt1.claude-api.txt",
-    "chatgpt-api": "src/prompts/patches/prompt1.chatgpt-api.txt",
-    "gemini-web": "src/prompts/patches/prompt1.gemini-web.txt",
-    "gemini-api": "src/prompts/patches/prompt1.gemini-api.txt",
-  },
-  prompt2: {
-    "chatgpt-web": "src/prompts/patches/prompt2.chatgpt-web.txt",
-    "claude-web": "src/prompts/patches/prompt2.claude-web.txt",
-    "claude-api": "src/prompts/patches/prompt2.claude-api.txt",
-    "chatgpt-api": "src/prompts/patches/prompt2.chatgpt-api.txt",
-    "gemini-web": "src/prompts/patches/prompt2.gemini-web.txt",
-    "gemini-api": "src/prompts/patches/prompt2.gemini-api.txt",
-  },
-  prompt3: {
-    "chatgpt-web": "src/prompts/patches/prompt3.chatgpt-web.txt",
-    "claude-web": "src/prompts/patches/prompt3.claude-web.txt",
-    "claude-api": "src/prompts/patches/prompt3.claude-api.txt",
-    "chatgpt-api": "src/prompts/patches/prompt3.chatgpt-api.txt",
-    "gemini-web": "src/prompts/patches/prompt3.gemini-web.txt",
-    "gemini-api": "src/prompts/patches/prompt3.gemini-api.txt",
-  },
-};
-
-const SHARED_APPEND_PATHS = {
-  prompt1: "src/prompts/patches/prompt1.output-contract.txt",
-  prompt2: "src/prompts/patches/prompt2.output-contract.txt",
-  prompt3: "src/prompts/patches/prompt3.output-contract.txt",
-  prompt4: "src/prompts/patches/prompt4.output-contract.txt",
-};
+import { getUserAssets, getServerPromptDefaults } from "./storage.js";
+import {
+  getPackagedPromptArtifactText,
+  getPromptOutputContractArtifactKey,
+  getPromptOverrideAssetField,
+  getPromptPatchArtifactKey,
+  getPromptTemplateArtifactKey,
+  SYSTEM_GUARDRAILS_ARTIFACT_KEY,
+} from "./prompt-defaults.js";
 
 const PLACEHOLDER_PATTERN = /\{\{([A-Z0-9_]+)\}\}/g;
 const templateCache = new Map();
-
-function getTemplateAssetKey(templateName) {
-  return `${templateName}TemplateAsset`;
-}
-
-function resolveExtensionAssetUrl(path) {
-  return chrome.runtime.getURL(path);
-}
-
-async function fetchTemplateText(path) {
-  const response = await fetch(resolveExtensionAssetUrl(path));
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load prompt template at "${path}" (status ${response.status}).`,
-    );
-  }
-  return await response.text();
-}
 
 export function clearPromptTemplateCache() {
   templateCache.clear();
@@ -74,33 +23,29 @@ function getTemplateCacheKey(templateName, patchKey, promptProfileId) {
 }
 
 async function loadPromptPatch(templateName, patchKey) {
-  const patchPath = patchKey ? PATCH_PATHS[templateName]?.[patchKey] : null;
-  if (!patchPath) {
+  const artifactKey = getPromptPatchArtifactKey(templateName, patchKey);
+  if (!artifactKey) {
     return "";
   }
 
-  const patchResponse = await fetch(resolveExtensionAssetUrl(patchPath));
-  if (!patchResponse.ok) {
-    throw new Error(
-      `Failed to load prompt patch at "${patchPath}" (status ${patchResponse.status}).`,
-    );
-  }
-
-  return (await patchResponse.text()).trim();
+  return (await loadDefaultArtifactText(artifactKey)).trim();
 }
 
 async function loadSharedAppendBlock(templateName) {
-  const sharedPath = SHARED_APPEND_PATHS[templateName];
-  if (!sharedPath) {
-    return "";
+  return (
+    await loadDefaultArtifactText(
+      getPromptOutputContractArtifactKey(templateName),
+    )
+  ).trim();
+}
+
+async function loadDefaultArtifactText(artifactKey) {
+  const defaults = await getServerPromptDefaults();
+  const cached = defaults?.artifacts?.[artifactKey];
+  if (typeof cached === "string") {
+    return cached;
   }
-  const response = await fetch(resolveExtensionAssetUrl(sharedPath));
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load shared prompt block at "${sharedPath}" (status ${response.status}).`,
-    );
-  }
-  return (await response.text()).trim();
+  return getPackagedPromptArtifactText(artifactKey);
 }
 
 export async function loadPromptTemplate(templateName, profile) {
@@ -114,10 +59,10 @@ export async function loadPromptTemplate(templateName, profile) {
   const cached = templateCache.get(cacheKey);
   if (cached) return cached;
 
-  const overrideAsset = assets?.[getTemplateAssetKey(templateName)];
+  const overrideAsset = assets?.[getPromptOverrideAssetField(templateName)];
   const template = overrideAsset?.content?.trim()
     ? overrideAsset.content
-    : await fetchTemplateText(TEMPLATE_PATHS[templateName]);
+    : await loadDefaultArtifactText(getPromptTemplateArtifactKey(templateName));
   const patch = await loadPromptPatch(templateName, patchKey);
   const sharedAppend = await loadSharedAppendBlock(templateName);
   const mergedParts = [template.trim(), patch, sharedAppend].filter(Boolean);
@@ -125,6 +70,12 @@ export async function loadPromptTemplate(templateName, profile) {
 
   templateCache.set(cacheKey, merged);
   return merged;
+}
+
+export async function loadSystemPromptGuardrails() {
+  return (
+    await loadDefaultArtifactText(SYSTEM_GUARDRAILS_ARTIFACT_KEY)
+  ).trim();
 }
 
 function normalizeText(value) {

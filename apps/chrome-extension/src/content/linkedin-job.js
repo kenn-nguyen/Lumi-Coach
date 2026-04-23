@@ -10,6 +10,8 @@ const BOARD_RUNS_ID = "resume-matcher-board-runs";
 const BOARD_SETTINGS_ID = "resume-matcher-board-settings";
 const BOARD_MINIMIZE_ID = "resume-matcher-board-minimize";
 const RUN_VIEW_ID = "resume-matcher-run-view";
+const RUN_SOURCE_LINKEDIN_ID = "resume-matcher-run-source-linkedin";
+const RUN_SOURCE_MANUAL_ID = "resume-matcher-run-source-manual";
 const RUN_READY_ID = "resume-matcher-job-ready";
 const RUN_META_ID = "resume-matcher-job-meta";
 const RUN_ONBOARDING_ID = "resume-matcher-run-onboarding";
@@ -61,6 +63,7 @@ const APIFY_TOKEN_ROW_ID = "resume-matcher-apify-token-row";
 const APIFY_TOKEN_INPUT_ID = "resume-matcher-apify-token-input";
 const APIFY_TOKEN_TOGGLE_ID = "resume-matcher-apify-token-toggle";
 const APIFY_SAVE_ID = "resume-matcher-apify-save";
+const PROMPT_REFRESH_ID = "resume-matcher-prompt-refresh";
 const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
 const CUSTOM_FEATURE_INPUT_ID = "resume-matcher-custom-feature";
 const RUNTIME_URLS_ROW_ID = "resume-matcher-runtime-urls";
@@ -83,7 +86,7 @@ const WIDE_BOARD_WIDTH = 390;
 const JOB_LOAD_RETRY_MS = 300;
 const JOB_LOAD_TIMEOUT_MS = 7000;
 const EDGE_GAP_TOTAL = EDGE_PADDING * 2;
-const APP_URL = "https://som-career-coach-iota.vercel.app/";
+const APP_URL = "https://lumi.ceo/";
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
 const RUN_WAIT_MESSAGE_INTERVAL_MS = 10000;
 const RUN_PROGRESS_HEARTBEAT_FRESH_MS = 15000;
@@ -238,35 +241,30 @@ const PROMPT_FILE_DESCRIPTORS = [
   {
     templateName: "prompt1",
     label: "Role fit check",
-    defaultPath: "src/prompts/prompt1.txt",
-    contractPath: "src/prompts/patches/prompt1.output-contract.txt",
     promptFileName: "prompt1.txt",
-    contractFileName: "prompt1.output-contract.txt",
     downloadName: "prompt1.default.zip",
+    editable: true,
   },
   {
     templateName: "prompt2",
     label: "Positioning plan",
-    defaultPath: "src/prompts/prompt2.txt",
-    contractPath: "src/prompts/patches/prompt2.output-contract.txt",
     promptFileName: "prompt2.txt",
-    contractFileName: "prompt2.output-contract.txt",
     downloadName: "prompt2.default.zip",
+    editable: true,
   },
   {
     templateName: "prompt3",
     label: "Resume draft",
-    defaultPath: "src/prompts/prompt3.txt",
-    contractPath: "src/prompts/patches/prompt3.output-contract.txt",
     promptFileName: "prompt3.txt",
-    contractFileName: "prompt3.output-contract.txt",
     downloadName: "prompt3.default.zip",
+    editable: true,
   },
   {
     templateName: "systemPrompt",
     label: "System prompt API behavior guardrails",
-    defaultPath: null,
-    downloadName: null,
+    promptFileName: "system-prompt.guardrails.txt",
+    downloadName: "system-prompt.guardrails.zip",
+    editable: false,
   },
 ];
 
@@ -445,6 +443,8 @@ const state = {
   historySortDirection: "desc",
   historyPage: 1,
   historyFilterOpen: false,
+  promptSyncPromise: null,
+  runSourceMode: null,
 };
 
 function logError(message, data) {
@@ -464,13 +464,17 @@ function hasActiveSelectedJobRoute() {
 }
 
 function deriveFallbackRouteModeFromLocation() {
-  if (location.hostname !== "www.linkedin.com") {
+  if (!/^https?:$/.test(location.protocol || "")) {
     return "hidden";
   }
 
   const pathname = location.pathname || "";
+  if (location.hostname !== "www.linkedin.com") {
+    return "manual";
+  }
+
   if (!pathname.startsWith("/jobs")) {
-    return "hidden";
+    return "manual";
   }
 
   const canonicalMatch = pathname.match(/^\/jobs\/view\/(\d+)\/?$/);
@@ -492,10 +496,10 @@ function deriveFallbackRouteModeFromLocation() {
       return "waiting";
     }
   } catch {
-    return "hidden";
+    return "manual";
   }
 
-  return "hidden";
+  return "manual";
 }
 
 function getCurrentRouteSignature() {
@@ -874,11 +878,15 @@ function renderPromptActionButtons(
   hasFile,
   canDownloadDefault,
   label,
+  editable = true,
 ) {
   const downloadButton = canDownloadDefault
     ? `<button id="${promptDownloadId(templateName)}" type="button" class="resume-matcher-file-chip__action" aria-label="Download default ${label}" title="Download default ${label}"><img class="resume-matcher-file-chip__icon-image" src="${chrome.runtime.getURL(DOWNLOAD_ICON_PATH)}" alt="" /></button>`
     : "";
-  return `${downloadButton}<button id="${promptActionId(templateName)}" type="button" class="resume-matcher-file-chip__action" aria-label="${hasFile ? `Delete ${label}` : `Upload ${label}`}" title="${hasFile ? `Delete ${label}` : `Upload ${label}`}">${renderFileActionIcon(hasFile ? "delete" : "upload")}</button>`;
+  const actionButton = editable
+    ? `<button id="${promptActionId(templateName)}" type="button" class="resume-matcher-file-chip__action" aria-label="${hasFile ? `Delete ${label}` : `Upload ${label}`}" title="${hasFile ? `Delete ${label}` : `Upload ${label}`}">${renderFileActionIcon(hasFile ? "delete" : "upload")}</button>`
+    : "";
+  return `${downloadButton}${actionButton}`;
 }
 
 function promptLabelId(templateName) {
@@ -947,9 +955,19 @@ function exportHistoryData() {
     patchDurationMs: entry?.patchDurationMs ?? null,
     totalDurationMs: entry?.totalDurationMs ?? null,
     prompt3ValidationErrorCount: entry?.prompt3ValidationErrorCount ?? null,
+    prompt4Input: entry?.prompt4Input ?? null,
+    prompt4Raw: entry?.prompt4Raw ?? null,
+    prompt4Output: entry?.prompt4Result ?? null,
+    prompt1Input: entry?.prompt1Input ?? null,
+    prompt1Raw: entry?.prompt1Raw ?? null,
     prompt1Output: entry?.prompt1Result ?? null,
+    prompt2Input: entry?.prompt2Input ?? null,
+    prompt2Raw: entry?.prompt2Raw ?? null,
     prompt2Output: entry?.prompt2Result ?? null,
+    prompt3Input: entry?.prompt3Input ?? null,
+    prompt3Raw: entry?.prompt3Raw ?? null,
     prompt3Output: entry?.prompt3Parsed ?? null,
+    prompt3Feedback: entry?.prompt3Feedback ?? null,
   }));
 
   downloadJsonFile(
@@ -965,59 +983,81 @@ function exportHistoryData() {
 }
 
 async function downloadDefaultPrompt(templateName) {
-  const descriptor = PROMPT_FILE_DESCRIPTORS.find(
-    (item) => item.templateName === templateName,
-  );
-  if (
-    !descriptor?.defaultPath ||
-    !descriptor.contractPath ||
-    !descriptor.downloadName ||
-    !descriptor.promptFileName ||
-    !descriptor.contractFileName
-  ) {
+  const descriptor = PROMPT_FILE_DESCRIPTORS.find((item) => item.templateName === templateName);
+  if (!descriptor?.downloadName) {
     return;
   }
 
-  const [promptResponse, contractResponse] = await Promise.all([
-    fetch(chrome.runtime.getURL(descriptor.defaultPath)),
-    fetch(chrome.runtime.getURL(descriptor.contractPath)),
-  ]);
-
-  if (!promptResponse.ok) {
-    throw new Error(`Failed to load default ${descriptor.label}.`);
-  }
-  if (!contractResponse.ok) {
-    throw new Error(`Failed to load output contract for ${descriptor.label}.`);
+  const response = await sendMessage("GET_DEFAULT_PROMPT_DOWNLOAD", {
+    templateName,
+  });
+  if (!response?.ok || !Array.isArray(response.entries) || !response.entries.length) {
+    throw new Error(response?.error || `Failed to load default ${descriptor.label}.`);
   }
 
-  const [promptText, rawContractText] = await Promise.all([
-    promptResponse.text(),
-    contractResponse.text(),
-  ]);
   const { createZipArchive } = await loadZipModule();
-  const contractText = [
-    "Output contract note:",
-    "- This contract is fixed in the extension code.",
-    "- Changes to this file will not affect runtime behavior.",
-    "- Upload .txt files only.",
-    "- Upload only the main prompt file, not this contract file.",
-    "- To tailor the tool, edit the main prompt instead.",
-    "",
-    rawContractText.trim(),
-  ].join("\n");
-  const archive = createZipArchive([
-    { name: descriptor.promptFileName, content: promptText },
-    { name: descriptor.contractFileName, content: contractText },
-  ]);
+  const archive = createZipArchive(response.entries);
   const blob = new Blob([archive], { type: "application/zip" });
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
-  link.download = descriptor.downloadName;
+  link.download = response.downloadName || descriptor.downloadName;
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+async function refreshDefaultPromptsManually() {
+  if (state.promptSyncPromise) {
+    await state.promptSyncPromise.catch(() => {});
+  }
+
+  setRunStatus(
+    "interrupted",
+    "Refreshing prompts",
+    "Syncing the latest default prompts from Lumi Coach.",
+  );
+
+  const syncPromise = sendMessage("SYNC_DEFAULT_PROMPTS");
+  state.promptSyncPromise = syncPromise;
+  renderSettings();
+
+  let response;
+  try {
+    response = await syncPromise;
+  } finally {
+    if (state.promptSyncPromise === syncPromise) {
+      state.promptSyncPromise = null;
+    }
+    renderSettings();
+  }
+
+  if (!response?.ok) {
+    throw new Error(response?.error || "Failed to refresh prompt defaults.");
+  }
+
+  await refreshBoardData();
+
+  if (response.degraded) {
+    setRunStatus(
+      "interrupted",
+      "Using cached prompts",
+      "Prompt sync was unavailable, so Lumi Coach kept the current cached defaults.",
+    );
+    return;
+  }
+
+  const changedCount = Array.isArray(response.changedKeys)
+    ? response.changedKeys.length
+    : 0;
+  setRunStatus(
+    "success",
+    "Prompts refreshed",
+    changedCount > 0
+      ? `Synced ${changedCount} updated prompt file${changedCount === 1 ? "" : "s"} from the server.`
+      : "Default prompts were already up to date.",
+  );
 }
 
 function injectStyles() {
@@ -1435,6 +1475,46 @@ function injectStyles() {
       justify-content: space-between;
       align-items: flex-start;
       gap: 16px;
+    }
+
+    .resume-matcher-source-toggle {
+      display: inline-flex;
+      gap: 6px;
+      padding: 3px;
+      border: 1px solid rgba(232, 206, 214, 0.86);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.74);
+      width: fit-content;
+    }
+
+    .resume-matcher-source-toggle__button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: rgba(108, 41, 64, 0.8);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      transition:
+        background-color 120ms ease,
+        color 120ms ease,
+        opacity 120ms ease;
+    }
+
+    .resume-matcher-source-toggle__button.is-active {
+      background: linear-gradient(180deg, #9f254f 0%, #6f1b38 100%);
+      color: #fff7fb;
+    }
+
+    .resume-matcher-source-toggle__button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
     }
 
     .resume-matcher-run-job__title {
@@ -2544,6 +2624,49 @@ function injectStyles() {
       color: #667085;
     }
 
+    .resume-matcher-settings-item__title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .resume-matcher-settings-item__title-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid rgba(203, 213, 225, 0.92);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #8e2247;
+      cursor: pointer;
+      transition:
+        border-color 120ms ease,
+        background-color 120ms ease,
+        color 120ms ease,
+        transform 120ms ease;
+    }
+
+    .resume-matcher-settings-item__title-action:hover:not(:disabled) {
+      border-color: rgba(142, 34, 71, 0.3);
+      background: rgba(255, 245, 248, 0.98);
+      transform: translateY(-1px);
+    }
+
+    .resume-matcher-settings-item__title-action:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      transform: none;
+    }
+
+    .resume-matcher-settings-item__title-action svg {
+      width: 12px;
+      height: 12px;
+    }
+
     .resume-matcher-settings-item__detail {
       font-size: 12px;
       line-height: 1.45;
@@ -3521,6 +3644,7 @@ function openBoard(view = "run", options = {}) {
       { surface },
     );
   }
+  void syncPromptDefaultsForOpen(view, previousOpen, previousView);
   const shouldCheckConnection =
     view === "settings" ? true : hasSelectedJobTarget();
   if (
@@ -3901,6 +4025,28 @@ function hasManualJobDescription() {
   return Boolean(state.manualJobDescription.trim());
 }
 
+function getDefaultRunSourceMode() {
+  return hasActiveSelectedJobRoute() ? "linkedin" : "manual";
+}
+
+function canUseLinkedInRunMode() {
+  return state.routeMode === "active" || state.routeMode === "waiting";
+}
+
+function syncRunSourceModeForRoute() {
+  if (
+    !state.runSourceMode ||
+    (state.runSourceMode === "linkedin" && !canUseLinkedInRunMode())
+  ) {
+    state.runSourceMode = getDefaultRunSourceMode();
+  }
+}
+
+function isManualRunMode() {
+  syncRunSourceModeForRoute();
+  return state.runSourceMode === "manual";
+}
+
 function isScrapeProblemMessage(message) {
   const normalized = String(message || "").toLowerCase();
   return (
@@ -3945,6 +4091,10 @@ function isHardPrerequisiteBlocker() {
 
 function shouldShowManualJdFallback() {
   return !getSetupRequirementStatus() && Boolean(state.scrapeIssue);
+}
+
+function shouldShowManualJdInput() {
+  return isManualRunMode() || shouldShowManualJdFallback();
 }
 
 function buildManualJobInput() {
@@ -4008,7 +4158,7 @@ function hasSelectedJobTarget() {
 }
 
 function isWaitingForJobSelection() {
-  return state.routeMode === "waiting";
+  return state.routeMode === "waiting" && !isManualRunMode();
 }
 
 function cloneJobForRun(job) {
@@ -4111,13 +4261,42 @@ function getRunStateFromExtensionSession() {
 }
 
 function syncVisibleRunStateFromExtensionSession() {
-  if (state.isRunning || state.isCanceling || state.awaitingAuth || state.awaitingStoryboard) return;
   if (getSetupRequirementStatus() || isHardPrerequisiteBlocker()) {
     state.activeRunJob = null;
     return;
   }
   const sessionState = getRunStateFromExtensionSession();
+  const hasLocalTransientRunState =
+    state.isRunning ||
+    state.isCanceling ||
+    state.awaitingAuth ||
+    state.awaitingStoryboard;
+
+  if (
+    hasLocalTransientRunState &&
+    sessionState &&
+    (!state.activeRunId || sessionState.runId === state.activeRunId)
+  ) {
+    return;
+  }
+
   if (!sessionState) {
+    if (hasLocalTransientRunState) {
+      state.isRunning = false;
+      state.isCanceling = false;
+      state.awaitingAuth = false;
+      state.awaitingStoryboard = false;
+      state.previewHandoffComplete = false;
+      state.lastProgressHeartbeatAt = 0;
+      state.runningDetailSource = "";
+      stopRunningStatusRotation();
+      if (
+        state.explicitRunStatus?.kind === "running" ||
+        state.explicitRunStatus?.kind === "interrupted"
+      ) {
+        clearExplicitRunStatus("session-cleared", { renderNow: false });
+      }
+    }
     state.isCanceling = false;
     if (state.extensionState?.status !== "canceled") {
       state.activeRunId = null;
@@ -4179,6 +4358,19 @@ function canAttemptRecoveryRun() {
 }
 
 function getRunBlockingState() {
+  if (isManualRunMode()) {
+    if (hasManualJobDescription()) {
+      return null;
+    }
+
+    return {
+      tone: "info",
+      title: "Paste a job description",
+      detail: "Paste the full job description to start tailoring.",
+      actions: [],
+    };
+  }
+
   if (isWaitingForJobSelection()) {
     return {
       tone: "info",
@@ -4852,6 +5044,20 @@ function shouldHandleRunScopedMessage(runId = null) {
   return !state.activeRunId;
 }
 
+function isRunStatusRelevantScope(scope = "") {
+  return new Set([
+    "Orchestrator",
+    "ResumeApi",
+    "LinkedInScrape",
+    "LlmRunner",
+    "ChatGptAutomation",
+    "ClaudeApi",
+    "GeminiApi",
+    "WebAutomation",
+    "JobGuardrail",
+  ]).has(String(scope || "").trim());
+}
+
 function applyCanceledRunState(runId = null, options = {}) {
   if (!shouldHandleRunScopedMessage(runId)) {
     return false;
@@ -5212,16 +5418,17 @@ function renderSettings() {
     storyboardLabel.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(label)}</span><button id="${STORYBOARD_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="${hasFile ? "Delete story bank" : "Upload story bank"}" title="${hasFile ? "Delete story bank" : "Upload story bank"}">${renderFileActionIcon(hasFile ? "delete" : "upload")}</button>`;
     storyboardLabel.classList.toggle("is-placeholder", !hasFile);
   }
-  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label }) => {
+  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
     const chip = $(promptLabelId(templateName));
     if (!chip) return;
     const descriptor = PROMPT_FILE_DESCRIPTORS.find(
       (item) => item.templateName === templateName,
     );
-    const asset = assets?.[`${templateName}TemplateAsset`];
+    const asset =
+      editable === false ? null : assets?.[`${templateName}TemplateAsset`];
     const hasFile = Boolean(asset?.filename);
     const filename = asset?.filename?.trim() || label;
-    chip.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(filename)}</span><span class="resume-matcher-file-chip__actions">${renderPromptActionButtons(templateName, hasFile, Boolean(descriptor?.defaultPath), label)}</span>`;
+    chip.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(filename)}</span><span class="resume-matcher-file-chip__actions">${renderPromptActionButtons(templateName, hasFile, Boolean(descriptor?.downloadName), label, editable !== false)}</span>`;
     chip.classList.toggle("is-placeholder", !hasFile);
   });
 
@@ -5292,12 +5499,17 @@ function renderSettings() {
       control.disabled = accountControlsDisabled;
     }
   });
-  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName }) => {
+  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, editable }) => {
     const promptInput = $(promptInputId(templateName));
-    if (promptInput) promptInput.disabled = accountControlsDisabled;
+    if (promptInput) promptInput.disabled = accountControlsDisabled || editable === false;
     const promptAction = $(promptActionId(templateName));
-    if (promptAction) promptAction.disabled = accountControlsDisabled;
+    if (promptAction) promptAction.disabled = accountControlsDisabled || editable === false;
   });
+  const promptRefreshButton = $(PROMPT_REFRESH_ID);
+  if (promptRefreshButton) {
+    promptRefreshButton.disabled =
+      accountControlsDisabled || Boolean(state.promptSyncPromise);
+  }
 
   $(MASTER_RESUME_ACTION_ID)?.addEventListener("click", async () => {
     if (accountControlsDisabled) return;
@@ -5318,19 +5530,30 @@ function renderSettings() {
     }
     $(STORYBOARD_INPUT_ID)?.click();
   });
-  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label }) => {
+  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
     $(promptActionId(templateName))?.addEventListener("click", async () => {
-      if (accountControlsDisabled) return;
-      const asset = state.assets?.[`${templateName}TemplateAsset`];
-      if (asset?.filename) {
-        await sendMessage("DELETE_PROMPT_TEMPLATE", {
-          templateName,
-          promptProfileId: state.assets?.activePromptProfileId || "profile1",
-        }).catch(() => {});
-        await refreshBoardData();
-        return;
+      if (accountControlsDisabled || editable === false) return;
+      try {
+        const asset = state.assets?.[`${templateName}TemplateAsset`];
+        if (asset?.filename) {
+          const response = await sendMessage("DELETE_PROMPT_TEMPLATE", {
+            templateName,
+            promptProfileId: state.assets?.activePromptProfileId || "profile1",
+          }).catch(() => {});
+          if (!response?.ok) {
+            throw new Error(response?.error || `Failed to delete ${label}.`);
+          }
+          await refreshBoardData();
+          return;
+        }
+        $(promptInputId(templateName))?.click();
+      } catch (error) {
+        setRunStatus(
+          "error",
+          "Save failed",
+          error instanceof Error ? error.message : `Failed to update ${label}.`,
+        );
       }
-      $(promptInputId(templateName))?.click();
     });
     $(promptDownloadId(templateName))?.addEventListener("click", async () => {
       try {
@@ -5349,6 +5572,23 @@ function renderSettings() {
         );
       }
     });
+  });
+  $(PROMPT_REFRESH_ID)?.addEventListener("click", async () => {
+    if (accountControlsDisabled) return;
+    try {
+      await refreshDefaultPromptsManually();
+      void trackAnalyticsEvent("extension_prompt_defaults_refreshed", {
+        surface: "settings_view",
+      });
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Refresh failed",
+        error instanceof Error
+          ? error.message
+          : "Failed to refresh prompt defaults.",
+      );
+    }
   });
 
   renderProviderFields();
@@ -5376,13 +5616,17 @@ function autoGrowTextarea(textarea) {
 }
 
 function renderRunView() {
+  syncRunSourceModeForRoute();
   const status = getRunStatusCopy();
   const readyPill = $(RUN_READY_ID);
   const jobMeta = $(RUN_META_ID);
   const onboardingRoot = $(RUN_ONBOARDING_ID);
   const manualJdField = $(RUN_MANUAL_JD_FIELD_ID);
   const manualJdInput = $(RUN_MANUAL_JD_ID);
+  const sourceLinkedInButton = $(RUN_SOURCE_LINKEDIN_ID);
+  const sourceManualButton = $(RUN_SOURCE_MANUAL_ID);
   const notesField = $(RUN_NOTES_ID)?.closest(".resume-matcher-field");
+  const manualMode = isManualRunMode();
   const isLoadingJob =
     state.jobLoadState === "loading" &&
     (state.selectedJobRefreshing || !hasEnoughJobContext(state.currentJob));
@@ -5393,7 +5637,7 @@ function renderRunView() {
   const onboardingMode = isOnboardingMode();
   const runningDifferentJob =
     state.isRunning && !doesActiveRunMatchCurrentJob();
-  const canRefreshJob = canManuallyRescrapeJob();
+  const canRefreshJob = !manualMode && canManuallyRescrapeJob();
 
   if (onboardingRoot) {
     onboardingRoot.hidden = !onboardingMode;
@@ -5411,8 +5655,18 @@ function renderRunView() {
     syncOnboardingProviderContinueState();
   }
 
+  if (sourceLinkedInButton && sourceManualButton) {
+    const linkedInEnabled = canUseLinkedInRunMode();
+    sourceLinkedInButton.disabled = !linkedInEnabled || state.isRunning || state.isCanceling;
+    sourceManualButton.disabled = state.isRunning || state.isCanceling;
+    sourceLinkedInButton.classList.toggle("is-active", !manualMode);
+    sourceManualButton.classList.toggle("is-active", manualMode);
+    sourceLinkedInButton.setAttribute("aria-selected", String(!manualMode));
+    sourceManualButton.setAttribute("aria-selected", String(manualMode));
+  }
+
   if (readyPill) {
-    readyPill.hidden = onboardingMode || hardBlocker || waitingForSelection;
+    readyPill.hidden = onboardingMode || hardBlocker || waitingForSelection || manualMode;
     readyPill.innerHTML = canRefreshJob
       ? icon("refresh")
       : canRun
@@ -5454,7 +5708,7 @@ function renderRunView() {
   }
 
   if (jobMeta) {
-    jobMeta.hidden = onboardingMode || hardBlocker || waitingForSelection;
+    jobMeta.hidden = onboardingMode || hardBlocker || waitingForSelection || manualMode;
     if (state.selectedJobRefreshing) {
       jobMeta.innerHTML = "";
     } else {
@@ -5482,7 +5736,7 @@ function renderRunView() {
   }
   if (manualJdField) {
     manualJdField.hidden =
-      onboardingMode || hardBlocker || waitingForSelection || !hasScrapeProblem;
+      onboardingMode || hardBlocker || waitingForSelection || !shouldShowManualJdInput();
   }
   if (manualJdInput && manualJdInput.value !== state.manualJobDescription) {
     manualJdInput.value = state.manualJobDescription;
@@ -5506,8 +5760,6 @@ function renderRunView() {
         : "Running…"
       : state.isCanceling
         ? "Canceling..."
-      : hasManualJobDescription() && hasScrapeProblem
-        ? "Continue"
         : "Tailor";
     primaryButton.hidden = onboardingMode || hardBlocker || waitingForSelection;
   }
@@ -5574,6 +5826,8 @@ function renderRunView() {
       ? state.setupState?.title || "Welcome"
       : waitingForSelection
         ? "Select a job"
+      : manualMode
+        ? "Paste job description"
       : hardBlocker
         ? state.setupState?.title || "Finish setup"
         : isLoadingJob
@@ -5693,6 +5947,31 @@ function render() {
   renderHistory();
   renderSettings();
   syncRunningInteractivity();
+}
+
+function syncPromptDefaultsForOpen(view, previousOpen, previousView) {
+  const shouldSync =
+    (view === "run" || view === "settings") &&
+    (!previousOpen || previousView !== view);
+  if (!shouldSync) {
+    return Promise.resolve({ ok: true, skipped: true });
+  }
+
+  const syncPromise = sendMessage("SYNC_DEFAULT_PROMPTS")
+    .catch((error) => {
+      logError("Failed to sync default prompts.", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { ok: false };
+    })
+    .finally(() => {
+      if (state.promptSyncPromise === syncPromise) {
+        state.promptSyncPromise = null;
+      }
+    });
+
+  state.promptSyncPromise = syncPromise;
+  return syncPromise;
 }
 
 async function refreshBoardData() {
@@ -5998,10 +6277,14 @@ async function handleGenerateClick() {
   );
 
   try {
+    if (state.promptSyncPromise) {
+      await state.promptSyncPromise.catch(() => {});
+    }
     const prompt1CustomInstruction = state.customMessage.trim();
-    const manualJobInput = shouldShowManualJdFallback()
+    const manualJobInput = (isManualRunMode() || shouldShowManualJdFallback())
       ? buildManualJobInput()
       : null;
+    state.activeRunJob = cloneJobForRun(manualJobInput || state.currentJob);
     const response = await sendMessage("GENERATE_FOR_ACTIVE_JOB", {
       runId: state.activeRunId,
       prompt1CustomInstruction,
@@ -6366,6 +6649,10 @@ function ensureRoot() {
         <section id="${RUN_VIEW_ID}" class="resume-matcher-view is-active">
           <article class="resume-matcher-run-shell">
             <div class="resume-matcher-run-shell__body">
+              <div class="resume-matcher-source-toggle" role="tablist" aria-label="Job source">
+                <button id="${RUN_SOURCE_LINKEDIN_ID}" type="button" class="resume-matcher-source-toggle__button is-active" role="tab" aria-selected="true">LinkedIn job</button>
+                <button id="${RUN_SOURCE_MANUAL_ID}" type="button" class="resume-matcher-source-toggle__button" role="tab" aria-selected="false">Paste JD</button>
+              </div>
               <div class="resume-matcher-run-job">
                 <h2 id="resume-matcher-job-title" class="resume-matcher-run-job__title">LinkedIn job</h2>
                 <button id="${RUN_READY_ID}" type="button" class="resume-matcher-run-ready is-muted" aria-label="Needs setup" title="Needs setup">!</button>
@@ -6374,8 +6661,8 @@ function ensureRoot() {
               <div id="${RUN_STATUS_ID}" class="resume-matcher-status-card" data-tone="neutral"></div>
               <div id="${RUN_ONBOARDING_ID}" class="resume-matcher-onboarding" hidden></div>
               <div id="${RUN_MANUAL_JD_FIELD_ID}" class="resume-matcher-field" hidden>
-                <label for="${RUN_MANUAL_JD_ID}">Paste job description manually</label>
-                <textarea id="${RUN_MANUAL_JD_ID}" rows="5" placeholder="If LinkedIn hides the full job description, paste it here to continue."></textarea>
+                <label for="${RUN_MANUAL_JD_ID}">Paste job description</label>
+                <textarea id="${RUN_MANUAL_JD_ID}" rows="5" placeholder="Paste the full job description here to continue."></textarea>
               </div>
               <div class="resume-matcher-field resume-matcher-field--notes">
                 <label for="${RUN_NOTES_ID}">Helpful context</label>
@@ -6496,18 +6783,21 @@ function ensureRoot() {
                     <button id="${APIFY_SAVE_ID}" type="button" class="resume-matcher-button is-primary">Save Apify</button>
                   </div>
                   <div class="resume-matcher-settings-item">
-                    <div class="resume-matcher-settings-item__title">Prompting</div>
-                    <div class="resume-matcher-settings-item__detail">Upload .txt only. Upload the main prompt only.</div>
+                    <div class="resume-matcher-settings-item__title-row">
+                      <div class="resume-matcher-settings-item__title">Prompting</div>
+                      <button id="${PROMPT_REFRESH_ID}" type="button" class="resume-matcher-settings-item__title-action" aria-label="Refresh default prompts" title="Refresh default prompts">${icon("refresh")}</button>
+                    </div>
+                    <div class="resume-matcher-settings-item__detail">Upload .txt only. Edit the main prompt wording only. Output contracts and guardrails stay fixed.</div>
                     <div class="resume-matcher-settings-substack">
                       ${PROMPT_FILE_DESCRIPTORS.map(
-                        ({ templateName, label, defaultPath }) => `
+                        ({ templateName, label, downloadName, editable }) => `
                         <div class="resume-matcher-settings-item">
                           <div class="resume-matcher-file-row">
                             <div id="${promptLabelId(templateName)}" class="resume-matcher-file-chip is-placeholder">
                               <span class="resume-matcher-file-chip__text">${label}</span>
                               <span class="resume-matcher-file-chip__actions">
-                                ${defaultPath ? `<button id="${promptDownloadId(templateName)}" type="button" class="resume-matcher-file-chip__action" aria-label="Download default ${label}" title="Download default ${label}">${icon("download")}</button>` : ""}
-                                <button id="${promptActionId(templateName)}" type="button" class="resume-matcher-file-chip__action" aria-label="Upload ${label}" title="Upload ${label}">${renderFileActionIcon("upload")}</button>
+                                ${downloadName ? `<button id="${promptDownloadId(templateName)}" type="button" class="resume-matcher-file-chip__action" aria-label="Download default ${label}" title="Download default ${label}">${icon("download")}</button>` : ""}
+                                ${editable !== false ? `<button id="${promptActionId(templateName)}" type="button" class="resume-matcher-file-chip__action" aria-label="Upload ${label}" title="Upload ${label}">${renderFileActionIcon("upload")}</button>` : ""}
                               </span>
                             </div>
                             <input id="${promptInputId(templateName)}" class="resume-matcher-file-input" type="file" accept=".txt,text/plain" />
@@ -6589,6 +6879,16 @@ function ensureRoot() {
     openBoard("settings");
   });
   $(BOARD_MINIMIZE_ID)?.addEventListener("click", minimizeBoard);
+  $(RUN_SOURCE_LINKEDIN_ID)?.addEventListener("click", () => {
+    if (!canUseLinkedInRunMode() || state.isRunning || state.isCanceling) return;
+    state.runSourceMode = "linkedin";
+    renderRunView();
+  });
+  $(RUN_SOURCE_MANUAL_ID)?.addEventListener("click", () => {
+    if (state.isRunning || state.isCanceling) return;
+    state.runSourceMode = "manual";
+    renderRunView();
+  });
   $(RUN_READY_ID)?.addEventListener("click", handleManualJobRescrape);
   $(RUN_PRIMARY_ID)?.addEventListener("click", handleGenerateClick);
   $(RUN_CANCEL_ID)?.addEventListener("click", requestCancelActiveRun);
@@ -6649,19 +6949,23 @@ function ensureRoot() {
     await saveTextAsset(file, "SAVE_STORYBOARD");
     event.target.value = "";
   });
-  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label }) => {
+  PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
     $(promptInputId(templateName))?.addEventListener(
       "change",
       async (event) => {
+        if (editable === false) return;
         const file = event.target.files?.[0];
         if (!file) return;
         try {
-          await sendMessage("SAVE_PROMPT_TEMPLATE", {
+          const response = await sendMessage("SAVE_PROMPT_TEMPLATE", {
             templateName,
             promptProfileId: state.assets?.activePromptProfileId || "profile1",
             filename: file.name,
             content: await file.text(),
           });
+          if (!response?.ok) {
+            throw new Error(response?.error || `Failed to save ${label}.`);
+          }
           void trackAnalyticsEvent("extension_prompt_uploaded", {
             surface: "settings_view",
             template_name: templateName,
@@ -7104,6 +7408,9 @@ function updateStatusFromLog(level, scope, message, data) {
   }
 
   if (level === "error") {
+    if (!scopedRunId && !isRunStatusRelevantScope(scope)) {
+      return;
+    }
     state.isRunning = false;
     state.isCanceling = false;
     state.awaitingAuth = false;

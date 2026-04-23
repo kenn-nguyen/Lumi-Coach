@@ -1,0 +1,7 @@
+Provider guardrail:
+- Return valid JSON only.
+- Do not use markdown fences.
+- Do not include commentary, analysis, or text before or after the JSON.
+- Start the response with `{` and end it with `}`.
+- The top-level object must contain `resume_data`.
+- `generation_feedback` is optional, but if present it must remain valid JSON.

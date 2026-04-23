@@ -1,12 +1,21 @@
-export function extractJsonFromText(rawText) {
+export function extractJsonFromText(rawText, options = {}) {
   const trimmed = rawText.trim();
+  const validator = typeof options.validate === "function" ? options.validate : null;
 
   const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fencedMatch?.[1]) {
-    return tryParseJson(fencedMatch[1]);
+    const parsedFromFence = tryParseJson(fencedMatch[1], validator);
+    if (parsedFromFence !== undefined) {
+      return parsedFromFence;
+    }
   }
 
-  return tryParseJson(trimmed);
+  const parsed = tryParseJson(trimmed, validator);
+  if (parsed !== undefined) {
+    return parsed;
+  }
+
+  throw new Error("Unable to parse JSON from model output.");
 }
 
 export function extractPrompt3PayloadFromText(rawText) {
@@ -51,27 +60,35 @@ export function extractPrompt4ResumeDataFromText(rawText) {
   return wrappedResumeData;
 }
 
-function tryParseJson(text) {
+function tryParseJson(text, validator) {
   try {
-    return JSON.parse(text);
-  } catch {
-    const directSlice = sliceLikelyJsonBlock(text);
-    if (directSlice) {
-      return JSON.parse(directSlice);
+    const parsed = JSON.parse(text);
+    if (matchesValidator(parsed, validator)) {
+      return parsed;
     }
-    const sanitizedText = sanitizeHtmlArtifacts(text);
-    if (sanitizedText !== text) {
-      try {
-        return JSON.parse(sanitizedText);
-      } catch {
-        const sanitizedSlice = sliceLikelyJsonBlock(sanitizedText);
-        if (sanitizedSlice) {
-          return JSON.parse(sanitizedSlice);
-        }
-      }
-    }
-    throw new Error("Unable to parse JSON from model output.");
+  } catch {}
+
+  const directSlice = sliceLikelyJsonBlock(text, validator);
+  if (directSlice) {
+    return JSON.parse(directSlice);
   }
+
+  const sanitizedText = sanitizeHtmlArtifacts(text);
+  if (sanitizedText !== text) {
+    try {
+      const parsed = JSON.parse(sanitizedText);
+      if (matchesValidator(parsed, validator)) {
+        return parsed;
+      }
+    } catch {}
+
+    const sanitizedSlice = sliceLikelyJsonBlock(sanitizedText, validator);
+    if (sanitizedSlice) {
+      return JSON.parse(sanitizedSlice);
+    }
+  }
+
+  return undefined;
 }
 
 function normalizeGenerationFeedback(value) {
@@ -111,13 +128,25 @@ function normalizeFeedbackItems(value) {
     .filter(Boolean);
 }
 
-function sliceLikelyJsonBlock(text) {
-  const objectSlice = findBalancedJsonSlice(text, "{", "}");
+function matchesValidator(parsed, validator) {
+  if (!validator) {
+    return true;
+  }
+
+  try {
+    return validator(parsed) === true;
+  } catch {
+    return false;
+  }
+}
+
+function sliceLikelyJsonBlock(text, validator) {
+  const objectSlice = findBalancedJsonSlice(text, "{", "}", validator);
   if (objectSlice) {
     return objectSlice;
   }
 
-  const arraySlice = findBalancedJsonSlice(text, "[", "]");
+  const arraySlice = findBalancedJsonSlice(text, "[", "]", validator);
   if (arraySlice) {
     return arraySlice;
   }
@@ -125,7 +154,7 @@ function sliceLikelyJsonBlock(text) {
   return null;
 }
 
-function findBalancedJsonSlice(text, openChar, closeChar) {
+function findBalancedJsonSlice(text, openChar, closeChar, validator) {
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== openChar) continue;
 
@@ -166,10 +195,12 @@ function findBalancedJsonSlice(text, openChar, closeChar) {
         if (depth === 0) {
           const candidate = text.slice(start, index + 1).trim();
           try {
-            JSON.parse(candidate);
-            return candidate;
+            const parsed = JSON.parse(candidate);
+            if (matchesValidator(parsed, validator)) {
+              return candidate;
+            }
           } catch {
-            break;
+            continue;
           }
         }
       }
