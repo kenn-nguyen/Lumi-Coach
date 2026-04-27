@@ -13,6 +13,7 @@ import {
   getPendingExtensionAction,
   getServerPromptDefaults,
   getUserAssets,
+  removeHistoryEntryByRunId,
   setPromptTemplateAsset,
   setExtensionAuth,
   setMasterResumeContextAsset,
@@ -237,6 +238,21 @@ describe("account-scoped extension storage", () => {
     expect(entries).toHaveLength(1000);
     expect(entries[0]?.jobKey).toBe("job-1004");
     expect(entries.at(-1)?.jobKey).toBe("job-5");
+  });
+
+  it("removes one history entry by run id", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+
+    await upsertHistoryEntry({ jobKey: "job-a", runId: "run-a" });
+    await upsertHistoryEntry({ jobKey: "job-b", runId: "run-b" });
+
+    const result = await removeHistoryEntryByRunId("run-a");
+    const entries = await getHistoryEntries();
+
+    expect(result.removed).toBe(true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.runId).toBe("run-b");
   });
 
   it("stores server-managed prompt artifacts separately from user overrides", async () => {

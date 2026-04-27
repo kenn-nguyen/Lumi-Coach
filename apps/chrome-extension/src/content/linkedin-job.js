@@ -65,7 +65,6 @@ const APIFY_TOKEN_TOGGLE_ID = "resume-matcher-apify-token-toggle";
 const APIFY_SAVE_ID = "resume-matcher-apify-save";
 const PROMPT_REFRESH_ID = "resume-matcher-prompt-refresh";
 const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
-const CUSTOM_FEATURE_INPUT_ID = "resume-matcher-custom-feature";
 const RUNTIME_URLS_ROW_ID = "resume-matcher-runtime-urls";
 const RESET_LOCAL_ID = "resume-matcher-reset-local";
 const RESET_DEFAULTS_ID = "resume-matcher-reset-defaults";
@@ -443,6 +442,7 @@ const state = {
   historySortDirection: "desc",
   historyPage: 1,
   historyFilterOpen: false,
+  deletingHistoryRunId: null,
   promptSyncPromise: null,
   runSourceMode: null,
 };
@@ -923,52 +923,74 @@ function downloadJsonFile(filename, payload) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
+function getMatchingCurrentSession(entry) {
+  const session = state.extensionState;
+  if (!entry?.runId || !session?.sessionId) return null;
+  return entry.runId === session.sessionId ? session : null;
+}
+
+function coalesceRunField(entry, session, entryKey, sessionKey = entryKey) {
+  return entry?.[entryKey] ?? session?.[sessionKey] ?? null;
+}
+
+function buildPromptDebugExport(entry, session) {
+  return {
+    prompt4Input: coalesceRunField(entry, session, "prompt4Input"),
+    prompt4Raw: coalesceRunField(entry, session, "prompt4Raw"),
+    prompt4Output: entry?.prompt4Result ?? session?.prompt4Result ?? null,
+    prompt1Input: coalesceRunField(entry, session, "prompt1Input"),
+    prompt1Raw: coalesceRunField(entry, session, "prompt1Raw"),
+    prompt1Output: entry?.prompt1Result ?? session?.prompt1Result ?? null,
+    prompt2Input: coalesceRunField(entry, session, "prompt2Input"),
+    prompt2Raw: coalesceRunField(entry, session, "prompt2Raw"),
+    prompt2Output: entry?.prompt2Result ?? session?.prompt2Result ?? null,
+    prompt3Input: coalesceRunField(entry, session, "prompt3Input"),
+    prompt3Raw: coalesceRunField(entry, session, "prompt3Raw"),
+    prompt3Output: entry?.prompt3Parsed ?? session?.prompt3Parsed ?? null,
+    prompt3Feedback: coalesceRunField(entry, session, "prompt3Feedback"),
+  };
+}
+
 function exportHistoryData() {
   const exportedAt = new Date().toISOString();
-  const items = (Array.isArray(state.history) ? state.history : []).map((entry) => ({
-    runId: entry?.runId ?? null,
-    jdLink: entry?.sourceUrl ?? null,
-    jobTitle: entry?.title ?? null,
-    company: entry?.company ?? null,
-    location: entry?.location ?? null,
-    datePosted: entry?.datePosted ?? null,
-    generatedAt: entry?.generatedAt ?? null,
-    status: entry?.status ?? null,
-    resumeId: entry?.resumeId ?? null,
-    previewUrl: entry?.previewUrl ?? null,
-    providerId: entry?.providerId ?? null,
-    providerLabel: entry?.providerLabel ?? null,
-    providerVendor: entry?.providerVendor ?? null,
-    providerMode: entry?.providerMode ?? null,
-    jobSource: entry?.jobSource ?? null,
-    jobReadiness: entry?.jobReadiness ?? null,
-    descriptionProvenance: entry?.descriptionProvenance ?? null,
-    descriptionLength: entry?.descriptionLength ?? null,
-    scrapeConfidence: entry?.scrapeConfidence ?? null,
-    manualJobInputUsed: entry?.manualJobInputUsed ?? null,
-    customContextProvided: entry?.customContextProvided ?? null,
-    customContextLength: entry?.customContextLength ?? null,
-    storyboardPresent: entry?.storyboardPresent ?? null,
-    prompt1DurationMs: entry?.prompt1DurationMs ?? null,
-    prompt2DurationMs: entry?.prompt2DurationMs ?? null,
-    prompt3DurationMs: entry?.prompt3DurationMs ?? null,
-    patchDurationMs: entry?.patchDurationMs ?? null,
-    totalDurationMs: entry?.totalDurationMs ?? null,
-    prompt3ValidationErrorCount: entry?.prompt3ValidationErrorCount ?? null,
-    prompt4Input: entry?.prompt4Input ?? null,
-    prompt4Raw: entry?.prompt4Raw ?? null,
-    prompt4Output: entry?.prompt4Result ?? null,
-    prompt1Input: entry?.prompt1Input ?? null,
-    prompt1Raw: entry?.prompt1Raw ?? null,
-    prompt1Output: entry?.prompt1Result ?? null,
-    prompt2Input: entry?.prompt2Input ?? null,
-    prompt2Raw: entry?.prompt2Raw ?? null,
-    prompt2Output: entry?.prompt2Result ?? null,
-    prompt3Input: entry?.prompt3Input ?? null,
-    prompt3Raw: entry?.prompt3Raw ?? null,
-    prompt3Output: entry?.prompt3Parsed ?? null,
-    prompt3Feedback: entry?.prompt3Feedback ?? null,
-  }));
+  const items = (Array.isArray(state.history) ? state.history : []).map((entry) => {
+    const currentSession = getMatchingCurrentSession(entry);
+    return {
+      runId: entry?.runId ?? null,
+      jdLink: entry?.sourceUrl ?? null,
+      jobTitle: entry?.title ?? null,
+      company: entry?.company ?? null,
+      location: entry?.location ?? null,
+      datePosted: entry?.datePosted ?? null,
+      generatedAt: entry?.generatedAt ?? null,
+      status: entry?.status ?? null,
+      resumeId: entry?.resumeId ?? null,
+      previewUrl: entry?.previewUrl ?? null,
+      providerId: entry?.providerId ?? null,
+      providerLabel: entry?.providerLabel ?? null,
+      providerVendor: entry?.providerVendor ?? null,
+      providerMode: entry?.providerMode ?? null,
+      jobSource: entry?.jobSource ?? null,
+      jobReadiness: entry?.jobReadiness ?? null,
+      descriptionProvenance: entry?.descriptionProvenance ?? null,
+      descriptionLength: entry?.descriptionLength ?? null,
+      scrapeConfidence: entry?.scrapeConfidence ?? null,
+      manualJobInputUsed: entry?.manualJobInputUsed ?? null,
+      customContextProvided: entry?.customContextProvided ?? null,
+      customContextLength: entry?.customContextLength ?? null,
+      storyboardPresent: entry?.storyboardPresent ?? null,
+      prompt1DurationMs: entry?.prompt1DurationMs ?? null,
+      prompt2DurationMs: entry?.prompt2DurationMs ?? null,
+      prompt3DurationMs: entry?.prompt3DurationMs ?? null,
+      patchDurationMs: entry?.patchDurationMs ?? null,
+      totalDurationMs: entry?.totalDurationMs ?? null,
+      prompt3ValidationErrorCount: entry?.prompt3ValidationErrorCount ?? null,
+      ...buildPromptDebugExport(entry, currentSession),
+    };
+  });
+  const currentSessionPromptDebug = state.extensionState
+    ? buildPromptDebugExport({}, state.extensionState)
+    : null;
 
   downloadJsonFile(
     `lumi-coach-runs-${sanitizeDownloadTimestamp()}.json`,
@@ -977,6 +999,7 @@ function exportHistoryData() {
       exportedAt,
       format: "json",
       itemCount: items.length,
+      currentSessionPromptDebug,
       items,
     },
   );
@@ -2509,6 +2532,14 @@ function injectStyles() {
       gap: 12px;
     }
 
+    .resume-matcher-history-item__actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: 0;
+    }
+
     .resume-matcher-history-item__link {
       appearance: none;
       border: none;
@@ -2524,6 +2555,28 @@ function injectStyles() {
 
     .resume-matcher-history-item__link:hover {
       text-decoration: underline;
+    }
+
+    .resume-matcher-history-item__delete {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: #a01f1f;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .resume-matcher-history-item__delete:hover {
+      text-decoration: underline;
+    }
+
+    .resume-matcher-history-item__delete:disabled {
+      cursor: wait;
+      opacity: 0.55;
+      text-decoration: none;
     }
 
     .resume-matcher-history-pagination {
@@ -4575,6 +4628,68 @@ function openHistoryResume(index) {
   window.open(previewUrl, "_blank", "noopener,noreferrer");
 }
 
+async function deleteHistoryEntry(index) {
+  const entry = getHistoryEntryByIndex(index);
+  const runId = typeof entry?.runId === "string" ? entry.runId.trim() : "";
+  if (!entry || !runId) {
+    setRunStatus(
+      "error",
+      "Cannot delete run",
+      "This history item is missing a run id.",
+    );
+    return;
+  }
+
+  const title = getHistoryTitle(entry);
+  if (
+    !window.confirm(
+      `Delete "${title}" from this browser and delete its backend resume?`,
+    )
+  ) {
+    return;
+  }
+
+  state.deletingHistoryRunId = runId;
+  renderHistory();
+  setRunStatus(
+    "running",
+    "Deleting run",
+    "Deleting the backend resume and removing the local history item.",
+  );
+
+  try {
+    const response = await sendMessage("DELETE_HISTORY_ENTRY", {
+      runId,
+      resumeId: entry.resumeId ?? null,
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to delete run history.");
+    }
+
+    state.history = Array.isArray(response.history) ? response.history : state.history;
+    state.deletingHistoryRunId = null;
+    renderHistory();
+    setRunStatus(
+      "success",
+      "Run deleted",
+      response.deletedBackendResume
+        ? "Deleted the backend resume and removed the local history item."
+        : "Removed the local history item.",
+    );
+    await refreshBoardData();
+  } catch (error) {
+    state.deletingHistoryRunId = null;
+    renderHistory();
+    setRunStatus(
+      "error",
+      "Delete failed",
+      error instanceof Error
+        ? error.message
+        : "Unable to delete this run history item.",
+    );
+  }
+}
+
 function getSelectedProfile(selectId = PROVIDER_SELECT_ID, settings = null) {
   const resolvedSettings = settings || state.assets?.llmSettings;
   if (!resolvedSettings?.profiles) return null;
@@ -5327,6 +5442,8 @@ function renderHistory() {
           .filter(Boolean)
           .join(" • ");
         const hasPreview = Boolean(entry?.previewUrl);
+        const runId = typeof entry?.runId === "string" ? entry.runId : "";
+        const isDeleting = runId && state.deletingHistoryRunId === runId;
         return `
       <article class="resume-matcher-history-item">
         <div class="resume-matcher-history-item__top">
@@ -5341,11 +5458,14 @@ function renderHistory() {
         </div>
         <div class="resume-matcher-history-item__footer">
           <div class="resume-matcher-history-item__meta">${escapeHtml(metaText)}</div>
-          ${
-            hasPreview
-              ? `<button type="button" class="resume-matcher-history-item__link" data-history-open="${originalIndex}">View resume</button>`
-              : ""
-          }
+          <div class="resume-matcher-history-item__actions">
+            ${
+              hasPreview
+                ? `<button type="button" class="resume-matcher-history-item__link" data-history-open="${originalIndex}">View resume</button>`
+                : ""
+            }
+            <button type="button" class="resume-matcher-history-item__delete" data-history-delete="${originalIndex}" ${isDeleting ? "disabled" : ""}>${isDeleting ? "Deleting..." : "Delete"}</button>
+          </div>
         </div>
       </article>
     `;
@@ -5450,12 +5570,9 @@ function renderSettings() {
     syncSecretInput(APIFY_TOKEN_INPUT_ID);
     syncSecretRevealToggle(APIFY_TOKEN_INPUT_ID);
   }
-  const customFeature = $(CUSTOM_FEATURE_INPUT_ID);
-  if (customFeature)
-    customFeature.checked = assets?.customFeatureEnabled === true;
   const runtimeUrlsRow = $(RUNTIME_URLS_ROW_ID);
   if (runtimeUrlsRow) {
-    runtimeUrlsRow.hidden = assets?.customFeatureEnabled !== true;
+    runtimeUrlsRow.hidden = false;
   }
 
   const accountButton = $(ACCOUNT_ACTION_ID);
@@ -6813,12 +6930,7 @@ function ensureRoot() {
                     <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
                     <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local storage</button>
                   </div>
-                  <label class="resume-matcher-inline-action resume-matcher-field--full" for="${CUSTOM_FEATURE_INPUT_ID}">
-                    <span class="resume-matcher-inline-action__label">Enable custom feature</span>
-                    <input id="${CUSTOM_FEATURE_INPUT_ID}" class="resume-matcher-checkbox" type="checkbox" />
-                    <span class="resume-matcher-toggle" aria-hidden="true"></span>
-                  </label>
-                  <div id="${RUNTIME_URLS_ROW_ID}" class="resume-matcher-settings-grid resume-matcher-settings-grid--single" hidden>
+                  <div id="${RUNTIME_URLS_ROW_ID}" class="resume-matcher-settings-grid resume-matcher-settings-grid--single">
                     <div class="resume-matcher-settings-item">
                       <div class="resume-matcher-settings-item__title">App URL</div>
                       <input id="${APP_URL_INPUT_ID}" type="url" placeholder="App URL" />
@@ -6839,6 +6951,9 @@ function ensureRoot() {
                   <div class="resume-matcher-settings-item__detail resume-matcher-field--full">
                     Join our community:
                     <a href="https://chat.whatsapp.com/Ep41UDOTd3A4Lu78mxcEkQ?mode=gi_t" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+                  </div>
+                  <div class="resume-matcher-settings-item__detail resume-matcher-field--full">
+                    Lumi Coach extension v0.0.4 · Include this version when reporting issues.
                   </div>
                 </div>
               </section>
@@ -7056,12 +7171,6 @@ function ensureRoot() {
       );
     }
   });
-  $(CUSTOM_FEATURE_INPUT_ID)?.addEventListener("change", async (event) => {
-    await sendMessage("SAVE_CUSTOM_FEATURE_ENABLED", {
-      enabled: event.target.checked,
-    }).catch(() => {});
-    await refreshBoardData();
-  });
   $(RESET_LOCAL_ID)?.addEventListener("click", async () => {
     if (
       !window.confirm(
@@ -7119,6 +7228,14 @@ function ensureRoot() {
       event.preventDefault();
       state.historyFilterOpen = false;
       openHistoryResume(historyOpenButton.dataset.historyOpen);
+      return;
+    }
+
+    const historyDeleteButton = target.closest("[data-history-delete]");
+    if (historyDeleteButton) {
+      event.preventDefault();
+      state.historyFilterOpen = false;
+      await deleteHistoryEntry(historyDeleteButton.dataset.historyDelete);
       return;
     }
 

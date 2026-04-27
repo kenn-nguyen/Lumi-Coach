@@ -6,6 +6,7 @@ import { captureExtensionEvent } from "./runtime/analytics.js";
 import { logError, logInfo, logWarn, setLogRelayTabId } from "./runtime/log.js";
 import { clearPromptTemplateCache } from "./runtime/prompt-loader.js";
 import {
+  deleteResume,
   fetchExtensionAccessToken,
   openPreviewTab,
   openWebsiteSignInTab,
@@ -41,6 +42,7 @@ import {
   getPendingExtensionAction,
   getServerPromptDefaults,
   hasValidExtensionAuth,
+  removeHistoryEntryByRunId,
   resetExtensionSettingsToDefault,
   applyServerPromptDefaultsSyncResult,
   saveApifyFallbackSettings,
@@ -48,7 +50,6 @@ import {
   setApiOrigin,
   setAppOrigin,
   setChatGptTargetUrl,
-  setCustomFeatureEnabled,
   setExtensionAuth,
   setExtensionState,
   setLastError,
@@ -1078,6 +1079,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           };
         }
 
+      case "DELETE_HISTORY_ENTRY": {
+        const runId = String(message.payload?.runId || "").trim();
+        const resumeId = String(message.payload?.resumeId || "").trim();
+        if (!runId) {
+          return { ok: false, error: "Missing run id for history deletion." };
+        }
+
+        try {
+          if (resumeId) {
+            await deleteResume(resumeId);
+          }
+          const result = await removeHistoryEntryByRunId(runId);
+          return {
+            ok: true,
+            deletedBackendResume: Boolean(resumeId),
+            removedLocalHistory: result.removed,
+            history: result.history,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to delete run history.",
+          };
+        }
+      }
+
       case "SAVE_CHATGPT_URL":
         await setChatGptTargetUrl(message.payload?.url);
         return { ok: true };
@@ -1118,10 +1148,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "SAVE_RUNTIME_URLS":
         await setAppOrigin(message.payload?.appUrl);
         await setApiOrigin(message.payload?.apiUrl);
-        return { ok: true };
-
-      case "SAVE_CUSTOM_FEATURE_ENABLED":
-        await setCustomFeatureEnabled(message.payload?.enabled === true);
         return { ok: true };
 
       case "RESET_LOCAL_DATA":

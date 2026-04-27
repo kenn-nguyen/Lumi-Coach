@@ -225,9 +225,7 @@ The extension must be organized into these non-overlapping layers:
     - default packaged prompts should be downloadable where they exist
     - app URL
     - API URL
-    - custom feature flag
     - danger actions
-  - the custom feature row must render a visible checkbox before the label text
   - prompting appears before the app/API URL fields
 
 ## Component Inventory

@@ -48,7 +48,7 @@ Required behaviors by field:
 - `experience_emphasis`: give role-by-role editing direction; every entry must include `default_action` as either `keep` or `rewrite_all`
 - `bullet_rewrite_instructions`: include only bullets that need rewriting; if a bullet is already strong, leave it out and let the writer preserve it
 - `education_notes`: only include if education framing matters
-- `final_skills_list`: concise ATS-safe skills list using only supported skills
+- `final_skills_list`: choose the 8-12 highest-value ATS-safe skills for this JD, hard maximum 12. Skills may come only from CURRENT_RESUME, Prompt 1 supported signals/tools/platforms/skills, or the story bank. Include a skill only when it is both useful for this target role and defensible in an interview. Rank by target-role value first, then evidence strength. Prefer fewer strong skills over padding. Do not include generic, weak, unsupported, forbidden, or interview-risk skills just to reach the target count.
 - `phrases_to_mirror`: only include safe JD phrases worth mirroring if supported
 - `cannot_claim`, `skills_to_avoid`, `signals_to_avoid`: keep these separate
 - `gaps`: list only the fit gaps that materially affect positioning

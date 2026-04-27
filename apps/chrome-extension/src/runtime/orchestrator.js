@@ -585,140 +585,6 @@ function normalizePrompt3Feedback(feedback) {
   return normalized;
 }
 
-function isKennNguyenName(value) {
-  if (typeof value !== "string") {
-    return false;
-  }
-
-  const normalized = value
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return normalized.includes("kenn") && normalized.includes("nguyen");
-}
-
-function stripTrailingPeriodForCustomSuffix(value) {
-  if (typeof value !== "string") {
-    return value;
-  }
-
-  const trimmed = value.trimEnd();
-  return trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
-}
-
-function findExperienceIndexByCompany(workExperience, matcher) {
-  if (!Array.isArray(workExperience)) {
-    return -1;
-  }
-
-  return workExperience.findIndex((item) => {
-    const company =
-      typeof item?.company === "string" ? item.company.toLowerCase() : "";
-    return matcher(company);
-  });
-}
-
-function appendUniqueBullet(workExperienceItem, bulletText) {
-  if (!workExperienceItem || typeof workExperienceItem !== "object") {
-    return workExperienceItem;
-  }
-
-  const description = Array.isArray(workExperienceItem.description)
-    ? [...workExperienceItem.description]
-    : [];
-  if (!description.includes(bulletText)) {
-    description.push(bulletText);
-  }
-
-  return {
-    ...workExperienceItem,
-    description,
-  };
-}
-
-function appendSuffixToFirstBullet(workExperienceItem, suffix) {
-  if (!workExperienceItem || typeof workExperienceItem !== "object") {
-    return workExperienceItem;
-  }
-
-  const description = Array.isArray(workExperienceItem.description)
-    ? [...workExperienceItem.description]
-    : [];
-  if (!description.length || typeof description[0] !== "string") {
-    return workExperienceItem;
-  }
-
-  if (description[0].includes(suffix)) {
-    return workExperienceItem;
-  }
-
-  description[0] =
-    `${stripTrailingPeriodForCustomSuffix(description[0])} ${suffix}`.trim();
-
-  return {
-    ...workExperienceItem,
-    description,
-  };
-}
-
-function applyKennNguyenCustomFeature(resumeData, enabled) {
-  if (!enabled || !resumeData || typeof resumeData !== "object") {
-    return resumeData;
-  }
-
-  if (!isKennNguyenName(resumeData.personalInfo?.name)) {
-    return resumeData;
-  }
-
-  if (
-    !Array.isArray(resumeData.workExperience) ||
-    resumeData.workExperience.length === 0
-  ) {
-    return resumeData;
-  }
-
-  const nextResume = {
-    ...resumeData,
-    workExperience: [...resumeData.workExperience],
-  };
-
-  const trustingSocialIndex = findExperienceIndexByCompany(
-    nextResume.workExperience,
-    (company) => company.includes("trusting social"),
-  );
-  if (trustingSocialIndex >= 0) {
-    nextResume.workExperience[trustingSocialIndex] = appendUniqueBullet(
-      nextResume.workExperience[trustingSocialIndex],
-      "(Trusting Social is a Sequoia-backed, Series D startup, $400M+ valuation)",
-    );
-  }
-
-  const paypalIndex = findExperienceIndexByCompany(
-    nextResume.workExperience,
-    (company) => company.includes("paypal"),
-  );
-  if (paypalIndex >= 0) {
-    nextResume.workExperience[paypalIndex] = appendSuffixToFirstBullet(
-      nextResume.workExperience[paypalIndex],
-      "- (Consulting project)",
-    );
-  }
-
-  const infineonIndex = findExperienceIndexByCompany(
-    nextResume.workExperience,
-    (company) => company.includes("infineon"),
-  );
-  if (infineonIndex >= 0) {
-    nextResume.workExperience[infineonIndex] = appendSuffixToFirstBullet(
-      nextResume.workExperience[infineonIndex],
-      "- (Internship, Infineon is a top global semiconductor & IoT company with >50,000 employees)",
-    );
-  }
-
-  return nextResume;
-}
-
 function buildBasePromptContext({
   jobSnapshot,
   currentResume,
@@ -1145,7 +1011,6 @@ export async function generateResumeForLinkedInJob(
     masterResumeContextAsset,
     storyboardAsset,
     llmSettings,
-    customFeatureEnabled,
     apifyFallbackSettings,
   } = await getUserAssets();
   const activeLlmProfile = getActiveLlmProfile(llmSettings);
@@ -1569,30 +1434,15 @@ export async function generateResumeForLinkedInJob(
   const normalizedPrompt3Resume = normalizePrompt3ResumeData(
     prompt3Result.resumeData,
   );
-  const prompt3WithPreservedFacts = applyKennNguyenCustomFeature(
-    preserveGeneratedResumeFacts(
-      masterResumeData,
-      normalizedPrompt3Resume,
-      preserveFactsEnabled,
-    ),
-    customFeatureEnabled,
+  const prompt3WithPreservedFacts = preserveGeneratedResumeFacts(
+    masterResumeData,
+    normalizedPrompt3Resume,
+    preserveFactsEnabled,
   );
   const prompt3Parsed = alignSectionMetaToSourceResume(
     masterResumeData,
     prompt3WithPreservedFacts,
   );
-  if (
-    customFeatureEnabled &&
-    isKennNguyenName(prompt3Parsed?.personalInfo?.name)
-  ) {
-    logInfo(
-      "Orchestrator",
-      "Applied custom feature adjustments for Kenn Nguyen.",
-      {
-        resumeId,
-      },
-    );
-  }
   const prompt3Feedback = prefixGenerationFeedbackSummary(
     normalizePrompt3Feedback(prompt3Result.generationFeedback),
     activeLlmProfile,

@@ -130,7 +130,6 @@ Rules:
 - empty state action is upload
 - populated state action becomes delete/clear
 - the upload icon stays visually secondary inside the chip
-- the custom feature row shows a visible checkbox before the label text
 - `Advanced` contains prompt file uploads before the App URL and API URL fields
 - prompt meaning lives inside each chip row, with no separate prompt label line
 - packaged default prompts are downloadable where a real default file exists

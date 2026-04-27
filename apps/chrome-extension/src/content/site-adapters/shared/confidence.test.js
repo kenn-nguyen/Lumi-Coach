@@ -17,4 +17,13 @@ describe('scoreConfidence', () => {
     });
     expect(result.confidence).toBe('high');
   });
+
+  it('does not automatically mark long collapsed testid text as truncated', () => {
+    const result = scoreConfidence({
+      description: `${'x'.repeat(4000)}.`,
+      descriptionProvenance: 'testid_collapsed',
+    });
+    expect(result.confidence).toBe('medium');
+    expect(result.looksTruncated).toBe(false);
+  });
 });

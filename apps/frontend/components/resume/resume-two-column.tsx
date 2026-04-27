@@ -90,7 +90,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
         {showContactIcons && contactIcons[resolvedLabel]}
         {socialSlug ? (
           <>
-            <span>{resolvedLabel} : </span>
+            <span>{resolvedLabel}: </span>
             <a
               href={href}
               target="_blank"

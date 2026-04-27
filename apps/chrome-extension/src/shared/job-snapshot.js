@@ -42,6 +42,7 @@ export const JOB_READINESS_STATE = Object.freeze({
 
 const RUN_READY_DESCRIPTION_MIN = 400;
 const PREVIEW_READY_DESCRIPTION_MIN = 120;
+const LONG_COLLAPSED_DESCRIPTION_MIN = 2000;
 
 /**
  * @param {{ sourceUrl?: string, source?: 'linkedin' }} [init]
@@ -90,6 +91,7 @@ export function evaluateReadiness(snapshot, options = {}) {
   const descProv = snapshot.provenance?.description ?? FIELD_PROVENANCE.missing;
   const descLen = snapshot.quality?.descriptionLength ?? 0;
   const confidence = snapshot.quality?.confidence ?? 'low';
+  const looksTruncated = snapshot.quality?.looksTruncated === true;
 
   if (descProv === FIELD_PROVENANCE.manual && descLen >= PREVIEW_READY_DESCRIPTION_MIN) {
     return JOB_READINESS_STATE.manual_jd_ready;
@@ -108,8 +110,13 @@ export function evaluateReadiness(snapshot, options = {}) {
       descProv === FIELD_PROVENANCE.class) &&
     descLen >= RUN_READY_DESCRIPTION_MIN &&
     confidence !== 'low';
+  const hasLongCollapsedDescription =
+    descProv === FIELD_PROVENANCE.testid_collapsed &&
+    descLen >= LONG_COLLAPSED_DESCRIPTION_MIN &&
+    confidence !== 'low' &&
+    !looksTruncated;
 
-  if (hasStrongDescription && (snapshot.company || snapshot.title)) {
+  if ((hasStrongDescription || hasLongCollapsedDescription) && (snapshot.company || snapshot.title)) {
     return mode === 'preview'
       ? JOB_READINESS_STATE.job_preview_ready
       : JOB_READINESS_STATE.full_jd_ready;

@@ -44,6 +44,28 @@ describe('evaluateReadiness', () => {
     expect(evaluateReadiness(snap, { mode: 'preview' })).toBe(JOB_READINESS_STATE.job_preview_ready);
   });
 
+  it('returns full_jd_ready for a long collapsed testid description that does not look truncated', () => {
+    const snap = createEmptySnapshot({ sourceUrl: 'x' });
+    snap.title = 'Manager, Product Management';
+    snap.rawText = `${'a'.repeat(6925)}.`;
+    snap.provenance.description = FIELD_PROVENANCE.testid_collapsed;
+    snap.quality.descriptionLength = snap.rawText.length;
+    snap.quality.confidence = 'medium';
+    snap.quality.looksTruncated = false;
+    expect(evaluateReadiness(snap, { mode: 'full' })).toBe(JOB_READINESS_STATE.full_jd_ready);
+  });
+
+  it('keeps short collapsed testid descriptions out of full-run readiness', () => {
+    const snap = createEmptySnapshot({ sourceUrl: 'x' });
+    snap.title = 'Manager, Product Management';
+    snap.rawText = 'a'.repeat(600);
+    snap.provenance.description = FIELD_PROVENANCE.testid_collapsed;
+    snap.quality.descriptionLength = snap.rawText.length;
+    snap.quality.confidence = 'medium';
+    snap.quality.looksTruncated = false;
+    expect(evaluateReadiness(snap, { mode: 'full' })).toBe(JOB_READINESS_STATE.job_preview_ready);
+  });
+
   it('returns scrape_recoverable when only heuristic description was found', () => {
     const snap = createEmptySnapshot({ sourceUrl: 'x' });
     snap.company = 'Red Gold';

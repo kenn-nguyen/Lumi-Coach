@@ -496,7 +496,6 @@ export async function getUserAssets() {
     storageGet([
       STORAGE_KEYS.appOrigin,
       STORAGE_KEYS.apiOrigin,
-      STORAGE_KEYS.customFeatureEnabled,
       STORAGE_KEYS.extensionAuth,
     ]),
     getScopedStorageValues(
@@ -549,8 +548,6 @@ export async function getUserAssets() {
     llmSettings,
     appOrigin: globalData[STORAGE_KEYS.appOrigin] ?? DEFAULT_APP_ORIGIN,
     apiOrigin: globalData[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
-    customFeatureEnabled:
-      globalData[STORAGE_KEYS.customFeatureEnabled] === true,
     extensionAuth: globalData[STORAGE_KEYS.extensionAuth] ?? null,
     onboardingProgress: normalizeOnboardingProgress(
       scopedData[STORAGE_KEYS.onboardingProgress],
@@ -870,12 +867,6 @@ export async function setApiOrigin(url) {
   });
 }
 
-export async function setCustomFeatureEnabled(enabled) {
-  await storageSet({
-    [STORAGE_KEYS.customFeatureEnabled]: enabled === true,
-  });
-}
-
 export async function getExtensionState() {
   const data = await getScopedStorageValues([
     STORAGE_KEYS.extensionSession,
@@ -913,6 +904,21 @@ export async function upsertHistoryEntry(entry) {
   ].slice(0, MAX_HISTORY_ENTRIES);
   await setScopedStorageValues({ [STORAGE_KEYS.historyEntries]: next });
   return next;
+}
+
+export async function removeHistoryEntryByRunId(runId) {
+  const normalizedRunId = String(runId || "").trim();
+  if (!normalizedRunId) {
+    throw new Error("Missing run id for history deletion.");
+  }
+
+  const current = await getHistoryEntries();
+  const next = current.filter((entry) => entry?.runId !== normalizedRunId);
+  await setScopedStorageValues({ [STORAGE_KEYS.historyEntries]: next });
+  return {
+    removed: next.length !== current.length,
+    history: next,
+  };
 }
 
 export async function getActiveAccountKey() {
@@ -967,7 +973,6 @@ export async function clearAllExtensionLocalData() {
     STORAGE_KEYS.legacyScopedData,
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
-    STORAGE_KEYS.customFeatureEnabled,
     STORAGE_KEYS.extensionAuth,
     STORAGE_KEYS.analyticsState,
     STORAGE_KEYS.extensionPendingAction,
@@ -983,7 +988,6 @@ export async function resetExtensionSettingsToDefault() {
     "resumeMatcherFloatingButtonTopOffset",
     STORAGE_KEYS.appOrigin,
     STORAGE_KEYS.apiOrigin,
-    STORAGE_KEYS.customFeatureEnabled,
   ]);
   await syncBrowserActionState(await getExtensionState());
 }

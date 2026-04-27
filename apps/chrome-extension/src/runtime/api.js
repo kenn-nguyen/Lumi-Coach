@@ -810,6 +810,58 @@ export async function patchResume(
   return payload;
 }
 
+export async function deleteResume(resumeId) {
+  if (!resumeId) {
+    throw new Error("Missing resume id for deletion.");
+  }
+
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/resumes/${encodeURIComponent(resumeId)}`;
+  logInfo("ResumeApi", "Deleting resume.", { resumeId, endpoint });
+
+  let response;
+  try {
+    response = await fetchWithAuth(endpoint, {
+      method: "DELETE",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError("ResumeApi", "Delete resume request failed before response.", {
+      resumeId,
+      endpoint,
+      error: message,
+    });
+    throw new Error(
+      `Delete resume request failed before response at ${endpoint}: ${message}`,
+    );
+  }
+
+  if (response.status === 404) {
+    logWarn("ResumeApi", "Resume was already missing during delete.", {
+      resumeId,
+      endpoint,
+    });
+    return { ok: true, alreadyDeleted: true };
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    logError("ResumeApi", "Delete resume returned a non-OK status.", {
+      resumeId,
+      endpoint,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(
+      `Failed to delete resume ${resumeId} (status ${response.status}): ${text}`,
+    );
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  logInfo("ResumeApi", "Delete resume succeeded.", { resumeId });
+  return { ok: true, payload };
+}
+
 export async function overwriteMasterResume(resumeData) {
   const resumeList = await listResumes(true);
   const masterResume = resumeList?.data?.find((resume) => resume?.is_master);

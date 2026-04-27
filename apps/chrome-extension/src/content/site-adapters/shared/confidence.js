@@ -28,7 +28,7 @@ export function scoreConfidence(fields) {
     return { confidence: 'low', looksTruncated: false };
   }
   if (descProv === FIELD_PROVENANCE.testid_collapsed) {
-    return { confidence: 'medium', looksTruncated: true };
+    return { confidence: 'medium', looksTruncated: truncated };
   }
   if (!STRONG_SOURCES.has(descProv)) {
     return { confidence: 'low', looksTruncated: truncated };

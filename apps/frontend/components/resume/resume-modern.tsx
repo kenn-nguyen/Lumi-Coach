@@ -61,7 +61,7 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
         {showContactIcons && contactIcons[resolvedLabel]}
         {socialSlug ? (
           <>
-            <span style={{ color: 'var(--resume-text-primary)' }}>{resolvedLabel} : </span>
+            <span style={{ color: 'var(--resume-text-primary)' }}>{resolvedLabel}: </span>
             <a
               href={href}
               target="_blank"
