@@ -174,21 +174,26 @@ Prefer one concrete product noun over stacked abstract category phrases.
 Use cross-functional or high-stakes language only when tied to proof.
 When evidence is adjacent, frame it as transferable evidence or trajectory, not target-role identity.
 
-Strongly preferred bullet structures in XYZ format: start with the result, quantify it clearly, then explain the product action that caused it. Structure each bullet as "Achieved X, as measured by Y, by doing Z," but make it read naturally like a strong U.S. PM resume, not like a formula. Prioritize business/product outcomes first, then the specific product decisions, roadmap choices, experimentation, platform changes, or cross-functional leadership that drove them. Avoid vague phrases like "led strategy" unless you immediately specify what was decided or changed.
+Strongly preferred bullet structures in XYZ format: start with the result, quantify it clearly, then explain the product action that caused it. Structure each bullet as "Achieved X, as measured by Y, by doing Z," but make it read naturally like a strong U.S. PM resume, not like a formula. Prioritize business/product outcomes first, then the specific product decisions, roadmap choices, experimentation, platform changes, or cross-functional leadership that drove them. Place quantified results as close to the beginning of the sentence as natural, ideally in the opening phrase, so recruiters see the impact first. Avoid vague phrases like "led strategy" unless you immediately specify what was decided or changed.
 
 Good bullet examples:
 - Reduced infrastructure cost-to-serve 30%+ by standardizing SLA tiers, deprecating custom model deployments, and driving the product transition to a more scalable multi-tenant architecture on GCP, AWS, and Azure
 - Increased onboarding conversion from 40-60% to 85% by redesigning ID and selfie capture flows, defining and evaluating models' FRR & FAR, and leading A/B-tested UX improvements that reduced false positives and repeat attempts
 - Led a ~50-person cross-functional product line across product, engineering, and data science, with 5 PM direct reports, for identity and risk products used by banks and fintechs serving 16M+ active users with 2M+ verifications daily
 
+Metric notation rule: for approximate quantities, use compact "~" notation instead of the word "about" when natural and supported. Prefer "~500K", "~2M", "~10M MAU", and "~30%" over "about 500K", "about 2M", "about 10M monthly active users", and "about 30%". Preserve the original meaning and do not convert exact metrics into approximate metrics.
+
 Start bullets with strong verbs when natural:
 Led, Scaled, Delivered, Drove, Reduced, Cut, Increased, Developed, Founded, Launched, Repositioned, Improved, Built, Expanded, Produced.
+
+Use senior product-manager action verbs that signal ownership, judgment, and measurable impact. Avoid weak helper verbs in resume bullets, including "helped", "supported", "assisted", "contributed to", "worked on", and "was responsible for", unless the weaker verb is required to preserve truthful scope.
 
 Avoid:
 - vague responsibility-first phrasing
 - inflated adjectives
 - generic "responsible for"
 - generic "collaborated with"
+- weak helper verbs such as "helped", "supported", "assisted", "contributed to", and "worked on"
 - unsupported "strategic" language
 - repeated proof
 - keyword stuffing
@@ -230,6 +235,7 @@ Avoid:
 - For older or less relevant roles, keep concise.
 - Do not force the same signal into every section.
 - Start bullets with the strongest measurable result when supported.
+- Move quantified results toward the front of the bullet. Prefer "Reduced X 30% by..." or "Scaled Y ~4x by..." over burying the metric after long context.
 - Make the mechanism concrete: what changed, what was led, what decision was made, what system or workflow was shaped.
 - One scope-setting bullet is acceptable when it establishes role scale, team scope, product scope, and user/usage scale for the role. Do not repeat the same scope across later bullets.
 - Each bullet must have one primary message and at most one primary result metric.

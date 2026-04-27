@@ -98,6 +98,20 @@ _PREVIEW_HASH_CACHE_TTL_SECONDS = 60 * 30
 _preview_hash_cache: dict[tuple[str, str], _PreviewHashEntry] = {}
 
 
+def _sanitize_pdf_download_filename(filename: str | None, fallback: str) -> str:
+    """Return a safe PDF filename for Content-Disposition."""
+    raw = unicodedata.normalize("NFC", (filename or fallback).strip())
+    invalid_chars = {'/', '\\', ':', '*', '?', '"', '<', '>', '|', '\r', '\n', '\0'}
+    sanitized = "".join("-" if char in invalid_chars else char for char in raw).strip()
+    if not sanitized:
+        sanitized = fallback
+    if not sanitized.lower().endswith(".pdf"):
+        sanitized = f"{sanitized}.pdf"
+    if len(sanitized) > 180:
+        sanitized = f"{sanitized[:176].rstrip()}.pdf"
+    return sanitized
+
+
 def _set_cached_preview_hash(user_id: str | None, job_id: str, prompt_id: str, preview_hash: str) -> None:
     if not user_id:
         return
@@ -1696,6 +1710,7 @@ async def download_resume_pdf(
     showContactIcons: bool = Query(False),
     accentColor: str = Query("blue", pattern="^(blue|green|orange|red)$"),
     lang: str | None = Query(None, pattern="^[a-z]{2}(-[A-Z]{2})?$"),
+    filename: str | None = Query(None, max_length=220),
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> Response:
     """Generate a PDF for a resume using headless Chromium.
@@ -1758,7 +1773,19 @@ async def download_resume_pdf(
     except PDFRenderError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    headers = {"Content-Disposition": f'attachment; filename="resume_{resume_id}.pdf"'}
+    download_filename = _sanitize_pdf_download_filename(
+        filename, f"resume_{resume_id}.pdf"
+    )
+    ascii_filename = (
+        download_filename.encode("ascii", "ignore").decode("ascii").strip()
+        or f"resume_{resume_id}.pdf"
+    )
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{ascii_filename}"; '
+            f"filename*=UTF-8''{quote(download_filename, safe='')}"
+        )
+    }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 

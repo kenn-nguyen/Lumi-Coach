@@ -570,15 +570,17 @@ const ResumeBuilderContent = () => {
     }
     try {
       setIsDownloading(true);
-      const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage);
       const userName = resumeData.personalInfo?.name?.trim() || null;
       const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
+      const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage, filename);
       downloadBlobAsFile(blob, filename);
       showNotification(t('builder.alerts.downloadSuccess'), 'success');
     } catch (error) {
       console.error('Failed to download resume:', error);
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        const fallbackUrl = getResumePdfUrl(resumeId, templateSettings, uiLanguage);
+        const userName = resumeData.personalInfo?.name?.trim() || null;
+        const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
+        const fallbackUrl = getResumePdfUrl(resumeId, templateSettings, uiLanguage, filename);
         const didOpen = openUrlInNewTab(fallbackUrl);
         if (!didOpen) {
           showNotification(t('common.popupBlocked', { url: fallbackUrl }), 'warning');

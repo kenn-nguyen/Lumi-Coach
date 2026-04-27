@@ -61,13 +61,22 @@ Required behaviors by field:
   - mechanism: the product action, decision, system, workflow, or leadership mechanism that created the result
   - optional_context: one short credibility detail only if it materially clarifies the bullet
   - do_not_include: unsupported, overloaded, or lower-priority details Prompt 3 should omit
+- Always provide XYZ materials for Prompt 3 to write from: X = the result or claim, Y = the metric, measurement, scope, frequency, scale, or other proof, and Z = the concrete action or product mechanism that created the result.
+- If no safe numeric metric exists, still provide Y as a concrete non-numeric proof point such as launch count, customer/user scope, workflow scope, integration time, market scope, approval requirement, or operational constraint.
 - Do not ask Prompt 3 to include more than one primary result metric in a bullet instruction.
+- When `primary_metric` is non-empty, write the instruction so Prompt 3 places the quantified result as close to the beginning of the final bullet as natural, ideally in the opening phrase.
+- Select the one most important result for each bullet instruction. Do not pack several good results into one bullet just because they are all true.
+- In `mechanism`, name the specific product action that created the result. Prefer concrete actions such as defining requirements, sequencing rollout, changing UX flow, packaging SLA tiers, deprecating custom deployments, or prioritizing API capabilities. Avoid bingo-lingo mechanisms such as "platform strategy", "strategic enablement", "cross-functional transformation", "market-specific growth", or "operational excellence" unless the instruction immediately states the concrete decision or product change.
 - Do not combine org scope, product scope, business result, architecture, and team leadership in one instruction.
 - If multiple strong proof points exist, split priorities across separate bullet instructions or choose the strongest one.
 
 Before finalizing, audit your own brief:
 - Are any target-role signals unsupported or only adjacent?
 - Are any bullet instructions overloaded with more than one primary message?
+- Does every bullet instruction give Prompt 3 usable XYZ materials: result, proof, and concrete mechanism?
+- Does every metric-backed bullet instruction make the quantified result appear early enough for recruiter skim?
+- Did each bullet instruction choose the strongest result instead of packing dense information?
+- Does each mechanism describe a specific action that plausibly created the result, rather than vague product bingo words?
 - Did you accidentally write final prose instead of writer guidance?
 - Did you combine team scope, product scope, scale, revenue, and architecture into one bullet?
 - If yes, simplify before output.
@@ -80,7 +89,9 @@ Writing guidance for this brief:
 - Do not use any support class other than `direct`, `adjacent`, or `unsupported`
 - Keep arrays concise and ordered by importance
 - Write rewrite instructions in a result-first style
-- Prefer quantitative proof over qualitative phrasing. When supported metrics exist, make the metric the primary evidence in the bullet instruction. If no safe metric exists, use concrete scope, frequency, scale, launch count, user/customer count, time-to-impact, or operational constraint rather than vague qualitative claims. Never invent metrics to make a bullet quantitative.
+- Prefer quantitative proof over qualitative phrasing. When supported metrics exist, make the metric the primary evidence in the bullet instruction and tell Prompt 3 to move that quantified result as close to the beginning of the sentence as natural. If no safe metric exists, use concrete scope, frequency, scale, launch count, user/customer count, time-to-impact, or operational constraint rather than vague qualitative claims. Never invent metrics to make a bullet quantitative.
+- Prefer one sharp result plus one concrete mechanism over dense bullets that list every true detail. Remove lower-priority context into `do_not_include` when it would make the final bullet feel stuffed.
+- Avoid buzzword mechanisms. Tell Prompt 3 what the candidate actually changed, decided, launched, prioritized, standardized, deprecated, packaged, tested, or measured.
 - When a stronger supported bullet is missing from the current resume, create an explicit add-bullet instruction instead of expecting Prompt 3 to invent one
 - Preserve strong existing bullets by omission: if a bullet should stay, do not include it in rewrite instructions
 

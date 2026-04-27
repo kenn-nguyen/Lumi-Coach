@@ -250,7 +250,8 @@ export async function updateResume(
 export function getResumePdfUrl(
   resumeId: string,
   settings?: TemplateSettings,
-  locale?: Locale
+  locale?: Locale,
+  filename?: string
 ): string {
   const normalizedId = normalizeResumeId(resumeId);
   const params = new URLSearchParams();
@@ -279,6 +280,9 @@ export function getResumePdfUrl(
   if (locale) {
     params.set('lang', locale);
   }
+  if (filename?.trim()) {
+    params.set('filename', filename.trim());
+  }
 
   return `${API_BASE}/resumes/${encodeURIComponent(normalizedId)}/pdf?${params.toString()}`;
 }
@@ -286,9 +290,10 @@ export function getResumePdfUrl(
 export async function downloadResumePdf(
   resumeId: string,
   settings?: TemplateSettings,
-  locale?: Locale
+  locale?: Locale,
+  filename?: string
 ): Promise<Blob> {
-  const url = getResumePdfUrl(resumeId, settings, locale);
+  const url = getResumePdfUrl(resumeId, settings, locale, filename);
   let res: Response;
   try {
     res = await apiFetch(url);
