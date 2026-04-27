@@ -6368,12 +6368,40 @@ async function handleGenerateClick() {
   }
   if (state.isRunning) return;
 
+  const runId = crypto.randomUUID();
   state.currentView = "run";
+  state.awaitingAuth = false;
+  state.awaitingStoryboard = false;
+  state.isCanceling = false;
+  state.isRunning = true;
+  state.previewHandoffComplete = false;
+  state.activeRunId = runId;
+  state.activeRunJob = cloneJobForRun(state.currentJob);
+  state.launcherAlert = false;
+  clearScrapeRecoveryState();
+  setExplicitRunStatus(
+    "running",
+    "running",
+    "Starting run",
+    "Checking your account and provider setup.",
+  );
+
   openBoard("run", { skipConnectionCheck: true });
   activateRunInspection({ recheckConnection: false });
   const connected = await reconcileConnectionStatus("run");
   if (!connected) {
     state.isRunning = false;
+    state.isCanceling = false;
+    state.activeRunId = null;
+    state.activeRunJob = null;
+    if (state.explicitRunStatus?.kind === "running") {
+      clearExplicitRunStatus("connection-preflight-failed");
+    } else {
+      render();
+    }
+    return;
+  }
+  if (state.isCanceling || state.explicitRunStatus?.kind === "canceled") {
     return;
   }
 
@@ -6382,7 +6410,7 @@ async function handleGenerateClick() {
   state.isCanceling = false;
   state.isRunning = true;
   state.previewHandoffComplete = false;
-  state.activeRunId = crypto.randomUUID();
+  state.activeRunId = state.activeRunId || runId;
   state.activeRunJob = cloneJobForRun(state.currentJob);
   state.launcherAlert = false;
   clearScrapeRecoveryState();
@@ -6406,7 +6434,7 @@ async function handleGenerateClick() {
       runId: state.activeRunId,
       prompt1CustomInstruction,
       jobInput: manualJobInput,
-      activeRunJob: cloneJobForRun(state.currentJob),
+      activeRunJob: cloneJobForRun(manualJobInput || state.currentJob),
     });
     state.customMessage = "";
     const notes = $(RUN_NOTES_ID);

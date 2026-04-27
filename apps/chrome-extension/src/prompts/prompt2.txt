@@ -55,6 +55,15 @@ Required behaviors by field:
 - `selected_storylines`: include 3-5 ranked storylines; the first storyline is the summary anchor; every storyline must include enough proof detail that Prompt 3 does not need the story bank
 - `experience_emphasis`: role-by-role editing direction; include the strongest proof points and guardrails needed for rewriting
 - `bullet_rewrite_instructions`: include only bullets that need rewriting; make each instruction specific enough that Prompt 3 can write the final bullet without consulting the story bank
+- `bullet_rewrite_instructions.instruction`: keep the existing output-contract field, but write the instruction in component form when possible instead of final prose:
+  - primary_message: the one main point the bullet should prove
+  - primary_metric: the one main result metric, or empty string if none is safely supported
+  - mechanism: the product action, decision, system, workflow, or leadership mechanism that created the result
+  - optional_context: one short credibility detail only if it materially clarifies the bullet
+  - do_not_include: unsupported, overloaded, or lower-priority details Prompt 3 should omit
+- Do not ask Prompt 3 to include more than one primary result metric in a bullet instruction.
+- Do not combine org scope, product scope, business result, architecture, and team leadership in one instruction.
+- If multiple strong proof points exist, split priorities across separate bullet instructions or choose the strongest one.
 
 Writing guidance for this brief:
 - Sound like an editorial director, not an analyst

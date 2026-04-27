@@ -21,7 +21,11 @@ import { EnrichmentModal } from '@/components/enrichment/enrichment-modal';
 import { useTranslations } from '@/lib/i18n';
 import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
-import { downloadBlobAsFile, openUrlInNewTab, sanitizeFilename } from '@/lib/utils/download';
+import {
+  buildResumeTitleFilename,
+  downloadBlobAsFile,
+  openUrlInNewTab,
+} from '@/lib/utils/download';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 import { loadSavedTemplateSettings } from '@/lib/utils/template-settings';
 import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
@@ -194,7 +198,8 @@ export default function ResumeViewerPage() {
     setIsDownloading(true);
     try {
       const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage);
-      const filename = sanitizeFilename(resumeTitle, resumeId, 'resume');
+      const userName = resumeData?.personalInfo?.name?.trim() || null;
+      const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
       downloadBlobAsFile(blob, filename);
       setShowDownloadSuccessDialog(true);
     } catch (err) {

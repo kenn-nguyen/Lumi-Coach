@@ -226,6 +226,12 @@ Avoid:
 - Do not force the same signal into every section.
 - Start bullets with the strongest measurable result when supported.
 - Make the mechanism concrete: what changed, what was led, what decision was made, what system or workflow was shaped.
+- Each bullet must have one primary message and at most one primary result metric.
+- A second scope detail is allowed only when it clarifies credibility without creating a second achievement.
+- Do not combine team scope, product scope, architecture, revenue, and scale in the same bullet.
+- Avoid "while" clauses that introduce a second major achievement.
+- If Prompt 2 gives an overloaded bullet instruction, simplify it into the strongest single resume bullet rather than preserving every detail.
+- Target 24-32 words per bullet; exceed only when the added detail materially improves recruiter understanding.
 - You may add a new bullet only when CURRENT_RESUME lacks an important supported proof point and Prompt 2 clearly supports it.
 - Add bullets sparingly: only when they materially improve fit and remain truthful.
 - For the most relevant recent roles, 4-6 bullets are allowed if each bullet adds distinct screening value.

@@ -56,7 +56,12 @@ import {
 } from '@/lib/utils/section-helpers';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/context/language-context';
-import { buildResumeFilename, downloadBlobAsFile, openUrlInNewTab } from '@/lib/utils/download';
+import {
+  buildResumeFilename,
+  buildResumeTitleFilename,
+  downloadBlobAsFile,
+  openUrlInNewTab,
+} from '@/lib/utils/download';
 import {
   loadSavedTemplateSettings,
   TEMPLATE_SETTINGS_STORAGE_KEY,
@@ -566,9 +571,8 @@ const ResumeBuilderContent = () => {
     try {
       setIsDownloading(true);
       const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage);
-      const company = getCompanyFromTitle(resumeTitle);
       const userName = resumeData.personalInfo?.name?.trim() || null;
-      const filename = buildResumeFilename(userName, company, resumeId, 'resume');
+      const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
       downloadBlobAsFile(blob, filename);
       showNotification(t('builder.alerts.downloadSuccess'), 'success');
     } catch (error) {
@@ -599,11 +603,7 @@ const ResumeBuilderContent = () => {
 
     try {
       const userName = resumeData.personalInfo?.name?.trim() || null;
-      const company = resumeTitle?.trim() || null;
-      const filename = buildResumeFilename(userName, company, resumeId, 'resume').replace(
-        /\.pdf$/i,
-        '.json'
-      );
+      const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'json');
       const jsonBlob = new Blob([JSON.stringify(resumeData, null, 2)], {
         type: 'application/json',
       });

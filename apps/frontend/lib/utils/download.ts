@@ -90,3 +90,32 @@ export function buildResumeFilename(
 
   return sanitizeFilename(raw, fallbackId, type);
 }
+
+/**
+ * Build a resume filename from the visible resume title instead of trying to infer company.
+ * Format: "{Name}_{Resume_Title}.{extension}".
+ */
+export function buildResumeTitleFilename(
+  name: string | null | undefined,
+  title: string | null | undefined,
+  fallbackId: string,
+  extension: 'pdf' | 'json' = 'pdf'
+): string {
+  const cleanName = name?.trim() || null;
+  const cleanTitle = title?.trim() || null;
+
+  let raw: string | null;
+  if (cleanName && cleanTitle) {
+    raw = `${cleanName}_${cleanTitle}`;
+  } else if (cleanTitle) {
+    raw = cleanTitle;
+  } else if (cleanName) {
+    raw = `${cleanName}_Resume`;
+  } else {
+    raw = null;
+  }
+
+  return sanitizeFilename(raw, fallbackId, 'resume')
+    .replace(/\s+/g, '_')
+    .replace(/\.pdf$/i, `.${extension}`);
+}
