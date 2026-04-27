@@ -354,12 +354,16 @@ export async function renameResume(resumeId: string, title: string): Promise<voi
 export function getCoverLetterPdfUrl(
   resumeId: string,
   pageSize: 'A4' | 'LETTER' = 'A4',
-  locale?: Locale
+  locale?: Locale,
+  filename?: string
 ): string {
   const normalizedId = normalizeResumeId(resumeId);
   const params = new URLSearchParams({ pageSize });
   if (locale) {
     params.set('lang', locale);
+  }
+  if (filename?.trim()) {
+    params.set('filename', filename.trim());
   }
   return `${API_BASE}/resumes/${encodeURIComponent(normalizedId)}/cover-letter/pdf?${params.toString()}`;
 }
@@ -367,9 +371,10 @@ export function getCoverLetterPdfUrl(
 export async function downloadCoverLetterPdf(
   resumeId: string,
   pageSize: 'A4' | 'LETTER' = 'A4',
-  locale?: Locale
+  locale?: Locale,
+  filename?: string
 ): Promise<Blob> {
-  const url = getCoverLetterPdfUrl(resumeId, pageSize, locale);
+  const url = getCoverLetterPdfUrl(resumeId, pageSize, locale, filename);
   let res: Response;
   try {
     res = await apiFetch(url);

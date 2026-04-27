@@ -2219,6 +2219,7 @@ async def download_cover_letter_pdf(
     resume_id: str,
     pageSize: str = Query("A4", pattern="^(A4|LETTER)$"),
     lang: str | None = Query(None, pattern="^[a-z]{2}(-[A-Z]{2})?$"),
+    filename: str | None = Query(None, max_length=220),
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> Response:
     """Generate a PDF for a cover letter using headless Chromium.
@@ -2255,7 +2256,17 @@ async def download_cover_letter_pdf(
     except PDFRenderError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
+    download_filename = _sanitize_pdf_download_filename(
+        filename, f"cover_letter_{resume_id}.pdf"
+    )
+    ascii_filename = (
+        download_filename.encode("ascii", "ignore").decode("ascii").strip()
+        or f"cover_letter_{resume_id}.pdf"
+    )
     headers = {
-        "Content-Disposition": f'attachment; filename="cover_letter_{resume_id}.pdf"'
+        "Content-Disposition": (
+            f'attachment; filename="{ascii_filename}"; '
+            f"filename*=UTF-8''{quote(download_filename, safe='')}"
+        )
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

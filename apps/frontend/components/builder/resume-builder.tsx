@@ -642,15 +642,28 @@ const ResumeBuilderContent = () => {
     }
     try {
       setIsDownloading(true);
-      const blob = await downloadCoverLetterPdf(resumeId, templateSettings.pageSize, uiLanguage);
       const company = getCompanyFromTitle(resumeTitle);
       const userName = resumeData.personalInfo?.name?.trim() || null;
       const filename = buildResumeFilename(userName, company, resumeId, 'cover-letter');
+      const blob = await downloadCoverLetterPdf(
+        resumeId,
+        templateSettings.pageSize,
+        uiLanguage,
+        filename
+      );
       downloadBlobAsFile(blob, filename);
     } catch (error) {
       console.error('Failed to download cover letter:', error);
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        const fallbackUrl = getCoverLetterPdfUrl(resumeId, templateSettings.pageSize, uiLanguage);
+        const company = getCompanyFromTitle(resumeTitle);
+        const userName = resumeData.personalInfo?.name?.trim() || null;
+        const filename = buildResumeFilename(userName, company, resumeId, 'cover-letter');
+        const fallbackUrl = getCoverLetterPdfUrl(
+          resumeId,
+          templateSettings.pageSize,
+          uiLanguage,
+          filename
+        );
         const didOpen = openUrlInNewTab(fallbackUrl);
         if (!didOpen) {
           showNotification(t('common.popupBlocked', { url: fallbackUrl }), 'warning');
