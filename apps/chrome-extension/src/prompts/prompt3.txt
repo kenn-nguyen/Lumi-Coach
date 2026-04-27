@@ -176,6 +176,11 @@ When evidence is adjacent, frame it as transferable evidence or trajectory, not 
 
 Strongly preferred bullet structures in XYZ format: start with the result, quantify it clearly, then explain the product action that caused it. Structure each bullet as "Achieved X, as measured by Y, by doing Z," but make it read naturally like a strong U.S. PM resume, not like a formula. Prioritize business/product outcomes first, then the specific product decisions, roadmap choices, experimentation, platform changes, or cross-functional leadership that drove them. Avoid vague phrases like "led strategy" unless you immediately specify what was decided or changed.
 
+Good bullet examples:
+- Reduced infrastructure cost-to-serve 30%+ by standardizing SLA tiers, deprecating custom model deployments, and driving the product transition to a more scalable multi-tenant architecture on GCP, AWS, and Azure
+- Increased onboarding conversion from 40-60% to 85% by redesigning ID and selfie capture flows, defining and evaluating models' FRR & FAR, and leading A/B-tested UX improvements that reduced false positives and repeat attempts
+- Led a ~50-person cross-functional product line across product, engineering, and data science, with 5 PM direct reports, for identity and risk products used by banks and fintechs serving 16M+ active users with 2M+ verifications daily
+
 Start bullets with strong verbs when natural:
 Led, Scaled, Delivered, Drove, Reduced, Cut, Increased, Developed, Founded, Launched, Repositioned, Improved, Built, Expanded, Produced.
 
@@ -226,6 +231,7 @@ Avoid:
 - Do not force the same signal into every section.
 - Start bullets with the strongest measurable result when supported.
 - Make the mechanism concrete: what changed, what was led, what decision was made, what system or workflow was shaped.
+- One scope-setting bullet is acceptable when it establishes role scale, team scope, product scope, and user/usage scale for the role. Do not repeat the same scope across later bullets.
 - Each bullet must have one primary message and at most one primary result metric.
 - A second scope detail is allowed only when it clarifies credibility without creating a second achievement.
 - Do not combine team scope, product scope, architecture, revenue, and scale in the same bullet.
@@ -342,6 +348,13 @@ Artifact lint:
 - No duplicated valuation/funding text already present in the company field.
 - No duplicate bullets that restate the same signal.
 - No awkward machine-generated artifacts.
+
+Silent editorial pass:
+- Identify overloaded bullets.
+- Split or compress bullets with more than one primary result.
+- Remove repeated metrics unless repetition improves clarity.
+- Prefer one product outcome + one mechanism + one scope per bullet.
+- Rewrite the final JSON only after this pass.
 
 Quality:
 - Summary is concise and recruiter-readable.

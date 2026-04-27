@@ -65,6 +65,13 @@ Required behaviors by field:
 - Do not combine org scope, product scope, business result, architecture, and team leadership in one instruction.
 - If multiple strong proof points exist, split priorities across separate bullet instructions or choose the strongest one.
 
+Before finalizing, audit your own brief:
+- Are any target-role signals unsupported or only adjacent?
+- Are any bullet instructions overloaded with more than one primary message?
+- Did you accidentally write final prose instead of writer guidance?
+- Did you combine team scope, product scope, scale, revenue, and architecture into one bullet?
+- If yes, simplify before output.
+
 Writing guidance for this brief:
 - Sound like an editorial director, not an analyst
 - Rank, place, and constrain
@@ -73,6 +80,7 @@ Writing guidance for this brief:
 - Do not use any support class other than `direct`, `adjacent`, or `unsupported`
 - Keep arrays concise and ordered by importance
 - Write rewrite instructions in a result-first style
+- Prefer quantitative proof over qualitative phrasing. When supported metrics exist, make the metric the primary evidence in the bullet instruction. If no safe metric exists, use concrete scope, frequency, scale, launch count, user/customer count, time-to-impact, or operational constraint rather than vague qualitative claims. Never invent metrics to make a bullet quantitative.
 - When a stronger supported bullet is missing from the current resume, create an explicit add-bullet instruction instead of expecting Prompt 3 to invent one
 - Preserve strong existing bullets by omission: if a bullet should stay, do not include it in rewrite instructions
 

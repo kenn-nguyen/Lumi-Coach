@@ -5137,7 +5137,6 @@ function getCurrentRunPhaseLabel() {
 }
 
 function isRunCancelable() {
-  if (!state.activeRunId) return false;
   if (state.previewHandoffComplete) return false;
   if (state.explicitRunStatus?.kind === "success") return false;
   if (state.explicitRunStatus?.kind === "canceled") return false;
@@ -5148,6 +5147,31 @@ function isRunCancelable() {
     state.awaitingStoryboard ||
     state.extensionState?.status === "canceling"
   );
+}
+
+function activateVisibleRunFromProgress(scopedRunId = null) {
+  const session = state.extensionState || {};
+  const nextRunId =
+    scopedRunId || state.activeRunId || session.sessionId || null;
+  const activeRunJob = cloneJobForRun(
+    state.activeRunJob ||
+      session.jobSnapshot ||
+      session.activeRunJob ||
+      state.currentJob ||
+      null,
+  );
+
+  state.isRunning = true;
+  state.isCanceling = false;
+  state.awaitingAuth = false;
+  state.awaitingStoryboard = false;
+  state.previewHandoffComplete = false;
+  if (nextRunId) {
+    state.activeRunId = nextRunId;
+  }
+  if (activeRunJob) {
+    state.activeRunJob = activeRunJob;
+  }
 }
 
 function shouldHandleRunScopedMessage(runId = null) {
@@ -7598,6 +7622,7 @@ function updateStatusFromLog(level, scope, message, data) {
     return;
   }
   const [title, detail] = progress;
+  activateVisibleRunFromProgress(scopedRunId);
   applyExplicitRunStatus(
     runStatusHelpers.createExplicitRunStatus(
       "running",
