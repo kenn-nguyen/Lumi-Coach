@@ -44,6 +44,37 @@ function inferContactLabel(label: string, value: string): string {
   return label;
 }
 
+function buildSocialHref(label: string, value: string, hrefPrefix: string): string {
+  const trimmedValue = value.trim();
+  const normalized = stripProtocolAndWww(trimmedValue).replace(/^@/, '');
+
+  if (trimmedValue.startsWith('http') || trimmedValue.startsWith('//')) {
+    return trimmedValue;
+  }
+
+  if (label === 'LinkedIn') {
+    const slug = extractSocialSlug(label, trimmedValue);
+    if (!slug) return '';
+    return `https://www.linkedin.com/in/${slug}`;
+  }
+
+  if (label === 'GitHub') {
+    const slug = extractSocialSlug(label, trimmedValue);
+    if (!slug) return '';
+    return `https://github.com/${slug}`;
+  }
+
+  if (hrefPrefix) {
+    return `${hrefPrefix}${trimmedValue}`;
+  }
+
+  if (label === 'Website' && normalized) {
+    return `https://${trimmedValue}`;
+  }
+
+  return trimmedValue;
+}
+
 export function buildContactDisplay(
   label: string,
   value: string | null | undefined,
@@ -64,16 +95,19 @@ export function buildContactDisplay(
 
   let finalHrefPrefix = hrefPrefix;
   if (
-    ['Website', 'LinkedIn', 'GitHub'].includes(resolvedLabel) &&
+    resolvedLabel === 'Website' &&
     !trimmedValue.startsWith('http') &&
     !trimmedValue.startsWith('//')
   ) {
     finalHrefPrefix = 'https://';
   }
 
-  const href = finalHrefPrefix + trimmedValue;
+  const href = ['LinkedIn', 'GitHub', 'Website'].includes(resolvedLabel)
+    ? buildSocialHref(resolvedLabel, trimmedValue, finalHrefPrefix)
+    : finalHrefPrefix + trimmedValue;
   const isLink =
-    finalHrefPrefix.startsWith('http') ||
+    href.startsWith('http') ||
+    href.startsWith('//') ||
     finalHrefPrefix.startsWith('mailto:') ||
     finalHrefPrefix.startsWith('tel:');
 
