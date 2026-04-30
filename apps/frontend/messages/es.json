@@ -494,6 +494,7 @@
       "bodyFontFamily": "Cuerpo",
       "fontNames": {
         "serif": "Serif",
+        "times": "Times",
         "sans": "Sans",
         "mono": "Mono"
       },

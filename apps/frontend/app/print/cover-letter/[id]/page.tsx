@@ -113,7 +113,7 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
         minHeight: `${pageDims.height}mm`,
         padding: `${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm`,
         boxSizing: 'border-box',
-        fontFamily: 'Georgia, serif',
+        fontFamily: '"Times New Roman", Times, serif',
         color: '#000000',
       }}
     >

@@ -494,6 +494,7 @@
       "bodyFontFamily": "本文",
       "fontNames": {
         "serif": "セリフ",
+        "times": "Times",
         "sans": "サンセリフ",
         "mono": "等幅"
       },
