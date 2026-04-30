@@ -22,7 +22,7 @@ import { useTranslations } from '@/lib/i18n';
 import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
 import {
-  buildResumeTitleFilename,
+  buildResumeArtifactFilename,
   downloadBlobAsFile,
   openUrlInNewTab,
 } from '@/lib/utils/download';
@@ -198,7 +198,13 @@ export default function ResumeViewerPage() {
     setIsDownloading(true);
     try {
       const userName = resumeData?.personalInfo?.name?.trim() || null;
-      const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
+      const filename = buildResumeArtifactFilename(
+        userName,
+        resumeTitle,
+        resumeId,
+        'resume',
+        'pdf'
+      );
       const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage, filename);
       downloadBlobAsFile(blob, filename);
       setShowDownloadSuccessDialog(true);
@@ -206,7 +212,13 @@ export default function ResumeViewerPage() {
       console.error('Failed to download resume:', err);
       if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
         const userName = resumeData?.personalInfo?.name?.trim() || null;
-        const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
+        const filename = buildResumeArtifactFilename(
+          userName,
+          resumeTitle,
+          resumeId,
+          'resume',
+          'pdf'
+        );
         const fallbackUrl = getResumePdfUrl(resumeId, templateSettings, uiLanguage, filename);
         const didOpen = openUrlInNewTab(fallbackUrl);
         if (!didOpen) {

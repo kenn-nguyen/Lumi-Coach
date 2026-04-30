@@ -61,58 +61,33 @@ export function sanitizeFilename(
   return `${sanitized}.pdf`;
 }
 
-/**
- * Build a personalized download filename for resume or cover letter PDFs.
- * Format: "{Name} - {Type} - {Company}.pdf" (falls back gracefully when data is missing)
- */
-export function buildResumeFilename(
-  name: string | null | undefined,
-  company: string | null | undefined,
-  fallbackId: string,
-  type: 'resume' | 'cover-letter' = 'resume'
-): string {
-  const typeLabel = type === 'resume' ? 'Resume' : 'Cover Letter';
-  const cleanName = name?.trim() || null;
-  const cleanCompany = company?.trim() || null;
-
-  let raw: string;
-  if (cleanName && cleanCompany) {
-    raw = `${cleanName} - ${typeLabel} - ${cleanCompany}`;
-  } else if (cleanName) {
-    raw = `${cleanName} - ${typeLabel}`;
-  } else {
-    return sanitizeFilename(
-      cleanCompany ? `${typeLabel} - ${cleanCompany}` : null,
-      fallbackId,
-      type
-    );
-  }
-
-  return sanitizeFilename(raw, fallbackId, type);
-}
+export type ResumeDownloadArtifact = 'resume' | 'cover_letter' | 'resume_data';
 
 /**
- * Build a resume filename from the visible resume title instead of trying to infer company.
- * Format: "{Name}_{Resume_Title}.{extension}".
+ * Build a standardized resume-related download filename.
+ * Format: "{Name}_{Resume_Title}_{artifact}.{extension}".
+ * The resume title already includes the role/company context, so company is not inferred separately.
  */
-export function buildResumeTitleFilename(
+export function buildResumeArtifactFilename(
   name: string | null | undefined,
   title: string | null | undefined,
   fallbackId: string,
+  artifact: ResumeDownloadArtifact,
   extension: 'pdf' | 'json' = 'pdf'
 ): string {
   const cleanName = name?.trim() || null;
   const cleanTitle = title?.trim() || null;
+  const cleanArtifact = artifact.trim();
 
   let raw: string | null;
   if (cleanName && cleanTitle) {
-    raw = `${cleanName}_${cleanTitle}`;
+    raw = `${cleanName}_${cleanTitle}_${cleanArtifact}`;
   } else if (cleanTitle) {
-    raw = cleanTitle;
+    raw = `${cleanTitle}_${cleanArtifact}`;
   } else if (cleanName) {
-    raw = `${cleanName}_Resume`;
+    raw = `${cleanName}_${cleanArtifact}`;
   } else {
-    raw = null;
+    raw = `${cleanArtifact}_${fallbackId}`;
   }
 
   return sanitizeFilename(raw, fallbackId, 'resume')

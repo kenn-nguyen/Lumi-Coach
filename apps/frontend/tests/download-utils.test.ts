@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeFilename } from '@/lib/utils/download';
+import { buildResumeArtifactFilename, sanitizeFilename } from '@/lib/utils/download';
 
 describe('sanitizeFilename', () => {
   describe('Basic functionality', () => {
@@ -400,5 +400,49 @@ describe('sanitizeFilename', () => {
       const graphemeCount = Array.from(result.slice(0, -4)).length;
       expect(graphemeCount).toBeLessThanOrEqual(100);
     });
+  });
+});
+
+describe('buildResumeArtifactFilename', () => {
+  it('builds standardized resume PDF filenames from name, title, and artifact', () => {
+    const result = buildResumeArtifactFilename(
+      'Kenn Nguyen',
+      'Senior Product Manager - Checkr',
+      'resume-id',
+      'resume',
+      'pdf'
+    );
+
+    expect(result).toBe('Kenn_Nguyen_Senior_Product_Manager_-_Checkr_resume.pdf');
+  });
+
+  it('builds standardized cover letter PDF filenames without inferring company separately', () => {
+    const result = buildResumeArtifactFilename(
+      'Kenn Nguyen',
+      'Senior Product Manager - Checkr',
+      'resume-id',
+      'cover_letter',
+      'pdf'
+    );
+
+    expect(result).toBe('Kenn_Nguyen_Senior_Product_Manager_-_Checkr_cover_letter.pdf');
+  });
+
+  it('builds standardized resume data JSON filenames', () => {
+    const result = buildResumeArtifactFilename(
+      'Kenn Nguyen',
+      'Senior Product Manager - Checkr',
+      'resume-id',
+      'resume_data',
+      'json'
+    );
+
+    expect(result).toBe('Kenn_Nguyen_Senior_Product_Manager_-_Checkr_resume_data.json');
+  });
+
+  it('falls back to artifact and id when name and title are missing', () => {
+    const result = buildResumeArtifactFilename(null, null, 'resume-id', 'resume', 'pdf');
+
+    expect(result).toBe('resume_resume-id.pdf');
   });
 });

@@ -57,8 +57,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/context/language-context';
 import {
-  buildResumeFilename,
-  buildResumeTitleFilename,
+  buildResumeArtifactFilename,
   downloadBlobAsFile,
   openUrlInNewTab,
 } from '@/lib/utils/download';
@@ -557,12 +556,6 @@ const ResumeBuilderContent = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lastSavedData));
   };
 
-  const getCompanyFromTitle = (title: string | null | undefined): string | null => {
-    if (!title) return null;
-    const atIdx = title.lastIndexOf(' @ ');
-    return atIdx !== -1 ? title.substring(atIdx + 3).trim() : null;
-  };
-
   const handleDownload = async () => {
     if (!resumeId) {
       showNotification(t('builder.alerts.downloadNotAvailable'), 'warning');
@@ -571,7 +564,13 @@ const ResumeBuilderContent = () => {
     try {
       setIsDownloading(true);
       const userName = resumeData.personalInfo?.name?.trim() || null;
-      const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
+      const filename = buildResumeArtifactFilename(
+        userName,
+        resumeTitle,
+        resumeId,
+        'resume',
+        'pdf'
+      );
       const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage, filename);
       downloadBlobAsFile(blob, filename);
       showNotification(t('builder.alerts.downloadSuccess'), 'success');
@@ -579,7 +578,13 @@ const ResumeBuilderContent = () => {
       console.error('Failed to download resume:', error);
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
         const userName = resumeData.personalInfo?.name?.trim() || null;
-        const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'pdf');
+        const filename = buildResumeArtifactFilename(
+          userName,
+          resumeTitle,
+          resumeId,
+          'resume',
+          'pdf'
+        );
         const fallbackUrl = getResumePdfUrl(resumeId, templateSettings, uiLanguage, filename);
         const didOpen = openUrlInNewTab(fallbackUrl);
         if (!didOpen) {
@@ -605,7 +610,13 @@ const ResumeBuilderContent = () => {
 
     try {
       const userName = resumeData.personalInfo?.name?.trim() || null;
-      const filename = buildResumeTitleFilename(userName, resumeTitle, resumeId, 'json');
+      const filename = buildResumeArtifactFilename(
+        userName,
+        resumeTitle,
+        resumeId,
+        'resume_data',
+        'json'
+      );
       const jsonBlob = new Blob([JSON.stringify(resumeData, null, 2)], {
         type: 'application/json',
       });
@@ -642,9 +653,14 @@ const ResumeBuilderContent = () => {
     }
     try {
       setIsDownloading(true);
-      const company = getCompanyFromTitle(resumeTitle);
       const userName = resumeData.personalInfo?.name?.trim() || null;
-      const filename = buildResumeFilename(userName, company, resumeId, 'cover-letter');
+      const filename = buildResumeArtifactFilename(
+        userName,
+        resumeTitle,
+        resumeId,
+        'cover_letter',
+        'pdf'
+      );
       const blob = await downloadCoverLetterPdf(
         resumeId,
         templateSettings.pageSize,
@@ -655,9 +671,14 @@ const ResumeBuilderContent = () => {
     } catch (error) {
       console.error('Failed to download cover letter:', error);
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        const company = getCompanyFromTitle(resumeTitle);
         const userName = resumeData.personalInfo?.name?.trim() || null;
-        const filename = buildResumeFilename(userName, company, resumeId, 'cover-letter');
+        const filename = buildResumeArtifactFilename(
+          userName,
+          resumeTitle,
+          resumeId,
+          'cover_letter',
+          'pdf'
+        );
         const fallbackUrl = getCoverLetterPdfUrl(
           resumeId,
           templateSettings.pageSize,
