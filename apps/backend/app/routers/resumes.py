@@ -1704,8 +1704,8 @@ async def download_resume_pdf(
     lineHeight: int = Query(2, ge=1, le=5),
     fontSize: int = Query(2, ge=1, le=5),
     headerScale: int = Query(2, ge=1, le=5),
-    headerFont: str = Query("serif", pattern="^(serif|sans-serif|mono|times)$"),
-    bodyFont: str = Query("sans-serif", pattern="^(serif|sans-serif|mono|times)$"),
+    headerFont: str = Query("serif", pattern="^(serif|sans-serif|mono)$"),
+    bodyFont: str = Query("sans-serif", pattern="^(serif|sans-serif|mono)$"),
     compactMode: bool = Query(False),
     showContactIcons: bool = Query(False),
     accentColor: str = Query("blue", pattern="^(blue|green|orange|red)$"),
@@ -1724,8 +1724,8 @@ async def download_resume_pdf(
     - lineHeight: text line height (1-5)
     - fontSize: base font size (1-5)
     - headerScale: header size scale (1-5)
-    - headerFont: serif, times, sans-serif, or mono
-    - bodyFont: serif, times, sans-serif, or mono
+    - headerFont: serif, sans-serif, or mono
+    - bodyFont: serif, sans-serif, or mono
     - compactMode: enable tighter spacing
     - showContactIcons: show icons in contact info
     - lang: locale used for print page translations

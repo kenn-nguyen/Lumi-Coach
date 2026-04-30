@@ -13,8 +13,8 @@ export type AccentColor = 'blue' | 'green' | 'orange' | 'red';
 
 export type SpacingLevel = 1 | 2 | 3 | 4 | 5;
 
-export type HeaderFontFamily = 'serif' | 'sans-serif' | 'mono' | 'times';
-export type BodyFontFamily = 'serif' | 'sans-serif' | 'mono' | 'times';
+export type HeaderFontFamily = 'serif' | 'sans-serif' | 'mono';
+export type BodyFontFamily = 'serif' | 'sans-serif' | 'mono';
 
 export interface MarginSettings {
   top: number; // 5-25mm
@@ -126,14 +126,12 @@ export const HEADER_FONT_MAP: Record<HeaderFontFamily, string> = {
   serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
   'sans-serif': 'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
   mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-  times: '"Times New Roman", Times, serif',
 };
 
 export const BODY_FONT_MAP: Record<BodyFontFamily, string> = {
   serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
   'sans-serif': 'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
   mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-  times: '"Times New Roman", Times, serif',
 };
 
 /**

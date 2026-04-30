@@ -132,15 +132,7 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
   const getFontLabel = (font: HeaderFontFamily | BodyFontFamily) => {
     if (font === 'sans-serif') return t('builder.formatting.fontNames.sans');
     if (font === 'serif') return t('builder.formatting.fontNames.serif');
-    if (font === 'times') return t('builder.formatting.fontNames.times');
     return t('builder.formatting.fontNames.mono');
-  };
-
-  const getPreviewFontFamily = (font: HeaderFontFamily | BodyFontFamily) => {
-    if (font === 'serif') return 'Georgia, serif';
-    if (font === 'times') return '"Times New Roman", Times, serif';
-    if (font === 'mono') return 'monospace';
-    return 'system-ui, sans-serif';
   };
 
   return (
@@ -339,24 +331,27 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                     {t('builder.formatting.headerFontFamily')}
                   </span>
                   <div className="flex gap-1">
-                    {(['serif', 'times', 'sans-serif', 'mono'] as HeaderFontFamily[]).map(
-                      (font) => (
-                        <button
-                          key={font}
-                          onClick={() => handleHeaderFontChange(font)}
-                          className={`rounded-lg px-2.5 py-1 font-mono text-xs transition-all ${
-                            settings.fontSize.headerFont === font
-                              ? 'border border-blue-500 bg-blue-700 text-white shadow-[0_6px_14px_rgba(37,99,235,0.16)]'
-                              : 'border border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                          }`}
-                          style={{
-                            fontFamily: getPreviewFontFamily(font),
-                          }}
-                        >
-                          {getFontLabel(font)}
-                        </button>
-                      )
-                    )}
+                    {(['serif', 'sans-serif', 'mono'] as HeaderFontFamily[]).map((font) => (
+                      <button
+                        key={font}
+                        onClick={() => handleHeaderFontChange(font)}
+                        className={`rounded-lg px-2.5 py-1 font-mono text-xs transition-all ${
+                          settings.fontSize.headerFont === font
+                            ? 'border border-blue-500 bg-blue-700 text-white shadow-[0_6px_14px_rgba(37,99,235,0.16)]'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                        }`}
+                        style={{
+                          fontFamily:
+                            font === 'serif'
+                              ? 'Georgia, serif'
+                              : font === 'mono'
+                                ? 'monospace'
+                                : 'system-ui, sans-serif',
+                        }}
+                      >
+                        {getFontLabel(font)}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 {/* Body Font Family */}
@@ -365,7 +360,7 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                     {t('builder.formatting.bodyFontFamily')}
                   </span>
                   <div className="flex gap-1">
-                    {(['serif', 'times', 'sans-serif', 'mono'] as BodyFontFamily[]).map((font) => (
+                    {(['serif', 'sans-serif', 'mono'] as BodyFontFamily[]).map((font) => (
                       <button
                         key={font}
                         onClick={() => handleBodyFontChange(font)}
@@ -375,7 +370,12 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                             : 'border border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                         }`}
                         style={{
-                          fontFamily: getPreviewFontFamily(font),
+                          fontFamily:
+                            font === 'serif'
+                              ? 'Georgia, serif'
+                              : font === 'mono'
+                                ? 'monospace'
+                                : 'system-ui, sans-serif',
                         }}
                       >
                         {getFontLabel(font)}

@@ -494,7 +494,6 @@
       "bodyFontFamily": "正文字体",
       "fontNames": {
         "serif": "衬线",
-        "times": "Times",
         "sans": "无衬线",
         "mono": "等宽"
       },
