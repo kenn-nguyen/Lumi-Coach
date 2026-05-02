@@ -14,6 +14,7 @@ import {
   previewImproveResume,
   confirmImproveResume,
 } from '@/lib/api/resume';
+import { isSharedFreeLlmLimitMessage, isUserLlmConfigMessage } from '@/lib/api/client';
 import { fetchPromptConfig, type PromptOption } from '@/lib/api/config';
 import { Dropdown } from '@/components/ui/dropdown';
 import { useStatusCache } from '@/lib/context/status-cache';
@@ -77,8 +78,8 @@ export default function TailorPage() {
     incrementResumes,
   } = useStatusCache();
 
-  // Check if LLM is configured
-  const isLlmConfigured = !statusLoading && systemStatus?.llm_configured;
+  const canGenerate = Boolean(!statusLoading && systemStatus?.llm_configured);
+  const isUsingFreeMode = Boolean(!statusLoading && systemStatus?.using_free_llm);
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
@@ -176,6 +177,14 @@ export default function TailorPage() {
   const getPreviewErrorMessage = (error: unknown) => {
     const errorMessage = error instanceof Error ? error.message : '';
     const lower = errorMessage.toLowerCase();
+
+    if (isSharedFreeLlmLimitMessage(errorMessage)) {
+      return errorMessage;
+    }
+
+    if (isUserLlmConfigMessage(errorMessage)) {
+      return errorMessage;
+    }
 
     if (
       lower.includes('api key') ||
@@ -370,8 +379,21 @@ export default function TailorPage() {
           </h1>
         </div>
 
-        {/* LLM Not Configured Warning */}
-        {!statusLoading && !isLlmConfigured && (
+        {isUsingFreeMode && (
+          <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50/90 p-4 shadow-sw-sm">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-mono text-sm font-bold uppercase tracking-[0.16em] text-blue-800">
+                  {t('tailor.freeModeTitle')}
+                </p>
+                <p className="mt-1 text-xs text-blue-700">{t('tailor.freeModeMessage')}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!statusLoading && !canGenerate && (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sw-sm">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -454,7 +476,7 @@ export default function TailorPage() {
           <Button
             size="lg"
             onClick={handleGenerate}
-            disabled={isLoading || statusLoading || !jobDescription.trim() || !isLlmConfigured}
+            disabled={isLoading || statusLoading || !jobDescription.trim() || !canGenerate}
             className="w-full"
           >
             {isLoading ? (
@@ -470,7 +492,7 @@ export default function TailorPage() {
                 <Loader2 className="w-5 h-5 animate-spin" />
                 {t('common.checking')}
               </>
-            ) : !isLlmConfigured ? (
+            ) : !canGenerate ? (
               t('tailor.configureApiKeyFirst')
             ) : (
               t('tailor.generateTailored')

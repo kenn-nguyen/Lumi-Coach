@@ -25,6 +25,56 @@ export function isApiRequestTimeoutError(error: unknown): error is ApiRequestTim
   return error instanceof ApiRequestTimeoutError;
 }
 
+function normalizeApiErrorDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') {
+    return detail;
+  }
+  if (detail && typeof detail === 'object' && 'message' in detail) {
+    const message = (detail as { message?: unknown }).message;
+    return typeof message === 'string' ? message : null;
+  }
+  return null;
+}
+
+export async function readApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  const text = await response.text().catch(() => '');
+  if (!text) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown };
+    return (
+      normalizeApiErrorDetail(parsed.detail) ?? normalizeApiErrorDetail(parsed.message) ?? fallback
+    );
+  } catch {
+    return text || fallback;
+  }
+}
+
+export function isSharedFreeLlmLimitMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('free website mode') ||
+    lower.includes('shared basic gemini') ||
+    lower.includes('free gemini key') ||
+    lower.includes("lumi coach's free gemini")
+  );
+}
+
+export function isUserLlmConfigMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('your api key could not complete this request') ||
+    (lower.includes('api key') &&
+      (lower.includes('quota') ||
+        lower.includes('selected model') ||
+        lower.includes('valid') ||
+        lower.includes('authentication') ||
+        lower.includes('unauthorized')))
+  );
+}
+
 async function getBackendAuthToken(): Promise<string | null> {
   if (typeof window === 'undefined') {
     return null;

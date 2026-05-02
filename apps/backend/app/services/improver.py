@@ -8,7 +8,7 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.llm import complete_json
+from app.llm import LLMConfig, complete_json
 from app.prompts import (
     CRITICAL_TRUTHFULNESS_RULES,
     DEFAULT_IMPROVE_PROMPT_ID,
@@ -427,6 +427,7 @@ async def generate_resume_diffs(
     language: str = "en",
     prompt_id: str | None = None,
     original_resume_data: dict[str, Any] | None = None,
+    config: LLMConfig | None = None,
 ) -> ImproveDiffResult:
     """Generate targeted resume diffs via LLM.
 
@@ -480,6 +481,7 @@ async def generate_resume_diffs(
     result = await complete_json(
         prompt=prompt,
         system_prompt="You are an expert resume editor. Output only valid JSON with targeted changes.",
+        config=config,
         max_tokens=4096,
     )
 
@@ -514,7 +516,10 @@ async def generate_resume_diffs(
     return ImproveDiffResult(changes=changes, strategy_notes=strategy_notes)
 
 
-async def extract_job_keywords(job_description: str) -> dict[str, Any]:
+async def extract_job_keywords(
+    job_description: str,
+    config: LLMConfig | None = None,
+) -> dict[str, Any]:
     """Extract keywords and requirements from job description.
 
     Args:
@@ -530,6 +535,7 @@ async def extract_job_keywords(job_description: str) -> dict[str, Any]:
     return await complete_json(
         prompt=prompt,
         system_prompt="You are an expert job description analyzer.",
+        config=config,
     )
 
 
@@ -598,6 +604,7 @@ async def improve_resume(
     language: str = "en",
     prompt_id: str | None = None,
     original_resume_data: dict[str, Any] | None = None,
+    config: LLMConfig | None = None,
 ) -> dict[str, Any]:
     """Improve resume to better match job description.
 
@@ -662,6 +669,7 @@ async def improve_resume(
     result = await complete_json(
         prompt=prompt,
         system_prompt="You are an expert resume editor. Output only valid JSON.",
+        config=config,
         max_tokens=8192,
     )
 

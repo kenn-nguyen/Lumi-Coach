@@ -3,7 +3,7 @@
 import { SwissGrid } from '@/components/home/swiss-grid';
 import { ResumeUploadDialog } from '@/components/dashboard/resume-upload-dialog';
 import { AccountControl } from '@/components/auth/account-control';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,6 @@ import {
   fetchResume,
   fetchResumeList,
   deleteResume,
-  retryProcessing,
   fetchJobDescription,
   type ResumeListItem,
 } from '@/lib/api/resume';
@@ -45,16 +44,31 @@ type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading
 const LEGACY_TAILOR_PROMPT_COUNT_KEY = 'som_career_coach_tailor_prompt_count';
 const LEGACY_TAILOR_PROMPT_DISMISSED_KEY = 'som_career_coach_tailor_prompt_dismissed';
 const TAILOR_PROMPT_HIDDEN_KEY = 'som_career_coach_tailor_prompt_hidden_explicit';
+const CHROME_EXTENSION_URL =
+  'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
+
+function looksLikeCredentialAutofill(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes('gemini') ||
+    normalized.includes('gpt-') ||
+    normalized.includes('claude') ||
+    normalized.includes('deepseek') ||
+    normalized.includes('openrouter') ||
+    normalized.includes('sk-') ||
+    normalized.includes('aiza')
+  );
+}
 
 export default function DashboardPage() {
   const { status: authStatus } = useSession();
-  const { t, locale } = useTranslations();
+  const { t } = useTranslations();
   const [masterResumeId, setMasterResumeId] = useState<string | null>(null);
   const [masterResumeItem, setMasterResumeItem] = useState<ResumeListItem | null>(null);
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>('loading');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [tailoredResumes, setTailoredResumes] = useState<ResumeListItem[]>([]);
-  const [isRetrying, setIsRetrying] = useState(false);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
@@ -62,6 +76,8 @@ export default function DashboardPage() {
   const [showTailorPrompt, setShowTailorPrompt] = useState(false);
   const [tailorPromptDismissed, setTailorPromptDismissed] = useState(false);
   const [hideTailorPrompt, setHideTailorPrompt] = useState(false);
+  const [searchFieldName, setSearchFieldName] = useState('lumi-resume-filter-field');
+  const [isSearchFieldReady, setIsSearchFieldReady] = useState(false);
   const router = useRouter();
 
   // Status cache for optimistic counter updates and LLM status check
@@ -78,9 +94,14 @@ export default function DashboardPage() {
   // Lightweight in-memory cache for job snippets to avoid N+1 refetches
   const jobSnippetCacheRef = useRef<Record<string, string>>({});
   const masterMenuRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchEditedByUserRef = useRef(false);
+  const searchQueryRef = useRef('');
 
-  // Check if LLM is configured (API key is set)
-  const isLlmConfigured = !statusLoading && systemStatus?.llm_configured;
+  const isLlmConfigured = Boolean(!statusLoading && systemStatus?.llm_configured);
+  const hasUserApiKey = Boolean(systemStatus?.has_user_api_key);
+  const isFreeModeAvailable = Boolean(systemStatus?.free_llm_available);
+  const shouldShowLlmNotice = Boolean(masterResumeId) && !statusLoading && !hasUserApiKey;
 
   const isTailorEnabled =
     Boolean(masterResumeId) && processingStatus === 'ready' && isLlmConfigured;
@@ -90,10 +111,7 @@ export default function DashboardPage() {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return t('common.unknown');
 
-    const dateLocale =
-      locale === 'es' ? 'es-ES' : locale === 'zh' ? 'zh-CN' : locale === 'ja' ? 'ja-JP' : 'en-US';
-
-    return date.toLocaleDateString(dateLocale, {
+    return date.toLocaleDateString('en-US', {
       month: 'short',
       day: '2-digit',
       year: 'numeric',
@@ -126,6 +144,46 @@ export default function DashboardPage() {
     localStorage.removeItem(LEGACY_TAILOR_PROMPT_DISMISSED_KEY);
     setTailorPromptDismissed(localStorage.getItem(TAILOR_PROMPT_HIDDEN_KEY) === 'true');
   }, []);
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
+  const clearBrowserInjectedSearchValue = useCallback(() => {
+    const input = searchInputRef.current;
+    if (!input) return;
+    const currentValue = input.value;
+    const currentSearchQuery = searchQueryRef.current;
+    const shouldClear =
+      (!searchEditedByUserRef.current && currentValue && !currentSearchQuery) ||
+      looksLikeCredentialAutofill(currentValue);
+    if (!shouldClear) return;
+    input.value = '';
+    if (currentSearchQuery) {
+      setSearchQuery('');
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    setSearchFieldName(
+      `lumi-filter-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+    );
+    setIsSearchFieldReady(true);
+
+    const delays = [0, 100, 500, 1500];
+    const timeoutIds = delays.map((delay) =>
+      window.setTimeout(clearBrowserInjectedSearchValue, delay)
+    );
+    window.addEventListener('focus', clearBrowserInjectedSearchValue);
+    window.addEventListener('pageshow', clearBrowserInjectedSearchValue);
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      window.removeEventListener('focus', clearBrowserInjectedSearchValue);
+      window.removeEventListener('pageshow', clearBrowserInjectedSearchValue);
+    };
+  }, [clearBrowserInjectedSearchValue]);
 
   const loadTailoredResumes = useCallback(async () => {
     try {
@@ -203,7 +261,7 @@ export default function DashboardPage() {
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [authStatus, loadTailoredResumes, checkResumeStatus]);
+  }, [authStatus, loadTailoredResumes]);
 
   useEffect(() => {
     if (!isMasterMenuOpen) return;
@@ -235,30 +293,6 @@ export default function DashboardPage() {
     // Update cached counters
     incrementResumes();
     setHasMasterResume(true);
-  };
-
-  const handleRetryProcessing = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!masterResumeId) return;
-    setIsRetrying(true);
-    try {
-      const result = await retryProcessing(masterResumeId);
-      if (result.processing_status === 'ready') {
-        setProcessingStatus('ready');
-      } else if (
-        result.processing_status === 'processing' ||
-        result.processing_status === 'pending'
-      ) {
-        setProcessingStatus(result.processing_status);
-      } else {
-        setProcessingStatus('failed');
-      }
-    } catch (err) {
-      console.error('Retry processing failed:', err);
-      setProcessingStatus('failed');
-    } finally {
-      setIsRetrying(false);
-    }
   };
 
   const handleDeleteAndReupload = (e: React.MouseEvent) => {
@@ -470,16 +504,45 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Configuration Warning Banner */}
-      {masterResumeId && !isLlmConfigured && !statusLoading && (
+      {shouldShowLlmNotice && (
         <div className="mb-6 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sw-sm">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-warning" />
             <div>
               <p className="font-mono text-sm font-bold uppercase tracking-wider text-amber-800">
-                {t('dashboard.llmNotConfiguredTitle')}
+                {t(
+                  isFreeModeAvailable
+                    ? 'dashboard.freeModeAvailableTitle'
+                    : 'dashboard.llmNotConfiguredTitle'
+                )}
               </p>
               <p className="font-mono text-xs text-amber-700 mt-0.5">
-                {t('dashboard.llmNotConfiguredMessage')}
+                {isFreeModeAvailable ? (
+                  <>
+                    {t('dashboard.freeModeAvailableMessagePrefix')}{' '}
+                    <a
+                      href={CHROME_EXTENSION_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-bold text-blue-700 underline underline-offset-2"
+                    >
+                      {t('dashboard.freeModeAvailableExtensionLink')}
+                    </a>
+                    {t('dashboard.freeModeAvailableMessageMiddle')}{' '}
+                    <Link href="/settings" className="font-bold underline underline-offset-2">
+                      {t('dashboard.llmNotConfiguredSettingsLink')}
+                    </Link>
+                    {t('dashboard.freeModeAvailableMessageSuffix')}
+                  </>
+                ) : (
+                  <>
+                    {t('dashboard.llmNotConfiguredMessagePrefix')}{' '}
+                    <Link href="/settings" className="font-bold underline underline-offset-2">
+                      {t('dashboard.llmNotConfiguredSettingsLink')}
+                    </Link>
+                    {t('dashboard.llmNotConfiguredMessageSuffix')}
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -651,13 +714,41 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t('common.search')}
-                    className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
-                  />
+                  <form
+                    role="search"
+                    autoComplete="off"
+                    onSubmit={(e) => e.preventDefault()}
+                    className="contents"
+                  >
+                    {isSearchFieldReady ? (
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        id="lumi-resume-library-filter"
+                        name={searchFieldName}
+                        value={searchQuery}
+                        onFocus={clearBrowserInjectedSearchValue}
+                        onChange={(e) => {
+                          searchEditedByUserRef.current = true;
+                          setSearchQuery(e.target.value);
+                        }}
+                        placeholder={t('common.search')}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        inputMode="search"
+                        data-1p-ignore="true"
+                        data-lpignore="true"
+                        className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
+                      />
+                    ) : (
+                      <div
+                        aria-hidden="true"
+                        className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4"
+                      />
+                    )}
+                  </form>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as 'updated' | 'title')}
@@ -747,7 +838,19 @@ export default function DashboardPage() {
 
             <div className="space-y-4 p-6">
               <p className="text-sm leading-relaxed text-black">
-                {t('dashboard.chromeExtensionPrompt.body')}
+                {t('dashboard.chromeExtensionPrompt.bodyPrefix')}{' '}
+                <a
+                  href={CHROME_EXTENSION_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-bold text-blue-700 underline underline-offset-4"
+                >
+                  {t('dashboard.chromeExtensionPrompt.extensionLinkText')}
+                </a>{' '}
+                {t('dashboard.chromeExtensionPrompt.bodySuffix')}
+              </p>
+              <p className="font-mono text-xs leading-relaxed text-gray-600">
+                {t('dashboard.chromeExtensionPrompt.websiteModeNote')}
               </p>
 
               <label className="flex items-start gap-3 rounded-2xl border border-border px-4 py-3 text-sm">

@@ -8,7 +8,7 @@ from typing import Any
 
 from markitdown import MarkItDown
 
-from app.llm import complete_json
+from app.llm import LLMConfig, complete_json
 from app.prompts import PARSE_RESUME_PROMPT
 from app.prompts.templates import RESUME_SCHEMA_EXAMPLE
 from app.schemas import ResumeData
@@ -141,7 +141,10 @@ async def parse_document(content: bytes, filename: str) -> str:
         tmp_path.unlink(missing_ok=True)
 
 
-async def parse_resume_to_json(markdown_text: str) -> dict[str, Any]:
+async def parse_resume_to_json(
+    markdown_text: str,
+    config: LLMConfig | None = None,
+) -> dict[str, Any]:
     """Parse resume markdown to structured JSON using LLM.
 
     After LLM parsing, patches any year-only dates with month-inclusive
@@ -162,6 +165,7 @@ async def parse_resume_to_json(markdown_text: str) -> dict[str, Any]:
     result = await complete_json(
         prompt=prompt,
         system_prompt="You are a JSON extraction engine. Output only valid JSON, no explanations.",
+        config=config,
     )
 
     # Patch dates: restore months the LLM may have dropped

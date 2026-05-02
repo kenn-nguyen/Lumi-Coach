@@ -14,7 +14,7 @@ import re
 from functools import lru_cache
 from typing import Any
 
-from app.llm import complete_json
+from app.llm import LLMConfig, complete_json
 from app.prompts.refinement import (
     AI_PHRASE_BLACKLIST,
     AI_PHRASE_REPLACEMENTS,
@@ -54,6 +54,7 @@ async def refine_resume(
     job_description: str,
     job_keywords: dict[str, Any],
     config: RefinementConfig | None = None,
+    llm_config: LLMConfig | None = None,
 ) -> RefinementResult:
     """Multi-pass refinement of an initially tailored resume.
 
@@ -91,6 +92,7 @@ async def refine_resume(
                     keyword_analysis.injectable_keywords,
                     master_resume,
                     job_description,
+                    llm_config=llm_config,
                 )
                 passes += 1
             except Exception as e:
@@ -414,6 +416,7 @@ async def inject_keywords(
     keywords_to_inject: list[str],
     master: dict[str, Any],
     job_description: str,
+    llm_config: LLMConfig | None = None,
 ) -> dict[str, Any]:
     """Use LLM to inject missing keywords into appropriate sections.
 
@@ -451,6 +454,7 @@ async def inject_keywords(
                 "You are a resume editor. Inject keywords naturally without adding "
                 "fabricated content. Return only valid JSON matching the input schema."
             ),
+            config=llm_config,
             max_tokens=8192,
         )
 

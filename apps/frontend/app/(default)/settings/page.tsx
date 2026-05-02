@@ -28,6 +28,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Dropdown } from '@/components/ui/dropdown';
 import {
   Save,
@@ -51,7 +58,11 @@ import {
 import { useTranslations } from '@/lib/i18n';
 
 type Status = 'idle' | 'loading' | 'saving' | 'saved' | 'error' | 'testing';
+type ApiKeyDisclosureAction = 'save' | 'test';
 
+const OLLAMA_DEFAULT_API_BASE = 'http://localhost:11434';
+const CHROME_EXTENSION_URL =
+  'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
 const PROVIDERS: LLMProvider[] = [
   'openai',
   'anthropic',
@@ -65,6 +76,17 @@ const SEGMENTED_BUTTON_BASE =
   'rounded-xl border border-border font-mono transition-colors duration-150 ease-out shadow-xs disabled:cursor-not-allowed disabled:opacity-50';
 const SEGMENTED_BUTTON_ACTIVE = 'bg-primary text-white border-primary/20 hover:bg-[color:#173ce0]';
 const SEGMENTED_BUTTON_INACTIVE = 'bg-card text-foreground hover:bg-secondary';
+
+const normalizeApiBaseForProvider = (provider: LLMProvider, value: string): string | null => {
+  const trimmed = value.trim();
+  if (provider === 'ollama') {
+    return trimmed || OLLAMA_DEFAULT_API_BASE;
+  }
+  if (!trimmed || trimmed === OLLAMA_DEFAULT_API_BASE) {
+    return null;
+  }
+  return trimmed;
+};
 
 const unwrapCodeBlock = (value?: string | null): string | null => {
   if (!value) return null;
@@ -102,6 +124,7 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState('');
   const [apiBase, setApiBase] = useState('');
   const [hasStoredApiKey, setHasStoredApiKey] = useState(false);
+  const [isUserSavedConfig, setIsUserSavedConfig] = useState(false);
 
   // Use cached system status (loaded on app start, refreshes every 30 min)
   const {
@@ -129,6 +152,10 @@ export default function SettingsPage() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessDialogMessage] = useState({ title: '', description: '' });
   const [isResetting, setIsResetting] = useState(false);
+  const [showApiKeyDisclosureDialog, setShowApiKeyDisclosureDialog] = useState(false);
+  const [pendingApiKeyAction, setPendingApiKeyAction] = useState<ApiKeyDisclosureAction | null>(
+    null
+  );
 
   // Translations
   const { t } = useTranslations();
@@ -241,8 +268,9 @@ export default function SettingsPage() {
           setModel(llmConfig.model || PROVIDER_INFO[safeProvider].defaultModel);
           const isMaskedKey = Boolean(llmConfig.api_key) && llmConfig.api_key.includes('*');
           setHasStoredApiKey(Boolean(llmConfig.api_key));
+          setIsUserSavedConfig(Boolean(llmConfig.is_user_config));
           setApiKey(isMaskedKey ? '' : llmConfig.api_key || '');
-          setApiBase(llmConfig.api_base || '');
+          setApiBase(normalizeApiBaseForProvider(safeProvider, llmConfig.api_base || '') || '');
 
           if (providerFromBackend !== safeProvider) {
             setError(t('settings.errors.unknownProvider', { provider: providerFromBackend }));
@@ -281,17 +309,16 @@ export default function SettingsPage() {
     setProvider(newProvider);
     setModel(PROVIDER_INFO[newProvider].defaultModel);
 
-    if (newProvider === 'ollama' && !apiBase.trim()) {
-      setApiBase('http://localhost:11434');
-    }
+    setApiBase(newProvider === 'ollama' ? OLLAMA_DEFAULT_API_BASE : '');
 
     // Clear API key input when switching providers to avoid accidental cross-provider usage.
     setApiKey('');
     setHasStoredApiKey(false);
+    setIsUserSavedConfig(false);
   };
 
   // Save configuration
-  const handleSave = async () => {
+  const saveLlmConfiguration = async () => {
     setStatus('saving');
     setError(null);
     setHealthCheck(null);
@@ -307,7 +334,7 @@ export default function SettingsPage() {
       const config: Partial<LLMConfig> = {
         provider,
         model: model.trim(),
-        api_base: apiBase.trim() || null,
+        api_base: normalizeApiBaseForProvider(provider, apiBase),
       };
       if (requiresApiKey) {
         if (trimmedKey) {
@@ -324,6 +351,7 @@ export default function SettingsPage() {
       // Refresh cached system status after save
       await refreshStatus();
 
+      setIsUserSavedConfig(true);
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2000);
     } catch (err) {
@@ -334,7 +362,7 @@ export default function SettingsPage() {
   };
 
   // Test connection with current form values (pre-save testing)
-  const handleTestConnection = async () => {
+  const testLlmConfiguration = async () => {
     setStatus('testing');
     setError(null);
     setHealthCheck(null);
@@ -344,7 +372,7 @@ export default function SettingsPage() {
       const testConfig: Partial<LLMConfig> = {
         provider,
         model: model.trim() || providerInfo.defaultModel,
-        api_base: apiBase.trim() || null,
+        api_base: normalizeApiBaseForProvider(provider, apiBase),
       };
 
       // Only include API key if provided or if we have a stored key
@@ -362,6 +390,28 @@ export default function SettingsPage() {
       console.error('Failed to test connection', err);
       setHealthCheck({ healthy: false, provider, model, error: (err as Error).message });
       setStatus('idle');
+    }
+  };
+
+  const requestApiKeyAction = (action: ApiKeyDisclosureAction) => {
+    if (!requiresApiKey) {
+      void (action === 'save' ? saveLlmConfiguration() : testLlmConfiguration());
+      return;
+    }
+
+    setPendingApiKeyAction(action);
+    setShowApiKeyDisclosureDialog(true);
+  };
+
+  const handleApiKeyDisclosureConfirm = () => {
+    const action = pendingApiKeyAction;
+    setShowApiKeyDisclosureDialog(false);
+    setPendingApiKeyAction(null);
+
+    if (action === 'save') {
+      void saveLlmConfiguration();
+    } else if (action === 'test') {
+      void testLlmConfiguration();
     }
   };
 
@@ -421,12 +471,17 @@ export default function SettingsPage() {
         setModel(llmConfig.model || PROVIDER_INFO['openai'].defaultModel);
         const isMaskedKey = Boolean(llmConfig.api_key) && llmConfig.api_key.includes('*');
         setHasStoredApiKey(Boolean(llmConfig.api_key));
+        setIsUserSavedConfig(Boolean(llmConfig.is_user_config));
         setApiKey(isMaskedKey ? '' : llmConfig.api_key || '');
-        setApiBase(llmConfig.api_base || '');
+        setApiBase(
+          normalizeApiBaseForProvider(llmConfig.provider || 'openai', llmConfig.api_base || '') ||
+            ''
+        );
       } else {
         // Fallback if refetch fails
         setApiKey('');
         setHasStoredApiKey(false);
+        setIsUserSavedConfig(false);
       }
 
       setHealthCheck(null);
@@ -725,12 +780,15 @@ export default function SettingsPage() {
 
               {/* Model Input */}
               <div className="space-y-2">
-                <Label htmlFor="model">{t('settings.llmConfiguration.modelLabel')}</Label>
+                <Label htmlFor="llm-model-name">{t('settings.llmConfiguration.modelLabel')}</Label>
                 <Input
-                  id="model"
+                  id="llm-model-name"
+                  name="llm-model-name"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder={providerInfo.defaultModel}
+                  autoComplete="off"
+                  spellCheck={false}
                   className="font-mono"
                 />
                 <p className="text-xs text-gray-500 font-mono">
@@ -768,6 +826,11 @@ export default function SettingsPage() {
                     {t('settings.llmConfiguration.leaveBlankToKeepExistingKey')}
                   </p>
                 )}
+                {hasStoredApiKey && isUserSavedConfig && (
+                  <p className="text-xs text-gray-500 font-mono">
+                    {t('settings.llmConfiguration.savedToAccount')}
+                  </p>
+                )}
               </div>
 
               {/* API Base URL (optional, for proxies/aggregators/custom endpoints) */}
@@ -788,7 +851,7 @@ export default function SettingsPage() {
               {/* Action Buttons */}
               <div className="flex gap-4">
                 <Button
-                  onClick={handleSave}
+                  onClick={() => requestApiKeyAction('save')}
                   disabled={status === 'saving' || status === 'loading'}
                   className="flex-1"
                 >
@@ -808,7 +871,7 @@ export default function SettingsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={handleTestConnection}
+                  onClick={() => requestApiKeyAction('test')}
                   disabled={status === 'testing' || status === 'saving'}
                 >
                   {status === 'testing' ? (
@@ -1062,6 +1125,50 @@ export default function SettingsPage() {
         variant="success"
         onConfirm={() => setShowSuccessDialog(false)}
       />
+
+      <Dialog open={showApiKeyDisclosureDialog} onOpenChange={setShowApiKeyDisclosureDialog}>
+        <DialogContent className="sm:max-w-[560px] p-0 gap-0">
+          <DialogHeader className="border-b border-border bg-white/80 p-6 pr-14">
+            <DialogTitle>{t('settings.llmConfiguration.apiKeyDisclosure.title')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 p-6 text-sm text-gray-700">
+            <div className="border border-blue-200 bg-blue-50 p-4">
+              <p className="font-semibold text-blue-900">
+                {t('settings.llmConfiguration.apiKeyDisclosure.extensionLead')}{' '}
+                <Link
+                  href={CHROME_EXTENSION_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-blue-700 underline underline-offset-2"
+                >
+                  {t('settings.llmConfiguration.apiKeyDisclosure.extensionLink')}
+                </Link>
+                {t('settings.llmConfiguration.apiKeyDisclosure.extensionTail')}
+              </p>
+            </div>
+            <p>{t('settings.llmConfiguration.apiKeyDisclosure.webOption')}</p>
+            <p className="font-semibold text-gray-900">
+              {t('settings.llmConfiguration.apiKeyDisclosure.ownKey')}
+            </p>
+          </div>
+          <DialogFooter className="flex-row justify-end gap-3 border-t border-border bg-secondary/60 p-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowApiKeyDisclosureDialog(false);
+                setPendingApiKeyAction(null);
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={handleApiKeyDisclosureConfirm}>
+              {pendingApiKeyAction === 'test'
+                ? t('settings.llmConfiguration.apiKeyDisclosure.confirmTest')
+                : t('settings.llmConfiguration.apiKeyDisclosure.confirmSave')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

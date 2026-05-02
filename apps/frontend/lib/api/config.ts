@@ -8,6 +8,7 @@ export interface LLMConfig {
   model: string;
   api_key: string;
   api_base: string | null;
+  is_user_config?: boolean;
 }
 
 export interface LLMConfigUpdate {
@@ -28,6 +29,11 @@ export interface SystemStatus {
   status: 'ready' | 'setup_required';
   llm_configured: boolean;
   llm_healthy: boolean;
+  has_user_api_key: boolean;
+  free_llm_available: boolean;
+  using_free_llm: boolean;
+  free_llm_provider: 'gemini' | null;
+  free_llm_model: 'gemini-2.5-flash-lite' | string | null;
   has_master_resume: boolean;
   database_stats: DatabaseStats;
 }
@@ -82,7 +88,9 @@ export async function updateLlmConfig(config: LLMConfigUpdate): Promise<LLMConfi
 
 // Legacy function for backwards compatibility
 export async function updateLlmApiKey(value: string): Promise<string> {
-  const config = await updateLlmConfig({ api_key: value });
+  const trimmed = value.trim();
+  const isMasked = trimmed.includes('*') || trimmed.includes('•');
+  const config = await updateLlmConfig(isMasked ? {} : { api_key: trimmed });
   return config.api_key ?? '';
 }
 
@@ -131,7 +139,7 @@ export const PROVIDER_INFO: Record<
     defaultModel: 'deepseek/deepseek-chat',
     requiresKey: true,
   },
-  gemini: { name: 'Google Gemini', defaultModel: 'gemini-3-flash-preview', requiresKey: true },
+  gemini: { name: 'Google Gemini', defaultModel: 'gemini-2.5-flash-lite', requiresKey: true },
   deepseek: { name: 'DeepSeek', defaultModel: 'deepseek-chat', requiresKey: true },
   ollama: { name: 'Ollama (Local)', defaultModel: 'gemma3:4b', requiresKey: false },
 };
@@ -178,7 +186,7 @@ export async function updateFeatureConfig(config: FeatureConfigUpdate): Promise<
 }
 
 // Language configuration types
-export type SupportedLanguage = 'en' | 'es' | 'zh' | 'ja' | 'pt';
+export type SupportedLanguage = 'en';
 
 export interface LanguageConfig {
   ui_language: SupportedLanguage;

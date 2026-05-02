@@ -639,6 +639,7 @@ class LLMConfigResponse(BaseModel):
     model: str
     api_key: str  # Masked
     api_base: str | None = None
+    is_user_config: bool = False
 
 
 class FeatureConfigRequest(BaseModel):
@@ -660,8 +661,8 @@ class FeatureConfigResponse(BaseModel):
 class LanguageConfigRequest(BaseModel):
     """Request to update language settings."""
 
-    ui_language: str | None = None  # en, es, zh, ja - for interface
-    content_language: str | None = None  # en, es, zh, ja - for generated content
+    ui_language: str | None = None
+    content_language: str | None = None
 
 
 class LanguageConfigResponse(BaseModel):
@@ -834,6 +835,11 @@ class StatusResponse(BaseModel):
     status: str
     llm_configured: bool
     llm_healthy: bool
+    has_user_api_key: bool = False
+    free_llm_available: bool = False
+    using_free_llm: bool = False
+    free_llm_provider: str | None = None
+    free_llm_model: str | None = None
     has_master_resume: bool
     database_stats: dict[str, Any]
 

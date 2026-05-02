@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Sparkles, Briefcase, FolderKanban, Lightbulb } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 import type { RegenerateItemInput } from '@/lib/api/enrichment';
+import { isSharedFreeLlmLimitMessage, isUserLlmConfigMessage } from '@/lib/api/client';
 
 interface RegenerateInstructionDialogProps {
   open: boolean;
@@ -50,6 +51,14 @@ export const RegenerateInstructionDialog: React.FC<RegenerateInstructionDialogPr
   const resolveErrorMessage = (value: string) => {
     if (value === 'No items selected') {
       return t('builder.regenerate.selectDialog.noItemsSelected');
+    }
+
+    if (isSharedFreeLlmLimitMessage(value)) {
+      return value;
+    }
+
+    if (isUserLlmConfigMessage(value)) {
+      return value;
     }
 
     if (/network|fetch/i.test(value) || value.includes('Failed to fetch')) {

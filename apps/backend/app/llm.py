@@ -12,6 +12,7 @@ from litellm.router import RetryPolicy
 from pydantic import BaseModel
 
 from app.config import settings
+from app.llm_config_crypto import LLMConfigEncryptionError, decrypt_api_key
 
 LITELLM_LOGGER_NAMES = ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy")
 
@@ -42,6 +43,84 @@ class LLMConfig(BaseModel):
     model: str
     api_key: str
     api_base: str | None = None
+    is_user_config: bool = False
+
+
+def _is_effective_user_llm_config(user_config: dict[str, Any]) -> bool:
+    """Return whether a saved user config should override server fallback."""
+    provider = str(user_config.get("provider") or "")
+    return provider == "ollama" or bool(user_config.get("encrypted_api_key"))
+
+
+SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE = (
+    "Free website mode is busy right now. Lumi's shared basic Gemini model has hit "
+    "a Google limit. Add your own API key for reliable website generation, or use "
+    "the Chrome extension for the best job-page tailoring."
+)
+
+USER_LLM_REQUEST_FAILED_MESSAGE = (
+    "Your API key could not complete this request. Please check that your key is "
+    "valid, has quota remaining, and supports the selected model. You can update "
+    "it in Settings or use the Lumi Coach Chrome extension instead."
+)
+
+
+class SharedGeminiFallbackLimitError(RuntimeError):
+    """Raised when the shared Gemini fallback key appears rate/quota limited."""
+
+
+class UserLlmRequestError(RuntimeError):
+    """Raised when a user-owned LLM key/config cannot complete a request."""
+
+
+def is_shared_gemini_fallback_config(config: LLMConfig) -> bool:
+    """Return whether this request is using Lumi's shared Gemini fallback key."""
+    return config.provider == "gemini" and not config.is_user_config
+
+
+def _looks_like_google_limit_error(error: Exception) -> bool:
+    """Detect Google/Gemini quota, rate, and transient capacity errors."""
+    message = str(error).lower()
+    limit_markers = (
+        "429",
+        "rate limit",
+        "ratelimit",
+        "quota",
+        "resource exhausted",
+        "too many requests",
+        "exceeded",
+        "limit exceeded",
+        "user location is not supported",
+        "service unavailable",
+        "temporarily unavailable",
+        "overloaded",
+        "try again later",
+    )
+    return any(marker in message for marker in limit_markers)
+
+
+def raise_if_shared_gemini_fallback_limit(
+    config: LLMConfig,
+    error: Exception,
+) -> None:
+    """Raise a user-safe error for shared Gemini fallback quota/capacity failures."""
+    if is_shared_gemini_fallback_config(config) and _looks_like_google_limit_error(error):
+        raise SharedGeminiFallbackLimitError(SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE) from error
+
+
+def raise_if_user_llm_request_error(
+    config: LLMConfig,
+    error: Exception,
+) -> None:
+    """Raise a user-safe error for user-owned key/config request failures."""
+    if config.is_user_config:
+        raise UserLlmRequestError(USER_LLM_REQUEST_FAILED_MESSAGE) from error
+
+
+def raise_if_known_llm_request_error(config: LLMConfig, error: Exception) -> None:
+    """Raise user-safe errors that preserve whether free mode or user key failed."""
+    raise_if_shared_gemini_fallback_limit(config, error)
+    raise_if_user_llm_request_error(config, error)
 
 
 def _normalize_api_base(provider: str, api_base: str | None) -> str | None:
@@ -239,11 +318,17 @@ def resolve_api_key(stored: dict, provider: str) -> str:
     return api_key
 
 
-def get_llm_config() -> LLMConfig:
-    """Get current LLM configuration.
+def get_server_llm_config() -> LLMConfig:
+    """Get the shared server fallback LLM configuration."""
+    if settings.llm_api_key:
+        return LLMConfig(
+            provider=settings.llm_provider,
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+            api_base=settings.llm_api_base,
+            is_user_config=False,
+        )
 
-    Priority for api_key: top-level api_key > api_keys[provider] > env/settings
-    """
     stored = _load_stored_config()
     provider = stored.get("provider", settings.llm_provider)
     api_key = resolve_api_key(stored, provider)
@@ -253,7 +338,52 @@ def get_llm_config() -> LLMConfig:
         model=stored.get("model", settings.llm_model),
         api_key=api_key,
         api_base=stored.get("api_base", settings.llm_api_base),
+        is_user_config=False,
     )
+
+
+def get_llm_config(user_id: str | None = None) -> LLMConfig:
+    """Get current LLM configuration.
+
+    If a request-scoped or explicit user id is available, prefer that user's
+    encrypted DB-backed config. Fall back to the shared server config when the
+    user has no usable saved key, including an empty row left after clearing.
+    """
+    resolved_user_id = user_id
+    if resolved_user_id is None:
+        try:
+            from app.security import get_current_user_id
+
+            resolved_user_id = get_current_user_id()
+        except Exception:
+            resolved_user_id = None
+
+    if resolved_user_id:
+        try:
+            from app.database import db
+
+            user_config = db.get_user_llm_config(resolved_user_id)
+        except Exception:
+            logging.exception("Failed to load user LLM config")
+            user_config = None
+
+        if user_config and _is_effective_user_llm_config(user_config):
+            encrypted_api_key = user_config.get("encrypted_api_key")
+            try:
+                api_key = decrypt_api_key(encrypted_api_key) if encrypted_api_key else ""
+            except LLMConfigEncryptionError:
+                logging.exception("Failed to decrypt user LLM API key")
+                api_key = ""
+
+            return LLMConfig(
+                provider=str(user_config.get("provider") or settings.llm_provider),
+                model=str(user_config.get("model") or settings.llm_model),
+                api_key=api_key,
+                api_base=user_config.get("api_base"),
+                is_user_config=True,
+            )
+
+    return get_server_llm_config()
 
 
 def get_model_name(config: LLMConfig) -> str:
@@ -484,6 +614,8 @@ async def check_llm_health(
             error_code = "not_found_404"
         elif "<!doctype html" in message.lower() or "<html" in message.lower():
             error_code = "html_response"
+        elif is_shared_gemini_fallback_config(config) and _looks_like_google_limit_error(e):
+            error_code = "shared_gemini_fallback_limited"
         result = {
             "healthy": False,
             "provider": config.provider,
@@ -544,6 +676,7 @@ async def complete(
         # Log the actual error server-side for debugging
         logging.error(f"LLM completion failed: {e}", extra={
                       "model": model_name})
+        raise_if_known_llm_request_error(config, e)
         raise ValueError(
             "LLM completion failed. Please check your API configuration and try again."
         ) from e
@@ -844,10 +977,11 @@ async def complete_json(
                 continue
             raise
 
-        except Exception:
+        except Exception as e:
             # Transport errors — Router already retried with backoff.
             # Cooldowns are disabled (see _build_router); no additional
             # retry is attempted here.
+            raise_if_known_llm_request_error(config, e)
             raise
 
     raise ValueError(f"Failed after {retries + 1} attempts")

@@ -2,7 +2,7 @@
  * API functions for AI-powered resume enrichment.
  */
 
-import { apiFetch, apiPost } from './client';
+import { apiFetch, apiPost, readApiErrorMessage } from './client';
 
 // Types matching backend schemas
 
@@ -56,8 +56,9 @@ export async function analyzeResume(resumeId: string): Promise<AnalysisResponse>
   });
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to analyze resume (status ${res.status}).`);
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to analyze resume (status ${res.status}).`)
+    );
   }
 
   return res.json();
@@ -76,8 +77,9 @@ export async function generateEnhancements(
   });
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to generate enhancements (status ${res.status}).`);
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to generate enhancements (status ${res.status}).`)
+    );
   }
 
   return res.json();
@@ -152,8 +154,9 @@ export async function regenerateItems(request: RegenerateRequest): Promise<Regen
   const res = await apiPost('/enrichment/regenerate', request);
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to regenerate content (status ${res.status}).`);
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to regenerate content (status ${res.status}).`)
+    );
   }
 
   return res.json();
@@ -169,8 +172,9 @@ export async function applyRegeneratedItems(
   const res = await apiPost(`/enrichment/apply-regenerated/${resumeId}`, regeneratedItems);
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to apply changes (status ${res.status}).`);
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to apply changes (status ${res.status}).`)
+    );
   }
 
   return res.json();

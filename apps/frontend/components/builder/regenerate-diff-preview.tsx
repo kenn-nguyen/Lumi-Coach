@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 import type { RegenerateItemError, RegeneratedItem } from '@/lib/api/enrichment';
+import { isSharedFreeLlmLimitMessage, isUserLlmConfigMessage } from '@/lib/api/client';
 
 interface RegenerateDiffPreviewProps {
   open: boolean;
@@ -103,6 +104,14 @@ export const RegenerateDiffPreview: React.FC<RegenerateDiffPreviewProps> = ({
   const resolveErrorMessage = (value: string) => {
     if (value === 'No changes to apply') {
       return t('builder.regenerate.errors.noChangesToApply');
+    }
+
+    if (isSharedFreeLlmLimitMessage(value)) {
+      return value;
+    }
+
+    if (isUserLlmConfigMessage(value)) {
+      return value;
     }
 
     if (/network|fetch/i.test(value) || value.includes('Failed to fetch')) {

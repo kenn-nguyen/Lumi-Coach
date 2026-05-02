@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { fetchLlmApiKey, updateLlmApiKey } from '@/lib/api/config';
+import { fetchLlmConfig, updateLlmConfig } from '@/lib/api/config';
 import { ChevronDown } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 
@@ -9,22 +9,30 @@ type Status = 'idle' | 'loading' | 'saving' | 'saved' | 'error';
 
 const MASK_THRESHOLD = 6;
 
+function isMaskedApiKey(value: string): boolean {
+  return value.includes('*') || value.includes('•');
+}
+
 export default function ApiKeyMenu(): React.ReactElement {
   const { t } = useTranslations();
   const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState<Status>('loading');
   const [apiKey, setApiKey] = useState('');
   const [draft, setDraft] = useState('');
+  const [hasStoredApiKey, setHasStoredApiKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const value = await fetchLlmApiKey();
+        const config = await fetchLlmConfig();
+        const value = config.api_key ?? '';
+        const isMasked = isMaskedApiKey(value);
         if (cancelled) return;
         setApiKey(value);
-        setDraft(value);
+        setDraft(isMasked ? '' : value);
+        setHasStoredApiKey(Boolean(value));
         setStatus('idle');
       } catch (err) {
         console.error('Failed to load LLM API key', err);
@@ -42,6 +50,7 @@ export default function ApiKeyMenu(): React.ReactElement {
 
   const maskedKey = useMemo(() => {
     if (!apiKey) return t('settings.statusValues.notSet');
+    if (isMaskedApiKey(apiKey)) return apiKey;
     if (apiKey.length <= MASK_THRESHOLD) return apiKey;
     return `${apiKey.slice(0, MASK_THRESHOLD)}••••`;
   }, [apiKey, t]);
@@ -50,7 +59,7 @@ export default function ApiKeyMenu(): React.ReactElement {
     setIsOpen((prev) => {
       const next = !prev;
       if (!prev) {
-        setDraft(apiKey);
+        setDraft(isMaskedApiKey(apiKey) ? '' : apiKey);
         setError(null);
       }
       return next;
@@ -62,9 +71,17 @@ export default function ApiKeyMenu(): React.ReactElement {
     setError(null);
     try {
       const trimmed = draft.trim();
-      const saved = await updateLlmApiKey(trimmed);
+      if (!trimmed && hasStoredApiKey) {
+        setStatus('saved');
+        setTimeout(() => setStatus('idle'), 1800);
+        return;
+      }
+
+      const savedConfig = await updateLlmConfig({ api_key: trimmed });
+      const saved = savedConfig.api_key ?? '';
       setApiKey(saved);
-      setDraft(saved);
+      setDraft(isMaskedApiKey(saved) ? '' : saved);
+      setHasStoredApiKey(Boolean(saved));
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 1800);
     } catch (err) {
@@ -76,7 +93,7 @@ export default function ApiKeyMenu(): React.ReactElement {
 
   const handleClose = () => {
     setIsOpen(false);
-    setDraft(apiKey);
+    setDraft(isMaskedApiKey(apiKey) ? '' : apiKey);
     setError(null);
   };
 

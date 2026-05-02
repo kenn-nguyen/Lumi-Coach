@@ -95,7 +95,7 @@ def _get_llm_api_key_with_fallback() -> str:
 
     # Fallback to config file based on provider
     config_keys = get_api_keys_from_config()
-    provider = os.environ.get("LLM_PROVIDER", "openai")
+    provider = os.environ.get("LLM_PROVIDER", "gemini")
 
     # Map provider to config key
     provider_map = {
@@ -123,18 +123,22 @@ class Settings(BaseSettings):
     # LLM Configuration
     llm_provider: Literal[
         "openai", "anthropic", "openrouter", "gemini", "deepseek", "ollama"
-    ] = "openai"
-    llm_model: str = "gpt-5-nano-2025-08-07"
+    ] = "gemini"
+    llm_model: str = "gemini-2.5-flash-lite"
     llm_api_key: str = ""
     llm_api_base: str | None = None  # For Ollama or custom endpoints
+    llm_config_encryption_key: str = Field(
+        default="",
+        alias="LLM_CONFIG_ENCRYPTION_KEY",
+    )
     log_llm: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "WARNING"
 
     @field_validator("llm_provider", mode="before")
     @classmethod
     def set_default_provider(cls, v: Any) -> str:
-        """Handle empty string provider by defaulting to openai."""
+        """Handle empty string provider by defaulting to Gemini free mode."""
         if not v or (isinstance(v, str) and not v.strip()):
-            return "openai"
+            return "gemini"
         return v
 
     @field_validator("log_llm", mode="before")

@@ -49,6 +49,7 @@ import { StrategyMatchView } from './strategy-match-view';
 import { RegenerateWizard } from './regenerate-wizard';
 import { useRegenerateWizard } from '@/hooks/use-regenerate-wizard';
 import { useTranslations } from '@/lib/i18n';
+import { isSharedFreeLlmLimitMessage, isUserLlmConfigMessage } from '@/lib/api/client';
 import { type TemplateSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/lib/types/template-settings';
 import {
   commitPendingSectionRemovals,
@@ -236,6 +237,16 @@ const ResumeBuilderContent = () => {
     },
     onError: (errorMessage) => {
       console.error('Error during regeneration or applying regenerated changes:', errorMessage);
+
+      if (isSharedFreeLlmLimitMessage(errorMessage)) {
+        showNotification(errorMessage, 'danger');
+        return;
+      }
+
+      if (isUserLlmConfigMessage(errorMessage)) {
+        showNotification(errorMessage, 'danger');
+        return;
+      }
 
       if (/network|fetch/i.test(errorMessage) || errorMessage.includes('Failed to fetch')) {
         showNotification(t('builder.regenerate.errors.networkError'), 'danger');

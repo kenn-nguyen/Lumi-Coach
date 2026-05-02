@@ -19,6 +19,14 @@ from pydantic import ValidationError
 
 from app.config_cache import get_content_language, load_config as _load_config
 from app.database import db
+from app.llm import (
+    LLMConfig,
+    SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE,
+    USER_LLM_REQUEST_FAILED_MESSAGE,
+    SharedGeminiFallbackLimitError,
+    UserLlmRequestError,
+    get_llm_config,
+)
 from app.pdf import render_resume_pdf, PDFRenderError
 from app.config import settings
 
@@ -110,6 +118,18 @@ def _sanitize_pdf_download_filename(filename: str | None, fallback: str) -> str:
     if len(sanitized) > 180:
         sanitized = f"{sanitized[:176].rstrip()}.pdf"
     return sanitized
+
+
+def _resolve_current_user_id(current_user: AuthenticatedUser | object) -> str | None:
+    """Return the authenticated user id when called by FastAPI or direct tests."""
+    if isinstance(current_user, AuthenticatedUser):
+        return current_user.user_id
+    return get_current_user_id()
+
+
+def _get_feature_bool(config: dict, key: str, default: bool = False) -> bool:
+    """Resolve feature toggles while preserving explicit saved false values."""
+    return bool(config[key]) if key in config else default
 
 
 def _set_cached_preview_hash(user_id: str | None, job_id: str, prompt_id: str, preview_hash: str) -> None:
@@ -246,7 +266,32 @@ def _raise_improve_error(
     detail: str,
 ) -> NoReturn:
     logger.error("Resume %s failed during %s: %s", action, stage, error)
+    if isinstance(error, SharedGeminiFallbackLimitError):
+        raise HTTPException(
+            status_code=429,
+            detail=SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE,
+        ) from error
+    if isinstance(error, UserLlmRequestError):
+        raise HTTPException(
+            status_code=502,
+            detail=USER_LLM_REQUEST_FAILED_MESSAGE,
+        ) from error
     raise HTTPException(status_code=500, detail=detail)
+
+
+def _raise_generation_error(error: Exception, fallback_detail: str) -> NoReturn:
+    """Raise a user-safe generation error without leaking provider internals."""
+    if isinstance(error, SharedGeminiFallbackLimitError):
+        raise HTTPException(
+            status_code=429,
+            detail=SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE,
+        ) from error
+    if isinstance(error, UserLlmRequestError):
+        raise HTTPException(
+            status_code=502,
+            detail=USER_LLM_REQUEST_FAILED_MESSAGE,
+        ) from error
+    raise HTTPException(status_code=500, detail=fallback_detail) from error
 
 
 def _get_original_resume_data(resume: dict[str, Any]) -> dict[str, Any] | None:
@@ -669,6 +714,7 @@ async def _generate_auxiliary_messages(
     language: str,
     enable_cover_letter: bool,
     enable_outreach: bool,
+    llm_config: LLMConfig,
 ) -> tuple[str | None, str | None, str | None, list[str]]:
     """Generate cover letter, outreach message, and resume title.
 
@@ -682,17 +728,17 @@ async def _generate_auxiliary_messages(
     task_labels: list[str] = []
 
     # Title generation is always on (no feature flag)
-    generation_tasks.append(generate_resume_title(job_content, language))
+    generation_tasks.append(generate_resume_title(job_content, language, config=llm_config))
     task_labels.append("title")
 
     if enable_cover_letter:
         generation_tasks.append(
-            generate_cover_letter(improved_data, job_content, language)
+            generate_cover_letter(improved_data, job_content, language, config=llm_config)
         )
         task_labels.append("cover_letter")
     if enable_outreach:
         generation_tasks.append(
-            generate_outreach_message(improved_data, job_content, language)
+            generate_outreach_message(improved_data, job_content, language, config=llm_config)
         )
         task_labels.append("outreach")
 
@@ -725,10 +771,23 @@ ALLOWED_TYPES = {
     "text/json",
 }
 MAX_FILE_SIZE = 4 * 1024 * 1024  # 4MB
+RESUME_DATA_JSON_KEYS = {
+    "personalInfo",
+    "summary",
+    "workExperience",
+    "education",
+    "personalProjects",
+    "additional",
+    "sectionMeta",
+    "customSections",
+}
 
 
 @router.post("/upload", response_model=ResumeUploadResponse)
-async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
+async def upload_resume(
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> ResumeUploadResponse:
     """Upload and process a resume file (PDF/DOCX/JSON).
 
     Converts the file to Markdown and stores it in the database.
@@ -784,6 +843,10 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
                     if wrapped_payload.generation_artifacts
                     else None
                 )
+            if not isinstance(resume_payload, dict) or not (
+                RESUME_DATA_JSON_KEYS & set(resume_payload.keys())
+            ):
+                raise ValueError("JSON payload is not resume-shaped")
             processed_data = ResumeData.model_validate(resume_payload).model_dump()
         except json.JSONDecodeError as e:
             logger.error("JSON resume parsing failed: %s", e)
@@ -796,6 +859,12 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
             raise HTTPException(
                 status_code=422,
                 detail=f"Uploaded JSON does not match ResumeData schema: {e}",
+            )
+        except ValueError as e:
+            logger.error("JSON resume validation failed: %s", e)
+            raise HTTPException(
+                status_code=422,
+                detail="Uploaded JSON does not match ResumeData schema.",
             )
 
         resume = await db.create_resume_atomic_master(
@@ -840,7 +909,8 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
 
     # Try to parse to structured JSON (optional, may fail if LLM not configured)
     try:
-        processed_data = await parse_resume_to_json(markdown_content)
+        llm_config = get_llm_config(_resolve_current_user_id(current_user))
+        processed_data = await parse_resume_to_json(markdown_content, config=llm_config)
         db.update_resume(
             resume["resume_id"],
             {
@@ -939,6 +1009,7 @@ async def list_resumes(include_master: bool = Query(False)) -> ResumeListRespons
 @router.post("/improve/preview", response_model=ImproveResumeResponse)
 async def improve_resume_preview_endpoint(
     request: ImproveResumeRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> ImproveResumeResponse:
     """Preview a tailored resume without persisting it.
 
@@ -954,6 +1025,7 @@ async def improve_resume_preview_endpoint(
 
     language = get_content_language()
     prompt_id = request.prompt_id or _get_default_prompt_id()
+    llm_config = get_llm_config(_resolve_current_user_id(current_user))
 
     stage = "load_job_keywords"
     detail = "Failed to preview resume. Please try again."
@@ -965,6 +1037,7 @@ async def improve_resume_preview_endpoint(
                 job=job,
                 language=language,
                 prompt_id=prompt_id,
+                llm_config=llm_config,
             ),
             timeout=240.0,  # 4-minute hard limit
         )
@@ -989,6 +1062,7 @@ async def _improve_preview_flow(
     job: dict[str, Any],
     language: str,
     prompt_id: str,
+    llm_config: LLMConfig,
 ) -> ImproveResumeResponse:
     """Inner flow for improve/preview, extracted so it can be wrapped in wait_for."""
     feature_config = _load_config()
@@ -999,7 +1073,7 @@ async def _improve_preview_flow(
     job_keywords_hash = job.get("job_keywords_hash")
     content_hash = _hash_job_content(job["content"])
     if not job_keywords or job_keywords_hash != content_hash:
-        job_keywords = await extract_job_keywords(job["content"])
+        job_keywords = await extract_job_keywords(job["content"], config=llm_config)
         # Cache extracted keywords with a content hash for basic invalidation.
         try:
             updated_job = db.update_job(
@@ -1030,6 +1104,7 @@ async def _improve_preview_flow(
             language=language,
             prompt_id=prompt_id,
             original_resume_data=original_resume_data,
+            config=llm_config,
         )
 
         improved_data, applied_changes, rejected_changes = apply_diffs(
@@ -1065,6 +1140,7 @@ async def _improve_preview_flow(
             language=language,
             prompt_id=prompt_id,
             original_resume_data=original_resume_data,
+            config=llm_config,
         )
 
     # Safety nets (defense in depth — should rarely activate with diff-based flow)
@@ -1103,6 +1179,7 @@ async def _improve_preview_flow(
                 job_description=job["content"],
                 job_keywords=job_keywords,
                 config=RefinementConfig(),
+                llm_config=llm_config,
             )
             improved_data = refinement_result.refined_data
             refinement_stats = RefinementStats(
@@ -1208,6 +1285,7 @@ async def _improve_preview_flow(
 @router.post("/improve/confirm", response_model=ImproveResumeResponse)
 async def improve_resume_confirm_endpoint(
     request: ImproveResumeConfirmRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> ImproveResumeResponse:
     """Confirm and persist a tailored resume."""
     resume = db.get_resume(request.resume_id)
@@ -1219,12 +1297,13 @@ async def improve_resume_confirm_endpoint(
         raise HTTPException(status_code=404, detail="Job description not found")
 
     feature_config = _load_config()
-    enable_cover_letter = feature_config.get("enable_cover_letter", False)
-    enable_outreach = feature_config.get("enable_outreach_message", False)
+    enable_cover_letter = _get_feature_bool(feature_config, "enable_cover_letter")
+    enable_outreach = _get_feature_bool(feature_config, "enable_outreach_message")
     preserve_generated_resume_facts = feature_config.get(
         "preserve_generated_resume_facts", True
     )
     language = get_content_language()
+    llm_config = get_llm_config(_resolve_current_user_id(current_user))
 
     stage = "serialize_improved_data"
     detail = "Failed to confirm resume. Please try again."
@@ -1299,6 +1378,7 @@ async def improve_resume_confirm_endpoint(
             language,
             enable_cover_letter,
             enable_outreach,
+            llm_config,
         )
         response_warnings.extend(aux_warnings)
 
@@ -1352,6 +1432,7 @@ async def improve_resume_confirm_endpoint(
 @router.post("/improve", response_model=ImproveResumeResponse)
 async def improve_resume_endpoint(
     request: ImproveResumeRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> ImproveResumeResponse:
     """Improve/tailor a resume for a specific job description.
 
@@ -1372,16 +1453,17 @@ async def improve_resume_endpoint(
 
     # Load feature configuration and content language
     feature_config = _load_config()
-    enable_cover_letter = feature_config.get("enable_cover_letter", False)
-    enable_outreach = feature_config.get("enable_outreach_message", False)
+    enable_cover_letter = _get_feature_bool(feature_config, "enable_cover_letter")
+    enable_outreach = _get_feature_bool(feature_config, "enable_outreach_message")
     preserve_generated_resume_facts = feature_config.get(
         "preserve_generated_resume_facts", True
     )
     language = get_content_language()
+    llm_config = get_llm_config(_resolve_current_user_id(current_user))
 
     try:
         # Extract keywords from job description
-        job_keywords = await extract_job_keywords(job["content"])
+        job_keywords = await extract_job_keywords(job["content"], config=llm_config)
 
         # Generate improved resume in the configured language
         prompt_id = request.prompt_id or _get_default_prompt_id()
@@ -1399,6 +1481,7 @@ async def improve_resume_endpoint(
                 language=language,
                 prompt_id=prompt_id,
                 original_resume_data=original_resume_data,
+                config=llm_config,
             )
 
             improved_data, applied_changes, rejected_changes = apply_diffs(
@@ -1434,6 +1517,7 @@ async def improve_resume_endpoint(
                 language=language,
                 prompt_id=prompt_id,
                 original_resume_data=original_resume_data,
+                config=llm_config,
             )
 
         # Safety nets (defense in depth)
@@ -1472,6 +1556,7 @@ async def improve_resume_endpoint(
                     job_description=job["content"],
                     job_keywords=job_keywords,
                     config=RefinementConfig(),
+                    llm_config=llm_config,
                 )
                 improved_data = refinement_result.refined_data
                 refinement_stats = RefinementStats(
@@ -1533,6 +1618,7 @@ async def improve_resume_endpoint(
             language,
             enable_cover_letter,
             enable_outreach,
+            llm_config,
         )
         response_warnings.extend(aux_warnings)
 
@@ -1589,10 +1675,7 @@ async def improve_resume_endpoint(
 
     except Exception as e:
         logger.error(f"Resume improvement failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to improve resume. Please try again.",
-        )
+        _raise_generation_error(e, "Failed to improve resume. Please try again.")
 
 
 @router.patch("/{resume_id}", response_model=ResumeFetchResponse)
@@ -1799,7 +1882,10 @@ async def delete_resume(resume_id: str) -> dict:
 
 
 @router.post("/{resume_id}/retry-processing", response_model=ResumeUploadResponse)
-async def retry_processing(resume_id: str) -> ResumeUploadResponse:
+async def retry_processing(
+    resume_id: str,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> ResumeUploadResponse:
     """Retry AI processing for a failed or stuck resume.
 
     Re-runs parse_resume_to_json() on the stored markdown content.
@@ -1823,7 +1909,8 @@ async def retry_processing(resume_id: str) -> ResumeUploadResponse:
         )
 
     try:
-        processed_data = await parse_resume_to_json(markdown_content)
+        llm_config = get_llm_config(_resolve_current_user_id(current_user))
+        processed_data = await parse_resume_to_json(markdown_content, config=llm_config)
         db.update_resume(
             resume_id,
             {
@@ -1943,7 +2030,10 @@ async def update_title(resume_id: str, request: UpdateTitleRequest) -> dict:
 @router.post(
     "/{resume_id}/generate-cover-letter", response_model=GenerateContentResponse
 )
-async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentResponse:
+async def generate_cover_letter_endpoint(
+    resume_id: str,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> GenerateContentResponse:
     """Generate a cover letter on-demand for an existing tailored resume.
 
     This endpoint allows users to generate a cover letter after a resume has been
@@ -1994,15 +2084,13 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
 
     # Generate cover letter
     try:
+        llm_config = get_llm_config(_resolve_current_user_id(current_user))
         cover_letter_content = await generate_cover_letter(
-            resume_data, job["content"], language
+            resume_data, job["content"], language, config=llm_config
         )
     except Exception as e:
         logger.error(f"Cover letter generation failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate cover letter. Please try again.",
-        )
+        _raise_generation_error(e, "Failed to generate cover letter. Please try again.")
 
     # Save to resume record
     db.update_resume(resume_id, {"cover_letter": cover_letter_content})
@@ -2014,7 +2102,10 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
 
 
 @router.post("/{resume_id}/generate-outreach", response_model=GenerateContentResponse)
-async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
+async def generate_outreach_endpoint(
+    resume_id: str,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> GenerateContentResponse:
     """Generate an outreach message on-demand for an existing tailored resume.
 
     This endpoint allows users to generate a cold outreach message after a resume
@@ -2065,15 +2156,13 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
 
     # Generate outreach message
     try:
+        llm_config = get_llm_config(_resolve_current_user_id(current_user))
         outreach_content = await generate_outreach_message(
-            resume_data, job["content"], language
+            resume_data, job["content"], language, config=llm_config
         )
     except Exception as e:
         logger.error(f"Outreach message generation failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate outreach message. Please try again.",
-        )
+        _raise_generation_error(e, "Failed to generate outreach message. Please try again.")
 
     # Save to resume record
     db.update_resume(resume_id, {"outreach_message": outreach_content})
@@ -2086,7 +2175,9 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
 
 @router.post("/{resume_id}/rewrite-bullet", response_model=RewriteBulletResponse)
 async def rewrite_bullet_endpoint(
-    resume_id: str, request: RewriteBulletRequest
+    resume_id: str,
+    request: RewriteBulletRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> RewriteBulletResponse:
     """Generate a one-bullet rewrite suggestion without persisting it."""
     resume = db.get_resume(resume_id)
@@ -2109,6 +2200,7 @@ async def rewrite_bullet_endpoint(
     language = get_content_language()
 
     try:
+        llm_config = get_llm_config(_resolve_current_user_id(current_user))
         rewritten_bullet = await rewrite_resume_bullet(
             current_bullet=current_bullet,
             original_bullet=request.original_bullet,
@@ -2118,13 +2210,11 @@ async def rewrite_bullet_endpoint(
             strategy_context=strategy_context,
             user_instruction=request.user_instruction,
             language=language,
+            config=llm_config,
         )
     except Exception as e:
         logger.error(f"Bullet rewrite generation failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to rewrite bullet. Please try again.",
-        )
+        _raise_generation_error(e, "Failed to rewrite bullet. Please try again.")
 
     return RewriteBulletResponse(
         rewritten_bullet=rewritten_bullet,
@@ -2134,7 +2224,9 @@ async def rewrite_bullet_endpoint(
 
 @router.post("/{resume_id}/rewrite-summary", response_model=RewriteSummaryResponse)
 async def rewrite_summary_endpoint(
-    resume_id: str, request: RewriteSummaryRequest
+    resume_id: str,
+    request: RewriteSummaryRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> RewriteSummaryResponse:
     """Generate a summary rewrite suggestion without persisting it."""
     resume = db.get_resume(resume_id)
@@ -2152,19 +2244,18 @@ async def rewrite_summary_endpoint(
     language = get_content_language()
 
     try:
+        llm_config = get_llm_config(_resolve_current_user_id(current_user))
         rewritten_summary = await rewrite_resume_summary(
             current_summary=current_summary,
             original_summary=request.original_summary,
             strategy_context=strategy_context,
             user_instruction=request.user_instruction,
             language=language,
+            config=llm_config,
         )
     except Exception as e:
         logger.error(f"Summary rewrite generation failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to rewrite summary. Please try again.",
-        )
+        _raise_generation_error(e, "Failed to rewrite summary. Please try again.")
 
     return RewriteSummaryResponse(
         rewritten_summary=rewritten_summary,

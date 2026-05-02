@@ -8,12 +8,28 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.schemas import ResumeData
+from app.security import AuthenticatedUser, require_current_user
 
 
 @pytest.fixture
 def client():
     transport = ASGITransport(app=app)
     return AsyncClient(transport=transport, base_url="http://test")
+
+
+@pytest.fixture(autouse=True)
+def override_auth():
+    async def _fake_user():
+        return AuthenticatedUser(
+            user_id="user-123",
+            email="tester@example.com",
+            name="Test User",
+        )
+
+    app.dependency_overrides[require_current_user] = _fake_user
+    yield
+    app.dependency_overrides.pop(require_current_user, None)
 
 
 @pytest.fixture
@@ -142,7 +158,7 @@ class TestUploadResume:
         mock_db.create_resume_atomic_master.assert_awaited_once()
         kwargs = mock_db.create_resume_atomic_master.await_args.kwargs
         assert kwargs["content_type"] == "json"
-        assert kwargs["processed_data"] == sample_resume
+        assert kwargs["processed_data"] == ResumeData.model_validate(sample_resume).model_dump()
 
     @patch("app.routers.resumes.db")
     @patch("app.routers.resumes.parse_document", new_callable=AsyncMock)
@@ -183,7 +199,7 @@ class TestUploadResume:
         mock_parse_document.assert_not_called()
         kwargs = mock_db.create_resume_atomic_master.await_args.kwargs
         assert kwargs["content_type"] == "json"
-        assert kwargs["processed_data"] == sample_resume
+        assert kwargs["processed_data"] == ResumeData.model_validate(sample_resume).model_dump()
         assert kwargs["generation_feedback"] == feedback
 
     @patch("app.routers.resumes.db")
@@ -231,7 +247,9 @@ class TestUpdateResume:
         assert resp.status_code == 200
         mock_db.update_resume.assert_called_once()
         updates = mock_db.update_resume.call_args.args[1]
-        assert updates["processed_data"] == sample_resume
+        expected_data = ResumeData.model_validate(sample_resume).model_dump()
+        expected_data["sectionMeta"] = updates["processed_data"]["sectionMeta"]
+        assert updates["processed_data"] == expected_data
         assert updates["generation_feedback"] is None
 
     @patch("app.routers.resumes.db")

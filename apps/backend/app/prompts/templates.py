@@ -3,10 +3,6 @@
 # Language code to full name mapping
 LANGUAGE_NAMES = {
     "en": "English",
-    "es": "Spanish",
-    "zh": "Chinese (Simplified)",
-    "ja": "Japanese",
-    "pt": "Brazilian Portuguese",
 }
 
 

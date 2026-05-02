@@ -9,6 +9,7 @@ import {
   apiPatch,
   apiPost,
   isApiRequestTimeoutError,
+  readApiErrorMessage,
 } from './client';
 
 // Matches backend schemas/models.py ResumeData
@@ -145,7 +146,18 @@ async function postImprove(
   const text = await response.text();
   if (!response.ok) {
     console.error('Improve failed response body:', text);
-    throw new Error(`Improve failed with status ${response.status}: ${text}`);
+    let message = text || `Improve failed with status ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as { detail?: string | { message?: string } };
+      if (typeof parsed.detail === 'string') {
+        message = parsed.detail;
+      } else if (parsed.detail?.message) {
+        message = parsed.detail.message;
+      }
+    } catch {
+      // Keep the raw text when the backend did not return JSON.
+    }
+    throw new Error(message);
   }
 
   try {
@@ -397,8 +409,9 @@ export async function downloadCoverLetterPdf(
 export async function generateCoverLetter(resumeId: string): Promise<string> {
   const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/generate-cover-letter`, {});
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Failed to generate cover letter (status ${res.status}): ${text}`);
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to generate cover letter (status ${res.status}).`)
+    );
   }
   const data = await res.json();
   return data.content;
@@ -408,8 +421,9 @@ export async function generateCoverLetter(resumeId: string): Promise<string> {
 export async function generateOutreachMessage(resumeId: string): Promise<string> {
   const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/generate-outreach`, {});
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Failed to generate outreach message (status ${res.status}): ${text}`);
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to generate outreach message (status ${res.status}).`)
+    );
   }
   const data = await res.json();
   return data.content;

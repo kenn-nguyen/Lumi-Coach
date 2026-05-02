@@ -39,6 +39,24 @@ class UserModel(Base):
     )
 
 
+class UserLlmConfigModel(Base):
+    __tablename__ = "llm_configs"
+
+    user_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    api_base: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class ResumeModel(Base):
     __tablename__ = "resumes"
 
@@ -147,6 +165,17 @@ class Database:
             "updated_at": self._to_iso(user.updated_at),
         }
 
+    def _serialize_llm_config(self, config: UserLlmConfigModel) -> dict[str, Any]:
+        return {
+            "user_id": config.user_id,
+            "provider": config.provider,
+            "model": config.model,
+            "api_base": config.api_base,
+            "encrypted_api_key": config.encrypted_api_key,
+            "created_at": self._to_iso(config.created_at),
+            "updated_at": self._to_iso(config.updated_at),
+        }
+
     def _serialize_resume(self, resume: ResumeModel) -> dict[str, Any]:
         return {
             "resume_id": resume.resume_id,
@@ -220,6 +249,51 @@ class Database:
             session.commit()
             session.refresh(user)
             return self._serialize_user(user)
+
+    def get_user_llm_config(self, user_id: str) -> dict[str, Any] | None:
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            return self._serialize_llm_config(config) if config else None
+
+    def upsert_user_llm_config(
+        self,
+        *,
+        user_id: str,
+        provider: str,
+        model: str,
+        api_base: str | None = None,
+        encrypted_api_key: str | None = None,
+    ) -> dict[str, Any]:
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            if config is None:
+                config = UserLlmConfigModel(
+                    user_id=user_id,
+                    provider=provider,
+                    model=model,
+                    api_base=api_base,
+                    encrypted_api_key=encrypted_api_key,
+                )
+                session.add(config)
+            else:
+                config.provider = provider
+                config.model = model
+                config.api_base = api_base
+                config.encrypted_api_key = encrypted_api_key
+                config.updated_at = _utcnow()
+            session.commit()
+            session.refresh(config)
+            return self._serialize_llm_config(config)
+
+    def clear_user_llm_api_key(self, user_id: str) -> bool:
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            if config is None:
+                return False
+            config.encrypted_api_key = None
+            config.updated_at = _utcnow()
+            session.commit()
+            return True
 
     def create_resume(
         self,

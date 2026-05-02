@@ -11,7 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.config_cache import get_content_language
 from app.database import db
-from app.llm import complete_json
+from app.llm import (
+    LLMConfig,
+    SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE,
+    USER_LLM_REQUEST_FAILED_MESSAGE,
+    SharedGeminiFallbackLimitError,
+    UserLlmRequestError,
+    complete_json,
+    get_llm_config,
+)
 from app.prompts.enrichment import (
     ANALYZE_RESUME_PROMPT,
     ENHANCE_DESCRIPTION_PROMPT,
@@ -19,7 +27,7 @@ from app.prompts.enrichment import (
     REGENERATE_SKILLS_PROMPT,
 )
 from app.prompts.templates import get_language_name
-from app.security import require_current_user
+from app.security import AuthenticatedUser, get_current_user_id, require_current_user
 from app.schemas.enrichment import (
     AnalysisResponse,
     AnswerInput,
@@ -43,6 +51,28 @@ router = APIRouter(
     tags=["Enrichment"],
     dependencies=[Depends(require_current_user)],
 )
+
+
+def _raise_generation_error(error: Exception, fallback_detail: str) -> None:
+    """Raise a user-safe enrichment generation error."""
+    if isinstance(error, SharedGeminiFallbackLimitError):
+        raise HTTPException(
+            status_code=429,
+            detail=SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE,
+        ) from error
+    if isinstance(error, UserLlmRequestError):
+        raise HTTPException(
+            status_code=502,
+            detail=USER_LLM_REQUEST_FAILED_MESSAGE,
+        ) from error
+    raise HTTPException(status_code=500, detail=fallback_detail) from error
+
+
+def _resolve_current_user_id(current_user: AuthenticatedUser | object) -> str | None:
+    """Return the authenticated user id when called by FastAPI or direct tests."""
+    if isinstance(current_user, AuthenticatedUser):
+        return current_user.user_id
+    return get_current_user_id()
 
 
 def _extract_item_from_resume(processed_data: dict, item_id: str) -> dict:
@@ -90,7 +120,10 @@ def _extract_item_from_resume(processed_data: dict, item_id: str) -> dict:
 
 
 @router.post("/analyze/{resume_id}", response_model=AnalysisResponse)
-async def analyze_resume(resume_id: str) -> AnalysisResponse:
+async def analyze_resume(
+    resume_id: str,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> AnalysisResponse:
     """Analyze a resume to identify items that need enrichment.
 
     Uses AI to examine Experience and Projects sections for weak,
@@ -113,6 +146,7 @@ async def analyze_resume(resume_id: str) -> AnalysisResponse:
     resume_json = json.dumps(processed_data)
     language = get_content_language()
     output_language = get_language_name(language)
+    llm_config = get_llm_config(_resolve_current_user_id(current_user))
     prompt = ANALYZE_RESUME_PROMPT.format(
         resume_json=resume_json,
         output_language=output_language
@@ -120,7 +154,7 @@ async def analyze_resume(resume_id: str) -> AnalysisResponse:
 
     try:
         # Call LLM with increased max_tokens for non-English languages
-        result = await complete_json(prompt, max_tokens=8192)
+        result = await complete_json(prompt, config=llm_config, max_tokens=8192)
 
         # Parse response into schema objects
         items_to_enrich = [
@@ -153,14 +187,14 @@ async def analyze_resume(resume_id: str) -> AnalysisResponse:
 
     except Exception as e:
         logger.error(f"Resume analysis failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to analyze resume. Please try again.",
-        )
+        _raise_generation_error(e, "Failed to analyze resume. Please try again.")
 
 
 @router.post("/enhance", response_model=EnhancementPreview)
-async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
+async def generate_enhancements(
+    request: EnhanceRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> EnhancementPreview:
     """Generate enhanced descriptions from user answers.
 
     Takes the answers to clarifying questions and uses AI to generate
@@ -186,6 +220,7 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
     item_details: dict[str, dict] = {}
     # question_id → question dict, populated only in the legacy path
     questions_by_id: dict[str, dict] = {}
+    llm_config = get_llm_config(_resolve_current_user_id(current_user))
 
     if all(a.item_id for a in request.answers) and all(
         _extract_item_from_resume(processed_data, a.item_id or "")
@@ -210,13 +245,14 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
         )
 
         try:
-            analysis_result = await complete_json(analysis_prompt, max_tokens=8192)
+            analysis_result = await complete_json(
+                analysis_prompt,
+                config=llm_config,
+                max_tokens=8192,
+            )
         except Exception as e:
             logger.error(f"Failed to re-analyze resume: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to process enhancements. Please try again.",
-            )
+            _raise_generation_error(e, "Failed to process enhancements. Please try again.")
 
         question_to_item: dict[str, str] = {}
         for q in analysis_result.get("questions", []):
@@ -235,6 +271,7 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
 
     # Generate enhanced descriptions for each item
     enhancements: list[EnhancedDescription] = []
+    shared_fallback_limit_failures = 0
 
     for item_id, answers in answers_by_item.items():
         item = item_details.get(item_id, {})
@@ -273,7 +310,7 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
         )
 
         try:
-            result = await complete_json(prompt)
+            result = await complete_json(prompt, config=llm_config)
             # Get additional bullets from LLM (new key name)
             additional_bullets = result.get("additional_bullets", [])
             # Fallback to old key for backwards compatibility
@@ -295,7 +332,20 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
             )
         except Exception as e:
             logger.warning(f"Failed to enhance item {item_id}: {e}")
+            if isinstance(e, SharedGeminiFallbackLimitError):
+                shared_fallback_limit_failures += 1
+            if isinstance(e, UserLlmRequestError):
+                raise HTTPException(
+                    status_code=502,
+                    detail=USER_LLM_REQUEST_FAILED_MESSAGE,
+                ) from e
             # Continue with other items
+
+    if not enhancements and shared_fallback_limit_failures:
+        raise HTTPException(
+            status_code=429,
+            detail=SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE,
+        )
 
     return EnhancementPreview(enhancements=enhancements)
 
@@ -392,6 +442,7 @@ async def _regenerate_experience_or_project(
     item: RegenerateItemInput,
     instruction: str,
     output_language: str,
+    llm_config: LLMConfig,
 ) -> RegeneratedItem:
     """Regenerate a single experience or project item."""
     current_desc_text = (
@@ -409,7 +460,7 @@ async def _regenerate_experience_or_project(
         user_instruction=instruction,
     )
 
-    result = await complete_json(prompt, max_tokens=4096)
+    result = await complete_json(prompt, config=llm_config, max_tokens=4096)
 
     new_bullets = result.get("new_bullets", [])
     if not isinstance(new_bullets, list):
@@ -431,6 +482,7 @@ async def _regenerate_skills(
     item: RegenerateItemInput,
     instruction: str,
     output_language: str,
+    llm_config: LLMConfig,
 ) -> RegeneratedItem:
     """Regenerate the skills section."""
     current_skills_text = ", ".join(item.current_content) if item.current_content else "(No skills)"
@@ -441,7 +493,7 @@ async def _regenerate_skills(
         user_instruction=instruction,
     )
 
-    result = await complete_json(prompt, max_tokens=2048)
+    result = await complete_json(prompt, config=llm_config, max_tokens=2048)
 
     new_skills = result.get("new_skills", [])
     if not isinstance(new_skills, list):
@@ -460,7 +512,10 @@ async def _regenerate_skills(
 
 
 @router.post("/regenerate", response_model=RegenerateResponse)
-async def regenerate_items(request: RegenerateRequest) -> RegenerateResponse:
+async def regenerate_items(
+    request: RegenerateRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> RegenerateResponse:
     """Regenerate selected resume items based on user feedback.
 
     Takes selected items (experience, projects, skills) and a user instruction,
@@ -476,14 +531,22 @@ async def regenerate_items(request: RegenerateRequest) -> RegenerateResponse:
 
     # Get language name for LLM
     output_language = get_language_name(request.output_language)
+    llm_config = get_llm_config(_resolve_current_user_id(current_user))
 
     # Process all items in parallel for better performance
     tasks = []
     for item in request.items:
         if item.item_type == "skills":
-            tasks.append(_regenerate_skills(item, request.instruction, output_language))
+            tasks.append(_regenerate_skills(item, request.instruction, output_language, llm_config))
         else:
-            tasks.append(_regenerate_experience_or_project(item, request.instruction, output_language))
+            tasks.append(
+                _regenerate_experience_or_project(
+                    item,
+                    request.instruction,
+                    output_language,
+                    llm_config,
+                )
+            )
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -511,6 +574,16 @@ async def regenerate_items(request: RegenerateRequest) -> RegenerateResponse:
         regenerated_items.append(result)
 
     if not regenerated_items:
+        if any(isinstance(result, SharedGeminiFallbackLimitError) for result in results):
+            raise HTTPException(
+                status_code=429,
+                detail=SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE,
+            )
+        if any(isinstance(result, UserLlmRequestError) for result in results):
+            raise HTTPException(
+                status_code=502,
+                detail=USER_LLM_REQUEST_FAILED_MESSAGE,
+            )
         raise HTTPException(
             status_code=500,
             detail="Failed to regenerate content. Please try again.",

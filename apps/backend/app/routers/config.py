@@ -8,7 +8,12 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app.config import settings
-from app.llm import check_llm_health, LLMConfig, resolve_api_key
+from app.llm import check_llm_health, get_llm_config, LLMConfig
+from app.llm_config_crypto import (
+    LLMConfigEncryptionError,
+    decrypt_api_key,
+    encrypt_api_key,
+)
 from app.schemas import (
     LLMConfigRequest,
     LLMConfigResponse,
@@ -28,15 +33,9 @@ from app.schemas import (
     ResetDatabaseRequest,
 )
 from app.prompts import DEFAULT_IMPROVE_PROMPT_ID, IMPROVE_PROMPT_OPTIONS
-from app.config import (
-    get_api_keys_from_config,
-    save_api_keys_to_config,
-    delete_api_key_from_config,
-    clear_all_api_keys,
-)
 from app.config_cache import invalidate_config_cache
 from app.database import db
-from app.security import require_current_user
+from app.security import AuthenticatedUser, require_current_user
 
 router = APIRouter(
     prefix="/config",
@@ -78,6 +77,11 @@ def _mask_api_key(key: str) -> str:
 def _get_prompt_options() -> list[PromptOption]:
     """Return available prompt options for resume tailoring."""
     return [PromptOption(**option) for option in IMPROVE_PROMPT_OPTIONS]
+
+
+def _get_feature_bool(stored: dict, key: str, default: bool = False) -> bool:
+    """Resolve feature toggles while preserving explicit saved false values."""
+    return bool(stored[key]) if key in stored else default
 
 
 def _get_extension_prompts_root() -> Path:
@@ -152,17 +156,44 @@ async def _log_llm_health_check(config: LLMConfig) -> None:
         )
 
 
-@router.get("/llm-api-key", response_model=LLMConfigResponse)
-async def get_llm_config_endpoint() -> LLMConfigResponse:
-    """Get current LLM configuration (API key masked)."""
-    stored = _load_config()
+def _decrypt_user_api_key(encrypted_api_key: str | None) -> str:
+    if not encrypted_api_key:
+        return ""
+    try:
+        return decrypt_api_key(encrypted_api_key)
+    except LLMConfigEncryptionError:
+        logging.exception("Failed to decrypt saved user LLM API key")
+        return ""
 
-    provider = stored.get("provider", settings.llm_provider)
+
+def _user_config_has_effective_key(user_config: dict | None) -> bool:
+    """Return true when the user has their own usable LLM key saved."""
+    if not user_config:
+        return False
+    if str(user_config.get("provider") or "") == "ollama":
+        return True
+    return bool(user_config.get("encrypted_api_key"))
+
+
+@router.get("/llm-api-key", response_model=LLMConfigResponse)
+async def get_llm_config_endpoint(
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> LLMConfigResponse:
+    """Get current user's LLM configuration (API key masked)."""
+    user_config = db.get_user_llm_config(current_user.user_id)
+    config = get_llm_config(current_user.user_id)
+    has_user_key = _user_config_has_effective_key(user_config)
+    user_api_key = (
+        _decrypt_user_api_key(user_config.get("encrypted_api_key"))
+        if user_config and has_user_key
+        else ""
+    )
     return LLMConfigResponse(
-        provider=provider,
-        model=stored.get("model", settings.llm_model),
-        api_key=_mask_api_key(resolve_api_key(stored, provider)),
-        api_base=stored.get("api_base", settings.llm_api_base),
+        provider=config.provider,
+        model=config.model,
+        api_key=_mask_api_key(user_api_key),
+        api_base=config.api_base,
+        is_user_config=has_user_key,
     )
 
 
@@ -170,6 +201,7 @@ async def get_llm_config_endpoint() -> LLMConfigResponse:
 async def update_llm_config(
     request: LLMConfigRequest,
     background_tasks: BackgroundTasks,
+    current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> LLMConfigResponse:
     """Update LLM configuration.
 
@@ -180,29 +212,56 @@ async def update_llm_config(
     still need to persist the configuration. Connectivity can be verified via
     `/config/llm-test` and the System Status panel.
     """
-    stored = _load_config()
+    existing = db.get_user_llm_config(current_user.user_id)
+    fallback = get_llm_config(current_user.user_id)
+    existing_provider = str(existing["provider"]) if existing else fallback.provider
 
-    # Update only provided fields
-    if request.provider is not None:
-        stored["provider"] = request.provider
-    if request.model is not None:
-        stored["model"] = request.model
-    if request.api_key is not None:
-        stored["api_key"] = request.api_key
+    resolved_provider = request.provider or (
+        existing_provider
+    )
+    resolved_model = request.model or (
+        str(existing["model"]) if existing else fallback.model
+    )
+    provider_changed = bool(request.provider and request.provider != existing_provider)
     if request.api_base is not None:
-        stored["api_base"] = request.api_base
+        resolved_api_base = request.api_base
+    elif provider_changed:
+        resolved_api_base = "http://localhost:11434" if resolved_provider == "ollama" else None
+    else:
+        resolved_api_base = existing.get("api_base") if existing else fallback.api_base
 
-    # Build normalized config for response and background health check
-    resolved_provider = stored.get("provider", settings.llm_provider)
-    test_config = LLMConfig(
+    encrypted_api_key = existing.get("encrypted_api_key") if existing else None
+    if request.api_key is not None:
+        api_key = request.api_key.strip()
+        if api_key:
+            try:
+                encrypted_api_key = encrypt_api_key(api_key)
+            except LLMConfigEncryptionError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Server is not configured to save API keys securely. "
+                        "Please contact support."
+                    ),
+                ) from exc
+        else:
+            encrypted_api_key = None
+
+    saved = db.upsert_user_llm_config(
+        user_id=current_user.user_id,
         provider=resolved_provider,
-        model=stored.get("model", settings.llm_model),
-        api_key=resolve_api_key(stored, resolved_provider),
-        api_base=stored.get("api_base", settings.llm_api_base),
+        model=resolved_model,
+        api_base=resolved_api_base,
+        encrypted_api_key=encrypted_api_key,
     )
 
-    # Save config regardless of health check outcome (see docstring).
-    _save_config(stored)
+    test_config = LLMConfig(
+        provider=str(saved["provider"]),
+        model=str(saved["model"]),
+        api_key=_decrypt_user_api_key(saved.get("encrypted_api_key")),
+        api_base=saved.get("api_base"),
+        is_user_config=True,
+    )
 
     # Best-effort health check for server-side logs/diagnostics (do not block response).
     background_tasks.add_task(_log_llm_health_check, test_config)
@@ -212,41 +271,49 @@ async def update_llm_config(
         model=test_config.model,
         api_key=_mask_api_key(test_config.api_key),
         api_base=test_config.api_base,
+        is_user_config=bool(test_config.api_key) or test_config.provider == "ollama",
     )
 
 
 @router.post("/llm-test")
-async def test_llm_connection(request: LLMConfigRequest | None = None) -> dict:
+async def test_llm_connection(
+    request: LLMConfigRequest | None = None,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
     """Test LLM connection with provided or stored configuration.
 
     If request body is provided, tests with those values (for pre-save testing).
     Otherwise, tests with the currently saved configuration.
     """
-    stored = _load_config()
+    base_config = get_llm_config(current_user.user_id)
 
     # Build config: use request values if provided, otherwise fall back to stored/default
     test_provider = (
         request.provider
         if request and request.provider
-        else stored.get("provider", settings.llm_provider)
+        else base_config.provider
     )
+    if request and request.api_key is not None:
+        test_api_key = request.api_key
+    elif request and request.provider and request.provider != base_config.provider:
+        test_api_key = ""
+    else:
+        test_api_key = base_config.api_key
+
     config = LLMConfig(
         provider=test_provider,
         model=(
             request.model
             if request and request.model
-            else stored.get("model", settings.llm_model)
+            else base_config.model
         ),
-        api_key=(
-            request.api_key
-            if request and request.api_key
-            else resolve_api_key(stored, test_provider)
-        ),
+        api_key=test_api_key,
         api_base=(
             request.api_base
             if request and request.api_base is not None
-            else stored.get("api_base", settings.llm_api_base)
+            else base_config.api_base
         ),
+        is_user_config=bool((request and request.api_key) or base_config.is_user_config),
     )
 
     test_prompt = "Hi"
@@ -259,8 +326,8 @@ async def get_feature_config() -> FeatureConfigResponse:
     stored = _load_config()
 
     return FeatureConfigResponse(
-        enable_cover_letter=stored.get("enable_cover_letter", False),
-        enable_outreach_message=stored.get("enable_outreach_message", False),
+        enable_cover_letter=_get_feature_bool(stored, "enable_cover_letter"),
+        enable_outreach_message=_get_feature_bool(stored, "enable_outreach_message"),
         preserve_generated_resume_facts=stored.get(
             "preserve_generated_resume_facts", True
         ),
@@ -286,16 +353,16 @@ async def update_feature_config(request: FeatureConfigRequest) -> FeatureConfigR
     _save_config(stored)
 
     return FeatureConfigResponse(
-        enable_cover_letter=stored.get("enable_cover_letter", False),
-        enable_outreach_message=stored.get("enable_outreach_message", False),
+        enable_cover_letter=_get_feature_bool(stored, "enable_cover_letter"),
+        enable_outreach_message=_get_feature_bool(stored, "enable_outreach_message"),
         preserve_generated_resume_facts=stored.get(
             "preserve_generated_resume_facts", True
         ),
     )
 
 
-# Supported languages for i18n
-SUPPORTED_LANGUAGES = ["en", "es", "zh", "ja", "pt"]
+# Supported languages for i18n and generated content.
+SUPPORTED_LANGUAGES = ["en"]
 
 
 @router.get("/language", response_model=LanguageConfigResponse)
@@ -303,12 +370,9 @@ async def get_language_config() -> LanguageConfigResponse:
     """Get current language configuration."""
     stored = _load_config()
 
-    # Support legacy single 'language' field migration
-    legacy_language = stored.get("language", "en")
-
     return LanguageConfigResponse(
-        ui_language=stored.get("ui_language", legacy_language),
-        content_language=stored.get("content_language", legacy_language),
+        ui_language="en",
+        content_language="en",
         supported_languages=SUPPORTED_LANGUAGES,
     )
 
@@ -341,12 +405,9 @@ async def update_language_config(
     # Save config
     _save_config(stored)
 
-    # Support legacy single 'language' field migration
-    legacy_language = stored.get("language", "en")
-
     return LanguageConfigResponse(
-        ui_language=stored.get("ui_language", legacy_language),
-        content_language=stored.get("content_language", legacy_language),
+        ui_language="en",
+        content_language="en",
         supported_languages=SUPPORTED_LANGUAGES,
     )
 
@@ -433,6 +494,13 @@ async def sync_extension_prompts(
 
 # Supported API key providers
 SUPPORTED_PROVIDERS = ["openai", "anthropic", "google", "openrouter", "deepseek"]
+API_KEY_PROVIDER_TO_LLM_PROVIDER = {
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "google": "gemini",
+    "openrouter": "openrouter",
+    "deepseek": "deepseek",
+}
 
 
 def _mask_key_short(key: str | None) -> str | None:
@@ -445,17 +513,24 @@ def _mask_key_short(key: str | None) -> str | None:
 
 
 @router.get("/api-keys", response_model=ApiKeyStatusResponse)
-async def get_api_keys_status() -> ApiKeyStatusResponse:
-    """Get status of all configured API keys (masked).
+async def get_api_keys_status(
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> ApiKeyStatusResponse:
+    """Get status of the current user's saved API key.
 
-    Returns the configuration status for each supported provider.
-    API keys are masked to show only the last 4 characters.
+    Legacy compatibility endpoint. It intentionally does not expose shared
+    server fallback key status because user LLM settings are account scoped.
     """
-    stored_keys = get_api_keys_from_config()
+    user_config = db.get_user_llm_config(current_user.user_id)
+    configured_provider = str(user_config.get("provider")) if user_config else ""
+    configured_key = _decrypt_user_api_key(
+        user_config.get("encrypted_api_key") if user_config else None
+    )
 
     providers = []
     for provider in SUPPORTED_PROVIDERS:
-        key = stored_keys.get(provider)
+        llm_provider = API_KEY_PROVIDER_TO_LLM_PROVIDER.get(provider, provider)
+        key = configured_key if llm_provider == configured_provider else ""
         providers.append(
             ApiKeyProviderStatus(
                 provider=provider,
@@ -469,62 +544,20 @@ async def get_api_keys_status() -> ApiKeyStatusResponse:
 
 @router.post("/api-keys", response_model=ApiKeysUpdateResponse)
 async def update_api_keys(request: ApiKeysUpdateRequest) -> ApiKeysUpdateResponse:
-    """Update API keys for one or more providers.
-
-    Only updates the providers that are explicitly set in the request.
-    Empty strings will clear the key for that provider.
-    """
-    stored_keys = get_api_keys_from_config()
-    updated = []
-
-    # Update each provider if provided in request
-    if request.openai is not None:
-        if request.openai:
-            stored_keys["openai"] = request.openai
-        elif "openai" in stored_keys:
-            del stored_keys["openai"]
-        updated.append("openai")
-
-    if request.anthropic is not None:
-        if request.anthropic:
-            stored_keys["anthropic"] = request.anthropic
-        elif "anthropic" in stored_keys:
-            del stored_keys["anthropic"]
-        updated.append("anthropic")
-
-    if request.google is not None:
-        if request.google:
-            stored_keys["google"] = request.google
-        elif "google" in stored_keys:
-            del stored_keys["google"]
-        updated.append("google")
-
-    if request.openrouter is not None:
-        if request.openrouter:
-            stored_keys["openrouter"] = request.openrouter
-        elif "openrouter" in stored_keys:
-            del stored_keys["openrouter"]
-        updated.append("openrouter")
-
-    if request.deepseek is not None:
-        if request.deepseek:
-            stored_keys["deepseek"] = request.deepseek
-        elif "deepseek" in stored_keys:
-            del stored_keys["deepseek"]
-        updated.append("deepseek")
-
-    save_api_keys_to_config(stored_keys)
-    invalidate_config_cache()
-
-    return ApiKeysUpdateResponse(
-        message=f"Updated {len(updated)} API key(s)",
-        updated_providers=updated,
+    """Reject legacy multi-key writes to avoid mutating shared server config."""
+    _ = request
+    raise HTTPException(
+        status_code=410,
+        detail="Use /config/llm-api-key to manage your account LLM key.",
     )
 
 
 @router.delete("/api-keys")
-async def delete_all_api_keys(confirm: str | None = None) -> dict:
-    """Clear all configured API keys.
+async def delete_all_api_keys(
+    confirm: str | None = None,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Clear the current user's saved API key.
 
     This is a destructive operation. Requires confirmation token.
 
@@ -533,24 +566,23 @@ async def delete_all_api_keys(confirm: str | None = None) -> dict:
 
     Returns:
         Success message
-
-    Note:
-        This is a local-only endpoint for single-user deployments.
-        In production/multi-user scenarios, add proper authentication.
     """
     if confirm != "CLEAR_ALL_KEYS":
         raise HTTPException(
             status_code=400,
             detail="Confirmation required. Pass confirm=CLEAR_ALL_KEYS query parameter.",
         )
-    clear_all_api_keys()
-    invalidate_config_cache()
-    return {"message": "All API keys have been cleared"}
+    if db.get_user_llm_config(current_user.user_id):
+        db.clear_user_llm_api_key(current_user.user_id)
+    return {"message": "Your saved API key has been cleared"}
 
 
 @router.delete("/api-keys/{provider}")
-async def delete_api_key(provider: str) -> dict:
-    """Delete API key for a specific provider.
+async def delete_api_key(
+    provider: str,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Delete the current user's saved API key if it belongs to this provider.
 
     Args:
         provider: The provider name (openai, anthropic, google, openrouter, deepseek)
@@ -564,10 +596,16 @@ async def delete_api_key(provider: str) -> dict:
             detail=f"Unsupported provider: {provider}. Supported: {SUPPORTED_PROVIDERS}",
         )
 
-    delete_api_key_from_config(provider)
-    invalidate_config_cache()
+    user_config = db.get_user_llm_config(current_user.user_id)
+    provider_matches = (
+        bool(user_config)
+        and API_KEY_PROVIDER_TO_LLM_PROVIDER.get(provider, provider)
+        == str(user_config.get("provider"))
+    )
+    if provider_matches:
+        db.clear_user_llm_api_key(current_user.user_id)
 
-    return {"message": f"API key for {provider} has been removed"}
+    return {"message": f"Your saved API key for {provider} has been cleared"}
 
 
 @router.post("/reset")

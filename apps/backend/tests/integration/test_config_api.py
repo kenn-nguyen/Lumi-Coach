@@ -5,6 +5,8 @@ from unittest.mock import patch, AsyncMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.llm import LLMConfig
+from app.llm_config_crypto import LLMConfigEncryptionError
 from app.main import app
 from app.security import AuthenticatedUser, require_current_user
 
@@ -18,21 +20,193 @@ def client():
 class TestLlmConfig:
     """GET/PUT /api/v1/config/llm-api-key"""
 
-    @patch("app.routers.config._load_config")
-    async def test_get_llm_config(self, mock_load, client):
-        mock_load.return_value = {
+    @patch("app.routers.config.decrypt_api_key")
+    @patch("app.routers.config.get_llm_config")
+    @patch("app.routers.config.db")
+    async def test_get_llm_config(self, mock_db, mock_get_config, mock_decrypt, client):
+        mock_db.get_user_llm_config.return_value = {
+            "user_id": "user-123",
             "provider": "openai",
             "model": "gpt-4",
-            "api_key": "sk-1234567890abcdef",
             "api_base": None,
+            "encrypted_api_key": "fernet:encrypted",
         }
+        mock_get_config.return_value = LLMConfig(
+            provider="openai",
+            model="gpt-4",
+            api_key="sk-1234567890abcdef",
+            api_base=None,
+        )
+        mock_decrypt.return_value = "sk-1234567890abcdef"
         async with client:
             resp = await client.get("/api/v1/config/llm-api-key")
         assert resp.status_code == 200
         data = resp.json()
         assert data["provider"] == "openai"
+        assert data["is_user_config"] is True
         # API key should be masked
         assert "****" in data["api_key"] or "*" in data["api_key"]
+
+    @patch("app.routers.config.get_llm_config")
+    @patch("app.routers.config.db")
+    async def test_get_llm_config_empty_user_key_reports_server_fallback(
+        self,
+        mock_db,
+        mock_get_config,
+        client,
+    ):
+        mock_db.get_user_llm_config.return_value = {
+            "user_id": "user-123",
+            "provider": "openai",
+            "model": "gpt-4",
+            "api_base": None,
+            "encrypted_api_key": None,
+        }
+        mock_get_config.return_value = LLMConfig(
+            provider="gemini",
+            model="gemini-2.5-flash-lite",
+            api_key="server-key",
+            api_base=None,
+            is_user_config=False,
+        )
+
+        async with client:
+            resp = await client.get("/api/v1/config/llm-api-key")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provider"] == "gemini"
+        assert data["model"] == "gemini-2.5-flash-lite"
+        assert data["api_key"] == ""
+        assert data["is_user_config"] is False
+
+    @patch("app.routers.config.check_llm_health", new_callable=AsyncMock)
+    @patch("app.routers.config.encrypt_api_key")
+    @patch("app.routers.config.get_llm_config")
+    @patch("app.routers.config.db")
+    async def test_put_llm_config_encrypts_per_user_key(
+        self,
+        mock_db,
+        mock_get_config,
+        mock_encrypt,
+        mock_health,
+        client,
+    ):
+        mock_db.get_user_llm_config.return_value = None
+        mock_get_config.return_value = LLMConfig(
+            provider="openai",
+            model="gpt-5-nano-2025-08-07",
+            api_key="",
+            api_base=None,
+        )
+        mock_encrypt.return_value = "fernet:encrypted"
+        mock_health.return_value = {"healthy": False}
+        mock_db.upsert_user_llm_config.return_value = {
+            "user_id": "user-123",
+            "provider": "anthropic",
+            "model": "claude-3-sonnet",
+            "api_base": None,
+            "encrypted_api_key": "fernet:encrypted",
+        }
+
+        async with client:
+            resp = await client.put(
+                "/api/v1/config/llm-api-key",
+                json={
+                    "provider": "anthropic",
+                    "model": "claude-3-sonnet",
+                    "api_key": "sk-user-secret",
+                },
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["provider"] == "anthropic"
+        mock_encrypt.assert_called_once_with("sk-user-secret")
+        mock_db.upsert_user_llm_config.assert_called_once()
+        assert (
+            mock_db.upsert_user_llm_config.call_args.kwargs["encrypted_api_key"]
+            == "fernet:encrypted"
+        )
+
+    @patch("app.routers.config.db")
+    async def test_clear_api_keys_without_existing_user_config_is_noop(
+        self,
+        mock_db,
+        client,
+    ):
+        mock_db.get_user_llm_config.return_value = None
+
+        async with client:
+            resp = await client.delete(
+                "/api/v1/config/api-keys",
+                params={"confirm": "CLEAR_ALL_KEYS"},
+            )
+
+        assert resp.status_code == 200
+        mock_db.clear_user_llm_api_key.assert_not_called()
+        mock_db.upsert_user_llm_config.assert_not_called()
+
+    @patch("app.routers.config.decrypt_api_key")
+    @patch("app.routers.config.db")
+    async def test_legacy_api_key_status_is_user_scoped(
+        self,
+        mock_db,
+        mock_decrypt,
+        client,
+    ):
+        mock_db.get_user_llm_config.return_value = {
+            "user_id": "user-123",
+            "provider": "gemini",
+            "model": "gemini-3-flash-preview",
+            "api_base": None,
+            "encrypted_api_key": "fernet:encrypted",
+        }
+        mock_decrypt.return_value = "AIza-test-secret"
+
+        async with client:
+            resp = await client.get("/api/v1/config/api-keys")
+
+        assert resp.status_code == 200
+        providers = {item["provider"]: item for item in resp.json()["providers"]}
+        assert providers["google"]["configured"] is True
+        assert providers["openai"]["configured"] is False
+
+    async def test_legacy_api_key_update_is_rejected(self, client):
+        async with client:
+            resp = await client.post(
+                "/api/v1/config/api-keys",
+                json={"openai": "sk-shared-mutation"},
+            )
+
+        assert resp.status_code == 410
+
+    @patch("app.routers.config.encrypt_api_key")
+    @patch("app.routers.config.get_llm_config")
+    @patch("app.routers.config.db")
+    async def test_put_llm_config_rejects_missing_encryption_key(
+        self,
+        mock_db,
+        mock_get_config,
+        mock_encrypt,
+        client,
+    ):
+        mock_db.get_user_llm_config.return_value = None
+        mock_get_config.return_value = LLMConfig(
+            provider="openai",
+            model="gpt-5-nano-2025-08-07",
+            api_key="",
+            api_base=None,
+        )
+        mock_encrypt.side_effect = LLMConfigEncryptionError("missing key")
+
+        async with client:
+            resp = await client.put(
+                "/api/v1/config/llm-api-key",
+                json={"provider": "openai", "model": "gpt-4", "api_key": "sk-test"},
+            )
+
+        assert resp.status_code == 500
+        mock_db.upsert_user_llm_config.assert_not_called()
 
 
 @pytest.fixture(autouse=True)
@@ -48,27 +222,19 @@ def override_auth():
     yield
     app.dependency_overrides.pop(require_current_user, None)
 
-    @patch("app.routers.config._save_config")
-    @patch("app.routers.config._load_config")
-    async def test_put_llm_config(self, mock_load, mock_save, client):
-        mock_load.return_value = {}
-        async with client:
-            resp = await client.put("/api/v1/config/llm-api-key", json={
-                "provider": "anthropic",
-                "model": "claude-3-sonnet",
-            })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["provider"] == "anthropic"
-
 
 class TestLlmTest:
     """POST /api/v1/config/llm-test"""
 
     @patch("app.routers.config.check_llm_health", new_callable=AsyncMock)
-    @patch("app.routers.config._load_config")
-    async def test_connection_test_success(self, mock_load, mock_health, client):
-        mock_load.return_value = {"provider": "openai", "model": "gpt-4", "api_key": "sk-test"}
+    @patch("app.routers.config.get_llm_config")
+    async def test_connection_test_success(self, mock_get_config, mock_health, client):
+        mock_get_config.return_value = LLMConfig(
+            provider="openai",
+            model="gpt-4",
+            api_key="sk-test",
+            api_base=None,
+        )
         mock_health.return_value = {
             "healthy": True,
             "provider": "openai",
@@ -82,9 +248,14 @@ class TestLlmTest:
         assert resp.json()["healthy"] is True
 
     @patch("app.routers.config.check_llm_health", new_callable=AsyncMock)
-    @patch("app.routers.config._load_config")
-    async def test_connection_test_failure(self, mock_load, mock_health, client):
-        mock_load.return_value = {}
+    @patch("app.routers.config.get_llm_config")
+    async def test_connection_test_failure(self, mock_get_config, mock_health, client):
+        mock_get_config.return_value = LLMConfig(
+            provider="openai",
+            model="gpt-4",
+            api_key="",
+            api_base=None,
+        )
         mock_health.return_value = {
             "healthy": False,
             "error_code": "api_key_missing",
@@ -93,6 +264,33 @@ class TestLlmTest:
             resp = await client.post("/api/v1/config/llm-test")
         assert resp.status_code == 200
         assert resp.json()["healthy"] is False
+
+    @patch("app.routers.config.check_llm_health", new_callable=AsyncMock)
+    @patch("app.routers.config.get_llm_config")
+    async def test_connection_test_does_not_reuse_key_for_different_provider(
+        self,
+        mock_get_config,
+        mock_health,
+        client,
+    ):
+        mock_get_config.return_value = LLMConfig(
+            provider="openai",
+            model="gpt-4",
+            api_key="sk-openai",
+            api_base=None,
+        )
+        mock_health.return_value = {"healthy": False}
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/config/llm-test",
+                json={"provider": "anthropic", "model": "claude-3-sonnet"},
+            )
+
+        assert resp.status_code == 200
+        tested_config = mock_health.call_args.args[0]
+        assert tested_config.provider == "anthropic"
+        assert tested_config.api_key == ""
 
 
 class TestFeatureConfig:
@@ -113,6 +311,16 @@ class TestFeatureConfig:
         assert data["enable_outreach_message"] is False
         assert data["preserve_generated_resume_facts"] is True
 
+    @patch("app.routers.config._load_config")
+    async def test_get_features_defaults_generation_outputs_off(self, mock_load, client):
+        mock_load.return_value = {}
+        async with client:
+            resp = await client.get("/api/v1/config/features")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["enable_cover_letter"] is False
+        assert data["enable_outreach_message"] is False
+
     @patch("app.routers.config._save_config")
     @patch("app.routers.config._load_config")
     async def test_put_features(self, mock_load, mock_save, client):
@@ -121,9 +329,10 @@ class TestFeatureConfig:
             resp = await client.put("/api/v1/config/features", json={
                 "enable_cover_letter": True,
                 "preserve_generated_resume_facts": False,
-            })
+        })
         assert resp.status_code == 200
         assert resp.json()["enable_cover_letter"] is True
+        assert resp.json()["enable_outreach_message"] is False
         assert resp.json()["preserve_generated_resume_facts"] is False
 
 
@@ -138,8 +347,8 @@ class TestLanguageConfig:
         assert resp.status_code == 200
         data = resp.json()
         assert data["ui_language"] == "en"
-        assert data["content_language"] == "es"
-        assert "en" in data["supported_languages"]
+        assert data["content_language"] == "en"
+        assert data["supported_languages"] == ["en"]
 
     @patch("app.routers.config._save_config")
     @patch("app.routers.config._load_config")
