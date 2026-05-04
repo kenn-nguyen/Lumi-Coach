@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt3.output_contract
-prompt_version: v2.0.1
-prompt_label: tailored-resume-output-contract-company-context-placement
-prompt_notes: Defines the final resume output contract, including optional workExperience.context field type and placement constraints.
+prompt_version: v2.1.0
+prompt_label: tailored-resume-output-contract-company-context-summary-brevity
+prompt_notes: Defines the final resume output contract, including optional workExperience.context placement constraints and concise summary budget.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
@@ -98,6 +98,7 @@ Additional schema rules:
 - `resume_data` is required.
 - `generation_feedback` is optional but recommended when there are concise user-facing notes worth showing.
 - Do not use the em dash character `—` anywhere in the JSON output. Use a normal hyphen `-` instead.
+- `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences, target 35-45 words, and hard maximum 50 words.
 - For resume bullet arrays such as experience bullets, project bullets, and custom-section bullets, do not end items with a period `.`.
 - If `generation_feedback` is present:
   - `summary` should be one short sentence

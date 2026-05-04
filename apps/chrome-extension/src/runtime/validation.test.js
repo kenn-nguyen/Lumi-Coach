@@ -204,6 +204,18 @@ describe("prompt stage validation", () => {
   it("accepts a valid Prompt 2 payload", () => {
     expect(validatePrompt2Data(validPrompt2)).toEqual([]);
   });
+
+  it("accepts Prompt 2 summary_sentences of 1 or 2 only", () => {
+    expect(
+      validatePrompt2Data({ ...validPrompt2, summary_sentences: 1 }),
+    ).toEqual([]);
+    expect(
+      validatePrompt2Data({ ...validPrompt2, summary_sentences: 2 }),
+    ).toEqual([]);
+    expect(
+      validatePrompt2Data({ ...validPrompt2, summary_sentences: 3 }),
+    ).toContain("prompt2.summary_sentences must be 1 or 2.");
+  });
 });
 
 const validResumeData = {

@@ -462,7 +462,8 @@ Requirements:
 - Preserve all factual claims, metrics, scope, chronology, and ownership
 - Do not invent new responsibilities, technologies, employers, dates, or numbers
 - Keep it concise, impact-oriented, and ATS-readable
-- Prefer 2-4 sentences unless the user instruction clearly asks otherwise
+- Prefer 1 sentence and use at most 2 short sentences unless the user instruction clearly asks otherwise
+- Target 35-45 words with a hard maximum of 50 words
 - Keep the writing specific and readable, not generic or inflated
 - Do NOT use em dash ("—") anywhere in the writing/output, even if it exists, remove it
 

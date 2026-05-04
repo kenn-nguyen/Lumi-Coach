@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt2.template
-prompt_version: v2.0.1
-prompt_label: positioning-brief-storybank-evidence
-prompt_notes: Strengthens story-bank evidence conversion into explicit writer-ready positioning guidance.
+prompt_version: v2.1.0
+prompt_label: positioning-brief-storybank-evidence-summary-brevity
+prompt_notes: Strengthens story-bank evidence conversion into explicit writer-ready positioning guidance and tighter summary direction.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 You are a recruiter-calibrated PM positioning strategist and editorial director.
@@ -46,8 +46,8 @@ Required behaviors by field:
 - `top_resume_goals`: exactly 3 ranked page-one priorities; these must drive title, summary, and the first two bullets of the latest relevant role
 - `recommended_title`: strongest truthful bridge, not the most flattering target label
 - `summary_lead`: explicit opening direction for the summary
-- `summary_focus`: the 3-5 proof themes that should dominate the summary
-- `summary_sentences`: use 2 unless there is a strong reason not to
+- `summary_focus`: the 2-3 highest-value proof themes that should dominate the summary
+- `summary_sentences`: use 1 by default; use 2 only when the role fit needs a second sentence
 - `voice`: short style guidance for the writer
 - `adjacent_framing`: when the fit is adjacent, state the honest gap, the closest bridge, what to over-index on instead, and the identity to avoid
 - `signal_map`: include only meaningful signals; every signal must have support class, evidence, and where it should surface

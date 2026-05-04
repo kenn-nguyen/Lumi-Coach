@@ -946,8 +946,11 @@ export function validatePrompt2Data(data) {
     errors.push("prompt2.top_resume_goals must contain exactly 3 items.");
   }
   validateStringArrayField(data.summary_focus, "prompt2.summary_focus", errors);
-  if (!isInteger(data.summary_sentences) || data.summary_sentences !== 2) {
-    errors.push("prompt2.summary_sentences must be exactly 2.");
+  if (
+    !isInteger(data.summary_sentences) ||
+    ![1, 2].includes(data.summary_sentences)
+  ) {
+    errors.push("prompt2.summary_sentences must be 1 or 2.");
   }
 
   validateSignalMap(data.signal_map, "prompt2.signal_map", errors);

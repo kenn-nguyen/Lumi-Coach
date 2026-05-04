@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt3.template
-prompt_version: v2.0.1
-prompt_label: tailored-resume-writer-company-context
-prompt_notes: Adds explicit workExperience.context handling for short company or product context lines while preserving story-bank firewall rules.
+prompt_version: v2.1.0
+prompt_label: tailored-resume-writer-company-context-summary-brevity
+prompt_notes: Adds explicit workExperience.context handling and enforces concise one-column summary writing while preserving story-bank firewall rules.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 1. ROLE AND OBJECTIVES
@@ -231,8 +231,11 @@ Avoid:
 11. SUMMARY RULES
 
 - Keep it tight and recruiter-readable.
-- Use 1 short paragraph, preferably 1-3 sentences fit in around 2-3 lines.
-- Surface only 2-4 supported fit signals.
+- Use 1 short paragraph.
+- Prefer 1 sentence; use at most 2 short sentences.
+- Target 35-45 words, with a hard maximum of 50 words.
+- Surface only the strongest 2-3 supported fit signals.
+- Do not stack proof lists; move extra proof into role bullets.
 - Anchor on role identity, domain, scale, and strongest proof.
 - Use portable, high-signal wording.
 - Do not front-load unsupported jargon.

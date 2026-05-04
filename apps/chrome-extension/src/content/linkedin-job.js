@@ -86,6 +86,13 @@ const JOB_LOAD_RETRY_MS = 300;
 const JOB_LOAD_TIMEOUT_MS = 7000;
 const EDGE_GAP_TOTAL = EDGE_PADDING * 2;
 const APP_URL = "https://lumi.ceo/";
+const EXTENSION_VERSION = (() => {
+  try {
+    return chrome.runtime?.getManifest?.().version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
 const RUN_WAIT_MESSAGE_INTERVAL_MS = 10000;
 const RUN_PROGRESS_HEARTBEAT_FRESH_MS = 15000;
@@ -7006,7 +7013,7 @@ function ensureRoot() {
                     <a href="https://chat.whatsapp.com/Ep41UDOTd3A4Lu78mxcEkQ?mode=gi_t" target="_blank" rel="noopener noreferrer">WhatsApp</a>
                   </div>
                   <div class="resume-matcher-settings-item__detail resume-matcher-field--full">
-                    Lumi Coach extension v0.0.4 · Include this version when reporting issues.
+                    Lumi Coach extension v${EXTENSION_VERSION} · Include this version when reporting issues.
                   </div>
                 </div>
               </section>

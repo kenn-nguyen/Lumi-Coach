@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt2.output_contract
-prompt_version: v2.0.1
-prompt_label: positioning-brief-output-contract-company-context-guidance
-prompt_notes: Defines the Prompt 2 JSON contract with excitement anchor, structured bullet rewrite instructions, and company context guidance.
+prompt_version: v2.1.0
+prompt_label: positioning-brief-output-contract-company-context-summary-brevity
+prompt_notes: Defines the Prompt 2 JSON contract with excitement anchor, structured bullet rewrite instructions, company context guidance, and concise summary direction.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
@@ -24,7 +24,7 @@ Return JSON in this exact shape:
   "recommended_title": "",
   "summary_lead": "",
   "summary_focus": [],
-  "summary_sentences": 2,
+  "summary_sentences": 1,
   "voice": "",
   "adjacent_framing": "",
 
@@ -111,7 +111,7 @@ Return JSON in this exact shape:
 
 Additional output rules:
 - `top_resume_goals` must contain exactly 3 ranked strings
-- `summary_sentences` must be `2` unless the prompt body explicitly says otherwise
+- `summary_sentences` must be `1` or `2`; use `1` by default and `2` only when the role fit needs a second sentence
 - `signal_map.support` must be exactly one of: `direct`, `adjacent`, `unsupported`
 - `selected_storylines.strength` must be exactly one of: `high`, `medium`
 - `selected_storylines` must contain 3-5 items, ordered by importance
