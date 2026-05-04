@@ -70,6 +70,25 @@ def _resolve_pdf_margins(margins: Optional[dict]) -> dict:
     return {"top": "10mm", "right": "10mm", "bottom": "10mm", "left": "10mm"}
 
 
+def _resolve_page_height_mm(page_size: str) -> float:
+    if page_size == "LETTER":
+        return 279.4
+    return 297.0
+
+
+def _resolve_fit_scale(
+    *, content_height_px: float, page_size: str, margins: Optional[dict]
+) -> float:
+    if content_height_px <= 0:
+        return 1.0
+    margin_top = float((margins or {}).get("top", 10))
+    margin_bottom = float((margins or {}).get("bottom", 10))
+    printable_height_mm = max(1.0, _resolve_page_height_mm(page_size) - margin_top - margin_bottom)
+    printable_height_px = printable_height_mm * 96 / 25.4
+    scale = printable_height_px / content_height_px
+    return max(0.1, min(1.0, scale))
+
+
 def _find_chromium_executable() -> Optional[str]:
     """Find system Chrome/Chromium/Edge executable across platforms."""
     if sys.platform == "win32":
@@ -132,14 +151,34 @@ async def _render_page_to_pdf(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
+    page_size: str,
+    raw_margins: Optional[dict],
+    fit_one_page: bool,
 ) -> bytes:
     await page.goto(url, wait_until="networkidle")
     await page.wait_for_selector(selector)
     await page.evaluate("document.fonts.ready")
+    pdf_scale = 1.0
+    if fit_one_page and selector == ".resume-print":
+        content_height = await page.evaluate(
+            """(selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return 0;
+                const rect = element.getBoundingClientRect();
+                return Math.max(element.scrollHeight || 0, rect.height || 0);
+            }""",
+            selector,
+        )
+        pdf_scale = _resolve_fit_scale(
+            content_height_px=float(content_height),
+            page_size=page_size,
+            margins=raw_margins,
+        )
     return await page.pdf(
         format=pdf_format,
         print_background=True,
         margin=pdf_margins,
+        scale=pdf_scale,
     )
 
 
@@ -149,10 +188,22 @@ async def _render_with_browser(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
+    page_size: str,
+    raw_margins: Optional[dict],
+    fit_one_page: bool,
 ) -> bytes:
     page: Page = await browser.new_page()
     try:
-        return await _render_page_to_pdf(page, url, selector, pdf_format, pdf_margins)
+        return await _render_page_to_pdf(
+            page,
+            url,
+            selector,
+            pdf_format,
+            pdf_margins,
+            page_size,
+            raw_margins,
+            fit_one_page,
+        )
     finally:
         await page.close()
 
@@ -181,13 +232,23 @@ def _render_resume_pdf_sync(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
+    page_size: str,
+    raw_margins: Optional[dict],
+    fit_one_page: bool,
 ) -> bytes:
     async def _run() -> bytes:
         async with async_playwright() as playwright:
             browser = await _launch_browser(playwright)
             try:
                 return await _render_with_browser(
-                    browser, url, selector, pdf_format, pdf_margins
+                    browser,
+                    url,
+                    selector,
+                    pdf_format,
+                    pdf_margins,
+                    page_size,
+                    raw_margins,
+                    fit_one_page,
                 )
             finally:
                 await browser.close()
@@ -200,9 +261,19 @@ async def _render_resume_pdf_in_thread(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
+    page_size: str,
+    raw_margins: Optional[dict],
+    fit_one_page: bool,
 ) -> bytes:
     return await asyncio.to_thread(
-        _render_resume_pdf_sync, url, selector, pdf_format, pdf_margins
+        _render_resume_pdf_sync,
+        url,
+        selector,
+        pdf_format,
+        pdf_margins,
+        page_size,
+        raw_margins,
+        fit_one_page,
     )
 
 
@@ -253,6 +324,7 @@ async def render_resume_pdf(
     page_size: str = "A4",
     selector: str = ".resume-print",
     margins: Optional[dict] = None,
+    fit_one_page: bool = False,
 ) -> bytes:
     """Render a URL to PDF bytes.
 
@@ -273,7 +345,16 @@ async def render_resume_pdf(
 
     if _browser is not None:
         try:
-            return await _render_with_browser(_browser, url, selector, pdf_format, pdf_margins)
+            return await _render_with_browser(
+                _browser,
+                url,
+                selector,
+                pdf_format,
+                pdf_margins,
+                page_size,
+                margins,
+                fit_one_page,
+            )
         except PlaywrightError as e:
             _raise_playwright_error(e, url)
 
@@ -296,7 +377,7 @@ async def render_resume_pdf(
     if not subprocess_supported:
         try:
             return await _render_resume_pdf_in_thread(
-                url, selector, pdf_format, pdf_margins
+                url, selector, pdf_format, pdf_margins, page_size, margins, fit_one_page
             )
         except PlaywrightError as e:
             _raise_playwright_error(e, url)
@@ -305,6 +386,15 @@ async def render_resume_pdf(
         raise PDFRenderError("PDF renderer failed to initialize.")
 
     try:
-        return await _render_with_browser(_browser, url, selector, pdf_format, pdf_margins)
+        return await _render_with_browser(
+            _browser,
+            url,
+            selector,
+            pdf_format,
+            pdf_margins,
+            page_size,
+            margins,
+            fit_one_page,
+        )
     except PlaywrightError as e:
         _raise_playwright_error(e, url)

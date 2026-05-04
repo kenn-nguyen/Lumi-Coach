@@ -307,6 +307,7 @@ export function getResumePdfUrl(
     params.set('showContactIcons', String(settings.showContactIcons));
     params.set('accentColor', settings.accentColor);
     params.set('dateDisplay', settings.dateDisplay);
+    params.set('fitOnePage', String(settings.fitOnePage));
   } else {
     params.set('template', 'swiss-single');
     params.set('pageSize', 'A4');

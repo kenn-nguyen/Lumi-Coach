@@ -515,6 +515,8 @@
       "contactIcons": "Contact Icons",
       "yearOnlyDates": "Year only",
       "yearOnlyDatesHint": "Show supported month/year dates as years only in preview and PDF. Saved dates stay unchanged.",
+      "fitOnePage": "Fit to 1 Page",
+      "fitOnePageHint": "Scale preview and PDF output down to one page when needed.",
       "effectiveOutput": "Effective Output",
       "effectiveMargins": "Margins (mm): T{top} B{bottom} L{left} R{right}",
       "effectiveSectionGap": "Section Gap",
@@ -812,10 +814,14 @@
     },
     "resumeOutput": {
       "title": "Resume Output",
-      "description": "Choose the default display behavior for resumes that do not have their own saved setting.",
+      "description": "Choose the default format and display behavior for resumes that do not have their own saved setting.",
       "yearOnly": {
         "label": "Year only by default",
         "description": "Show supported month/year dates as years only in preview and PDF. Each resume can override this from preview or edit."
+      },
+      "fitOnePage": {
+        "label": "Fit to one page by default",
+        "description": "Scale resume preview and PDF output down to one page when needed. Each resume can override this from preview or edit."
       }
     },
     "promptSettings": {
@@ -872,6 +878,7 @@
   "preview": {
     "margins": "Margins",
     "fitToOnePage": "Fit to 1 Page",
+    "fitToOnePageHint": "Scale preview and PDF output down to one page when needed.",
     "yearOnlyDates": "Year only",
     "yearOnlyDatesHint": "Show supported month/year dates as years only in preview and PDF.",
     "calculating": "Calculating...",

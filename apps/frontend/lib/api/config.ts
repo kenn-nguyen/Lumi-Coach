@@ -1,5 +1,9 @@
 import { apiFetch } from './client';
-import type { DateDisplayMode } from '@/lib/types/template-settings';
+import type {
+  DateDisplayMode,
+  ResumeTemplateSettings,
+  TemplateSettings,
+} from '@/lib/types/template-settings';
 
 // Supported LLM providers
 export type LLMProvider = 'openai' | 'anthropic' | 'openrouter' | 'gemini' | 'deepseek' | 'ollama';
@@ -189,10 +193,14 @@ export async function updateFeatureConfig(config: FeatureConfigUpdate): Promise<
 // Resume output defaults
 export interface OutputConfig {
   default_date_display: DateDisplayMode;
+  default_fit_one_page: boolean;
+  default_template_settings: TemplateSettings;
 }
 
 export interface OutputConfigUpdate {
   default_date_display?: DateDisplayMode;
+  default_fit_one_page?: boolean;
+  default_template_settings?: ResumeTemplateSettings;
 }
 
 export async function fetchOutputConfig(): Promise<OutputConfig> {

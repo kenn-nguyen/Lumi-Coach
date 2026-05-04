@@ -136,12 +136,14 @@ class TestDownloadResumePdf:
         async with client:
             resp = await client.get(
                 "/api/v1/resumes/res-123/pdf",
-                params={"dateDisplay": "year-only"},
+                params={"dateDisplay": "year-only", "fitOnePage": "false"},
             )
 
         assert resp.status_code == 200
         print_url = mock_render_resume_pdf.call_args.args[0]
         assert "dateDisplay=year-only" in print_url
+        assert "fitOnePage=false" in print_url
+        assert mock_render_resume_pdf.call_args.kwargs["fit_one_page"] is False
 
 
 class TestDeleteResume:
@@ -374,19 +376,38 @@ class TestUpdateResumeTemplateSettings:
         mock_db.get_resume.return_value = mock_resume_record
         mock_db.update_resume.return_value = {
             **mock_resume_record,
-            "template_settings": {"dateDisplay": "month-year"},
+            "template_settings": {
+                "dateDisplay": "month-year",
+                "fitOnePage": False,
+                "fontSize": {"bodyFont": "serif"},
+            },
         }
 
         async with client:
             resp = await client.patch(
                 "/api/v1/resumes/res-123/template-settings",
-                json={"dateDisplay": "month-year"},
+                json={
+                    "dateDisplay": "month-year",
+                    "fitOnePage": False,
+                    "fontSize": {"bodyFont": "serif"},
+                },
             )
 
         assert resp.status_code == 200
-        assert resp.json()["data"] == {"dateDisplay": "month-year"}
+        assert resp.json()["data"] == {
+            "dateDisplay": "month-year",
+            "fitOnePage": False,
+            "fontSize": {"bodyFont": "serif"},
+        }
         mock_db.update_resume.assert_called_once_with(
-            "res-123", {"template_settings": {"dateDisplay": "month-year"}}
+            "res-123",
+            {
+                "template_settings": {
+                    "dateDisplay": "month-year",
+                    "fitOnePage": False,
+                    "fontSize": {"bodyFont": "serif"},
+                }
+            },
         )
 
     @patch("app.routers.resumes.db")

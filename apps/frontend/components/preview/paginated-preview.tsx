@@ -109,11 +109,11 @@ export function PaginatedPreview({
   };
 
   const toggleMargins = () => setShowMargins((s) => !s);
-  const toggleCompactMode = (nextChecked?: boolean) => {
+  const toggleFitOnePage = (nextChecked?: boolean) => {
     if (!onSettingsChange) return;
     onSettingsChange({
       ...settings,
-      compactMode: typeof nextChecked === 'boolean' ? nextChecked : !settings.compactMode,
+      fitOnePage: typeof nextChecked === 'boolean' ? nextChecked : !settings.fitOnePage,
     });
   };
   const toggleDateDisplay = (nextChecked?: boolean) => {
@@ -128,6 +128,20 @@ export function PaginatedPreview({
 
   // Get content area dimensions for the hidden measurement container
   const contentArea = getContentAreaPx(settings.pageSize, settings.margins);
+  const measuredContentHeight = pages[pages.length - 1]?.contentEnd ?? contentArea.height;
+  const fitContentScale =
+    settings.fitOnePage && pages.length > 0
+      ? Math.max(0.1, Math.min(1, contentArea.height / Math.max(1, measuredContentHeight)))
+      : 1;
+  const visiblePages = settings.fitOnePage
+    ? [
+        {
+          pageNumber: 1,
+          contentOffset: 0,
+          contentEnd: Math.max(1, measuredContentHeight),
+        },
+      ]
+    : pages;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -182,24 +196,27 @@ export function PaginatedPreview({
               disabled={!onSettingsChange}
             />
           </div>
-          <ToggleSwitch
-            checked={settings.compactMode}
-            onCheckedChange={toggleCompactMode}
-            label={t('preview.fitToOnePage')}
-            display="inline"
-            className={
-              !isCalculating && pages.length > 1
-                ? '[&_span:last-child]:text-blue-700 [&_span:last-child]:font-bold'
-                : ''
-            }
-          />
+          <div title={t('preview.fitToOnePageHint')}>
+            <ToggleSwitch
+              checked={settings.fitOnePage}
+              onCheckedChange={toggleFitOnePage}
+              label={t('preview.fitToOnePage')}
+              display="inline"
+              disabled={!onSettingsChange}
+              className={
+                !isCalculating && !settings.fitOnePage && pages.length > 1
+                  ? '[&_span:last-child]:text-blue-700 [&_span:last-child]:font-bold'
+                  : ''
+              }
+            />
+          </div>
           <FileText className="w-4 h-4" />
           <span className="font-mono text-xs uppercase">
             {isCalculating
               ? t('preview.calculating')
-              : pages.length === 1
-                ? t('preview.pageCountSingular', { count: pages.length })
-                : t('preview.pageCountPlural', { count: pages.length })}
+              : visiblePages.length === 1
+                ? t('preview.pageCountSingular', { count: visiblePages.length })
+                : t('preview.pageCountPlural', { count: visiblePages.length })}
           </span>
         </div>
       </div>
@@ -236,7 +253,7 @@ export function PaginatedPreview({
 
         {/* Visible pages */}
         <div className="flex flex-col items-center gap-4">
-          {pages.map((page, index) => (
+          {visiblePages.map((page, index) => (
             <React.Fragment key={page.pageNumber}>
               {index > 0 && (
                 <div className="flex items-center gap-2 py-2">
@@ -251,11 +268,12 @@ export function PaginatedPreview({
                 pageSize={settings.pageSize}
                 margins={settings.margins}
                 pageNumber={page.pageNumber}
-                totalPages={pages.length}
+                totalPages={visiblePages.length}
                 scale={zoom}
                 showMarginGuides={showMargins}
                 contentOffset={page.contentOffset}
                 contentEnd={page.contentEnd}
+                contentScale={settings.fitOnePage ? fitContentScale : 1}
               >
                 <ResumePrintContent
                   resumeData={resumeData}

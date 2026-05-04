@@ -345,15 +345,40 @@ class TestOutputConfig:
         async with client:
             resp = await client.get("/api/v1/config/output")
         assert resp.status_code == 200
-        assert resp.json()["default_date_display"] == "month-year"
+        data = resp.json()
+        assert data["default_date_display"] == "month-year"
+        assert data["default_fit_one_page"] is True
+        assert data["default_template_settings"] == {
+            "template": "swiss-single",
+            "pageSize": "A4",
+            "margins": {"top": 10, "bottom": 10, "left": 10, "right": 10},
+            "spacing": {"section": 2, "item": 2, "lineHeight": 2},
+            "fontSize": {
+                "base": 2,
+                "headerScale": 2,
+                "headerFont": "serif",
+                "bodyFont": "sans-serif",
+            },
+            "compactMode": False,
+            "showContactIcons": False,
+            "accentColor": "blue",
+            "dateDisplay": "month-year",
+            "fitOnePage": True,
+        }
 
     @patch("app.routers.config._load_config")
     async def test_get_output_accepts_month_year(self, mock_load, client):
-        mock_load.return_value = {"default_date_display": "month-year"}
+        mock_load.return_value = {
+            "default_date_display": "month-year",
+            "default_fit_one_page": False,
+        }
         async with client:
             resp = await client.get("/api/v1/config/output")
         assert resp.status_code == 200
-        assert resp.json()["default_date_display"] == "month-year"
+        data = resp.json()
+        assert data["default_date_display"] == "month-year"
+        assert data["default_fit_one_page"] is False
+        assert data["default_template_settings"]["fitOnePage"] is False
 
     @patch("app.routers.config._save_config")
     @patch("app.routers.config._load_config")
@@ -362,11 +387,45 @@ class TestOutputConfig:
         async with client:
             resp = await client.put(
                 "/api/v1/config/output",
-                json={"default_date_display": "month-year"},
+                json={
+                    "default_date_display": "month-year",
+                    "default_fit_one_page": False,
+                    "default_template_settings": {
+                        "pageSize": "LETTER",
+                        "margins": {"top": 12},
+                        "fontSize": {"bodyFont": "serif"},
+                    },
+                },
             )
         assert resp.status_code == 200
-        assert resp.json()["default_date_display"] == "month-year"
-        mock_save.assert_called_once_with({"default_date_display": "month-year"})
+        data = resp.json()
+        assert data["default_date_display"] == "month-year"
+        assert data["default_fit_one_page"] is False
+        assert data["default_template_settings"]["pageSize"] == "LETTER"
+        assert data["default_template_settings"]["margins"] == {
+            "top": 12,
+            "bottom": 10,
+            "left": 10,
+            "right": 10,
+        }
+        assert data["default_template_settings"]["fontSize"]["bodyFont"] == "serif"
+        mock_save.assert_called_once_with(
+            {
+                "default_date_display": "month-year",
+                "default_fit_one_page": False,
+                "default_template_settings": data["default_template_settings"],
+            }
+        )
+
+    async def test_put_output_rejects_invalid_template_settings(self, client):
+        invalid_payloads = [
+            {"default_template_settings": {"pageSize": "LEGAL"}},
+            {"default_template_settings": {"margins": {"top": 99}}},
+        ]
+        async with client:
+            for payload in invalid_payloads:
+                resp = await client.put("/api/v1/config/output", json=payload)
+                assert resp.status_code == 422
 
 
 class TestLanguageConfig:

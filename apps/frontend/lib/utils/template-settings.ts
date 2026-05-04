@@ -1,37 +1,50 @@
-import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
+import {
+  DEFAULT_TEMPLATE_SETTINGS,
+  type ResumeTemplateSettings,
+  type TemplateSettings,
+} from '@/lib/types/template-settings';
 
 export const TEMPLATE_SETTINGS_STORAGE_KEY = 'resume_builder_settings';
 
-type DeepPartial<T> = {
-  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
-};
+export type PartialTemplateSettings = ResumeTemplateSettings;
 
-type PartialTemplateSettings = DeepPartial<TemplateSettings>;
+export function mergeTemplateSettings(
+  ...settingsList: Array<PartialTemplateSettings | null | undefined>
+): TemplateSettings {
+  return settingsList.reduce<TemplateSettings>(
+    (merged, settings) => ({
+      ...merged,
+      ...settings,
+      margins: {
+        ...merged.margins,
+        ...settings?.margins,
+      },
+      spacing: {
+        ...merged.spacing,
+        ...settings?.spacing,
+      },
+      fontSize: {
+        ...merged.fontSize,
+        ...settings?.fontSize,
+      },
+    }),
+    DEFAULT_TEMPLATE_SETTINGS
+  );
+}
 
-export function mergeTemplateSettings(settings?: PartialTemplateSettings | null): TemplateSettings {
-  return {
-    ...DEFAULT_TEMPLATE_SETTINGS,
-    ...settings,
-    margins: {
-      ...DEFAULT_TEMPLATE_SETTINGS.margins,
-      ...settings?.margins,
-    },
-    spacing: {
-      ...DEFAULT_TEMPLATE_SETTINGS.spacing,
-      ...settings?.spacing,
-    },
-    fontSize: {
-      ...DEFAULT_TEMPLATE_SETTINGS.fontSize,
-      ...settings?.fontSize,
-    },
-  };
+export function resolveEffectiveTemplateSettings(
+  backendDefaults?: PartialTemplateSettings | null,
+  resumeSettings?: PartialTemplateSettings | null
+): TemplateSettings {
+  return mergeTemplateSettings(backendDefaults, resumeSettings);
 }
 
 export function omitDateDisplaySetting(
   settings: PartialTemplateSettings
-): Omit<PartialTemplateSettings, 'dateDisplay'> {
+): Omit<PartialTemplateSettings, 'dateDisplay' | 'fitOnePage'> {
   const nextSettings = { ...settings };
   delete nextSettings.dateDisplay;
+  delete nextSettings.fitOnePage;
   return nextSettings;
 }
 

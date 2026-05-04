@@ -26,6 +26,8 @@ from app.schemas import (
     PromptOption,
     OutputConfigRequest,
     OutputConfigResponse,
+    ResumeTemplateSettings,
+    DEFAULT_RESUME_TEMPLATE_SETTINGS,
     ApiKeyProviderStatus,
     ApiKeyStatusResponse,
     ApiKeysUpdateRequest,
@@ -90,6 +92,58 @@ def _get_date_display(stored: dict, key: str = "default_date_display") -> str:
     """Resolve output date display defaults with a month/year fallback."""
     value = stored.get(key)
     return value if value in {"month-year", "year-only"} else "month-year"
+
+
+def _get_output_bool(stored: dict, key: str, default: bool) -> bool:
+    """Resolve output toggles while preserving explicit saved false values."""
+    return bool(stored[key]) if key in stored else default
+
+
+def _deep_merge_template_settings(*settings: dict | None) -> dict:
+    """Merge template settings while preserving nested defaults."""
+    merged = json.loads(json.dumps(DEFAULT_RESUME_TEMPLATE_SETTINGS))
+    for patch in settings:
+        if not isinstance(patch, dict):
+            continue
+        for key, value in patch.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key].update(value)
+            else:
+                merged[key] = value
+    return merged
+
+
+def _get_default_template_settings(stored: dict) -> dict:
+    """Resolve complete resume template defaults from stored output config."""
+    raw_template_settings = stored.get("default_template_settings")
+    template_settings = _deep_merge_template_settings(
+        raw_template_settings if isinstance(raw_template_settings, dict) else None
+    )
+
+    # Legacy top-level fields remain authoritative when present.
+    if "default_date_display" in stored:
+        template_settings["dateDisplay"] = _get_date_display(stored)
+    if "default_fit_one_page" in stored:
+        template_settings["fitOnePage"] = _get_output_bool(
+            stored, "default_fit_one_page", True
+        )
+
+    validated = ResumeTemplateSettings.model_validate(template_settings).model_dump(
+        exclude_none=True
+    )
+    return _deep_merge_template_settings(validated)
+
+
+def _sync_output_defaults(stored: dict, template_settings: dict) -> None:
+    """Persist complete template defaults and legacy top-level mirrors."""
+    normalized = _deep_merge_template_settings(
+        ResumeTemplateSettings.model_validate(template_settings).model_dump(
+            exclude_none=True
+        )
+    )
+    stored["default_template_settings"] = normalized
+    stored["default_date_display"] = normalized["dateDisplay"]
+    stored["default_fit_one_page"] = normalized["fitOnePage"]
 
 
 def _get_extension_prompts_root() -> Path:
@@ -357,19 +411,40 @@ async def update_feature_config(request: FeatureConfigRequest) -> FeatureConfigR
 async def get_output_config() -> OutputConfigResponse:
     """Get current resume output defaults."""
     stored = _load_config()
-    return OutputConfigResponse(default_date_display=_get_date_display(stored))
+    default_template_settings = _get_default_template_settings(stored)
+    return OutputConfigResponse(
+        default_date_display=default_template_settings["dateDisplay"],
+        default_fit_one_page=default_template_settings["fitOnePage"],
+        default_template_settings=default_template_settings,
+    )
 
 
 @router.put("/output", response_model=OutputConfigResponse)
 async def update_output_config(request: OutputConfigRequest) -> OutputConfigResponse:
     """Update resume output defaults."""
     stored = _load_config()
+    default_template_settings = _get_default_template_settings(stored)
+
+    if request.default_template_settings is not None:
+        default_template_settings = _deep_merge_template_settings(
+            default_template_settings,
+            request.default_template_settings.model_dump(exclude_none=True),
+        )
 
     if request.default_date_display is not None:
-        stored["default_date_display"] = request.default_date_display
+        default_template_settings["dateDisplay"] = request.default_date_display
+    if request.default_fit_one_page is not None:
+        default_template_settings["fitOnePage"] = request.default_fit_one_page
+
+    _sync_output_defaults(stored, default_template_settings)
 
     _save_config(stored)
-    return OutputConfigResponse(default_date_display=_get_date_display(stored))
+    default_template_settings = _get_default_template_settings(stored)
+    return OutputConfigResponse(
+        default_date_display=default_template_settings["dateDisplay"],
+        default_fit_one_page=default_template_settings["fitOnePage"],
+        default_template_settings=default_template_settings,
+    )
 
 
 # Supported languages for i18n and generated content.

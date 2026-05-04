@@ -65,9 +65,8 @@ import {
   openUrlInNewTab,
 } from '@/lib/utils/download';
 import {
-  loadSavedTemplateSettings,
-  omitDateDisplaySetting,
-  TEMPLATE_SETTINGS_STORAGE_KEY,
+  mergeTemplateSettings,
+  resolveEffectiveTemplateSettings,
 } from '@/lib/utils/template-settings';
 import type { RegenerateItemInput } from '@/lib/api/enrichment';
 
@@ -319,15 +318,6 @@ const ResumeBuilderContent = () => {
   const builderHeaderResetButtonClass =
     'h-9 rounded-full border border-[#d7bf98] bg-[#fff8ec] px-4 py-0 text-sm font-semibold leading-none text-[#9a5a12] shadow-[0_4px_12px_rgba(15,23,42,0.04)] hover:bg-[#fdf0d9]';
 
-  // Save template settings to localStorage when they change
-  useEffect(() => {
-    templateSettingsRef.current = templateSettings;
-    localStorage.setItem(
-      TEMPLATE_SETTINGS_STORAGE_KEY,
-      JSON.stringify(omitDateDisplaySetting(templateSettings))
-    );
-  }, [templateSettings]);
-
   useEffect(() => {
     localStorage.removeItem(SPLIT_STORAGE_KEY);
   }, []);
@@ -378,17 +368,23 @@ const ResumeBuilderContent = () => {
   useEffect(() => {
     const loadResumeData = async () => {
       setLoadingState('loading');
-      const savedTemplateSettings = loadSavedTemplateSettings();
       const outputConfig = await fetchOutputConfig().catch(() => null);
-      const defaultDateDisplay =
-        outputConfig?.default_date_display ?? DEFAULT_TEMPLATE_SETTINGS.dateDisplay;
-      const applyTemplateSettings = (
-        resumeTemplateSettings?: { dateDisplay?: TemplateSettings['dateDisplay'] } | null
-      ) => {
-        const nextSettings = {
-          ...savedTemplateSettings,
-          dateDisplay: resumeTemplateSettings?.dateDisplay ?? defaultDateDisplay,
-        };
+      const backendDefaultSettings = outputConfig
+        ? mergeTemplateSettings(outputConfig.default_template_settings, {
+            dateDisplay: outputConfig.default_date_display,
+            fitOnePage: outputConfig.default_fit_one_page,
+          })
+        : DEFAULT_TEMPLATE_SETTINGS;
+      const applyTemplateSettings = (resumeTemplateSettings?: Partial<TemplateSettings> | null) => {
+        const savedResumeSettings = Object.fromEntries(
+          Object.entries(resumeTemplateSettings ?? {}).filter(
+            ([, value]) => value !== null && value !== undefined
+          )
+        ) as Partial<TemplateSettings>;
+        const nextSettings = resolveEffectiveTemplateSettings(
+          backendDefaultSettings,
+          savedResumeSettings
+        );
         templateSettingsRef.current = nextSettings;
         setTemplateSettings(nextSettings);
       };
@@ -556,15 +552,12 @@ const ResumeBuilderContent = () => {
 
   const handleSettingsChange = useCallback(
     (newSettings: TemplateSettings) => {
-      const previousDateDisplay = templateSettingsRef.current.dateDisplay;
       templateSettingsRef.current = newSettings;
       setTemplateSettings(newSettings);
-      if (resumeId && newSettings.dateDisplay !== previousDateDisplay) {
-        void updateResumeTemplateSettings(resumeId, { dateDisplay: newSettings.dateDisplay }).catch(
-          (error) => {
-            console.error('Failed to save resume date display setting:', error);
-          }
-        );
+      if (resumeId) {
+        void updateResumeTemplateSettings(resumeId, newSettings).catch((error) => {
+          console.error('Failed to save resume template settings:', error);
+        });
       }
     },
     [resumeId]

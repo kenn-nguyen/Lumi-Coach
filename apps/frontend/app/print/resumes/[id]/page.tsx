@@ -36,6 +36,7 @@ type PageProps = {
     showContactIcons?: string;
     accentColor?: string;
     dateDisplay?: string;
+    fitOnePage?: string;
     lang?: string;
     authToken?: string;
   }>;
@@ -248,6 +249,10 @@ export default async function PrintResumePage({ params, searchParams }: PageProp
     ),
     accentColor: parseAccentColor(resolvedSearchParams?.accentColor),
     dateDisplay: parseDateDisplay(resolvedSearchParams?.dateDisplay),
+    fitOnePage: parseBoolean(
+      resolvedSearchParams?.fitOnePage,
+      DEFAULT_TEMPLATE_SETTINGS.fitOnePage
+    ),
   };
 
   // Note: Margins are applied by Playwright's PDF renderer (not here)

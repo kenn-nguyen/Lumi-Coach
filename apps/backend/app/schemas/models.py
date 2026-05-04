@@ -430,25 +430,94 @@ class ResumeUpdateRequest(BaseModel):
 
 
 DateDisplayMode = Literal["month-year", "year-only"]
+TemplateType = Literal["swiss-single", "swiss-two-column", "modern", "modern-two-column"]
+PageSize = Literal["A4", "LETTER"]
+SpacingLevel = Literal[1, 2, 3, 4, 5]
+HeaderFontFamily = Literal["serif", "sans-serif", "mono"]
+BodyFontFamily = Literal["serif", "sans-serif", "mono"]
+AccentColor = Literal["blue", "green", "orange", "red"]
+
+
+class ResumeMarginSettings(BaseModel):
+    """Template margin settings in millimeters."""
+
+    top: int | None = Field(default=None, ge=5, le=25)
+    bottom: int | None = Field(default=None, ge=5, le=25)
+    left: int | None = Field(default=None, ge=5, le=25)
+    right: int | None = Field(default=None, ge=5, le=25)
+
+
+class ResumeSpacingSettings(BaseModel):
+    """Template spacing settings."""
+
+    section: SpacingLevel | None = None
+    item: SpacingLevel | None = None
+    lineHeight: SpacingLevel | None = None
+
+
+class ResumeFontSizeSettings(BaseModel):
+    """Template typography settings."""
+
+    base: SpacingLevel | None = None
+    headerScale: SpacingLevel | None = None
+    headerFont: HeaderFontFamily | None = None
+    bodyFont: BodyFontFamily | None = None
+
+
+DEFAULT_RESUME_TEMPLATE_SETTINGS: dict[str, Any] = {
+    "template": "swiss-single",
+    "pageSize": "A4",
+    "margins": {"top": 10, "bottom": 10, "left": 10, "right": 10},
+    "spacing": {"section": 2, "item": 2, "lineHeight": 2},
+    "fontSize": {
+        "base": 2,
+        "headerScale": 2,
+        "headerFont": "serif",
+        "bodyFont": "sans-serif",
+    },
+    "compactMode": False,
+    "showContactIcons": False,
+    "accentColor": "blue",
+    "dateDisplay": "month-year",
+    "fitOnePage": True,
+}
 
 
 class ResumeTemplateSettingsUpdate(BaseModel):
-    """Per-resume output settings that affect rendering, not saved resume text."""
+    """Per-resume template settings that affect rendering, not saved resume text."""
 
+    template: TemplateType | None = None
+    pageSize: PageSize | None = None
+    margins: ResumeMarginSettings | None = None
+    spacing: ResumeSpacingSettings | None = None
+    fontSize: ResumeFontSizeSettings | None = None
+    compactMode: bool | None = None
+    showContactIcons: bool | None = None
+    accentColor: AccentColor | None = None
     dateDisplay: DateDisplayMode | None = None
+    fitOnePage: bool | None = None
 
 
 class ResumeTemplateSettings(BaseModel):
-    """Saved per-resume output settings."""
+    """Saved per-resume template settings."""
 
-    dateDisplay: DateDisplayMode
+    template: TemplateType | None = None
+    pageSize: PageSize | None = None
+    margins: ResumeMarginSettings | None = None
+    spacing: ResumeSpacingSettings | None = None
+    fontSize: ResumeFontSizeSettings | None = None
+    compactMode: bool | None = None
+    showContactIcons: bool | None = None
+    accentColor: AccentColor | None = None
+    dateDisplay: DateDisplayMode | None = None
+    fitOnePage: bool | None = None
 
 
 class ResumeTemplateSettingsResponse(BaseModel):
     """Response for per-resume output settings."""
 
     request_id: str
-    data: ResumeTemplateSettings
+    data: dict[str, Any]
 
 
 class ResumeFetchData(BaseModel):
@@ -463,7 +532,7 @@ class ResumeFetchData(BaseModel):
     outreach_message: str | None = None
     parent_id: str | None = None  # For determining if resume is tailored
     title: str | None = None
-    template_settings: ResumeTemplateSettings | None = None
+    template_settings: dict[str, Any] | None = None
 
 
 class ResumeFetchResponse(BaseModel):
@@ -691,12 +760,18 @@ class OutputConfigRequest(BaseModel):
     """Request to update resume output defaults."""
 
     default_date_display: DateDisplayMode | None = None
+    default_fit_one_page: bool | None = None
+    default_template_settings: ResumeTemplateSettings | None = None
 
 
 class OutputConfigResponse(BaseModel):
     """Response for resume output defaults."""
 
     default_date_display: DateDisplayMode = "month-year"
+    default_fit_one_page: bool = True
+    default_template_settings: dict[str, Any] = Field(
+        default_factory=lambda: copy.deepcopy(DEFAULT_RESUME_TEMPLATE_SETTINGS)
+    )
 
 
 class LanguageConfigRequest(BaseModel):

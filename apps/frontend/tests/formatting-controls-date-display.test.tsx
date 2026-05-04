@@ -12,6 +12,9 @@ vi.mock('@/lib/i18n', () => ({
         'builder.formatting.yearOnlyDates': 'Year only',
         'builder.formatting.yearOnlyDatesHint':
           'Show supported month/year dates as years only in preview and PDF.',
+        'builder.formatting.fitOnePage': 'Fit to 1 Page',
+        'builder.formatting.fitOnePageHint':
+          'Scale preview and PDF output down to one page when needed.',
         'builder.formatting.pageSize': 'Page Size',
         'builder.formatting.template': 'Template',
         'builder.formatting.templates.swissSingle.description': 'Single column',
@@ -59,6 +62,24 @@ describe('FormattingControls date display setting', () => {
     expect(onChange).toHaveBeenCalledWith({
       ...initialSettings,
       dateDisplay: 'year-only',
+    });
+  });
+
+  it('updates template settings when fit-to-one-page is toggled', () => {
+    const onChange = vi.fn();
+    const initialSettings = {
+      ...DEFAULT_TEMPLATE_SETTINGS,
+      fitOnePage: false,
+    };
+
+    render(<FormattingControls settings={initialSettings} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page Setup and Formatting' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Fit to 1 Page' }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      ...initialSettings,
+      fitOnePage: true,
     });
   });
 });

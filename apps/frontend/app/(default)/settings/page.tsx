@@ -22,7 +22,9 @@ import {
   type LLMHealthCheck,
   type PromptOption,
 } from '@/lib/api/config';
-import type { DateDisplayMode } from '@/lib/types/template-settings';
+import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
+import { FormattingControls } from '@/components/builder/formatting-controls';
+import { mergeTemplateSettings } from '@/lib/utils/template-settings';
 import { API_URL } from '@/lib/api/client';
 import { getVersionString } from '@/lib/config/version';
 import { ToggleSwitch } from '@/components/ui/toggle-switch';
@@ -148,7 +150,8 @@ export default function SettingsPage() {
   const [promptConfigLoading, setPromptConfigLoading] = useState(false);
   const [promptOptions, setPromptOptions] = useState<PromptOption[]>([]);
   const [defaultPromptId, setDefaultPromptId] = useState('keywords');
-  const [defaultDateDisplay, setDefaultDateDisplay] = useState<DateDisplayMode>('month-year');
+  const [defaultTemplateSettings, setDefaultTemplateSettings] =
+    useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
   const [outputConfigLoading, setOutputConfigLoading] = useState(false);
 
   // Danger Zone state
@@ -290,7 +293,12 @@ export default function SettingsPage() {
         }
 
         if (outputConfig) {
-          setDefaultDateDisplay(outputConfig.default_date_display);
+          setDefaultTemplateSettings(
+            mergeTemplateSettings(outputConfig.default_template_settings, {
+              dateDisplay: outputConfig.default_date_display,
+              fitOnePage: outputConfig.default_fit_one_page,
+            })
+          );
         }
 
         if (promptConfig) {
@@ -468,17 +476,26 @@ export default function SettingsPage() {
     }
   };
 
-  const handleOutputConfigChange = async (checked: boolean) => {
-    const nextDateDisplay: DateDisplayMode = checked ? 'year-only' : 'month-year';
-    setDefaultDateDisplay(nextDateDisplay);
+  const handleOutputTemplateSettingsChange = async (nextSettings: TemplateSettings) => {
+    const previousSettings = defaultTemplateSettings;
+    setDefaultTemplateSettings(nextSettings);
     setOutputConfigLoading(true);
     setError(null);
     try {
-      const updated = await updateOutputConfig({ default_date_display: nextDateDisplay });
-      setDefaultDateDisplay(updated.default_date_display);
+      const updated = await updateOutputConfig({
+        default_template_settings: nextSettings,
+        default_date_display: nextSettings.dateDisplay,
+        default_fit_one_page: nextSettings.fitOnePage,
+      });
+      setDefaultTemplateSettings(
+        mergeTemplateSettings(updated.default_template_settings, {
+          dateDisplay: updated.default_date_display,
+          fitOnePage: updated.default_fit_one_page,
+        })
+      );
     } catch (err) {
       console.error('Failed to update output config', err);
-      setDefaultDateDisplay(nextDateDisplay === 'year-only' ? 'month-year' : 'year-only');
+      setDefaultTemplateSettings(previousSettings);
       setError((err as Error).message || t('settings.errors.unableToSaveConfiguration'));
     } finally {
       setOutputConfigLoading(false);
@@ -985,13 +1002,13 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <p className="mb-4 text-sm text-gray-600">{t('settings.resumeOutput.description')}</p>
 
-              <ToggleSwitch
-                checked={defaultDateDisplay === 'year-only'}
-                onCheckedChange={handleOutputConfigChange}
-                label={t('settings.resumeOutput.yearOnly.label')}
-                description={t('settings.resumeOutput.yearOnly.description')}
-                disabled={outputConfigLoading}
-              />
+              <div className={outputConfigLoading ? 'pointer-events-none opacity-70' : ''}>
+                <FormattingControls
+                  settings={defaultTemplateSettings}
+                  onChange={handleOutputTemplateSettingsChange}
+                  defaultExpanded
+                />
+              </div>
             </div>
           </section>
 

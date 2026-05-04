@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ToggleSwitch } from '@/components/ui/toggle-switch';
-import Resume, { ResumeData } from '@/components/dashboard/resume-component';
+import type { ResumeData } from '@/components/dashboard/resume-component';
+import { PageContainer } from '@/components/preview/page-container';
+import { ResumePrintContent } from '@/components/preview/resume-print-content';
+import { usePagination } from '@/components/preview/use-pagination';
 import {
   fetchResume,
   downloadResumePdf,
@@ -30,8 +33,12 @@ import {
   openUrlInNewTab,
 } from '@/lib/utils/download';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
-import { loadSavedTemplateSettings } from '@/lib/utils/template-settings';
+import {
+  mergeTemplateSettings,
+  resolveEffectiveTemplateSettings,
+} from '@/lib/utils/template-settings';
 import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
+import { getContentAreaPx, mmToPx, PAGE_DIMENSIONS } from '@/lib/constants/page-dimensions';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
@@ -61,6 +68,9 @@ export default function ResumeViewerPage() {
   const [generationFeedback, setGenerationFeedback] = useState<GenerationFeedback | null>(null);
   const [templateSettings, setTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
+  const measurementRef = useRef<HTMLDivElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
 
   const resumeId = params?.id as string;
   const runId = searchParams.get('runId');
@@ -70,6 +80,71 @@ export default function ResumeViewerPage() {
     if (!resumeData) return null;
     return withLocalizedDefaultSections(resumeData, t);
   }, [resumeData, t]);
+  const previewResumeData = localizedResumeData || resumeData;
+  const previewPrintSettings: TemplateSettings = useMemo(
+    () => ({
+      ...templateSettings,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    }),
+    [templateSettings]
+  );
+  const additionalSectionLabels = useMemo(
+    () => ({
+      technicalSkills: t('resume.additionalLabels.technicalSkills'),
+      languages: t('resume.additionalLabels.languages'),
+      certifications: t('resume.additionalLabels.certifications'),
+      awards: t('resume.additionalLabels.awards'),
+    }),
+    [t]
+  );
+  const sectionHeadings = useMemo(
+    () => ({
+      summary: t('resume.sections.summary'),
+      experience: t('resume.sections.experience'),
+      education: t('resume.sections.education'),
+      projects: t('resume.sections.projects'),
+      certifications: t('resume.sections.certifications'),
+      skills: t('resume.sections.skillsOnly'),
+      languages: t('resume.sections.languages'),
+      awards: t('resume.sections.awards'),
+      links: t('resume.sections.links'),
+    }),
+    [t]
+  );
+  const fallbackLabels = useMemo(() => ({ name: t('resume.defaults.name') }), [t]);
+  const contentArea = getContentAreaPx(templateSettings.pageSize, templateSettings.margins);
+  const { pages } = usePagination({
+    pageSize: templateSettings.pageSize,
+    margins: templateSettings.margins,
+    measurementRef,
+  });
+  const measuredContentHeight = pages[pages.length - 1]?.contentEnd ?? contentArea.height;
+  const fitContentScale = templateSettings.fitOnePage
+    ? Math.max(0.1, Math.min(1, contentArea.height / Math.max(1, measuredContentHeight)))
+    : 1;
+  const visiblePages = templateSettings.fitOnePage
+    ? [
+        {
+          pageNumber: 1,
+          contentOffset: 0,
+          contentEnd: Math.max(1, measuredContentHeight),
+        },
+      ]
+    : pages;
+
+  const calculatePreviewZoom = useCallback(() => {
+    const container = previewContainerRef.current;
+    if (!container) return;
+    const containerWidth = container.clientWidth - 48;
+    const pageWidthPx = mmToPx(PAGE_DIMENSIONS[templateSettings.pageSize].width);
+    setPreviewZoom(Math.max(0.35, Math.min(1, containerWidth / pageWidthPx)));
+  }, [templateSettings.pageSize]);
+
+  useEffect(() => {
+    calculatePreviewZoom();
+    window.addEventListener('resize', calculatePreviewZoom);
+    return () => window.removeEventListener('resize', calculatePreviewZoom);
+  }, [calculatePreviewZoom]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated' || !resumeId) return;
@@ -82,14 +157,20 @@ export default function ResumeViewerPage() {
           fetchResume(resumeId),
           fetchOutputConfig().catch(() => null),
         ]);
-        const savedTemplateSettings = loadSavedTemplateSettings();
-        setTemplateSettings({
-          ...savedTemplateSettings,
-          dateDisplay:
-            data.template_settings?.dateDisplay ??
-            outputConfig?.default_date_display ??
-            DEFAULT_TEMPLATE_SETTINGS.dateDisplay,
-        });
+        const backendDefaultSettings = outputConfig
+          ? mergeTemplateSettings(outputConfig.default_template_settings, {
+              dateDisplay: outputConfig.default_date_display,
+              fitOnePage: outputConfig.default_fit_one_page,
+            })
+          : DEFAULT_TEMPLATE_SETTINGS;
+        const savedResumeSettings = Object.fromEntries(
+          Object.entries(data.template_settings ?? {}).filter(
+            ([, value]) => value !== null && value !== undefined
+          )
+        ) as Partial<TemplateSettings>;
+        setTemplateSettings(
+          resolveEffectiveTemplateSettings(backendDefaultSettings, savedResumeSettings)
+        );
 
         // Get processing status
         const status = (data.raw_resume?.processing_status || 'pending') as ProcessingStatus;
@@ -164,12 +245,22 @@ export default function ResumeViewerPage() {
 
   const handleDateDisplayToggle = (nextChecked: boolean) => {
     const dateDisplay = nextChecked ? 'year-only' : 'month-year';
-    setTemplateSettings((current) => ({
-      ...current,
-      dateDisplay,
-    }));
-    void updateResumeTemplateSettings(resumeId, { dateDisplay }).catch((err) => {
-      console.error('Failed to save resume date display setting:', err);
+    setTemplateSettings((current) => {
+      const nextSettings = { ...current, dateDisplay };
+      void updateResumeTemplateSettings(resumeId, nextSettings).catch((err) => {
+        console.error('Failed to save resume template settings:', err);
+      });
+      return nextSettings;
+    });
+  };
+
+  const handleFitOnePageToggle = (fitOnePage: boolean) => {
+    setTemplateSettings((current) => {
+      const nextSettings = { ...current, fitOnePage };
+      void updateResumeTemplateSettings(resumeId, nextSettings).catch((err) => {
+        console.error('Failed to save resume template settings:', err);
+      });
+      return nextSettings;
     });
   };
 
@@ -412,6 +503,17 @@ export default function ResumeViewerPage() {
                 display="inline"
               />
             </div>
+            <div
+              className="flex h-10 shrink-0 items-center rounded-full border border-border bg-card px-4 shadow-xs"
+              title={t('preview.fitToOnePageHint')}
+            >
+              <ToggleSwitch
+                checked={templateSettings.fitOnePage}
+                onCheckedChange={handleFitOnePageToggle}
+                label={t('preview.fitToOnePage')}
+                display="inline"
+              />
+            </div>
             <Button variant="success" onClick={handleDownload} disabled={isDownloading}>
               <Download className="w-4 h-4" />
               {isDownloading ? t('common.generating') : t('resumeViewer.downloadResume')}
@@ -488,30 +590,52 @@ export default function ResumeViewerPage() {
         )}
 
         {/* Resume Viewer */}
-        <div className="flex justify-center pb-4">
-          <div className="resume-print w-full max-w-[min(250mm,100%)] overflow-hidden rounded-[24px] border border-border bg-white shadow-sw-card">
-            <Resume
-              resumeData={localizedResumeData || resumeData}
-              settings={templateSettings}
-              additionalSectionLabels={{
-                technicalSkills: t('resume.additionalLabels.technicalSkills'),
-                languages: t('resume.additionalLabels.languages'),
-                certifications: t('resume.additionalLabels.certifications'),
-                awards: t('resume.additionalLabels.awards'),
+        <div ref={previewContainerRef} className="relative overflow-x-auto pb-4">
+          {previewResumeData && (
+            <div
+              ref={measurementRef}
+              className="absolute opacity-0 pointer-events-none"
+              style={{
+                width: contentArea.width,
+                left: -9999,
+                top: 0,
               }}
-              sectionHeadings={{
-                summary: t('resume.sections.summary'),
-                experience: t('resume.sections.experience'),
-                education: t('resume.sections.education'),
-                projects: t('resume.sections.projects'),
-                certifications: t('resume.sections.certifications'),
-                skills: t('resume.sections.skillsOnly'),
-                languages: t('resume.sections.languages'),
-                awards: t('resume.sections.awards'),
-                links: t('resume.sections.links'),
-              }}
-              fallbackLabels={{ name: t('resume.defaults.name') }}
-            />
+              aria-hidden="true"
+            >
+              <ResumePrintContent
+                resumeData={previewResumeData}
+                settings={previewPrintSettings}
+                additionalSectionLabels={additionalSectionLabels}
+                sectionHeadings={sectionHeadings}
+                fallbackLabels={fallbackLabels}
+              />
+            </div>
+          )}
+
+          <div className="flex flex-col items-center gap-4">
+            {previewResumeData &&
+              visiblePages.map((page) => (
+                <PageContainer
+                  key={page.pageNumber}
+                  pageSize={templateSettings.pageSize}
+                  margins={templateSettings.margins}
+                  pageNumber={page.pageNumber}
+                  totalPages={visiblePages.length}
+                  scale={previewZoom}
+                  showMarginGuides={false}
+                  contentOffset={page.contentOffset}
+                  contentEnd={page.contentEnd}
+                  contentScale={templateSettings.fitOnePage ? fitContentScale : 1}
+                >
+                  <ResumePrintContent
+                    resumeData={previewResumeData}
+                    settings={previewPrintSettings}
+                    additionalSectionLabels={additionalSectionLabels}
+                    sectionHeadings={sectionHeadings}
+                    fallbackLabels={fallbackLabels}
+                  />
+                </PageContainer>
+              ))}
           </div>
         </div>
 

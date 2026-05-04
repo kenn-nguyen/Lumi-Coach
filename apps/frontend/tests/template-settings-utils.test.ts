@@ -3,6 +3,7 @@ import { DEFAULT_TEMPLATE_SETTINGS } from '@/lib/types/template-settings';
 import {
   loadSavedTemplateSettings,
   mergeTemplateSettings,
+  resolveEffectiveTemplateSettings,
   TEMPLATE_SETTINGS_STORAGE_KEY,
 } from '@/lib/utils/template-settings';
 
@@ -67,7 +68,67 @@ describe('template settings utils', () => {
         template: 'modern',
         compactMode: true,
         dateDisplay: 'month-year',
+        fitOnePage: true,
       });
+    });
+
+    it('applies later settings as higher precedence', () => {
+      expect(
+        mergeTemplateSettings(
+          {
+            pageSize: 'LETTER',
+            margins: { top: 12, bottom: 12 },
+            fontSize: { bodyFont: 'serif' },
+          },
+          {
+            pageSize: 'A4',
+            margins: { top: 18 },
+          }
+        )
+      ).toMatchObject({
+        pageSize: 'A4',
+        margins: {
+          ...DEFAULT_TEMPLATE_SETTINGS.margins,
+          top: 18,
+          bottom: 12,
+        },
+        fontSize: {
+          ...DEFAULT_TEMPLATE_SETTINGS.fontSize,
+          bodyFont: 'serif',
+        },
+      });
+    });
+  });
+
+  describe('resolveEffectiveTemplateSettings', () => {
+    it('uses resume settings over backend defaults without localStorage', () => {
+      storage.getItem.mockImplementation((key: string) =>
+        key === TEMPLATE_SETTINGS_STORAGE_KEY
+          ? JSON.stringify({
+              pageSize: 'A4',
+              margins: { top: 25 },
+            })
+          : null
+      );
+
+      expect(
+        resolveEffectiveTemplateSettings(
+          {
+            pageSize: 'LETTER',
+            margins: { top: 12 },
+          },
+          {
+            margins: { top: 18 },
+          }
+        )
+      ).toMatchObject({
+        pageSize: 'LETTER',
+        margins: {
+          ...DEFAULT_TEMPLATE_SETTINGS.margins,
+          top: 18,
+        },
+      });
+      expect(storage.getItem).not.toHaveBeenCalled();
     });
   });
 
@@ -85,6 +146,7 @@ describe('template settings utils', () => {
               margins: { left: 18, right: 16 },
               compactMode: true,
               dateDisplay: 'year-only',
+              fitOnePage: false,
             })
           : null
       );
@@ -100,6 +162,7 @@ describe('template settings utils', () => {
         },
         compactMode: true,
         dateDisplay: 'month-year',
+        fitOnePage: true,
       });
     });
 

@@ -494,7 +494,9 @@ def _build_resume_fetch_response(
     )
     raw_template_settings = resume.get("template_settings")
     template_settings = (
-        ResumeTemplateSettings.model_validate(raw_template_settings)
+        ResumeTemplateSettings.model_validate(raw_template_settings).model_dump(
+            exclude_none=True
+        )
         if raw_template_settings
         else None
     )
@@ -1748,11 +1750,10 @@ async def update_resume_template_settings_endpoint(
         raise HTTPException(status_code=404, detail="Resume not found")
 
     next_settings = copy.deepcopy(existing.get("template_settings") or {})
-    if payload.dateDisplay is not None:
-        next_settings["dateDisplay"] = payload.dateDisplay
+    next_settings.update(payload.model_dump(exclude_none=True))
 
     if not next_settings:
-        next_settings = {"dateDisplay": "month-year"}
+        next_settings = {"dateDisplay": "month-year", "fitOnePage": True}
 
     updated = db.update_resume(resume_id, {"template_settings": next_settings})
     if not updated:
@@ -1762,7 +1763,7 @@ async def update_resume_template_settings_endpoint(
         request_id=str(uuid4()),
         data=ResumeTemplateSettings.model_validate(
             updated.get("template_settings") or next_settings
-        ),
+        ).model_dump(exclude_none=True),
     )
 
 
@@ -1832,6 +1833,7 @@ async def download_resume_pdf(
     showContactIcons: bool = Query(False),
     accentColor: str = Query("blue", pattern="^(blue|green|orange|red)$"),
     dateDisplay: str = Query("month-year", pattern="^(month-year|year-only)$"),
+    fitOnePage: bool = Query(True),
     lang: str | None = Query(None, pattern="^[a-z]{2}(-[A-Z]{2})?$"),
     filename: str | None = Query(None, max_length=220),
     current_user: AuthenticatedUser = Depends(require_current_user),
@@ -1852,6 +1854,7 @@ async def download_resume_pdf(
     - compactMode: enable tighter spacing
     - showContactIcons: show icons in contact info
     - dateDisplay: month-year or year-only
+    - fitOnePage: scale output down to one page when needed
     - lang: locale used for print page translations
     """
     resume = db.get_resume(resume_id)
@@ -1877,6 +1880,7 @@ async def download_resume_pdf(
         f"&showContactIcons={str(showContactIcons).lower()}"
         f"&accentColor={accentColor}"
         f"&dateDisplay={dateDisplay}"
+        f"&fitOnePage={str(fitOnePage).lower()}"
     )
     auth_token, _ = create_backend_access_token_for_user(current_user)
     params = f"{params}&authToken={quote(auth_token, safe='')}"
@@ -1894,7 +1898,9 @@ async def download_resume_pdf(
 
     # Render PDF with margins applied to every page
     try:
-        pdf_bytes = await render_resume_pdf(url, pageSize, margins=pdf_margins)
+        pdf_bytes = await render_resume_pdf(
+            url, pageSize, margins=pdf_margins, fit_one_page=fitOnePage
+        )
     except PDFRenderError as e:
         raise HTTPException(status_code=503, detail=str(e))
 

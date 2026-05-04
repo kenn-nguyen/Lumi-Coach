@@ -48,9 +48,14 @@ export interface TemplateSettings {
   showContactIcons: boolean; // Show icons next to contact info
   accentColor: AccentColor; // Accent color for Modern template
   dateDisplay: DateDisplayMode; // Render resume dates as month/year text or years only
+  fitOnePage: boolean; // Scale PDF and preview output down to one page when needed
 }
 
-export type ResumeTemplateSettings = Pick<TemplateSettings, 'dateDisplay'>;
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+};
+
+export type ResumeTemplateSettings = DeepPartial<TemplateSettings>;
 
 /**
  * Default template settings
@@ -65,6 +70,7 @@ export const DEFAULT_TEMPLATE_SETTINGS: TemplateSettings = {
   showContactIcons: false,
   accentColor: 'blue',
   dateDisplay: 'month-year',
+  fitOnePage: true,
 };
 
 /**

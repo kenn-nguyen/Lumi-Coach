@@ -23,6 +23,7 @@ import { ToggleSwitch } from '@/components/ui/toggle-switch';
 interface FormattingControlsProps {
   settings: TemplateSettings;
   onChange: (settings: TemplateSettings) => void;
+  defaultExpanded?: boolean;
 }
 
 /**
@@ -38,9 +39,13 @@ interface FormattingControlsProps {
  *
  * Swiss design: Square buttons, monospace labels, high contrast
  */
-export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings, onChange }) => {
+export const FormattingControls: React.FC<FormattingControlsProps> = ({
+  settings,
+  onChange,
+  defaultExpanded = false,
+}) => {
   const { t } = useTranslations();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const handleTemplateChange = (template: TemplateType) => {
     onChange({ ...settings, template });
@@ -105,6 +110,13 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
     onChange({
       ...settings,
       dateDisplay: checked ? 'year-only' : 'month-year',
+    });
+  };
+
+  const handleFitOnePageToggle = (nextChecked?: boolean) => {
+    onChange({
+      ...settings,
+      fitOnePage: typeof nextChecked === 'boolean' ? nextChecked : !settings.fitOnePage,
     });
   };
 
@@ -410,6 +422,14 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                       checked={settings.dateDisplay === 'year-only'}
                       onCheckedChange={handleDateDisplayToggle}
                       label={t('builder.formatting.yearOnlyDates')}
+                      display="inline"
+                    />
+                  </div>
+                  <div title={t('builder.formatting.fitOnePageHint')}>
+                    <ToggleSwitch
+                      checked={settings.fitOnePage}
+                      onCheckedChange={handleFitOnePageToggle}
+                      label={t('builder.formatting.fitOnePage')}
                       display="inline"
                     />
                   </div>
