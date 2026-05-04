@@ -94,6 +94,7 @@ _BLOCKED_PATH_PREFIXES = frozenset({
 _BLOCKED_FIELD_NAMES = frozenset({
     "years",
     "company",
+    "context",
     "institution",
     "title",
     "degree",

@@ -1,6 +1,6 @@
 import { ImprovedResult } from '@/components/common/resume_previewer_context';
 import type { ResumeData } from '@/components/dashboard/resume-component';
-import { type TemplateSettings } from '@/lib/types/template-settings';
+import { type ResumeTemplateSettings, type TemplateSettings } from '@/lib/types/template-settings';
 import { type Locale } from '@/i18n/config';
 import {
   API_BASE,
@@ -31,6 +31,7 @@ interface ProcessedResume {
     title?: string;
     company?: string;
     location?: string | null;
+    context?: string | null;
     years?: string;
     description?: string[];
   }>;
@@ -88,6 +89,7 @@ interface ResumeResponse {
     outreach_message?: string | null;
     parent_id?: string | null; // For determining if resume is tailored
     title?: string | null;
+    template_settings?: ResumeTemplateSettings | null;
   };
 }
 
@@ -259,6 +261,25 @@ export async function updateResume(
   return payload.data;
 }
 
+export async function updateResumeTemplateSettings(
+  resumeId: string,
+  settings: ResumeTemplateSettings
+): Promise<ResumeTemplateSettings> {
+  const normalizedId = normalizeResumeId(resumeId);
+  const res = await apiPatch(
+    `/resumes/${encodeURIComponent(normalizedId)}/template-settings`,
+    settings
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to update resume settings (status ${res.status}): ${text}`);
+  }
+  const payload = (await res.json()) as {
+    data: ResumeTemplateSettings;
+  };
+  return payload.data;
+}
+
 export function getResumePdfUrl(
   resumeId: string,
   settings?: TemplateSettings,
@@ -285,6 +306,7 @@ export function getResumePdfUrl(
     params.set('compactMode', String(settings.compactMode));
     params.set('showContactIcons', String(settings.showContactIcons));
     params.set('accentColor', settings.accentColor);
+    params.set('dateDisplay', settings.dateDisplay);
   } else {
     params.set('template', 'swiss-single');
     params.set('pageSize', 'A4');

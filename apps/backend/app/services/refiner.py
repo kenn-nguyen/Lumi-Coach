@@ -591,6 +591,7 @@ def _extract_all_text_cached(data_json: str) -> str:
         if isinstance(exp, dict):
             parts.append(str(exp.get("title", "")))
             parts.append(str(exp.get("company", "")))
+            parts.append(str(exp.get("context", "")))
             desc = exp.get("description", [])
             if isinstance(desc, list):
                 parts.extend(str(d) for d in desc)

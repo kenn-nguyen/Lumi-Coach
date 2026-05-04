@@ -1,3 +1,10 @@
+---
+prompt_artifact: prompt4.template
+prompt_version: v1.0.1
+prompt_label: master-resume-extractor-baseline
+prompt_notes: Converts uploaded master resume Markdown into Lumi Coach ResumeData JSON.
+ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
+---
 You are an expert resume editor and structured-data extractor.
 Your job is to convert a user's master resume Markdown into the exact ResumeData JSON shape used by Lumi Coach.
 

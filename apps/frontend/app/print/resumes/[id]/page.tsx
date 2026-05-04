@@ -8,6 +8,7 @@ import {
   type HeaderFontFamily,
   type BodyFontFamily,
   type AccentColor,
+  type DateDisplayMode,
   DEFAULT_TEMPLATE_SETTINGS,
 } from '@/lib/types/template-settings';
 import { API_BASE } from '@/lib/api/client';
@@ -34,6 +35,7 @@ type PageProps = {
     compactMode?: string;
     showContactIcons?: string;
     accentColor?: string;
+    dateDisplay?: string;
     lang?: string;
     authToken?: string;
   }>;
@@ -67,6 +69,16 @@ function parseAccentColor(value: string | undefined): AccentColor {
     return value;
   }
   return DEFAULT_TEMPLATE_SETTINGS.accentColor;
+}
+
+/**
+ * Parse date display mode
+ */
+function parseDateDisplay(value: string | undefined): DateDisplayMode {
+  if (value === 'year-only') {
+    return value;
+  }
+  return DEFAULT_TEMPLATE_SETTINGS.dateDisplay;
 }
 
 /**
@@ -235,6 +247,7 @@ export default async function PrintResumePage({ params, searchParams }: PageProp
       DEFAULT_TEMPLATE_SETTINGS.showContactIcons
     ),
     accentColor: parseAccentColor(resolvedSearchParams?.accentColor),
+    dateDisplay: parseDateDisplay(resolvedSearchParams?.dateDisplay),
   };
 
   // Note: Margins are applied by Playwright's PDF renderer (not here)

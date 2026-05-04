@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { validatePrompt1Data, validatePrompt2Data } from "./validation.js";
+import {
+  validatePrompt1Data,
+  validatePrompt2Data,
+  validateResumeData,
+} from "./validation.js";
 
 const validPrompt1 = {
   target_role: "Staff Product Manager",
@@ -8,12 +12,28 @@ const validPrompt1 = {
   target_domain: "Identity risk",
   company_context: "B2B risk platform",
   role_archetype: "Platform PM",
-  must_have_keywords: [
+  gating_requirements: [
     {
       keyword: "identity verification",
       priority: 10,
       type: "exact",
       where_to_use: ["headline", "experience"],
+    },
+  ],
+  high_signal_requirements: [
+    {
+      keyword: "risk platform",
+      priority: 9,
+      type: "exact",
+      where_to_use: ["summary", "experience"],
+    },
+  ],
+  medium_signal_requirements: [
+    {
+      keyword: "cross-functional roadmap",
+      priority: 6,
+      type: "inferred",
+      where_to_use: ["experience"],
     },
   ],
   nice_to_have_keywords: [
@@ -25,7 +45,8 @@ const validPrompt1 = {
     },
   ],
   exact_phrases_to_mirror: ["risk platform"],
-  required_qualifications: ["5+ years PM experience"],
+  gating_qualifications: ["5+ years PM experience"],
+  near_gate_qualifications: ["Risk platform experience"],
   preferred_qualifications: ["marketplace experience"],
   core_responsibilities: ["Own the risk roadmap"],
   recruiter_hooks: ["Identity and risk PM"],
@@ -56,11 +77,24 @@ const validPrompt2 = {
     "Stay truthful about adjacency",
   ],
   recommended_title: "Senior Product Manager, Risk Platforms",
-  summary_lead: "Product leader with identity and risk-adjacent platform experience",
-  summary_focus: ["Identity risk", "Platform execution", "Cross-functional leadership"],
+  summary_lead:
+    "Product leader with identity and risk-adjacent platform experience",
+  summary_focus: [
+    "Identity risk",
+    "Platform execution",
+    "Cross-functional leadership",
+  ],
   summary_sentences: 2,
   voice: "Sharp and credible",
   adjacent_framing: "Position as adjacent rather than exact match",
+  excitement_anchor: {
+    claim: "Risk-platform roadmap ownership with measurable funnel outcomes",
+    evidence:
+      "Associate Director of Product role, risk roadmap and funnel proof",
+    placement: "both",
+    why_distinctive:
+      "Combines platform ownership, risk relevance, and measurable execution proof",
+  },
   signal_map: [
     {
       signal: "Identity and risk product ownership",
@@ -108,12 +142,33 @@ const validPrompt2 = {
       guardrail: "Keep risk framing adjacent and truthful",
     },
   ],
+  company_context_guidance: [
+    {
+      role: "Associate Director of Product",
+      company: "RiskCo",
+      recommended_context:
+        "B2B risk platform serving enterprise financial institutions",
+      action: "add",
+      evidence:
+        "Source resume describes enterprise financial-institution customers",
+      guardrail:
+        "Do not include candidate-owned outcome metrics in company context",
+    },
+  ],
   bullet_rewrite_instructions: [
     {
       role: "Associate Director of Product",
       action: "rewrite",
       bullet_anchor: "Led roadmap planning",
-      instruction: "Lead with platform and risk outcomes",
+      instruction: {
+        primary_message:
+          "Show platform roadmap ownership for identity-risk workflows",
+        primary_metric: "",
+        mechanism:
+          "sequencing roadmap priorities across product and engineering",
+        optional_context: "for risk and approval workflows",
+        do_not_include: ["direct fraud-specialist title"],
+      },
     },
   ],
   education_notes: [
@@ -148,5 +203,91 @@ describe("prompt stage validation", () => {
 
   it("accepts a valid Prompt 2 payload", () => {
     expect(validatePrompt2Data(validPrompt2)).toEqual([]);
+  });
+});
+
+const validResumeData = {
+  personalInfo: {
+    name: "Hung Nguyen",
+    title: "Product Manager",
+    customTagline: null,
+    email: "hung@example.com",
+    phone: "555-555-5555",
+    location: "Seattle, WA",
+    website: null,
+    linkedin: null,
+    github: null,
+  },
+  summary: "Product manager with marketplace experience.",
+  workExperience: [
+    {
+      id: 1,
+      title: "Product Manager",
+      company: "Amazon",
+      location: "Seattle, WA",
+      context:
+        "Helping sellers list products through product testing services.",
+      years: "2021 - Present",
+      description: ["Launched seller-facing workflows."],
+    },
+  ],
+  education: [
+    {
+      id: 1,
+      institution: "University of Washington",
+      degree: "BS Informatics",
+      years: "2016 - 2020",
+      description: null,
+    },
+  ],
+  personalProjects: [],
+  additional: {
+    technicalSkills: ["SQL"],
+    languages: [],
+    certificationsTraining: [],
+    awards: [],
+  },
+  sectionMeta: [
+    {
+      id: "personal_info",
+      key: "personalInfo",
+      displayName: "Personal Info",
+      sectionType: "personalInfo",
+      isDefault: true,
+      isVisible: true,
+      order: 0,
+    },
+  ],
+  customSections: {},
+};
+
+describe("resume data validation", () => {
+  it("accepts string, null, and missing work experience context values", () => {
+    expect(validateResumeData(validResumeData)).toEqual([]);
+
+    const nullContext = {
+      ...validResumeData,
+      workExperience: [{ ...validResumeData.workExperience[0], context: null }],
+    };
+    expect(validateResumeData(nullContext)).toEqual([]);
+
+    const { context: _context, ...experienceWithoutContext } =
+      validResumeData.workExperience[0];
+    const missingContext = {
+      ...validResumeData,
+      workExperience: [experienceWithoutContext],
+    };
+    expect(validateResumeData(missingContext)).toEqual([]);
+  });
+
+  it("rejects non-string work experience context values", () => {
+    const invalidContext = {
+      ...validResumeData,
+      workExperience: [{ ...validResumeData.workExperience[0], context: 42 }],
+    };
+
+    expect(validateResumeData(invalidContext)).toContain(
+      "workExperience[0].context must be a string or null.",
+    );
   });
 });

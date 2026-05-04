@@ -835,6 +835,7 @@ async function resumePendingExtensionAction(options = {}) {
         prompt1DurationMs: null,
         prompt2DurationMs: null,
         prompt3DurationMs: null,
+        promptMetadata: null,
         patchDurationMs: null,
         cancelReason: null,
         cancelPhase: null,
@@ -1213,6 +1214,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             status: SESSION_STATUS.idle,
             previewUrl: null,
             patchError: null,
+            promptMetadata: null,
             cancelReason: null,
             cancelPhase: null,
           });
@@ -1270,6 +1272,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             status: SESSION_STATUS.idle,
             previewUrl: null,
             patchError: null,
+            promptMetadata: null,
             cancelReason: null,
             cancelPhase: null,
           });
@@ -1292,6 +1295,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             prompt1DurationMs: null,
             prompt2DurationMs: null,
             prompt3DurationMs: null,
+            promptMetadata: null,
             patchDurationMs: null,
             cancelReason: null,
             cancelPhase: null,

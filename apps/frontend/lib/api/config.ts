@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import type { DateDisplayMode } from '@/lib/types/template-settings';
 
 // Supported LLM providers
 export type LLMProvider = 'openai' | 'anthropic' | 'openrouter' | 'gemini' | 'deepseek' | 'ollama';
@@ -180,6 +181,41 @@ export async function updateFeatureConfig(config: FeatureConfigUpdate): Promise<
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || `Failed to update feature config (status ${res.status}).`);
+  }
+
+  return res.json();
+}
+
+// Resume output defaults
+export interface OutputConfig {
+  default_date_display: DateDisplayMode;
+}
+
+export interface OutputConfigUpdate {
+  default_date_display?: DateDisplayMode;
+}
+
+export async function fetchOutputConfig(): Promise<OutputConfig> {
+  const res = await apiFetch('/config/output', { credentials: 'include' });
+
+  if (!res.ok) {
+    throw new Error(`Failed to load output config (status ${res.status}).`);
+  }
+
+  return res.json();
+}
+
+export async function updateOutputConfig(config: OutputConfigUpdate): Promise<OutputConfig> {
+  const res = await apiFetch('/config/output', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(config),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to update output config (status ${res.status}).`);
   }
 
   return res.json();

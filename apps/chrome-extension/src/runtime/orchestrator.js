@@ -7,11 +7,12 @@ import {
 } from "./json.js";
 import { evaluateJobDescriptionGuardrail } from "./job-guardrail.js";
 import {
-  loadSystemPromptGuardrails,
-  renderPrompt1,
-  renderPrompt2,
-  renderPrompt3,
-  renderPrompt4,
+  buildPromptRunMetadata,
+  loadSystemPromptGuardrailsWithMetadata,
+  renderPrompt1WithMetadata,
+  renderPrompt2WithMetadata,
+  renderPrompt3WithMetadata,
+  renderPrompt4WithMetadata,
 } from "./prompt-loader.js";
 import { scrapeLinkedInJob } from "./linkedin.js";
 import {
@@ -43,9 +44,7 @@ import {
   setStoryboardAsset,
   upsertHistoryEntry,
 } from "./storage.js";
-import {
-  alignSectionMetaToSourceResume,
-} from "./resume-structure.js";
+import { alignSectionMetaToSourceResume } from "./resume-structure.js";
 import { captureExtensionEvent } from "./analytics.js";
 import { getActiveLlmProfile } from "./llm/profiles.js";
 import { runPrompt } from "./llm/runners.js";
@@ -406,7 +405,7 @@ const PRESERVED_PERSONAL_INFO_FIELDS = [
   "github",
 ];
 
-const PRESERVED_EXPERIENCE_FIELDS = ["title", "company", "years"];
+const PRESERVED_EXPERIENCE_FIELDS = ["title", "company", "context", "years"];
 
 function preserveExperienceFacts(masterExperience, generatedExperience) {
   if (!Array.isArray(masterExperience) || !Array.isArray(generatedExperience)) {
@@ -635,13 +634,18 @@ function prefixGenerationFeedbackSummary(feedback, profile) {
   };
 }
 
-function buildStructuredPromptValidationResult(rawText, validator, extractor = null) {
+function buildStructuredPromptValidationResult(
+  rawText,
+  validator,
+  extractor = null,
+) {
   try {
-    const parsed = typeof extractor === "function"
-      ? extractor(rawText)
-      : extractJsonFromText(rawText, {
-          validate: (candidate) => validator(candidate).length === 0,
-        });
+    const parsed =
+      typeof extractor === "function"
+        ? extractor(rawText)
+        : extractJsonFromText(rawText, {
+            validate: (candidate) => validator(candidate).length === 0,
+          });
     const validationErrors = validator(parsed);
     if (validationErrors.length > 0) {
       return {
@@ -666,10 +670,7 @@ function formatPreviousInvalidOutput(previousRawText) {
     typeof previousRawText === "string" && previousRawText.trim()
       ? previousRawText.trim()
       : "(empty response)";
-  return [
-    "Previous invalid response:",
-    content,
-  ].join("\n");
+  return ["Previous invalid response:", content].join("\n");
 }
 
 function validatePrompt1RawOutput(rawText) {
@@ -853,13 +854,14 @@ async function bootstrapMasterResumeFromMarkdown({
 
   try {
     cancel.throwIfCanceled("base resume setup");
-    const prompt4 = await renderPrompt4(
+    const prompt4Rendered = await renderPrompt4WithMetadata(
       {
         currentResume: localResumeMarkdown,
         systemPrompt,
       },
       activeLlmProfile,
     );
+    const prompt4 = prompt4Rendered.text;
     await setExtensionState({
       prompt4Input: prompt4,
       prompt4Raw: null,
@@ -941,6 +943,7 @@ async function bootstrapMasterResumeFromMarkdown({
       prompt4Input: prompt4,
       prompt4Raw,
       prompt4Result: parsedResumeData,
+      prompt4Metadata: prompt4Rendered.metadata,
     };
   } catch (error) {
     if (isRunCanceledError(error)) {
@@ -983,6 +986,7 @@ async function resolveBaseResumeId({
     prompt4Input: null,
     prompt4Raw: null,
     prompt4Result: null,
+    prompt4Metadata: null,
   };
 }
 
@@ -1006,6 +1010,8 @@ export async function generateResumeForLinkedInJob(
   let prompt3Input = null;
   let prompt3DurationMs = null;
   let patchDurationMs = null;
+  let promptMetadata = null;
+  const promptMetadataByName = {};
   logInfo("Orchestrator", "Loading local assets.");
   const {
     masterResumeContextAsset,
@@ -1014,7 +1020,17 @@ export async function generateResumeForLinkedInJob(
     apifyFallbackSettings,
   } = await getUserAssets();
   const activeLlmProfile = getActiveLlmProfile(llmSettings);
-  const systemPrompt = await loadSystemPromptGuardrails();
+  const systemPromptRendered = await loadSystemPromptGuardrailsWithMetadata();
+  const systemPrompt = systemPromptRendered.text;
+  const refreshPromptMetadata = async () => {
+    promptMetadata = await buildPromptRunMetadata({
+      profile: activeLlmProfile,
+      prompts: promptMetadataByName,
+      systemPrompt: systemPromptRendered.metadata,
+    });
+    return promptMetadata;
+  };
+  await refreshPromptMetadata();
   const currentExtensionState = await getExtensionState();
   const runId = currentExtensionState?.sessionId ?? null;
   const cancel = createCancelHelpers(runId);
@@ -1076,6 +1092,10 @@ export async function generateResumeForLinkedInJob(
   prompt4Input = baseResumeResolution.prompt4Input ?? null;
   prompt4Raw = baseResumeResolution.prompt4Raw ?? null;
   prompt4Result = baseResumeResolution.prompt4Result ?? null;
+  if (baseResumeResolution.prompt4Metadata) {
+    promptMetadataByName.prompt4 = baseResumeResolution.prompt4Metadata;
+    await refreshPromptMetadata();
+  }
   logInfo("Orchestrator", "Resolved base resume for cloning.", {
     baseResumeId,
   });
@@ -1113,6 +1133,7 @@ export async function generateResumeForLinkedInJob(
     prompt4Input,
     prompt4Raw,
     prompt4Result,
+    promptMetadata,
     prompt1Input: null,
     prompt1Raw: null,
     prompt1Result: null,
@@ -1195,10 +1216,17 @@ export async function generateResumeForLinkedInJob(
   });
 
   logInfo("Orchestrator", "Rendering Prompt 1.");
-  const prompt1 = await renderPrompt1(promptContext, activeLlmProfile);
+  const prompt1Rendered = await renderPrompt1WithMetadata(
+    promptContext,
+    activeLlmProfile,
+  );
+  const prompt1 = prompt1Rendered.text;
   prompt1Input = prompt1;
+  promptMetadataByName.prompt1 = prompt1Rendered.metadata;
+  await refreshPromptMetadata();
   await setExtensionState({
     prompt1Input,
+    promptMetadata,
   });
   logPromptDebug("Prompt 1", "input", prompt1);
 
@@ -1269,6 +1297,7 @@ export async function generateResumeForLinkedInJob(
     prompt1Raw,
     prompt1Result,
     prompt1DurationMs,
+    promptMetadata,
     status: SESSION_STATUS.prompt1Done,
     resumeSource: currentResume,
   });
@@ -1280,10 +1309,17 @@ export async function generateResumeForLinkedInJob(
   });
 
   logInfo("Orchestrator", "Rendering Prompt 2.");
-  const prompt2 = await renderPrompt2(promptContext, activeLlmProfile);
+  const prompt2Rendered = await renderPrompt2WithMetadata(
+    promptContext,
+    activeLlmProfile,
+  );
+  const prompt2 = prompt2Rendered.text;
   prompt2Input = prompt2;
+  promptMetadataByName.prompt2 = prompt2Rendered.metadata;
+  await refreshPromptMetadata();
   await setExtensionState({
     prompt2Input,
+    promptMetadata,
   });
   logPromptDebug("Prompt 2", "input", prompt2);
   logInfo("Orchestrator", "Running Prompt 2.");
@@ -1353,6 +1389,7 @@ export async function generateResumeForLinkedInJob(
     prompt2Raw,
     prompt2Result,
     prompt2DurationMs,
+    promptMetadata,
     status: SESSION_STATUS.prompt2Done,
   });
   await captureExtensionEvent("prompt_stage_succeeded", {
@@ -1363,10 +1400,17 @@ export async function generateResumeForLinkedInJob(
   });
 
   logInfo("Orchestrator", "Rendering Prompt 3.");
-  const prompt3 = await renderPrompt3(promptContext, activeLlmProfile);
+  const prompt3Rendered = await renderPrompt3WithMetadata(
+    promptContext,
+    activeLlmProfile,
+  );
+  const prompt3 = prompt3Rendered.text;
   prompt3Input = prompt3;
+  promptMetadataByName.prompt3 = prompt3Rendered.metadata;
+  await refreshPromptMetadata();
   await setExtensionState({
     prompt3Input,
+    promptMetadata,
   });
   logPromptDebug("Prompt 3", "input", prompt3);
   logInfo("Orchestrator", "Running Prompt 3.");
@@ -1468,6 +1512,7 @@ export async function generateResumeForLinkedInJob(
     prompt3ValidationErrors: validationErrors,
     patchPayload,
     prompt3DurationMs,
+    promptMetadata,
     status:
       validationErrors.length === 0
         ? SESSION_STATUS.validated
@@ -1528,6 +1573,7 @@ export async function generateResumeForLinkedInJob(
       patchDurationMs,
       totalDurationMs: Date.now() - runStartedMs,
       prompt3ValidationErrorCount: validationErrors.length,
+      promptMetadata,
       prompt4Input,
       prompt4Raw,
       prompt4Result,
@@ -1548,9 +1594,15 @@ export async function generateResumeForLinkedInJob(
     logInfo("Orchestrator", "Patching generated resume.");
     cancel.throwIfCanceled("resume patch");
     const patchStartedMs = Date.now();
-    await patchResume(resumeId, prompt3Parsed, prompt3Feedback, {
-      prompt2: prompt2Result,
-    }, { signal: cancel.signal() });
+    await patchResume(
+      resumeId,
+      prompt3Parsed,
+      prompt3Feedback,
+      {
+        prompt2: prompt2Result,
+      },
+      { signal: cancel.signal() },
+    );
     patchDurationMs = Date.now() - patchStartedMs;
     await setExtensionState({ patchDurationMs });
     cancel.throwIfCanceled("resume patch");
@@ -1680,15 +1732,20 @@ export async function generateResumeForLinkedInJob(
   }
 
   cancel.throwIfCanceled("preview handoff");
-  const previewUrl = await buildPreviewUrl(resumeId, {
-    runId,
-    source: "extension",
-  }, { signal: cancel.signal() });
+  const previewUrl = await buildPreviewUrl(
+    resumeId,
+    {
+      runId,
+      source: "extension",
+    },
+    { signal: cancel.signal() },
+  );
   await setExtensionState({
     status: SESSION_STATUS.patched,
     patchError: null,
     previewUrl,
     patchDurationMs,
+    promptMetadata,
   });
   logInfo("Orchestrator", "Opening generated resume preview.", {
     resumeId,

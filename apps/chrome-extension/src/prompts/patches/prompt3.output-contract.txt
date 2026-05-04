@@ -1,3 +1,10 @@
+---
+prompt_artifact: prompt3.output_contract
+prompt_version: v2.0.1
+prompt_label: tailored-resume-output-contract-company-context-placement
+prompt_notes: Defines the final resume output contract, including optional workExperience.context field type and placement constraints.
+ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
+---
 Output contract:
 - Return valid JSON only.
 - Do not output markdown fences.
@@ -28,6 +35,7 @@ Return exactly one JSON object matching this schema:
         "title": "",
         "company": "",
         "location": null,
+        "context": null,
         "years": "",
         "description": []
       }
@@ -96,6 +104,9 @@ Additional schema rules:
   - `pros`, `cons`, and `caveats` should contain short bullet-style strings only
   - keep every item concise and user-facing
 - If there is no meaningful feedback, you may omit `generation_feedback` or return it with empty values.
+- `workExperience[].context` is optional and must be a string or null when present.
+- Use `null` or omit `workExperience[].context` when no supported company context exists.
+- Do not put company context inside `workExperience[].description`.
 - Valid `sectionType` values are:
   - `personalInfo`
   - `text`

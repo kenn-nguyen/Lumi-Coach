@@ -27,6 +27,14 @@ export function mergeTemplateSettings(settings?: PartialTemplateSettings | null)
   };
 }
 
+export function omitDateDisplaySetting(
+  settings: PartialTemplateSettings
+): Omit<PartialTemplateSettings, 'dateDisplay'> {
+  const nextSettings = { ...settings };
+  delete nextSettings.dateDisplay;
+  return nextSettings;
+}
+
 export function loadSavedTemplateSettings(): TemplateSettings {
   if (typeof window === 'undefined') {
     return mergeTemplateSettings();
@@ -38,7 +46,9 @@ export function loadSavedTemplateSettings(): TemplateSettings {
   }
 
   try {
-    return mergeTemplateSettings(JSON.parse(savedSettings) as PartialTemplateSettings);
+    return mergeTemplateSettings(
+      omitDateDisplaySetting(JSON.parse(savedSettings) as PartialTemplateSettings)
+    );
   } catch {
     return mergeTemplateSettings();
   }

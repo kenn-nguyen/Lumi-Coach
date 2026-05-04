@@ -45,6 +45,8 @@ def mock_resume_record(sample_resume):
         "processed_data": sample_resume,
         "processing_status": "ready",
         "generation_feedback": None,
+        "generation_artifacts": None,
+        "template_settings": None,
         "cover_letter": None,
         "outreach_message": None,
         "title": None,
@@ -67,6 +69,21 @@ class TestGetResume:
         assert data["resume_id"] == "res-123"
         assert data["processed_resume"] is not None
         assert data["processed_resume"]["summary"] != ""
+        assert data["template_settings"] is None
+
+    @patch("app.routers.resumes.db")
+    async def test_fetch_existing_resume_includes_template_settings(
+        self, mock_db, client, mock_resume_record
+    ):
+        mock_db.get_resume.return_value = {
+            **mock_resume_record,
+            "template_settings": {"dateDisplay": "month-year"},
+        }
+        async with client:
+            resp = await client.get("/api/v1/resumes", params={"resume_id": "res-123"})
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["template_settings"] == {"dateDisplay": "month-year"}
 
     @patch("app.routers.resumes.db")
     async def test_fetch_nonexistent_returns_404(self, mock_db, client):
@@ -103,6 +120,28 @@ class TestListResumes:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert len(data) == 2
+
+
+class TestDownloadResumePdf:
+    """GET /api/v1/resumes/{resume_id}/pdf"""
+
+    @patch("app.routers.resumes.render_resume_pdf", new_callable=AsyncMock)
+    @patch("app.routers.resumes.db")
+    async def test_forwards_date_display_to_print_route(
+        self, mock_db, mock_render_resume_pdf, client, mock_resume_record
+    ):
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_render_resume_pdf.return_value = b"%PDF-1.4"
+
+        async with client:
+            resp = await client.get(
+                "/api/v1/resumes/res-123/pdf",
+                params={"dateDisplay": "year-only"},
+            )
+
+        assert resp.status_code == 200
+        print_url = mock_render_resume_pdf.call_args.args[0]
+        assert "dateDisplay=year-only" in print_url
 
 
 class TestDeleteResume:
@@ -315,6 +354,7 @@ class TestCloneResume:
         assert kwargs["content"] == mock_resume_record["content"]
         assert kwargs["parent_id"] == "res-123"
         assert kwargs["is_master"] is False
+        assert kwargs["template_settings"] is None
 
     @patch("app.routers.resumes.db")
     async def test_clone_nonexistent_resume_returns_404(self, mock_db, client):
@@ -322,6 +362,42 @@ class TestCloneResume:
 
         async with client:
             resp = await client.post("/api/v1/resumes/nonexistent/clone")
+
+        assert resp.status_code == 404
+
+
+class TestUpdateResumeTemplateSettings:
+    """PATCH /api/v1/resumes/{resume_id}/template-settings"""
+
+    @patch("app.routers.resumes.db")
+    async def test_updates_resume_template_settings(self, mock_db, client, mock_resume_record):
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_db.update_resume.return_value = {
+            **mock_resume_record,
+            "template_settings": {"dateDisplay": "month-year"},
+        }
+
+        async with client:
+            resp = await client.patch(
+                "/api/v1/resumes/res-123/template-settings",
+                json={"dateDisplay": "month-year"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"] == {"dateDisplay": "month-year"}
+        mock_db.update_resume.assert_called_once_with(
+            "res-123", {"template_settings": {"dateDisplay": "month-year"}}
+        )
+
+    @patch("app.routers.resumes.db")
+    async def test_update_resume_template_settings_returns_404(self, mock_db, client):
+        mock_db.get_resume.return_value = None
+
+        async with client:
+            resp = await client.patch(
+                "/api/v1/resumes/missing/template-settings",
+                json={"dateDisplay": "year-only"},
+            )
 
         assert resp.status_code == 404
 

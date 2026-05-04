@@ -31,6 +31,7 @@ RESUME_SCHEMA_EXAMPLE = """{
       "title": "Senior Software Engineer",
       "company": "Tech Corp",
       "location": "San Francisco, CA",
+      "context": "B2B SaaS platform for enterprise developer teams",
       "years": "Jan 2020 - Present",
       "description": [
         "Led development of microservices architecture",
@@ -94,6 +95,7 @@ IMPROVE_SCHEMA_EXAMPLE = """{
       "title": "Senior Software Engineer",
       "company": "Tech Corp",
       "location": "San Francisco, CA",
+      "context": "B2B SaaS platform for enterprise developer teams",
       "years": "Jan 2020 - Present",
       "description": [
         "Led development of microservices architecture",

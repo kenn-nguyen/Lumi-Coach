@@ -47,6 +47,9 @@ from app.schemas import (
     ResumeFetchData,
     ResumeFetchResponse,
     ResumeListResponse,
+    ResumeTemplateSettings,
+    ResumeTemplateSettingsResponse,
+    ResumeTemplateSettingsUpdate,
     ResumeSummary,
     ResumeUploadResponse,
     ResumeUpdateRequest,
@@ -176,7 +179,7 @@ PRESERVED_PERSONAL_INFO_FIELDS = (
     "linkedin",
     "github",
 )
-PRESERVED_EXPERIENCE_FIELDS = ("title", "company", "years")
+PRESERVED_EXPERIENCE_FIELDS = ("title", "company", "context", "years")
 
 
 def _resolve_rewrite_strategy_context(
@@ -489,6 +492,12 @@ def _build_resume_fetch_response(
         if raw_generation_artifacts
         else None
     )
+    raw_template_settings = resume.get("template_settings")
+    template_settings = (
+        ResumeTemplateSettings.model_validate(raw_template_settings)
+        if raw_template_settings
+        else None
+    )
 
     return ResumeFetchResponse(
         request_id=request_id or str(uuid4()),
@@ -502,6 +511,7 @@ def _build_resume_fetch_response(
             outreach_message=resume.get("outreach_message"),
             parent_id=resume.get("parent_id"),
             title=resume.get("title"),
+            template_settings=template_settings,
         ),
     )
 
@@ -973,6 +983,7 @@ async def clone_resume_endpoint(resume_id: str) -> ResumeFetchResponse:
         processing_status=source_resume.get("processing_status", "ready"),
         cover_letter=source_resume.get("cover_letter"),
         outreach_message=source_resume.get("outreach_message"),
+        template_settings=copy.deepcopy(source_resume.get("template_settings")),
         title=source_resume.get("title"),
         original_markdown=source_resume.get("original_markdown"),
     )
@@ -1727,6 +1738,34 @@ async def update_resume_endpoint(
     return _build_resume_fetch_response(updated)
 
 
+@router.patch("/{resume_id}/template-settings", response_model=ResumeTemplateSettingsResponse)
+async def update_resume_template_settings_endpoint(
+    resume_id: str, payload: ResumeTemplateSettingsUpdate
+) -> ResumeTemplateSettingsResponse:
+    """Update per-resume output settings used by preview and PDF rendering."""
+    existing = db.get_resume(resume_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    next_settings = copy.deepcopy(existing.get("template_settings") or {})
+    if payload.dateDisplay is not None:
+        next_settings["dateDisplay"] = payload.dateDisplay
+
+    if not next_settings:
+        next_settings = {"dateDisplay": "month-year"}
+
+    updated = db.update_resume(resume_id, {"template_settings": next_settings})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update resume settings")
+
+    return ResumeTemplateSettingsResponse(
+        request_id=str(uuid4()),
+        data=ResumeTemplateSettings.model_validate(
+            updated.get("template_settings") or next_settings
+        ),
+    )
+
+
 @router.post("/link-job-context")
 async def link_extension_generated_resume_to_job(
     request: ExtensionResumeJobLinkRequest,
@@ -1792,6 +1831,7 @@ async def download_resume_pdf(
     compactMode: bool = Query(False),
     showContactIcons: bool = Query(False),
     accentColor: str = Query("blue", pattern="^(blue|green|orange|red)$"),
+    dateDisplay: str = Query("month-year", pattern="^(month-year|year-only)$"),
     lang: str | None = Query(None, pattern="^[a-z]{2}(-[A-Z]{2})?$"),
     filename: str | None = Query(None, max_length=220),
     current_user: AuthenticatedUser = Depends(require_current_user),
@@ -1811,6 +1851,7 @@ async def download_resume_pdf(
     - bodyFont: serif, sans-serif, or mono
     - compactMode: enable tighter spacing
     - showContactIcons: show icons in contact info
+    - dateDisplay: month-year or year-only
     - lang: locale used for print page translations
     """
     resume = db.get_resume(resume_id)
@@ -1835,6 +1876,7 @@ async def download_resume_pdf(
         f"&compactMode={str(compactMode).lower()}"
         f"&showContactIcons={str(showContactIcons).lower()}"
         f"&accentColor={accentColor}"
+        f"&dateDisplay={dateDisplay}"
     )
     auth_token, _ = create_backend_access_token_for_user(current_user)
     params = f"{params}&authToken={quote(auth_token, safe='')}"

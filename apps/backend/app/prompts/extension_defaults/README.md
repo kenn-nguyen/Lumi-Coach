@@ -4,7 +4,7 @@ This folder contains the backend-owned default prompt artifacts synced to the Ch
 
 `POST /api/v1/config/extension-prompts/sync`
 
-The extension stores these artifacts as cached server defaults. User-uploaded prompt bodies still take priority over server defaults, but output contracts, provider patches, and guardrails are system-owned.
+The extension stores these artifacts as cached server defaults. User-uploaded prompt bodies still take priority over server defaults, but output contracts and guardrails are system-owned.
 
 ## Base Prompt Templates
 
@@ -36,33 +36,6 @@ Sync artifact keys:
 - `prompt3.output_contract`
 - `prompt4.output_contract`
 
-## Provider Patches
-
-Provider patches live in `patches/` and are applied per prompt/provider/mode for Prompt 1 through Prompt 3.
-
-Supported provider patch suffixes:
-
-- `chatgpt-web`
-- `chatgpt-api`
-- `claude-web`
-- `claude-api`
-- `gemini-web`
-- `gemini-api`
-
-Filename pattern:
-
-`patches/{prompt}.{provider-mode}.txt`
-
-Sync artifact key pattern:
-
-`{prompt}.patch.{provider-mode}`
-
-Examples:
-
-- `patches/prompt1.chatgpt-web.txt` -> `prompt1.patch.chatgpt-web`
-- `patches/prompt2.claude-api.txt` -> `prompt2.patch.claude-api`
-- `patches/prompt3.gemini-web.txt` -> `prompt3.patch.gemini-web`
-
 ## System Guardrails
 
 - `patches/system.guardrails.txt`
@@ -78,3 +51,19 @@ The sync endpoint hashes each artifact and returns only changed artifacts compar
 When adding, removing, or renaming an artifact, update `_get_extension_prompt_artifacts()` in:
 
 `apps/backend/app/routers/config.py`
+
+## Prompt Version Metadata
+
+Every prompt artifact should start with a metadata block:
+
+```txt
+---
+prompt_artifact: prompt1.template
+prompt_version: v1
+prompt_label: short-human-readable-label
+prompt_notes: One sentence describing the behavior this version represents.
+ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior.
+---
+```
+
+The extension records this block in run `promptMetadata` and strips it before sending the prompt to the model. Treat `prompt_version`, `prompt_label`, and `prompt_notes` as human-managed release notes for prompt behavior, separate from the computed hashes.

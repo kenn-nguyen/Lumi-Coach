@@ -24,6 +24,8 @@ from app.schemas import (
     PromptConfigRequest,
     PromptConfigResponse,
     PromptOption,
+    OutputConfigRequest,
+    OutputConfigResponse,
     ApiKeyProviderStatus,
     ApiKeyStatusResponse,
     ApiKeysUpdateRequest,
@@ -84,6 +86,12 @@ def _get_feature_bool(stored: dict, key: str, default: bool = False) -> bool:
     return bool(stored[key]) if key in stored else default
 
 
+def _get_date_display(stored: dict, key: str = "default_date_display") -> str:
+    """Resolve output date display defaults with a month/year fallback."""
+    value = stored.get(key)
+    return value if value in {"month-year", "year-only"} else "month-year"
+
+
 def _get_extension_prompts_root() -> Path:
     """Return the backend-owned path containing extension prompt defaults."""
     return Path(__file__).resolve().parents[1] / "prompts" / "extension_defaults"
@@ -96,15 +104,7 @@ def _read_extension_prompt_file(relative_path: str) -> str:
 
 def _get_extension_prompt_artifacts() -> dict[str, str]:
     """Build the full extension prompt artifact map."""
-    patch_keys = (
-        "chatgpt-web",
-        "claude-web",
-        "claude-api",
-        "chatgpt-api",
-        "gemini-web",
-        "gemini-api",
-    )
-    artifacts: dict[str, str] = {
+    return {
         "prompt1.template": _read_extension_prompt_file("prompt1.txt"),
         "prompt1.output_contract": _read_extension_prompt_file(
             "patches/prompt1.output-contract.txt"
@@ -125,14 +125,6 @@ def _get_extension_prompt_artifacts() -> dict[str, str]:
             "patches/system.guardrails.txt"
         ),
     }
-
-    for prompt_name in ("prompt1", "prompt2", "prompt3"):
-        for patch_key in patch_keys:
-            artifacts[f"{prompt_name}.patch.{patch_key}"] = _read_extension_prompt_file(
-                f"patches/{prompt_name}.{patch_key}.txt"
-            )
-
-    return artifacts
 
 
 def _hash_prompt_artifact(content: str) -> str:
@@ -359,6 +351,25 @@ async def update_feature_config(request: FeatureConfigRequest) -> FeatureConfigR
             "preserve_generated_resume_facts", True
         ),
     )
+
+
+@router.get("/output", response_model=OutputConfigResponse)
+async def get_output_config() -> OutputConfigResponse:
+    """Get current resume output defaults."""
+    stored = _load_config()
+    return OutputConfigResponse(default_date_display=_get_date_display(stored))
+
+
+@router.put("/output", response_model=OutputConfigResponse)
+async def update_output_config(request: OutputConfigRequest) -> OutputConfigResponse:
+    """Update resume output defaults."""
+    stored = _load_config()
+
+    if request.default_date_display is not None:
+        stored["default_date_display"] = request.default_date_display
+
+    _save_config(stored)
+    return OutputConfigResponse(default_date_display=_get_date_display(stored))
 
 
 # Supported languages for i18n and generated content.

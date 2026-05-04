@@ -10,6 +10,8 @@ import {
   testLlmConnection,
   fetchFeatureConfig,
   updateFeatureConfig,
+  fetchOutputConfig,
+  updateOutputConfig,
   fetchPromptConfig,
   updatePromptConfig,
   clearAllApiKeys,
@@ -20,6 +22,7 @@ import {
   type LLMHealthCheck,
   type PromptOption,
 } from '@/lib/api/config';
+import type { DateDisplayMode } from '@/lib/types/template-settings';
 import { API_URL } from '@/lib/api/client';
 import { getVersionString } from '@/lib/config/version';
 import { ToggleSwitch } from '@/components/ui/toggle-switch';
@@ -145,6 +148,8 @@ export default function SettingsPage() {
   const [promptConfigLoading, setPromptConfigLoading] = useState(false);
   const [promptOptions, setPromptOptions] = useState<PromptOption[]>([]);
   const [defaultPromptId, setDefaultPromptId] = useState('keywords');
+  const [defaultDateDisplay, setDefaultDateDisplay] = useState<DateDisplayMode>('month-year');
+  const [outputConfigLoading, setOutputConfigLoading] = useState(false);
 
   // Danger Zone state
   const [showClearApiKeysDialog, setShowClearApiKeysDialog] = useState(false);
@@ -251,9 +256,10 @@ export default function SettingsPage() {
 
     async function loadConfig() {
       try {
-        const [llmConfig, featureConfig, promptConfig] = await Promise.all([
+        const [llmConfig, featureConfig, outputConfig, promptConfig] = await Promise.all([
           fetchLlmConfig().catch(() => null),
           fetchFeatureConfig().catch(() => null),
+          fetchOutputConfig().catch(() => null),
           fetchPromptConfig().catch(() => null),
         ]);
 
@@ -281,6 +287,10 @@ export default function SettingsPage() {
           setEnableCoverLetter(featureConfig.enable_cover_letter);
           setEnableOutreach(featureConfig.enable_outreach_message);
           setPreserveGeneratedResumeFacts(featureConfig.preserve_generated_resume_facts);
+        }
+
+        if (outputConfig) {
+          setDefaultDateDisplay(outputConfig.default_date_display);
         }
 
         if (promptConfig) {
@@ -455,6 +465,23 @@ export default function SettingsPage() {
       setError((err as Error).message || t('settings.errors.unableToSaveConfiguration'));
     } finally {
       setPromptConfigLoading(false);
+    }
+  };
+
+  const handleOutputConfigChange = async (checked: boolean) => {
+    const nextDateDisplay: DateDisplayMode = checked ? 'year-only' : 'month-year';
+    setDefaultDateDisplay(nextDateDisplay);
+    setOutputConfigLoading(true);
+    setError(null);
+    try {
+      const updated = await updateOutputConfig({ default_date_display: nextDateDisplay });
+      setDefaultDateDisplay(updated.default_date_display);
+    } catch (err) {
+      console.error('Failed to update output config', err);
+      setDefaultDateDisplay(nextDateDisplay === 'year-only' ? 'month-year' : 'year-only');
+      setError((err as Error).message || t('settings.errors.unableToSaveConfiguration'));
+    } finally {
+      setOutputConfigLoading(false);
     }
   };
 
@@ -943,6 +970,28 @@ export default function SettingsPage() {
                   )}
                 </div>
               )}
+            </div>
+          </section>
+
+          {/* Resume Output Section */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 border-b border-border/80 pb-2">
+              <FileText className="w-4 h-4" />
+              <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                {t('settings.resumeOutput.title')}
+              </h2>
+            </div>
+
+            <div className="space-y-3">
+              <p className="mb-4 text-sm text-gray-600">{t('settings.resumeOutput.description')}</p>
+
+              <ToggleSwitch
+                checked={defaultDateDisplay === 'year-only'}
+                onCheckedChange={handleOutputConfigChange}
+                label={t('settings.resumeOutput.yearOnly.label')}
+                description={t('settings.resumeOutput.yearOnly.description')}
+                disabled={outputConfigLoading}
+              />
             </div>
           </section>
 

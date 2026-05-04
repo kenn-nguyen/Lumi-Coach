@@ -7,6 +7,7 @@ import type {
 } from '@/components/dashboard/resume-component';
 import { getSortedSections } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
+import { type DateDisplayMode } from '@/lib/types/template-settings';
 import { SafeHtml } from './safe-html';
 import { buildContactDisplay } from './contact-utils';
 import baseStyles from './styles/_base.module.css';
@@ -16,6 +17,7 @@ interface ResumeModernProps {
   data: ResumeData;
   showContactIcons?: boolean;
   additionalSectionLabels?: Partial<AdditionalSectionLabels>;
+  dateDisplay?: DateDisplayMode;
 }
 
 /**
@@ -31,6 +33,7 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
   data,
   showContactIcons = false,
   additionalSectionLabels,
+  dateDisplay = 'month-year',
 }) => {
   const { personalInfo, summary, workExperience, education, personalProjects, additional } = data;
 
@@ -116,7 +119,7 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
                   >
                     <h4 className={baseStyles['resume-item-title']}>{exp.title}</h4>
                     <span className={`${baseStyles['resume-date']} ml-4`}>
-                      {formatDateRange(exp.years)}
+                      {formatDateRange(exp.years, { dateDisplay })}
                     </span>
                   </div>
                   <div
@@ -125,6 +128,9 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
                     <span>{exp.company}</span>
                     {exp.location && <span>{exp.location}</span>}
                   </div>
+                  {exp.context && (
+                    <p className={baseStyles['resume-item-context']}>{exp.context}</p>
+                  )}
                   {exp.description && exp.description.length > 0 && (
                     <ul
                       className={`ml-4 ${baseStyles['resume-list']} ${baseStyles['resume-text-sm']}`}
@@ -201,7 +207,7 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
                     </div>
                     {project.years && (
                       <span className={`${baseStyles['resume-date']} ml-4`}>
-                        {formatDateRange(project.years)}
+                        {formatDateRange(project.years, { dateDisplay })}
                       </span>
                     )}
                   </div>
@@ -245,7 +251,7 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
                   >
                     <h4 className={baseStyles['resume-item-title']}>{edu.institution}</h4>
                     <span className={`${baseStyles['resume-date']} ml-4`}>
-                      {formatDateRange(edu.years)}
+                      {formatDateRange(edu.years, { dateDisplay })}
                     </span>
                   </div>
                   <div

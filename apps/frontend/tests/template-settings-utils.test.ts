@@ -56,6 +56,19 @@ describe('template settings utils', () => {
         },
       });
     });
+
+    it('adds the default date display mode to older saved settings', () => {
+      expect(
+        mergeTemplateSettings({
+          template: 'modern',
+          compactMode: true,
+        })
+      ).toMatchObject({
+        template: 'modern',
+        compactMode: true,
+        dateDisplay: 'month-year',
+      });
+    });
   });
 
   describe('loadSavedTemplateSettings', () => {
@@ -71,6 +84,7 @@ describe('template settings utils', () => {
               pageSize: 'LETTER',
               margins: { left: 18, right: 16 },
               compactMode: true,
+              dateDisplay: 'year-only',
             })
           : null
       );
@@ -85,6 +99,7 @@ describe('template settings utils', () => {
           right: 16,
         },
         compactMode: true,
+        dateDisplay: 'month-year',
       });
     });
 

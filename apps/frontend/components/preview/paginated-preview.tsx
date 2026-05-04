@@ -116,6 +116,15 @@ export function PaginatedPreview({
       compactMode: typeof nextChecked === 'boolean' ? nextChecked : !settings.compactMode,
     });
   };
+  const toggleDateDisplay = (nextChecked?: boolean) => {
+    if (!onSettingsChange) return;
+    const checked =
+      typeof nextChecked === 'boolean' ? nextChecked : settings.dateDisplay !== 'year-only';
+    onSettingsChange({
+      ...settings,
+      dateDisplay: checked ? 'year-only' : 'month-year',
+    });
+  };
 
   // Get content area dimensions for the hidden measurement container
   const contentArea = getContentAreaPx(settings.pageSize, settings.margins);
@@ -163,7 +172,16 @@ export function PaginatedPreview({
         </div>
 
         {/* Page count + fit toggle */}
-        <div className="flex items-center gap-2 text-gray-600">
+        <div className="flex flex-wrap items-center justify-end gap-2 text-gray-600">
+          <div title={t('preview.yearOnlyDatesHint')}>
+            <ToggleSwitch
+              checked={settings.dateDisplay === 'year-only'}
+              onCheckedChange={toggleDateDisplay}
+              label={t('preview.yearOnlyDates')}
+              display="inline"
+              disabled={!onSettingsChange}
+            />
+          </div>
           <ToggleSwitch
             checked={settings.compactMode}
             onCheckedChange={toggleCompactMode}

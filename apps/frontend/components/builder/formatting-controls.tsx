@@ -99,6 +99,15 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
     });
   };
 
+  const handleDateDisplayToggle = (nextChecked?: boolean) => {
+    const checked =
+      typeof nextChecked === 'boolean' ? nextChecked : settings.dateDisplay !== 'year-only';
+    onChange({
+      ...settings,
+      dateDisplay: checked ? 'year-only' : 'month-year',
+    });
+  };
+
   const handleAccentColorChange = (accentColor: AccentColor) => {
     onChange({ ...settings, accentColor });
   };
@@ -396,6 +405,14 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                     label="Icons"
                     display="inline"
                   />
+                  <div title={t('builder.formatting.yearOnlyDatesHint')}>
+                    <ToggleSwitch
+                      checked={settings.dateDisplay === 'year-only'}
+                      onCheckedChange={handleDateDisplayToggle}
+                      label={t('builder.formatting.yearOnlyDates')}
+                      display="inline"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

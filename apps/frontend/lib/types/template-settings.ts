@@ -11,6 +11,8 @@ export type PageSize = 'A4' | 'LETTER';
 
 export type AccentColor = 'blue' | 'green' | 'orange' | 'red';
 
+export type DateDisplayMode = 'month-year' | 'year-only';
+
 export type SpacingLevel = 1 | 2 | 3 | 4 | 5;
 
 export type HeaderFontFamily = 'serif' | 'sans-serif' | 'mono';
@@ -45,7 +47,10 @@ export interface TemplateSettings {
   compactMode: boolean; // Apply tighter spacing across the board
   showContactIcons: boolean; // Show icons next to contact info
   accentColor: AccentColor; // Accent color for Modern template
+  dateDisplay: DateDisplayMode; // Render resume dates as month/year text or years only
 }
+
+export type ResumeTemplateSettings = Pick<TemplateSettings, 'dateDisplay'>;
 
 /**
  * Default template settings
@@ -59,6 +64,7 @@ export const DEFAULT_TEMPLATE_SETTINGS: TemplateSettings = {
   compactMode: false,
   showContactIcons: false,
   accentColor: 'blue',
+  dateDisplay: 'month-year',
 };
 
 /**

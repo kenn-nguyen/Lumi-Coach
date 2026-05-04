@@ -60,6 +60,11 @@ export function HighlightedResumeView({
                   )}
                 </div>
                 {exp.years && <div className="text-xs text-gray-500 mb-1">{exp.years}</div>}
+                {exp.context && (
+                  <div className="text-xs italic text-gray-600 mb-1">
+                    <HighlightedText text={exp.context} keywords={keywords} />
+                  </div>
+                )}
                 {exp.description && (
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     {exp.description.map((bullet, i) => (

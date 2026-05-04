@@ -37,6 +37,7 @@ import {
   fetchResume,
   type GenerationArtifacts,
   updateResume,
+  updateResumeTemplateSettings,
   updateCoverLetter,
   updateJobDescription,
   updateOutreachMessage,
@@ -49,6 +50,7 @@ import { StrategyMatchView } from './strategy-match-view';
 import { RegenerateWizard } from './regenerate-wizard';
 import { useRegenerateWizard } from '@/hooks/use-regenerate-wizard';
 import { useTranslations } from '@/lib/i18n';
+import { fetchOutputConfig } from '@/lib/api/config';
 import { isSharedFreeLlmLimitMessage, isUserLlmConfigMessage } from '@/lib/api/client';
 import { type TemplateSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/lib/types/template-settings';
 import {
@@ -64,6 +66,7 @@ import {
 } from '@/lib/utils/download';
 import {
   loadSavedTemplateSettings,
+  omitDateDisplaySetting,
   TEMPLATE_SETTINGS_STORAGE_KEY,
 } from '@/lib/utils/template-settings';
 import type { RegenerateItemInput } from '@/lib/api/enrichment';
@@ -148,6 +151,7 @@ const ResumeBuilderContent = () => {
   const [, setLoadingState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [templateSettings, setTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
+  const templateSettingsRef = useRef<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
   const { improvedData } = useResumePreview();
   const improvedPreview = improvedData?.data?.resume_preview;
   const improvedCoverLetter = improvedData?.data?.cover_letter;
@@ -315,14 +319,13 @@ const ResumeBuilderContent = () => {
   const builderHeaderResetButtonClass =
     'h-9 rounded-full border border-[#d7bf98] bg-[#fff8ec] px-4 py-0 text-sm font-semibold leading-none text-[#9a5a12] shadow-[0_4px_12px_rgba(15,23,42,0.04)] hover:bg-[#fdf0d9]';
 
-  // Load template settings from localStorage on mount
-  useEffect(() => {
-    setTemplateSettings(loadSavedTemplateSettings());
-  }, []);
-
   // Save template settings to localStorage when they change
   useEffect(() => {
-    localStorage.setItem(TEMPLATE_SETTINGS_STORAGE_KEY, JSON.stringify(templateSettings));
+    templateSettingsRef.current = templateSettings;
+    localStorage.setItem(
+      TEMPLATE_SETTINGS_STORAGE_KEY,
+      JSON.stringify(omitDateDisplaySetting(templateSettings))
+    );
   }, [templateSettings]);
 
   useEffect(() => {
@@ -375,11 +378,26 @@ const ResumeBuilderContent = () => {
   useEffect(() => {
     const loadResumeData = async () => {
       setLoadingState('loading');
+      const savedTemplateSettings = loadSavedTemplateSettings();
+      const outputConfig = await fetchOutputConfig().catch(() => null);
+      const defaultDateDisplay =
+        outputConfig?.default_date_display ?? DEFAULT_TEMPLATE_SETTINGS.dateDisplay;
+      const applyTemplateSettings = (
+        resumeTemplateSettings?: { dateDisplay?: TemplateSettings['dateDisplay'] } | null
+      ) => {
+        const nextSettings = {
+          ...savedTemplateSettings,
+          dateDisplay: resumeTemplateSettings?.dateDisplay ?? defaultDateDisplay,
+        };
+        templateSettingsRef.current = nextSettings;
+        setTemplateSettings(nextSettings);
+      };
 
       // Priority 1: Fetch from API if ID is in URL (most reliable)
       if (resumeId) {
         try {
           const data = await fetchResume(resumeId);
+          applyTemplateSettings(data.template_settings);
           // Track if this is a tailored resume (has parent_id)
           setIsTailoredResume(Boolean(data.parent_id));
           if (data.parent_id) {
@@ -425,6 +443,8 @@ const ResumeBuilderContent = () => {
         } catch (err) {
           console.error('Failed to load resume from API:', err);
         }
+      } else {
+        applyTemplateSettings(null);
       }
 
       // Priority 2: Improved Data from Context (Tailor Flow)
@@ -534,9 +554,21 @@ const ResumeBuilderContent = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
   }, []);
 
-  const handleSettingsChange = useCallback((newSettings: TemplateSettings) => {
-    setTemplateSettings(newSettings);
-  }, []);
+  const handleSettingsChange = useCallback(
+    (newSettings: TemplateSettings) => {
+      const previousDateDisplay = templateSettingsRef.current.dateDisplay;
+      templateSettingsRef.current = newSettings;
+      setTemplateSettings(newSettings);
+      if (resumeId && newSettings.dateDisplay !== previousDateDisplay) {
+        void updateResumeTemplateSettings(resumeId, { dateDisplay: newSettings.dateDisplay }).catch(
+          (error) => {
+            console.error('Failed to save resume date display setting:', error);
+          }
+        );
+      }
+    },
+    [resumeId]
+  );
 
   const handleSave = async () => {
     if (!resumeId) {

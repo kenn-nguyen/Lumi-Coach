@@ -50,6 +50,7 @@ export function JDComparisonView({
     resumeData.workExperience?.forEach((exp) => {
       if (exp.title) parts.push(exp.title);
       if (exp.company) parts.push(exp.company);
+      if (exp.context) parts.push(exp.context);
       exp.description?.forEach((d) => parts.push(d));
     });
 

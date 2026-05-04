@@ -27,20 +27,52 @@ def _normalize_strategy_items(value: Any) -> list[str]:
     return [_normalize_strategy_text(item) for item in value if _normalize_strategy_text(item)]
 
 
-def _role_matches_strategy_entry(entry_role: str, role_title: str, role_company: str) -> bool:
+def _normalize_structured_bullet_instruction(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+
+    parts: list[str] = []
+    for field, label in [
+        ("primary_message", "message"),
+        ("primary_metric", "metric"),
+        ("mechanism", "mechanism"),
+        ("optional_context", "context"),
+    ]:
+        text = _normalize_strategy_text(value.get(field))
+        if text:
+            parts.append(f"{label}: {text}")
+
+    do_not_include = _normalize_strategy_items(value.get("do_not_include"))
+    if do_not_include:
+        parts.append(f"omit: {', '.join(do_not_include[:4])}")
+
+    return " | ".join(parts)
+
+
+def _role_matches_strategy_entry(
+    entry_role: str,
+    role_title: str,
+    role_company: str,
+) -> bool:
     normalized_entry = entry_role.lower().strip()
     if not normalized_entry:
         return False
 
-    haystack = " ".join(part.lower().strip() for part in [role_title, role_company] if part).strip()
+    haystack = " ".join(
+        part.lower().strip() for part in [role_title, role_company] if part
+    ).strip()
     if not haystack:
         return False
 
     if normalized_entry in haystack or haystack in normalized_entry:
         return True
 
-    entry_tokens = {token for token in re.split(r"[^a-z0-9]+", normalized_entry) if len(token) >= 3}
-    haystack_tokens = {token for token in re.split(r"[^a-z0-9]+", haystack) if len(token) >= 3}
+    entry_tokens = {
+        token for token in re.split(r"[^a-z0-9]+", normalized_entry) if len(token) >= 3
+    }
+    haystack_tokens = {
+        token for token in re.split(r"[^a-z0-9]+", haystack) if len(token) >= 3
+    }
     if not entry_tokens or not haystack_tokens:
         return False
 
@@ -60,13 +92,37 @@ def build_prompt2_strategy_context(
 
     lines: list[str] = []
 
-    positioning_thesis = _normalize_strategy_text(prompt2_artifact.get("positioning_thesis"))
+    positioning_thesis = _normalize_strategy_text(
+        prompt2_artifact.get("positioning_thesis")
+    )
     if positioning_thesis:
         lines.append(f"Positioning thesis: {positioning_thesis}")
 
-    top_resume_goals = _normalize_strategy_items(prompt2_artifact.get("top_resume_goals"))
+    top_resume_goals = _normalize_strategy_items(
+        prompt2_artifact.get("top_resume_goals")
+    )
     if top_resume_goals:
         lines.append(f"Top resume goals: {'; '.join(top_resume_goals[:3])}")
+
+    excitement_anchor = prompt2_artifact.get("excitement_anchor")
+    if isinstance(excitement_anchor, dict):
+        anchor_claim = _normalize_strategy_text(excitement_anchor.get("claim"))
+        anchor_evidence = _normalize_strategy_text(excitement_anchor.get("evidence"))
+        anchor_placement = _normalize_strategy_text(excitement_anchor.get("placement"))
+        anchor_distinction = _normalize_strategy_text(
+            excitement_anchor.get("why_distinctive")
+        )
+        anchor_parts = []
+        if anchor_claim:
+            anchor_parts.append(anchor_claim)
+        if anchor_evidence:
+            anchor_parts.append(f"evidence: {anchor_evidence}")
+        if anchor_placement:
+            anchor_parts.append(f"placement: {anchor_placement}")
+        if anchor_distinction:
+            anchor_parts.append(f"distinctive: {anchor_distinction}")
+        if anchor_parts:
+            lines.append(f"Excitement anchor: {' | '.join(anchor_parts)}")
 
     phrases_to_mirror = _normalize_strategy_items(prompt2_artifact.get("phrases_to_mirror"))
     if phrases_to_mirror:
@@ -103,7 +159,11 @@ def build_prompt2_strategy_context(
             if not isinstance(entry, dict):
                 continue
             entry_role = _normalize_strategy_text(entry.get("role"))
-            if entry_role and not _role_matches_strategy_entry(entry_role, role_title, role_company):
+            if entry_role and not _role_matches_strategy_entry(
+                entry_role,
+                role_title,
+                role_company,
+            ):
                 continue
 
             themes = _normalize_strategy_items(entry.get("themes_to_emphasize"))
@@ -133,9 +193,13 @@ def build_prompt2_strategy_context(
             if not isinstance(entry, dict):
                 continue
             entry_role = _normalize_strategy_text(entry.get("role"))
-            if entry_role and not _role_matches_strategy_entry(entry_role, role_title, role_company):
+            if entry_role and not _role_matches_strategy_entry(
+                entry_role,
+                role_title,
+                role_company,
+            ):
                 continue
-            instruction = _normalize_strategy_text(entry.get("instruction"))
+            instruction = _normalize_structured_bullet_instruction(entry.get("instruction"))
             if instruction:
                 matched_instructions.append(instruction)
         if matched_instructions:

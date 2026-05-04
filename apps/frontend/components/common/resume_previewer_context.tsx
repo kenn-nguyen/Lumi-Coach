@@ -19,6 +19,7 @@ export interface ExperienceEntry {
   title: string;
   company: string;
   location?: string;
+  context?: string | null;
   years?: string;
   description: string[];
 }

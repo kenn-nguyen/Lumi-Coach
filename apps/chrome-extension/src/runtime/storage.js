@@ -142,6 +142,7 @@ function getDefaultExtensionState() {
     prompt3Parsed: null,
     prompt3Feedback: null,
     prompt3ValidationErrors: [],
+    promptMetadata: null,
     patchPayload: null,
     patchError: null,
     prompt1DurationMs: null,

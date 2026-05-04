@@ -1,3 +1,10 @@
+---
+prompt_artifact: prompt1.output_contract
+prompt_version: v2.0.1
+prompt_label: jd-analysis-output-contract-gated-signals
+prompt_notes: Defines the Prompt 1 JSON contract with gated, high-signal, and medium-signal requirement buckets.
+ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
+---
 Output contract:
 - Return valid JSON only.
 - Do not output markdown fences.
@@ -5,7 +12,7 @@ Output contract:
 - Start the response with `{` and end it with `}`.
 - Return exactly one JSON object matching the schema below.
 - Do not add extra top-level keys.
-- If a field is unknown, use the schema’s empty value (`""`, `[]`, `{}`, or `null` as appropriate).
+- If a field is unknown, use the schema's empty value (`""`, `[]`, `{}`, or `null` as appropriate).
 
 Return JSON in this exact shape:
 {
@@ -15,10 +22,26 @@ Return JSON in this exact shape:
   "company_context": "",
   "role_archetype": "",
 
-  "must_have_keywords": [
+  "gating_requirements": [
     {
       "keyword": "",
-      "priority": 0,
+      "priority": 1,
+      "type": "exact",
+      "where_to_use": []
+    }
+  ],
+  "high_signal_requirements": [
+    {
+      "keyword": "",
+      "priority": 1,
+      "type": "exact",
+      "where_to_use": []
+    }
+  ],
+  "medium_signal_requirements": [
+    {
+      "keyword": "",
+      "priority": 1,
       "type": "exact",
       "where_to_use": []
     }
@@ -26,14 +49,15 @@ Return JSON in this exact shape:
   "nice_to_have_keywords": [
     {
       "keyword": "",
-      "priority": 0,
+      "priority": 1,
       "type": "exact",
       "where_to_use": []
     }
   ],
 
   "exact_phrases_to_mirror": [],
-  "required_qualifications": [],
+  "gating_qualifications": [],
+  "near_gate_qualifications": [],
   "preferred_qualifications": [],
   "core_responsibilities": [],
 
@@ -60,7 +84,7 @@ Return JSON in this exact shape:
 
 Additional output rules:
 - All scalar fields must be strings.
-- `must_have_keywords` and `nice_to_have_keywords` must contain objects only.
+- `gating_requirements`, `high_signal_requirements`, `medium_signal_requirements`, and `nice_to_have_keywords` must contain objects only.
 - `priority` must be an integer from 1 to 10.
 - `type` must be either `exact` or `inferred`.
 - `where_to_use` must be an array containing only: `headline`, `summary`, `experience`, `skills`.

@@ -1,3 +1,10 @@
+---
+prompt_artifact: prompt4.output_contract
+prompt_version: v2.0.1
+prompt_label: master-resume-output-contract-company-context
+prompt_notes: Defines the master resume extraction contract, including optional workExperience.context company context lines.
+ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
+---
 Output contract:
 - Return one valid JSON object only
 - The top-level object must be ResumeData itself
@@ -37,6 +44,7 @@ Required top-level keys:
 
 Validation notes:
 - `workExperience[].description` must be an array of strings
+- `workExperience[].context` may be a string or null and is optional
 - `personalProjects[].description` must be an array of strings
 - `education[].description` must be a string or null
 - `customSections` must be an object, even when empty

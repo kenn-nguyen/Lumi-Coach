@@ -30,6 +30,7 @@ export interface Experience {
   title?: string;
   company?: string;
   location?: string;
+  context?: string | null;
   years?: string;
   description?: string[];
 }
@@ -184,6 +185,7 @@ const Resume: React.FC<ResumeProps> = ({
           data={resumeData}
           showContactIcons={mergedSettings.showContactIcons}
           additionalSectionLabels={additionalSectionLabels}
+          dateDisplay={mergedSettings.dateDisplay}
         />
       )}
       {mergedSettings.template === 'swiss-two-column' && (
@@ -191,6 +193,7 @@ const Resume: React.FC<ResumeProps> = ({
           data={resumeData}
           showContactIcons={mergedSettings.showContactIcons}
           sectionHeadings={sectionHeadings}
+          dateDisplay={mergedSettings.dateDisplay}
         />
       )}
       {mergedSettings.template === 'modern' && (
@@ -198,6 +201,7 @@ const Resume: React.FC<ResumeProps> = ({
           data={resumeData}
           showContactIcons={mergedSettings.showContactIcons}
           additionalSectionLabels={additionalSectionLabels}
+          dateDisplay={mergedSettings.dateDisplay}
         />
       )}
       {mergedSettings.template === 'modern-two-column' && (
@@ -206,6 +210,7 @@ const Resume: React.FC<ResumeProps> = ({
           showContactIcons={mergedSettings.showContactIcons}
           sectionHeadings={sectionHeadings}
           fallbackLabels={fallbackLabels}
+          dateDisplay={mergedSettings.dateDisplay}
         />
       )}
     </div>

@@ -114,6 +114,14 @@
   color: var(--resume-text-secondary);
 }
 
+.resume-item-context {
+  font-family: var(--body-font);
+  font-size: calc(var(--font-size-base) * 0.86);
+  font-style: italic;
+  color: var(--resume-text-secondary);
+  margin-bottom: calc(var(--item-gap) * 0.75);
+}
+
 .resume-stack {
   display: flex;
   flex-direction: column;

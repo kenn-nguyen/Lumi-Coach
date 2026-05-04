@@ -935,6 +935,7 @@ function coalesceRunField(entry, session, entryKey, sessionKey = entryKey) {
 
 function buildPromptDebugExport(entry, session) {
   return {
+    promptMetadata: coalesceRunField(entry, session, "promptMetadata"),
     prompt4Input: coalesceRunField(entry, session, "prompt4Input"),
     prompt4Raw: coalesceRunField(entry, session, "prompt4Raw"),
     prompt4Output: entry?.prompt4Result ?? session?.prompt4Result ?? null,

@@ -14,10 +14,22 @@ const validPrompt2 = {
   ],
   recommended_title: "Senior Product Manager, Risk Platforms",
   summary_lead: "Product leader with risk-adjacent platform experience",
-  summary_focus: ["Identity risk", "Platform execution", "Cross-functional leadership"],
+  summary_focus: [
+    "Identity risk",
+    "Platform execution",
+    "Cross-functional leadership",
+  ],
   summary_sentences: 2,
   voice: "Sharp and credible",
   adjacent_framing: "Position as adjacent rather than exact match",
+  excitement_anchor: {
+    claim: "Risk-platform roadmap ownership with measurable funnel outcomes",
+    evidence:
+      "Associate Director of Product role, risk roadmap and funnel proof",
+    placement: "both",
+    why_distinctive:
+      "Combines platform ownership, risk relevance, and measurable execution proof",
+  },
   signal_map: [
     {
       signal: "Identity and risk platform ownership",
@@ -65,12 +77,33 @@ const validPrompt2 = {
       guardrail: "Keep framing truthful",
     },
   ],
+  company_context_guidance: [
+    {
+      role: "Associate Director of Product",
+      company: "RiskCo",
+      recommended_context:
+        "B2B risk platform serving enterprise financial institutions",
+      action: "add",
+      evidence:
+        "Source resume describes enterprise financial-institution customers",
+      guardrail:
+        "Do not include candidate-owned outcome metrics in company context",
+    },
+  ],
   bullet_rewrite_instructions: [
     {
       role: "Associate Director of Product",
       action: "rewrite",
       bullet_anchor: "Led roadmap planning",
-      instruction: "Lead with platform and risk outcomes",
+      instruction: {
+        primary_message:
+          "Show platform roadmap ownership for identity-risk workflows",
+        primary_metric: "",
+        mechanism:
+          "sequencing roadmap priorities across product and engineering",
+        optional_context: "for risk and approval workflows",
+        do_not_include: ["direct fraud-specialist title"],
+      },
     },
   ],
   education_notes: [],

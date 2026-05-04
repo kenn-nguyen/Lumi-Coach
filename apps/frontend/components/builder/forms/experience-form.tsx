@@ -314,6 +314,7 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
         title: '',
         company: '',
         location: '',
+        context: null,
         years: '',
         description: [''],
       },
@@ -695,6 +696,14 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                           onChange={(e) => handleChange(item.id, 'location', e.target.value)}
                           placeholder={t('builder.forms.experience.placeholders.location')}
                           className={cn(builderEditableFieldClass, 'font-semibold')}
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <Input
+                          value={item.context || ''}
+                          onChange={(e) => handleChange(item.id, 'context', e.target.value)}
+                          placeholder={t('builder.forms.experience.placeholders.context')}
+                          className={builderEditableFieldClass}
                         />
                       </div>
                     </div>

@@ -3,6 +3,7 @@ import { Mail, Phone, MapPin, Globe, Linkedin, Github, ExternalLink } from 'luci
 import type { ResumeData, ResumeSectionHeadings } from '@/components/dashboard/resume-component';
 import { getSortedSections, getSectionMeta } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
+import { type DateDisplayMode } from '@/lib/types/template-settings';
 import { DynamicResumeSection } from './dynamic-resume-section';
 import { SafeHtml } from './safe-html';
 import { buildContactDisplay } from './contact-utils';
@@ -13,6 +14,7 @@ interface ResumeTwoColumnProps {
   data: ResumeData;
   showContactIcons?: boolean;
   sectionHeadings?: Partial<ResumeSectionHeadings>;
+  dateDisplay?: DateDisplayMode;
 }
 
 /**
@@ -30,6 +32,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
   data,
   showContactIcons = false,
   sectionHeadings,
+  dateDisplay = 'month-year',
 }) => {
   const { personalInfo, summary, workExperience, education, personalProjects, additional } = data;
 
@@ -215,7 +218,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
                       <h4 className={baseStyles['resume-item-title-sm']}>{exp.title}</h4>
                       {exp.years && (
                         <span className={`${baseStyles['resume-date']} ml-2`}>
-                          {formatDateRange(exp.years)}
+                          {formatDateRange(exp.years, { dateDisplay })}
                         </span>
                       )}
                     </div>
@@ -228,6 +231,10 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
                         {exp.location && <> • {exp.location}</>}
                       </span>
                     </div>
+
+                    {exp.context && (
+                      <p className={baseStyles['resume-item-context']}>{exp.context}</p>
+                    )}
 
                     {exp.description && exp.description.length > 0 && (
                       <ul
@@ -308,7 +315,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
                         </div>
                         {project.years && (
                           <span className={`${baseStyles['resume-date']} ml-2`}>
-                            {formatDateRange(project.years)}
+                            {formatDateRange(project.years, { dateDisplay })}
                           </span>
                         )}
                       </div>
@@ -384,7 +391,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
                           className={`font-normal ${baseStyles['resume-date']} ${baseStyles['text-muted']}`}
                         >
                           {' '}
-                          | {formatDateRange(edu.years)}
+                          | {formatDateRange(edu.years, { dateDisplay })}
                         </span>
                       )}
                     </h4>

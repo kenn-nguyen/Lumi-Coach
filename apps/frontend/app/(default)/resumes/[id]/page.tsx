@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ToggleSwitch } from '@/components/ui/toggle-switch';
 import Resume, { ResumeData } from '@/components/dashboard/resume-component';
 import {
   fetchResume,
@@ -13,8 +14,10 @@ import {
   deleteResume,
   retryProcessing,
   renameResume,
+  updateResumeTemplateSettings,
   type GenerationFeedback,
 } from '@/lib/api/resume';
+import { fetchOutputConfig } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
 import { ArrowLeft, Edit, Download, Loader2, AlertCircle, Sparkles, Pencil } from 'lucide-react';
 import { EnrichmentModal } from '@/components/enrichment/enrichment-modal';
@@ -75,7 +78,18 @@ export default function ResumeViewerPage() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchResume(resumeId);
+        const [data, outputConfig] = await Promise.all([
+          fetchResume(resumeId),
+          fetchOutputConfig().catch(() => null),
+        ]);
+        const savedTemplateSettings = loadSavedTemplateSettings();
+        setTemplateSettings({
+          ...savedTemplateSettings,
+          dateDisplay:
+            data.template_settings?.dateDisplay ??
+            outputConfig?.default_date_display ??
+            DEFAULT_TEMPLATE_SETTINGS.dateDisplay,
+        });
 
         // Get processing status
         const status = (data.raw_resume?.processing_status || 'pending') as ProcessingStatus;
@@ -117,10 +131,6 @@ export default function ResumeViewerPage() {
   }, [authStatus, resumeId, t]);
 
   useEffect(() => {
-    setTemplateSettings(loadSavedTemplateSettings());
-  }, []);
-
-  useEffect(() => {
     if (authStatus !== 'authenticated' || !resumeId || source !== 'extension') return;
     captureEvent(POSTHOG_EVENTS.RESUME_WORKSPACE_OPENED, {
       resume_id: resumeId,
@@ -150,6 +160,17 @@ export default function ResumeViewerPage() {
 
   const handleEdit = () => {
     router.push(`/builder?id=${resumeId}`);
+  };
+
+  const handleDateDisplayToggle = (nextChecked: boolean) => {
+    const dateDisplay = nextChecked ? 'year-only' : 'month-year';
+    setTemplateSettings((current) => ({
+      ...current,
+      dateDisplay,
+    }));
+    void updateResumeTemplateSettings(resumeId, { dateDisplay }).catch((err) => {
+      console.error('Failed to save resume date display setting:', err);
+    });
   };
 
   const handleTitleSave = async () => {
@@ -369,7 +390,7 @@ export default function ResumeViewerPage() {
             {t('nav.backToDashboard')}
           </Button>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {isMasterResume && (
               <Button onClick={() => setShowEnrichmentModal(true)} className="gap-2">
                 <Sparkles className="w-4 h-4" />
@@ -380,6 +401,17 @@ export default function ResumeViewerPage() {
               <Edit className="w-4 h-4" />
               {t('dashboard.editResume')}
             </Button>
+            <div
+              className="flex h-10 shrink-0 items-center rounded-full border border-border bg-card px-4 shadow-xs"
+              title={t('builder.formatting.yearOnlyDatesHint')}
+            >
+              <ToggleSwitch
+                checked={templateSettings.dateDisplay === 'year-only'}
+                onCheckedChange={handleDateDisplayToggle}
+                label={t('builder.formatting.yearOnlyDates')}
+                display="inline"
+              />
+            </div>
             <Button variant="success" onClick={handleDownload} disabled={isDownloading}>
               <Download className="w-4 h-4" />
               {isDownloading ? t('common.generating') : t('resumeViewer.downloadResume')}
@@ -460,6 +492,7 @@ export default function ResumeViewerPage() {
           <div className="resume-print w-full max-w-[min(250mm,100%)] overflow-hidden rounded-[24px] border border-border bg-white shadow-sw-card">
             <Resume
               resumeData={localizedResumeData || resumeData}
+              settings={templateSettings}
               additionalSectionLabels={{
                 technicalSkills: t('resume.additionalLabels.technicalSkills'),
                 languages: t('resume.additionalLabels.languages'),

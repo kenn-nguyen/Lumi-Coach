@@ -421,6 +421,7 @@
           "jobTitle": "Job title",
           "company": "Company",
           "location": "Location",
+          "context": "Company context (optional)",
           "years": "Dates",
           "description": "Describe your achievement..."
         }
@@ -512,6 +513,8 @@
       "options": "Options",
       "compactMode": "Compact Mode",
       "contactIcons": "Contact Icons",
+      "yearOnlyDates": "Year only",
+      "yearOnlyDatesHint": "Show supported month/year dates as years only in preview and PDF. Saved dates stay unchanged.",
       "effectiveOutput": "Effective Output",
       "effectiveMargins": "Margins (mm): T{top} B{bottom} L{left} R{right}",
       "effectiveSectionGap": "Section Gap",
@@ -807,6 +810,14 @@
         "description": "Keep personal info except title, plus experience company names, job titles, and dates from your master resume in generated resumes."
       }
     },
+    "resumeOutput": {
+      "title": "Resume Output",
+      "description": "Choose the default display behavior for resumes that do not have their own saved setting.",
+      "yearOnly": {
+        "label": "Year only by default",
+        "description": "Show supported month/year dates as years only in preview and PDF. Each resume can override this from preview or edit."
+      }
+    },
     "promptSettings": {
       "title": "Prompt Settings",
       "description": "Choose the default prompt used for resume tailoring.",
@@ -861,6 +872,8 @@
   "preview": {
     "margins": "Margins",
     "fitToOnePage": "Fit to 1 Page",
+    "yearOnlyDates": "Year only",
+    "yearOnlyDatesHint": "Show supported month/year dates as years only in preview and PDF.",
     "calculating": "Calculating...",
     "pageBreak": "Page Break",
     "pageCountSingular": "{count} page",

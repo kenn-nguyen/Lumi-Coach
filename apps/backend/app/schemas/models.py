@@ -139,8 +139,14 @@ class Experience(BaseModel):
     title: str = ""
     company: str = ""
     location: str | None = None
+    context: str | None = None
     years: str = ""
     description: list[str] = Field(default_factory=list)
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def _normalize_context(cls, value: Any) -> str | None:
+        return _coerce_optional_text(value)
 
     @field_validator("description", mode="before")
     @classmethod
@@ -423,6 +429,28 @@ class ResumeUpdateRequest(BaseModel):
     generation_artifacts: GenerationArtifacts | None = None
 
 
+DateDisplayMode = Literal["month-year", "year-only"]
+
+
+class ResumeTemplateSettingsUpdate(BaseModel):
+    """Per-resume output settings that affect rendering, not saved resume text."""
+
+    dateDisplay: DateDisplayMode | None = None
+
+
+class ResumeTemplateSettings(BaseModel):
+    """Saved per-resume output settings."""
+
+    dateDisplay: DateDisplayMode
+
+
+class ResumeTemplateSettingsResponse(BaseModel):
+    """Response for per-resume output settings."""
+
+    request_id: str
+    data: ResumeTemplateSettings
+
+
 class ResumeFetchData(BaseModel):
     """Data payload for resume fetch response."""
 
@@ -435,6 +463,7 @@ class ResumeFetchData(BaseModel):
     outreach_message: str | None = None
     parent_id: str | None = None  # For determining if resume is tailored
     title: str | None = None
+    template_settings: ResumeTemplateSettings | None = None
 
 
 class ResumeFetchResponse(BaseModel):
@@ -656,6 +685,18 @@ class FeatureConfigResponse(BaseModel):
     enable_cover_letter: bool = False
     enable_outreach_message: bool = False
     preserve_generated_resume_facts: bool = True
+
+
+class OutputConfigRequest(BaseModel):
+    """Request to update resume output defaults."""
+
+    default_date_display: DateDisplayMode | None = None
+
+
+class OutputConfigResponse(BaseModel):
+    """Response for resume output defaults."""
+
+    default_date_display: DateDisplayMode = "month-year"
 
 
 class LanguageConfigRequest(BaseModel):

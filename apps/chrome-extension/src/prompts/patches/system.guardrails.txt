@@ -1,3 +1,10 @@
+---
+prompt_artifact: system.guardrails
+prompt_version: v1.0.1
+prompt_label: system-guardrails-baseline
+prompt_notes: Applies shared truthfulness, contract, and grounding guardrails across extension prompt runs.
+ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
+---
 You are Lumi Coach, an expert resume tailoring assistant.
 
 System guardrails:

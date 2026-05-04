@@ -9,7 +9,17 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, create_engine, delete
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    create_engine,
+    delete,
+    inspect,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -75,6 +85,7 @@ class ResumeModel(Base):
     outreach_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     generation_feedback: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     generation_artifacts: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    template_settings: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     original_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -134,6 +145,18 @@ class Database:
 
     def init_schema(self) -> None:
         Base.metadata.create_all(self._engine)
+        self._ensure_resume_schema()
+
+    def _ensure_resume_schema(self) -> None:
+        """Apply lightweight additive schema updates for local/dev databases."""
+        inspector = inspect(self._engine)
+        columns = {column["name"] for column in inspector.get_columns("resumes")}
+        if "template_settings" in columns:
+            return
+
+        with self._engine.begin() as connection:
+            connection.execute(text("ALTER TABLE resumes ADD COLUMN template_settings JSONB"))
+        logger.info("Added resumes.template_settings column")
 
     def close(self) -> None:
         self._engine.dispose()
@@ -191,6 +214,7 @@ class Database:
             "outreach_message": resume.outreach_message,
             "generation_feedback": resume.generation_feedback,
             "generation_artifacts": resume.generation_artifacts,
+            "template_settings": resume.template_settings,
             "title": resume.title,
             "original_markdown": resume.original_markdown,
             "created_at": self._to_iso(resume.created_at),
@@ -308,6 +332,7 @@ class Database:
         outreach_message: str | None = None,
         generation_feedback: dict[str, Any] | None = None,
         generation_artifacts: dict[str, Any] | None = None,
+        template_settings: dict[str, Any] | None = None,
         title: str | None = None,
         original_markdown: str | None = None,
         user_id: str | None = None,
@@ -328,6 +353,7 @@ class Database:
                 outreach_message=outreach_message,
                 generation_feedback=generation_feedback,
                 generation_artifacts=generation_artifacts,
+                template_settings=template_settings,
                 title=title,
                 original_markdown=original_markdown,
             )

@@ -1,16 +1,11 @@
 import { STORAGE_KEYS } from "./constants.js";
 
-export const PROVIDER_PATCH_KEYS = [
-  "chatgpt-web",
-  "claude-web",
-  "claude-api",
-  "chatgpt-api",
-  "gemini-web",
-  "gemini-api",
-];
-
 export const SYSTEM_GUARDRAILS_ARTIFACT_KEY = "system.guardrails";
-export const USER_EDITABLE_PROMPT_TEMPLATE_NAMES = ["prompt1", "prompt2", "prompt3"];
+export const USER_EDITABLE_PROMPT_TEMPLATE_NAMES = [
+  "prompt1",
+  "prompt2",
+  "prompt3",
+];
 
 const PROMPT_DOWNLOAD_CONFIG = {
   prompt1: {
@@ -45,30 +40,6 @@ export const PROMPT_ARTIFACT_DEFINITIONS = {
     path: "src/prompts/patches/prompt1.output-contract.txt",
     fileName: "prompt1.output-contract.txt",
   },
-  "prompt1.patch.chatgpt-web": {
-    path: "src/prompts/patches/prompt1.chatgpt-web.txt",
-    fileName: "prompt1.chatgpt-web.txt",
-  },
-  "prompt1.patch.claude-web": {
-    path: "src/prompts/patches/prompt1.claude-web.txt",
-    fileName: "prompt1.claude-web.txt",
-  },
-  "prompt1.patch.claude-api": {
-    path: "src/prompts/patches/prompt1.claude-api.txt",
-    fileName: "prompt1.claude-api.txt",
-  },
-  "prompt1.patch.chatgpt-api": {
-    path: "src/prompts/patches/prompt1.chatgpt-api.txt",
-    fileName: "prompt1.chatgpt-api.txt",
-  },
-  "prompt1.patch.gemini-web": {
-    path: "src/prompts/patches/prompt1.gemini-web.txt",
-    fileName: "prompt1.gemini-web.txt",
-  },
-  "prompt1.patch.gemini-api": {
-    path: "src/prompts/patches/prompt1.gemini-api.txt",
-    fileName: "prompt1.gemini-api.txt",
-  },
   "prompt2.template": {
     path: "src/prompts/prompt2.txt",
     fileName: "prompt2.txt",
@@ -78,30 +49,6 @@ export const PROMPT_ARTIFACT_DEFINITIONS = {
     path: "src/prompts/patches/prompt2.output-contract.txt",
     fileName: "prompt2.output-contract.txt",
   },
-  "prompt2.patch.chatgpt-web": {
-    path: "src/prompts/patches/prompt2.chatgpt-web.txt",
-    fileName: "prompt2.chatgpt-web.txt",
-  },
-  "prompt2.patch.claude-web": {
-    path: "src/prompts/patches/prompt2.claude-web.txt",
-    fileName: "prompt2.claude-web.txt",
-  },
-  "prompt2.patch.claude-api": {
-    path: "src/prompts/patches/prompt2.claude-api.txt",
-    fileName: "prompt2.claude-api.txt",
-  },
-  "prompt2.patch.chatgpt-api": {
-    path: "src/prompts/patches/prompt2.chatgpt-api.txt",
-    fileName: "prompt2.chatgpt-api.txt",
-  },
-  "prompt2.patch.gemini-web": {
-    path: "src/prompts/patches/prompt2.gemini-web.txt",
-    fileName: "prompt2.gemini-web.txt",
-  },
-  "prompt2.patch.gemini-api": {
-    path: "src/prompts/patches/prompt2.gemini-api.txt",
-    fileName: "prompt2.gemini-api.txt",
-  },
   "prompt3.template": {
     path: "src/prompts/prompt3.txt",
     fileName: "prompt3.txt",
@@ -110,30 +57,6 @@ export const PROMPT_ARTIFACT_DEFINITIONS = {
   "prompt3.output_contract": {
     path: "src/prompts/patches/prompt3.output-contract.txt",
     fileName: "prompt3.output-contract.txt",
-  },
-  "prompt3.patch.chatgpt-web": {
-    path: "src/prompts/patches/prompt3.chatgpt-web.txt",
-    fileName: "prompt3.chatgpt-web.txt",
-  },
-  "prompt3.patch.claude-web": {
-    path: "src/prompts/patches/prompt3.claude-web.txt",
-    fileName: "prompt3.claude-web.txt",
-  },
-  "prompt3.patch.claude-api": {
-    path: "src/prompts/patches/prompt3.claude-api.txt",
-    fileName: "prompt3.claude-api.txt",
-  },
-  "prompt3.patch.chatgpt-api": {
-    path: "src/prompts/patches/prompt3.chatgpt-api.txt",
-    fileName: "prompt3.chatgpt-api.txt",
-  },
-  "prompt3.patch.gemini-web": {
-    path: "src/prompts/patches/prompt3.gemini-web.txt",
-    fileName: "prompt3.gemini-web.txt",
-  },
-  "prompt3.patch.gemini-api": {
-    path: "src/prompts/patches/prompt3.gemini-api.txt",
-    fileName: "prompt3.gemini-api.txt",
   },
   "prompt4.template": {
     path: "src/prompts/prompt4.txt",
@@ -160,11 +83,6 @@ export function getPromptOutputContractArtifactKey(templateName) {
   return `${templateName}.output_contract`;
 }
 
-export function getPromptPatchArtifactKey(templateName, patchKey) {
-  if (!patchKey) return null;
-  return `${templateName}.patch.${patchKey}`;
-}
-
 export function getPromptOverrideAssetField(templateName) {
   if (templateName === "systemPrompt") {
     return "systemPromptTemplateAsset";
@@ -189,16 +107,10 @@ export function getPromptArtifactKeysForTemplate(templateName) {
     return [SYSTEM_GUARDRAILS_ARTIFACT_KEY];
   }
 
-  const artifactKeys = [
+  return [
     getPromptTemplateArtifactKey(templateName),
     getPromptOutputContractArtifactKey(templateName),
   ];
-
-  for (const patchKey of PROVIDER_PATCH_KEYS) {
-    artifactKeys.push(getPromptPatchArtifactKey(templateName, patchKey));
-  }
-
-  return artifactKeys;
 }
 
 function resolveExtensionAssetUrl(path) {

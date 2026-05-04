@@ -336,6 +336,39 @@ class TestFeatureConfig:
         assert resp.json()["preserve_generated_resume_facts"] is False
 
 
+class TestOutputConfig:
+    """GET/PUT /api/v1/config/output"""
+
+    @patch("app.routers.config._load_config")
+    async def test_get_output_defaults_month_year(self, mock_load, client):
+        mock_load.return_value = {}
+        async with client:
+            resp = await client.get("/api/v1/config/output")
+        assert resp.status_code == 200
+        assert resp.json()["default_date_display"] == "month-year"
+
+    @patch("app.routers.config._load_config")
+    async def test_get_output_accepts_month_year(self, mock_load, client):
+        mock_load.return_value = {"default_date_display": "month-year"}
+        async with client:
+            resp = await client.get("/api/v1/config/output")
+        assert resp.status_code == 200
+        assert resp.json()["default_date_display"] == "month-year"
+
+    @patch("app.routers.config._save_config")
+    @patch("app.routers.config._load_config")
+    async def test_put_output(self, mock_load, mock_save, client):
+        mock_load.return_value = {}
+        async with client:
+            resp = await client.put(
+                "/api/v1/config/output",
+                json={"default_date_display": "month-year"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["default_date_display"] == "month-year"
+        mock_save.assert_called_once_with({"default_date_display": "month-year"})
+
+
 class TestLanguageConfig:
     """GET/PUT /api/v1/config/language"""
 

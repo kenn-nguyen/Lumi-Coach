@@ -1,81 +1,259 @@
 import { getUserAssets, getServerPromptDefaults } from "./storage.js";
 import {
+  getPromptArtifactDefinition,
   getPackagedPromptArtifactText,
   getPromptOutputContractArtifactKey,
   getPromptOverrideAssetField,
-  getPromptPatchArtifactKey,
   getPromptTemplateArtifactKey,
   SYSTEM_GUARDRAILS_ARTIFACT_KEY,
 } from "./prompt-defaults.js";
 
 const PLACEHOLDER_PATTERN = /\{\{([A-Z0-9_]+)\}\}/g;
+const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const templateCache = new Map();
 
 export function clearPromptTemplateCache() {
   templateCache.clear();
 }
 
-function getTemplateCacheKey(templateName, patchKey, promptProfileId) {
-  const profileKey = promptProfileId || "profile1";
-  return patchKey
-    ? `${templateName}:${patchKey}:${profileKey}`
-    : `${templateName}:${profileKey}`;
+function fallbackHashText(text) {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `fnv1a:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-async function loadPromptPatch(templateName, patchKey) {
-  const artifactKey = getPromptPatchArtifactKey(templateName, patchKey);
-  if (!artifactKey) {
-    return "";
+export async function hashPromptText(text) {
+  const normalized = typeof text === "string" ? text : "";
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle || typeof TextEncoder === "undefined") {
+    return fallbackHashText(normalized);
   }
 
-  return (await loadDefaultArtifactText(artifactKey)).trim();
+  const digest = await subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(normalized),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-async function loadSharedAppendBlock(templateName) {
-  return (
-    await loadDefaultArtifactText(
-      getPromptOutputContractArtifactKey(templateName),
-    )
-  ).trim();
+function getTemplateCacheKey(templateName, promptProfileId) {
+  const profileKey = promptProfileId || "profile1";
+  return `${templateName}:${profileKey}`;
 }
 
-async function loadDefaultArtifactText(artifactKey) {
+function parsePromptFrontmatter(rawContent) {
+  const text =
+    typeof rawContent === "string" ? rawContent.replace(/^\uFEFF/, "") : "";
+  const frontmatterMatch = FRONTMATTER_PATTERN.exec(text);
+  if (!frontmatterMatch) {
+    return { body: text, frontmatter: {} };
+  }
+
+  const rawFrontmatter = frontmatterMatch[1];
+  const body = text.slice(frontmatterMatch[0].length);
+  const frontmatter = {};
+
+  for (const line of rawFrontmatter.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const separatorIndex = trimmed.indexOf(":");
+    if (separatorIndex === -1) continue;
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const rawValue = trimmed.slice(separatorIndex + 1).trim();
+    if (!key) continue;
+
+    frontmatter[key] = rawValue.replace(/^["']|["']$/g, "");
+  }
+
+  return { body, frontmatter };
+}
+
+function addFrontmatterMetadata(metadata, frontmatter) {
+  if (!frontmatter || !Object.keys(frontmatter).length) {
+    return metadata;
+  }
+
+  return {
+    ...metadata,
+    promptArtifact: frontmatter.prompt_artifact ?? null,
+    promptVersion: frontmatter.prompt_version ?? null,
+    promptLabel: frontmatter.prompt_label ?? null,
+    promptNotes: frontmatter.prompt_notes ?? null,
+    aiUpdateNotes: frontmatter.ai_update_notes ?? null,
+    frontmatter,
+  };
+}
+
+async function buildArtifactMetadata({
+  artifactKey,
+  content,
+  source,
+  manifestHash = null,
+  filename = null,
+  uploadedAt = null,
+  frontmatter = {},
+}) {
+  let metadata = {
+    artifactKey,
+    source,
+    hash: manifestHash || (await hashPromptText(content)),
+  };
+
+  if (filename) {
+    metadata.filename = filename;
+  }
+  if (uploadedAt) {
+    metadata.uploadedAt = uploadedAt;
+  }
+
+  metadata = addFrontmatterMetadata(metadata, frontmatter);
+
+  return metadata;
+}
+
+async function buildPromptVersionId(templateName, artifacts) {
+  const versionInput = [
+    templateName,
+    ...artifacts
+      .map(
+        (artifact) =>
+          `${artifact.artifactKey}:${artifact.source}:${artifact.hash}`,
+      )
+      .sort(),
+  ].join("|");
+  return hashPromptText(versionInput);
+}
+
+async function loadSharedAppendBlockWithMetadata(templateName) {
+  const loaded = await loadDefaultArtifactWithMetadata(
+    getPromptOutputContractArtifactKey(templateName),
+  );
+  const text = loaded.text.trim();
+  return {
+    text,
+    metadata: text ? loaded.metadata : null,
+  };
+}
+
+async function loadDefaultArtifactWithMetadata(artifactKey) {
   const defaults = await getServerPromptDefaults();
   const cached = defaults?.artifacts?.[artifactKey];
   if (typeof cached === "string") {
-    return cached;
+    const parsed = parsePromptFrontmatter(cached);
+    return {
+      text: parsed.body,
+      metadata: await buildArtifactMetadata({
+        artifactKey,
+        content: cached,
+        source: "server",
+        manifestHash: defaults?.manifest?.[artifactKey] ?? null,
+        frontmatter: parsed.frontmatter,
+      }),
+    };
   }
-  return getPackagedPromptArtifactText(artifactKey);
+
+  const text = await getPackagedPromptArtifactText(artifactKey);
+  const definition = getPromptArtifactDefinition(artifactKey);
+  const parsed = parsePromptFrontmatter(text);
+  return {
+    text: parsed.body,
+    metadata: await buildArtifactMetadata({
+      artifactKey,
+      content: text,
+      source: "packaged",
+      filename: definition?.fileName ?? null,
+      frontmatter: parsed.frontmatter,
+    }),
+  };
 }
 
-export async function loadPromptTemplate(templateName, profile) {
+async function loadDefaultArtifactText(artifactKey) {
+  return (await loadDefaultArtifactWithMetadata(artifactKey)).text;
+}
+
+export async function loadPromptTemplateWithMetadata(templateName, profile) {
   const assets = await getUserAssets();
-  const patchKey = profile?.patchKey ?? "";
   const cacheKey = getTemplateCacheKey(
     templateName,
-    patchKey,
     assets?.activePromptProfileId,
   );
   const cached = templateCache.get(cacheKey);
   if (cached) return cached;
 
   const overrideAsset = assets?.[getPromptOverrideAssetField(templateName)];
-  const template = overrideAsset?.content?.trim()
-    ? overrideAsset.content
-    : await loadDefaultArtifactText(getPromptTemplateArtifactKey(templateName));
-  const patch = await loadPromptPatch(templateName, patchKey);
-  const sharedAppend = await loadSharedAppendBlock(templateName);
-  const mergedParts = [template.trim(), patch, sharedAppend].filter(Boolean);
+  const templateArtifactKey = getPromptTemplateArtifactKey(templateName);
+  const parsedOverride = overrideAsset?.content?.trim()
+    ? parsePromptFrontmatter(overrideAsset.content)
+    : null;
+  const templatePart = overrideAsset?.content?.trim()
+    ? {
+        text: parsedOverride.body,
+        metadata: await buildArtifactMetadata({
+          artifactKey: templateArtifactKey,
+          content: overrideAsset.content,
+          source: "user_override",
+          filename: overrideAsset.filename ?? null,
+          uploadedAt: overrideAsset.uploadedAt ?? null,
+          frontmatter: parsedOverride.frontmatter,
+        }),
+      }
+    : await loadDefaultArtifactWithMetadata(templateArtifactKey);
+  const sharedAppendPart =
+    await loadSharedAppendBlockWithMetadata(templateName);
+  const mergedParts = [templatePart.text.trim(), sharedAppendPart.text].filter(
+    Boolean,
+  );
   const merged = mergedParts.join("\n\n");
+  const artifacts = [templatePart.metadata, sharedAppendPart.metadata].filter(
+    Boolean,
+  );
+  const metadata = {
+    templateName,
+    activePromptProfileId: assets?.activePromptProfileId ?? null,
+    versionId: await buildPromptVersionId(templateName, artifacts),
+    artifacts,
+  };
+  const result = {
+    text: merged,
+    metadata,
+  };
 
-  templateCache.set(cacheKey, merged);
-  return merged;
+  templateCache.set(cacheKey, result);
+  return result;
+}
+
+export async function loadPromptTemplate(templateName, profile) {
+  return (await loadPromptTemplateWithMetadata(templateName, profile)).text;
+}
+
+export async function loadSystemPromptGuardrailsWithMetadata() {
+  const loaded = await loadDefaultArtifactWithMetadata(
+    SYSTEM_GUARDRAILS_ARTIFACT_KEY,
+  );
+  const text = loaded.text.trim();
+  const artifacts = loaded.metadata ? [loaded.metadata] : [];
+  const metadata = {
+    templateName: "systemPrompt",
+    versionId: await buildPromptVersionId("systemPrompt", artifacts),
+    artifacts,
+    renderedHash: await hashPromptText(text),
+    renderedAt: new Date().toISOString(),
+  };
+  return {
+    text,
+    metadata,
+  };
 }
 
 export async function loadSystemPromptGuardrails() {
-  return (
-    await loadDefaultArtifactText(SYSTEM_GUARDRAILS_ARTIFACT_KEY)
-  ).trim();
+  return (await loadSystemPromptGuardrailsWithMetadata()).text;
 }
 
 function normalizeText(value) {
@@ -144,28 +322,100 @@ function renderTemplate(template, replacements) {
   return rendered.trim();
 }
 
+async function renderPromptWithMetadata(templateName, input, profile) {
+  const loaded = await loadPromptTemplateWithMetadata(templateName, profile);
+  const text = renderTemplate(loaded.text, buildPromptReplacements(input));
+  return {
+    text,
+    metadata: {
+      ...loaded.metadata,
+      renderedHash: await hashPromptText(text),
+      renderedAt: new Date().toISOString(),
+    },
+  };
+}
+
 async function renderPrompt(templateName, input, profile) {
-  const template = await loadPromptTemplate(templateName, profile);
-  return renderTemplate(template, buildPromptReplacements(input));
+  return (await renderPromptWithMetadata(templateName, input, profile)).text;
+}
+
+export async function renderPrompt1WithMetadata(input, profile) {
+  const rendered = await renderPromptWithMetadata("prompt1", input, profile);
+  const customInstruction = normalizeText(input.customInstruction);
+  if (!customInstruction || rendered.text.includes(customInstruction)) {
+    return rendered;
+  }
+  const text = `${rendered.text}\n\nAdditional Prompt 1 instruction:\nTreat these user-provided keywords or concepts as extra screening signals to evaluate for importance, but do not force them into the output if the JD does not support them.\n${customInstruction}`;
+  return {
+    text,
+    metadata: {
+      ...rendered.metadata,
+      renderedHash: await hashPromptText(text),
+      renderedAt: new Date().toISOString(),
+      customInstructionAppended: true,
+    },
+  };
 }
 
 export async function renderPrompt1(input, profile) {
-  const rendered = await renderPrompt("prompt1", input, profile);
-  const customInstruction = normalizeText(input.customInstruction);
-  if (!customInstruction || rendered.includes(customInstruction)) {
-    return rendered;
-  }
-  return `${rendered}\n\nAdditional Prompt 1 instruction:\nTreat these user-provided keywords or concepts as extra screening signals to evaluate for importance, but do not force them into the output if the JD does not support them.\n${customInstruction}`;
+  return (await renderPrompt1WithMetadata(input, profile)).text;
+}
+
+export async function renderPrompt2WithMetadata(input, profile) {
+  return renderPromptWithMetadata("prompt2", input, profile);
 }
 
 export async function renderPrompt2(input, profile) {
-  return renderPrompt("prompt2", input, profile);
+  return (await renderPrompt2WithMetadata(input, profile)).text;
+}
+
+export async function renderPrompt3WithMetadata(input, profile) {
+  return renderPromptWithMetadata("prompt3", input, profile);
 }
 
 export async function renderPrompt3(input, profile) {
-  return renderPrompt("prompt3", input, profile);
+  return (await renderPrompt3WithMetadata(input, profile)).text;
+}
+
+export async function renderPrompt4WithMetadata(input, profile) {
+  return renderPromptWithMetadata("prompt4", input, profile);
 }
 
 export async function renderPrompt4(input, profile) {
-  return renderPrompt("prompt4", input, profile);
+  return (await renderPrompt4WithMetadata(input, profile)).text;
+}
+
+export async function buildPromptRunMetadata({
+  profile,
+  prompts = {},
+  systemPrompt = null,
+}) {
+  const promptEntries = Object.entries(prompts).filter(
+    ([, value]) => value && typeof value === "object",
+  );
+  const promptSetInput = [
+    systemPrompt ? `systemPrompt:${systemPrompt.versionId}` : "",
+    ...promptEntries
+      .map(([promptName, metadata]) => `${promptName}:${metadata.versionId}`)
+      .sort(),
+  ]
+    .filter(Boolean)
+    .join("|");
+
+  return {
+    schemaVersion: 1,
+    capturedAt: new Date().toISOString(),
+    promptSetId: await hashPromptText(promptSetInput),
+    provider: {
+      id: profile?.id ?? null,
+      label: profile?.label ?? null,
+      vendor: profile?.vendor ?? null,
+      mode: profile?.mode ?? null,
+      model: profile?.model ?? null,
+      apiBaseUrl: profile?.apiBaseUrl ?? null,
+      targetUrl: profile?.targetUrl ?? null,
+    },
+    systemPrompt,
+    prompts: Object.fromEntries(promptEntries),
+  };
 }
