@@ -52,7 +52,11 @@ import { useRegenerateWizard } from '@/hooks/use-regenerate-wizard';
 import { useTranslations } from '@/lib/i18n';
 import { fetchOutputConfig } from '@/lib/api/config';
 import { isSharedFreeLlmLimitMessage, isUserLlmConfigMessage } from '@/lib/api/client';
-import { type TemplateSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/lib/types/template-settings';
+import {
+  type ResumeTemplateSettings,
+  type TemplateSettings,
+  DEFAULT_TEMPLATE_SETTINGS,
+} from '@/lib/types/template-settings';
 import {
   commitPendingSectionRemovals,
   withLocalizedDefaultSections,
@@ -375,12 +379,12 @@ const ResumeBuilderContent = () => {
             fitOnePage: outputConfig.default_fit_one_page,
           })
         : DEFAULT_TEMPLATE_SETTINGS;
-      const applyTemplateSettings = (resumeTemplateSettings?: Partial<TemplateSettings> | null) => {
+      const applyTemplateSettings = (resumeTemplateSettings?: ResumeTemplateSettings | null) => {
         const savedResumeSettings = Object.fromEntries(
           Object.entries(resumeTemplateSettings ?? {}).filter(
             ([, value]) => value !== null && value !== undefined
           )
-        ) as Partial<TemplateSettings>;
+        ) as ResumeTemplateSettings;
         const nextSettings = resolveEffectiveTemplateSettings(
           backendDefaultSettings,
           savedResumeSettings

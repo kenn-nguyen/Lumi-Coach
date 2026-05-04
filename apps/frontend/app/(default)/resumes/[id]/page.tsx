@@ -37,7 +37,11 @@ import {
   mergeTemplateSettings,
   resolveEffectiveTemplateSettings,
 } from '@/lib/utils/template-settings';
-import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
+import {
+  DEFAULT_TEMPLATE_SETTINGS,
+  type DateDisplayMode,
+  type TemplateSettings,
+} from '@/lib/types/template-settings';
 import { getContentAreaPx, mmToPx, PAGE_DIMENSIONS } from '@/lib/constants/page-dimensions';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
@@ -244,7 +248,7 @@ export default function ResumeViewerPage() {
   };
 
   const handleDateDisplayToggle = (nextChecked: boolean) => {
-    const dateDisplay = nextChecked ? 'year-only' : 'month-year';
+    const dateDisplay: DateDisplayMode = nextChecked ? 'year-only' : 'month-year';
     setTemplateSettings((current) => {
       const nextSettings = { ...current, dateDisplay };
       void updateResumeTemplateSettings(resumeId, nextSettings).catch((err) => {
