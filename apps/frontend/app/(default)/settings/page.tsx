@@ -15,7 +15,6 @@ import {
   fetchPromptConfig,
   updatePromptConfig,
   clearAllApiKeys,
-  resetDatabase,
   PROVIDER_INFO,
   type LLMConfig,
   type LLMProvider,
@@ -57,7 +56,6 @@ import {
   Sparkles,
   Clock,
   Settings2,
-  Trash2,
   AlertTriangle,
 } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
@@ -156,7 +154,6 @@ export default function SettingsPage() {
 
   // Danger Zone state
   const [showClearApiKeysDialog, setShowClearApiKeysDialog] = useState(false);
-  const [showResetDatabaseDialog, setShowResetDatabaseDialog] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessDialogMessage] = useState({ title: '', description: '' });
   const [isResetting, setIsResetting] = useState(false);
@@ -543,38 +540,6 @@ export default function SettingsPage() {
     } finally {
       setIsResetting(false);
       setShowClearApiKeysDialog(false);
-    }
-  };
-
-  // Handle Reset Database
-  const handleResetDatabase = async () => {
-    setIsResetting(true);
-    try {
-      await resetDatabase();
-
-      // Clear all related localStorage keys
-      localStorage.removeItem('master_resume_id');
-      localStorage.removeItem('resume_builder_draft');
-      localStorage.removeItem('resume_builder_settings');
-      localStorage.removeItem('resume_matcher_content_language');
-      localStorage.removeItem('resume_matcher_ui_language');
-
-      // Refresh status to show empty counts
-      await refreshStatus();
-      // Clear health check as context is lost
-      setHealthCheck(null);
-      setError(null);
-      setSuccessDialogMessage({
-        title: t('common.success'),
-        description: t('common.databaseReset'),
-      });
-      setShowSuccessDialog(true);
-    } catch (err) {
-      console.error('Failed to reset database', err);
-      setError(t('settings.errors.failedToResetDatabase'));
-    } finally {
-      setIsResetting(false);
-      setShowResetDatabaseDialog(false);
     }
   };
 
@@ -1006,7 +971,6 @@ export default function SettingsPage() {
                 <FormattingControls
                   settings={defaultTemplateSettings}
                   onChange={handleOutputTemplateSettingsChange}
-                  defaultExpanded
                 />
               </div>
             </div>
@@ -1100,25 +1064,6 @@ export default function SettingsPage() {
                   {t('settings.clearApiKeys')}
                 </Button>
               </div>
-
-              {/* Reset Database */}
-              <div className="border border-red-200 bg-red-50/50 p-6 space-y-4">
-                <div>
-                  <h3 className="font-bold text-sm text-red-900 mb-1">
-                    {t('settings.resetDatabase')}
-                  </h3>
-                  <p className="text-xs text-red-700">{t('settings.resetDatabaseDescription')}</p>
-                </div>
-                <Button
-                  variant="destructive"
-                  className="w-full"
-                  onClick={() => setShowResetDatabaseDialog(true)}
-                  disabled={isResetting}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {t('settings.resetDatabase')}
-                </Button>
-              </div>
             </div>
           </section>
         </div>
@@ -1169,16 +1114,6 @@ export default function SettingsPage() {
         confirmLabel={t('common.delete')}
         variant="warning"
         onConfirm={handleClearApiKeys}
-      />
-
-      <ConfirmDialog
-        open={showResetDatabaseDialog}
-        onOpenChange={setShowResetDatabaseDialog}
-        title={t('confirmations.resetDatabase')}
-        description={t('confirmations.resetDatabaseDescription')}
-        confirmLabel={t('common.reset')}
-        variant="danger"
-        onConfirm={handleResetDatabase}
       />
 
       <ConfirmDialog

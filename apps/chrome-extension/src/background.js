@@ -1,5 +1,6 @@
 import {
   generateResumeForLinkedInJob,
+  importMasterResumeFromTextAsset,
   saveStoryboardAsset,
 } from "./runtime/orchestrator.js";
 import { captureExtensionEvent } from "./runtime/analytics.js";
@@ -8,6 +9,7 @@ import { clearPromptTemplateCache } from "./runtime/prompt-loader.js";
 import {
   deleteResume,
   fetchExtensionAccessToken,
+  listResumes,
   openPreviewTab,
   openWebsiteSignInTab,
   openWebsiteSignOutTab,
@@ -78,6 +80,13 @@ import {
 } from "./runtime/run-control.js";
 
 let suppressSourceFocusUntil = 0;
+let backendMasterResumeCache = {
+  accountKey: null,
+  hasValue: false,
+  value: null,
+  promise: null,
+  fetchedAt: 0,
+};
 
 function getSignedOutWorkspaceMessage() {
   return "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.";
@@ -160,14 +169,27 @@ async function getConnectionSnapshot({ trySync = true } = {}) {
   let extensionConnected = false;
   let websiteAuthenticated = false;
   let extensionAuth = null;
+  let websiteSession = null;
 
   try {
     extensionAuth = await getExtensionAuth();
     extensionConnected = await hasValidExtensionAuth();
-    const websiteSession = await verifyWebsiteSession();
+  } catch {
+    extensionConnected = false;
+    extensionAuth = null;
+  }
+
+  try {
+    websiteSession = await verifyWebsiteSession();
     websiteAuthenticated = websiteSession?.authenticated === true;
-    const accountMismatch = hasAccountMismatch(extensionAuth, websiteSession);
-    if (trySync && websiteAuthenticated && (!extensionConnected || accountMismatch)) {
+  } catch {
+    websiteAuthenticated = false;
+  }
+
+  const accountMismatch =
+    websiteAuthenticated && hasAccountMismatch(extensionAuth, websiteSession);
+  if (trySync && websiteAuthenticated && (!extensionConnected || accountMismatch)) {
+    try {
       const synced = await syncExtensionAuthFromWebsite();
       extensionConnected = Boolean(synced?.token);
       if (extensionConnected) {
@@ -177,15 +199,16 @@ async function getConnectionSnapshot({ trySync = true } = {}) {
           });
         });
       }
-    } else if (accountMismatch) {
-      extensionConnected = false;
+    } catch {
+      if (!extensionConnected || accountMismatch) {
+        extensionConnected = false;
+      }
     }
-  } catch {
+  } else if (accountMismatch) {
     extensionConnected = false;
-    websiteAuthenticated = false;
   }
 
-  const connected = extensionConnected && websiteAuthenticated;
+  const connected = extensionConnected;
   return {
     connected,
     extensionConnected,
@@ -194,7 +217,12 @@ async function getConnectionSnapshot({ trySync = true } = {}) {
   };
 }
 
-async function getRuntimeSnapshot({ trySync = true, currentUrl = "" } = {}) {
+async function getRuntimeSnapshot({
+  trySync = true,
+  currentUrl = "",
+  refreshBackendMaster = false,
+  backendMasterMaxAgeMs = 0,
+} = {}) {
   const [extensionState, assets, history, connection, onboardingProgress] =
     await Promise.all([
       getExtensionState(),
@@ -203,20 +231,148 @@ async function getRuntimeSnapshot({ trySync = true, currentUrl = "" } = {}) {
       getConnectionSnapshot({ trySync }),
       getOnboardingProgress(),
     ]);
+  const backendMasterResume = await resolveBackendMasterResumeForAccount({
+    accountKey: assets.activeAccountKey,
+    connected: connection.connected,
+    forceRefresh: refreshBackendMaster,
+    maxAgeMs: backendMasterMaxAgeMs,
+  });
+  const assetsWithBackendMaster = {
+    ...assets,
+    backendMasterResume,
+  };
 
   return {
     ok: true,
     state: extensionState,
-    assets,
+    assets: assetsWithBackendMaster,
     history,
     route: classifyLinkedInJobsRoute(currentUrl),
     ...connection,
     setupState: getExtensionSetupState({
-      assets,
+      assets: assetsWithBackendMaster,
       extensionConnected: connection.extensionConnected,
       websiteAuthenticated: connection.websiteAuthenticated,
       onboardingProgress,
     }),
+  };
+}
+
+async function getBackendMasterResumeSummary() {
+  const resumeList = await listResumes(true);
+  const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
+  if (!masterResume?.resume_id) {
+    return null;
+  }
+  return {
+    resumeId: masterResume.resume_id,
+    filename: masterResume.filename ?? null,
+    title: masterResume.title ?? null,
+    updatedAt: masterResume.updated_at ?? null,
+    processingStatus: masterResume.processing_status ?? null,
+  };
+}
+
+function getCachedBackendMasterResume(accountKey) {
+  if (
+    !accountKey ||
+    backendMasterResumeCache.accountKey !== accountKey ||
+    !backendMasterResumeCache.hasValue
+  ) {
+    return null;
+  }
+  return backendMasterResumeCache.value;
+}
+
+function setCachedBackendMasterResume(accountKey, value) {
+  backendMasterResumeCache = {
+    accountKey: accountKey || null,
+    hasValue: Boolean(accountKey),
+    value: value ?? null,
+    promise: null,
+    fetchedAt: Date.now(),
+  };
+}
+
+function clearBackendMasterResumeCache() {
+  backendMasterResumeCache = {
+    accountKey: null,
+    hasValue: false,
+    value: null,
+    promise: null,
+    fetchedAt: 0,
+  };
+}
+
+async function resolveBackendMasterResumeForAccount({
+  accountKey,
+  connected = true,
+  forceRefresh = false,
+  maxAgeMs = 0,
+} = {}) {
+  if (!connected || !accountKey) {
+    return null;
+  }
+
+  if (
+    !forceRefresh &&
+    backendMasterResumeCache.accountKey === accountKey &&
+    backendMasterResumeCache.hasValue
+  ) {
+    return backendMasterResumeCache.value;
+  }
+
+  if (
+    maxAgeMs > 0 &&
+    backendMasterResumeCache.accountKey === accountKey &&
+    backendMasterResumeCache.hasValue &&
+    Date.now() - backendMasterResumeCache.fetchedAt < maxAgeMs
+  ) {
+    return backendMasterResumeCache.value;
+  }
+
+  if (
+    backendMasterResumeCache.accountKey === accountKey &&
+    backendMasterResumeCache.promise
+  ) {
+    return backendMasterResumeCache.promise;
+  }
+
+  const promise = getBackendMasterResumeSummary()
+    .then((backendMasterResume) => {
+      setCachedBackendMasterResume(accountKey, backendMasterResume);
+      return backendMasterResume;
+    })
+    .catch((error) => {
+      backendMasterResumeCache = {
+        ...backendMasterResumeCache,
+        promise: null,
+      };
+      logWarn("Background", "Failed to load backend Master Resume summary.", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return getCachedBackendMasterResume(accountKey);
+    });
+
+  backendMasterResumeCache = {
+    ...backendMasterResumeCache,
+    accountKey,
+    promise,
+  };
+  return promise;
+}
+
+async function getUserAssetsWithBackendMaster({ forceRefresh = true } = {}) {
+  const assets = await getUserAssets();
+  const backendMasterResume = await resolveBackendMasterResumeForAccount({
+    accountKey: assets.activeAccountKey,
+    connected: true,
+    forceRefresh,
+    maxAgeMs: 0,
+  });
+  return {
+    ...assets,
+    backendMasterResume,
   };
 }
 
@@ -516,8 +672,17 @@ async function cancelActiveRun(options = {}) {
   return cancelResult;
 }
 
-async function ensureLinkedInContentScript(tabId, url) {
-  if (typeof tabId !== "number" || !isLinkedInJobsShellUrl(url)) {
+function isInjectableContentScriptUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function ensureContentScript(tabId, url) {
+  if (typeof tabId !== "number" || !isInjectableContentScriptUrl(url)) {
     return false;
   }
 
@@ -539,13 +704,29 @@ async function ensureLinkedInContentScript(tabId, url) {
     });
     return true;
   } catch (error) {
-    logWarn("Background", "Failed to ensure LinkedIn content script.", {
+    logWarn("Background", "Failed to ensure content script.", {
       tabId,
       url,
       error: error instanceof Error ? error.message : String(error),
     });
     return false;
   }
+}
+
+async function ensureLinkedInContentScript(tabId, url) {
+  if (typeof tabId !== "number" || !isLinkedInJobsShellUrl(url)) {
+    return false;
+  }
+
+  return ensureContentScript(tabId, url);
+}
+
+async function showLauncherInTab(tabId, url) {
+  if (!(await ensureContentScript(tabId, url))) {
+    return false;
+  }
+  await chrome.tabs.sendMessage(tabId, { type: "EXTENSION_SHOW_LAUNCHER" });
+  return true;
 }
 
 async function sendLinkedInRouteChange(tabId, url) {
@@ -639,14 +820,22 @@ async function ensureExtensionAuthForAction(pendingAction, options = {}) {
     return { connected: true };
   }
 
-  const websiteSession = await verifyWebsiteSession();
+  let websiteSession = null;
+  try {
+    websiteSession = await verifyWebsiteSession();
+  } catch (error) {
+    logWarn(
+      "Background",
+      "Website session check failed after extension auth; continuing with extension token.",
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return { connected: true, connectionState: "connected" };
+  }
+
   if (!websiteSession?.authenticated) {
-    await setPendingExtensionAction(pendingAction);
-    return {
-      connected: false,
-      connectionState: "signed_out",
-      message: getSignedOutWorkspaceMessage(),
-    };
+    return { connected: true, connectionState: "connected" };
   }
 
   if (!hasAccountMismatch(extensionAuth, websiteSession)) {
@@ -680,15 +869,6 @@ async function ensureExtensionAuthForAction(pendingAction, options = {}) {
   };
 }
 
-function getStoryboardRecommendationMessage() {
-  return "A story bank helps produce better results. Continue without it?";
-}
-
-async function hasStoryboardAsset() {
-  const { storyboardAsset } = await getUserAssets();
-  return Boolean(storyboardAsset?.content?.trim());
-}
-
 async function maybeResumePendingExtensionAction(options = {}) {
   const pendingAction = await getPendingExtensionAction();
   if (!pendingAction) return;
@@ -696,7 +876,7 @@ async function maybeResumePendingExtensionAction(options = {}) {
 }
 
 function getMissingMasterResumeContextMessage() {
-  return "Upload your resume to the extension first as a .txt, .md, or .json file. PDF and DOCX are not supported here.";
+  return "Add your Master Resume to Lumi Coach before tailoring. Upload it in the extension to extract and save it.";
 }
 
 function isReconnectRequiredError(error) {
@@ -766,7 +946,7 @@ async function resumePendingExtensionAction(options = {}) {
       }
       return;
     }
-    const assets = await getUserAssets();
+    const assets = await getUserAssetsWithBackendMaster();
     const setupState = getExtensionSetupState({
       assets,
       extensionConnected: true,
@@ -805,22 +985,6 @@ async function resumePendingExtensionAction(options = {}) {
       }
       return;
     }
-    if (!options.allowWithoutStoryboard && !(await hasStoryboardAsset())) {
-      updateActiveRun(runId, { phase: "awaiting_storyboard", inFlight: false });
-      if (tabId) {
-        chrome.tabs
-          .sendMessage(tabId, {
-            type: "EXTENSION_STORYBOARD_RECOMMENDATION",
-            payload: {
-              runId,
-              message: getStoryboardRecommendationMessage(),
-            },
-          })
-          .catch(() => {});
-      }
-      return;
-    }
-
     await clearPendingExtensionAction();
     setLogRelayTabId(tabId);
     try {
@@ -913,6 +1077,23 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.action.onClicked.addListener(async (tab) => {
+  const currentUrl = tab?.url || tab?.pendingUrl || "";
+  if (tab?.id && isInjectableContentScriptUrl(currentUrl)) {
+    try {
+      await showLauncherInTab(tab.id, currentUrl);
+      return;
+    } catch (error) {
+      logError(
+        "Background",
+        "Failed to show floating launcher in current tab.",
+        {
+          tabId: tab.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
+
   const extensionState = await getExtensionState().catch(() => null);
   const activeStatus = extensionState?.status;
   const sourceTabId = extensionState?.sourceTabId ?? null;
@@ -931,13 +1112,10 @@ chrome.action.onClicked.addListener(async (tab) => {
       await focusSourceTab(sourceTabId);
       try {
         const sourceTab = await chrome.tabs.get(sourceTabId).catch(() => null);
-        await ensureLinkedInContentScript(
+        await showLauncherInTab(
           sourceTabId,
           sourceTab?.url || sourceTab?.pendingUrl || "",
         );
-        await chrome.tabs.sendMessage(sourceTabId, {
-          type: "EXTENSION_SHOW_LAUNCHER",
-        });
       } catch {
         // Ignore missing content script or stale LinkedIn tab.
       }
@@ -951,24 +1129,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
 
-  const route = classifyLinkedInJobsRoute(tab?.url || tab?.pendingUrl || "");
-  if (!tab?.id || route.mode === LINKEDIN_ROUTE_MODE.hidden) {
-    return;
-  }
-
-  try {
-    await ensureLinkedInContentScript(tab.id, tab?.url || tab?.pendingUrl || "");
-    await chrome.tabs.sendMessage(tab.id, { type: "EXTENSION_SHOW_LAUNCHER" });
-  } catch (error) {
-    logError(
-      "Background",
-      "Failed to restore floating launcher from action click.",
-      {
-        tabId: tab.id,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
-  }
+  // Nothing else to show on non-injectable browser pages.
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -989,11 +1150,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "GET_STATE":
         return getRuntimeSnapshot({
           currentUrl: sender?.tab?.url || sender?.tab?.pendingUrl || "",
+          refreshBackendMaster:
+            message.payload?.refreshBackendMaster === true,
+          backendMasterMaxAgeMs:
+            Number.isFinite(message.payload?.backendMasterMaxAgeMs)
+              ? message.payload.backendMasterMaxAgeMs
+              : 0,
         });
 
       case "CHECK_CONNECTION_STATUS":
         return getRuntimeSnapshot({
           currentUrl: sender?.tab?.url || sender?.tab?.pendingUrl || "",
+          refreshBackendMaster:
+            message.payload?.refreshBackendMaster === true,
+          backendMasterMaxAgeMs:
+            Number.isFinite(message.payload?.backendMasterMaxAgeMs)
+              ? message.payload.backendMasterMaxAgeMs
+              : 0,
         });
 
       case "SYNC_DEFAULT_PROMPTS":
@@ -1005,6 +1178,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "CLEAR_EXTENSION_AUTH":
         await clearExtensionAuth();
         await clearPendingExtensionAction();
+        clearBackendMasterResumeCache();
         return { ok: true };
 
       case "SAVE_STORYBOARD":
@@ -1020,6 +1194,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         await maybeResumePendingExtensionAction();
         return { ok: true };
+
+      case "IMPORT_MASTER_RESUME_CONTEXT": {
+        const masterResume = await importMasterResumeFromTextAsset({
+          filename: message.payload?.filename,
+          content: message.payload?.content,
+          replaceExisting: message.payload?.replaceExisting !== false,
+        });
+        const assets = await getUserAssets();
+        setCachedBackendMasterResume(assets.activeAccountKey, masterResume);
+        await setMasterResumeContextAsset(null);
+        await maybeResumePendingExtensionAction();
+        return {
+          ok: true,
+          masterResume,
+        };
+      }
 
       case "CLEAR_MASTER_RESUME_CONTEXT":
         await setMasterResumeContextAsset(null);
@@ -1153,11 +1343,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case "RESET_LOCAL_DATA":
         await clearExtensionLocalData();
+        clearBackendMasterResumeCache();
         clearPromptTemplateCache();
         return { ok: true };
 
       case "RESET_BROWSER_DATA":
         await clearAllExtensionLocalData();
+        clearBackendMasterResumeCache();
         clearPromptTemplateCache();
         return { ok: true };
 
@@ -1226,7 +1418,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             message: authGate.message || getSignedOutWorkspaceMessage(),
           };
         }
-        const assets = await getUserAssets();
+        const assets = await getUserAssetsWithBackendMaster();
         const setupState = getExtensionSetupState({
           assets,
           extensionConnected: true,
@@ -1254,33 +1446,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             message:
               setupState.detail ||
               "Finish provider setup in the extension to continue.",
-          };
-        }
-        if (
-          !message.payload?.allowWithoutStoryboard &&
-          !(await hasStoryboardAsset())
-        ) {
-          await setPendingExtensionAction(pendingAction);
-          updateActiveRun(runId, {
-            phase: "awaiting_storyboard",
-            inFlight: false,
-          });
-          await setExtensionState({
-            sessionId: runId,
-            sourceTabId: pendingAction.tabId,
-            activeRunJob: pendingAction.activeRunJob ?? null,
-            status: SESSION_STATUS.idle,
-            previewUrl: null,
-            patchError: null,
-            promptMetadata: null,
-            cancelReason: null,
-            cancelPhase: null,
-          });
-          return {
-            ok: true,
-            awaitingStoryboard: true,
-            runId,
-            message: getStoryboardRecommendationMessage(),
           };
         }
         try {

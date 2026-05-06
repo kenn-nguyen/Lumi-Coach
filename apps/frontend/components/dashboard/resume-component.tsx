@@ -29,6 +29,7 @@ export interface Experience {
   id: number;
   title?: string;
   company?: string;
+  website?: string | null;
   location?: string;
   context?: string | null;
   years?: string;
@@ -177,7 +178,7 @@ const Resume: React.FC<ResumeProps> = ({
 
   return (
     <div
-      className={`${baseStyles['resume-body']} bg-white text-black w-full mx-auto resume-template-${mergedSettings.template}`}
+      className={`${baseStyles['resume-body']} resume-body bg-white text-black w-full mx-auto resume-template-${mergedSettings.template}`}
       style={cssVars}
     >
       {mergedSettings.template === 'swiss-single' && (
@@ -186,6 +187,7 @@ const Resume: React.FC<ResumeProps> = ({
           showContactIcons={mergedSettings.showContactIcons}
           additionalSectionLabels={additionalSectionLabels}
           dateDisplay={mergedSettings.dateDisplay}
+          experienceHeaderOrder={mergedSettings.experienceHeaderOrder}
         />
       )}
       {mergedSettings.template === 'swiss-two-column' && (
@@ -194,6 +196,7 @@ const Resume: React.FC<ResumeProps> = ({
           showContactIcons={mergedSettings.showContactIcons}
           sectionHeadings={sectionHeadings}
           dateDisplay={mergedSettings.dateDisplay}
+          experienceHeaderOrder={mergedSettings.experienceHeaderOrder}
         />
       )}
       {mergedSettings.template === 'modern' && (
@@ -202,6 +205,7 @@ const Resume: React.FC<ResumeProps> = ({
           showContactIcons={mergedSettings.showContactIcons}
           additionalSectionLabels={additionalSectionLabels}
           dateDisplay={mergedSettings.dateDisplay}
+          experienceHeaderOrder={mergedSettings.experienceHeaderOrder}
         />
       )}
       {mergedSettings.template === 'modern-two-column' && (
@@ -211,6 +215,7 @@ const Resume: React.FC<ResumeProps> = ({
           sectionHeadings={sectionHeadings}
           fallbackLabels={fallbackLabels}
           dateDisplay={mergedSettings.dateDisplay}
+          experienceHeaderOrder={mergedSettings.experienceHeaderOrder}
         />
       )}
     </div>

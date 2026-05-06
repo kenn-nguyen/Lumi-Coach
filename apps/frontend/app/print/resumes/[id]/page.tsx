@@ -9,7 +9,10 @@ import {
   type BodyFontFamily,
   type AccentColor,
   type DateDisplayMode,
+  type ExperienceHeaderOrder,
+  type FitOnePageMode,
   DEFAULT_TEMPLATE_SETTINGS,
+  getFitOnePageEffectiveSettings,
 } from '@/lib/types/template-settings';
 import { API_BASE } from '@/lib/api/client';
 import { translate } from '@/lib/i18n/server';
@@ -36,7 +39,10 @@ type PageProps = {
     showContactIcons?: string;
     accentColor?: string;
     dateDisplay?: string;
+    experienceHeaderOrder?: string;
     fitOnePage?: string;
+    fitMode?: string;
+    fitOnePageVerticalScale?: string;
     lang?: string;
     authToken?: string;
   }>;
@@ -80,6 +86,38 @@ function parseDateDisplay(value: string | undefined): DateDisplayMode {
     return value;
   }
   return DEFAULT_TEMPLATE_SETTINGS.dateDisplay;
+}
+
+/**
+ * Parse experience header order.
+ */
+function parseExperienceHeaderOrder(value: string | undefined): ExperienceHeaderOrder {
+  if (value === 'role-first') {
+    return value;
+  }
+  return DEFAULT_TEMPLATE_SETTINGS.experienceHeaderOrder;
+}
+
+/**
+ * Parse fit-to-one-page compacting mode.
+ */
+function parseFitOnePageMode(value: string | undefined): FitOnePageMode {
+  if (value === 'gentle' || value === 'balanced' || value === 'compact') {
+    return value;
+  }
+  return 'off';
+}
+
+/**
+ * Parse the runtime vertical scale resolved by the preview.
+ */
+function parseFitOnePageVerticalScale(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
 }
 
 /**
@@ -249,6 +287,7 @@ export default async function PrintResumePage({ params, searchParams }: PageProp
     ),
     accentColor: parseAccentColor(resolvedSearchParams?.accentColor),
     dateDisplay: parseDateDisplay(resolvedSearchParams?.dateDisplay),
+    experienceHeaderOrder: parseExperienceHeaderOrder(resolvedSearchParams?.experienceHeaderOrder),
     fitOnePage: parseBoolean(
       resolvedSearchParams?.fitOnePage,
       DEFAULT_TEMPLATE_SETTINGS.fitOnePage
@@ -258,8 +297,16 @@ export default async function PrintResumePage({ params, searchParams }: PageProp
   // Note: Margins are applied by Playwright's PDF renderer (not here)
   // This ensures margins appear on EVERY page, not just the first
   // The settings are passed to override CSS variables for spacing/fonts only
+  const effectiveSettings = getFitOnePageEffectiveSettings(
+    settings,
+    parseFitOnePageMode(resolvedSearchParams?.fitMode)
+  );
+  const fitOnePageVerticalScale = parseFitOnePageVerticalScale(
+    resolvedSearchParams?.fitOnePageVerticalScale
+  );
   const printSettings: TemplateSettings = {
-    ...settings,
+    ...effectiveSettings,
+    ...(fitOnePageVerticalScale !== undefined ? { fitOnePageVerticalScale } : {}),
     // Zero out margins in CSS since Playwright handles them
     margins: { top: 0, bottom: 0, left: 0, right: 0 },
   };

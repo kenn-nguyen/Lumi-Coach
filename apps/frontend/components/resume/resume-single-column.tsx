@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, Phone, MapPin, Globe, Linkedin, Github, ExternalLink } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe, Linkedin, Github } from 'lucide-react';
 import type {
   ResumeData,
   SectionMeta,
@@ -7,18 +7,24 @@ import type {
 } from '@/components/dashboard/resume-component';
 import { getSortedSections } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
-import { type DateDisplayMode } from '@/lib/types/template-settings';
+import { type DateDisplayMode, type ExperienceHeaderOrder } from '@/lib/types/template-settings';
 import { DynamicResumeSection } from './dynamic-resume-section';
 import { SafeHtml } from './safe-html';
 import { buildContactDisplay } from './contact-utils';
+import { ResumeLinkPill } from './resume-link-pill';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/swiss-single.module.css';
+
+const resumeSectionClass = `${baseStyles['resume-section']} resume-section`;
+const resumeSectionTitleClass = `${baseStyles['resume-section-title']} resume-section-title`;
+const resumeItemClass = `${baseStyles['resume-item']} resume-item`;
 
 interface ResumeSingleColumnProps {
   data: ResumeData;
   showContactIcons?: boolean;
   additionalSectionLabels?: Partial<AdditionalSectionLabels>;
   dateDisplay?: DateDisplayMode;
+  experienceHeaderOrder?: ExperienceHeaderOrder;
 }
 
 /**
@@ -34,6 +40,7 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
   showContactIcons = false,
   additionalSectionLabels,
   dateDisplay = 'month-year',
+  experienceHeaderOrder = 'company-first',
 }) => {
   const { personalInfo, summary, workExperience, education, personalProjects, additional } = data;
 
@@ -90,6 +97,57 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
     );
   };
 
+  const renderExperienceHeader = (exp: NonNullable<ResumeData['workExperience']>[number]) => {
+    const isCompanyFirst = experienceHeaderOrder === 'company-first';
+    const companyTextClass = isCompanyFirst
+      ? baseStyles['resume-item-title']
+      : baseStyles['resume-item-subtitle'];
+    const roleTextClass = isCompanyFirst
+      ? baseStyles['resume-item-subtitle']
+      : baseStyles['resume-item-title'];
+    const roleDateClass = isCompanyFirst
+      ? `${baseStyles['resume-date']} ${baseStyles['resume-item-subtitle']} ml-4`
+      : `${baseStyles['resume-date']} ml-4`;
+    const roleRow = (
+      <div className={`flex justify-between items-baseline ${baseStyles['resume-row-tight']}`}>
+        <h4 className={roleTextClass}>{exp.title}</h4>
+        <span className={roleDateClass}>{formatDateRange(exp.years, { dateDisplay })}</span>
+      </div>
+    );
+    const companyRow = (
+      <div
+        className={`flex justify-between items-center ${isCompanyFirst ? baseStyles['resume-row-tight'] : baseStyles['resume-row']} ${companyTextClass}`}
+      >
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          {exp.company && <span>{exp.company}</span>}
+          <ResumeLinkPill value={exp.website} kind="website" />
+        </span>
+        {exp.location && <span>{exp.location}</span>}
+      </div>
+    );
+    const contextRow = exp.context ? (
+      <p className={baseStyles['resume-item-context']}>{exp.context}</p>
+    ) : null;
+
+    if (isCompanyFirst) {
+      return (
+        <>
+          {companyRow}
+          {contextRow}
+          {roleRow}
+        </>
+      );
+    }
+
+    return (
+      <>
+        {roleRow}
+        {companyRow}
+        {contextRow}
+      </>
+    );
+  };
+
   // Render a section based on its key
   const renderSection = (section: SectionMeta) => {
     switch (section.key) {
@@ -100,8 +158,8 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
       case 'summary':
         if (!summary) return null;
         return (
-          <div key={section.id} className={baseStyles['resume-section']}>
-            <h3 className={baseStyles['resume-section-title']}>{section.displayName}</h3>
+          <div key={section.id} className={resumeSectionClass}>
+            <h3 className={resumeSectionTitleClass}>{section.displayName}</h3>
             <p className={`text-justify ${baseStyles['resume-text']}`}>{summary}</p>
           </div>
         );
@@ -109,28 +167,12 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
       case 'workExperience':
         if (!workExperience || workExperience.length === 0) return null;
         return (
-          <div key={section.id} className={baseStyles['resume-section']}>
-            <h3 className={baseStyles['resume-section-title']}>{section.displayName}</h3>
+          <div key={section.id} className={resumeSectionClass}>
+            <h3 className={resumeSectionTitleClass}>{section.displayName}</h3>
             <div className={baseStyles['resume-items']}>
               {workExperience.map((exp) => (
-                <div key={exp.id} className={baseStyles['resume-item']}>
-                  <div
-                    className={`flex justify-between items-baseline ${baseStyles['resume-row-tight']}`}
-                  >
-                    <h4 className={baseStyles['resume-item-title']}>{exp.title}</h4>
-                    <span className={`${baseStyles['resume-date']} ml-4`}>
-                      {formatDateRange(exp.years, { dateDisplay })}
-                    </span>
-                  </div>
-                  <div
-                    className={`flex justify-between items-center ${baseStyles['resume-row']} ${baseStyles['resume-item-subtitle']}`}
-                  >
-                    <span>{exp.company}</span>
-                    {exp.location && <span>{exp.location}</span>}
-                  </div>
-                  {exp.context && (
-                    <p className={baseStyles['resume-item-context']}>{exp.context}</p>
-                  )}
+                <div key={exp.id} className={resumeItemClass}>
+                  {renderExperienceHeader(exp)}
                   {exp.description && exp.description.length > 0 && (
                     <ul
                       className={`ml-4 ${baseStyles['resume-list']} ${baseStyles['resume-text-sm']}`}
@@ -154,11 +196,11 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
       case 'personalProjects':
         if (!personalProjects || personalProjects.length === 0) return null;
         return (
-          <div key={section.id} className={baseStyles['resume-section']}>
-            <h3 className={baseStyles['resume-section-title']}>{section.displayName}</h3>
+          <div key={section.id} className={resumeSectionClass}>
+            <h3 className={resumeSectionTitleClass}>{section.displayName}</h3>
             <div className={baseStyles['resume-items']}>
               {personalProjects.map((project) => (
-                <div key={project.id} className={baseStyles['resume-item']}>
+                <div key={project.id} className={resumeItemClass}>
                   <div
                     className={`flex justify-between items-baseline ${baseStyles['resume-row-tight']}`}
                   >
@@ -166,42 +208,8 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
                       <h4 className={baseStyles['resume-item-title']}>{project.name}</h4>
                       {(project.github || project.website) && (
                         <span className="flex gap-1.5">
-                          {project.github && (
-                            <a
-                              href={
-                                project.github.startsWith('http')
-                                  ? project.github
-                                  : `https://${project.github}`
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={baseStyles['resume-link-pill']}
-                            >
-                              <Github size={10} />
-                              {project.github
-                                .replace(/^https?:\/\//, '')
-                                .replace(/^www\./, '')
-                                .replace(/\/$/, '')}
-                            </a>
-                          )}
-                          {project.website && (
-                            <a
-                              href={
-                                project.website.startsWith('http')
-                                  ? project.website
-                                  : `https://${project.website}`
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={baseStyles['resume-link-pill']}
-                            >
-                              <ExternalLink size={10} />
-                              {project.website
-                                .replace(/^https?:\/\//, '')
-                                .replace(/^www\./, '')
-                                .replace(/\/$/, '')}
-                            </a>
-                          )}
+                          <ResumeLinkPill value={project.github} kind="github" />
+                          <ResumeLinkPill value={project.website} kind="website" />
                         </span>
                       )}
                     </div>
@@ -241,11 +249,11 @@ export const ResumeSingleColumn: React.FC<ResumeSingleColumnProps> = ({
       case 'education':
         if (!education || education.length === 0) return null;
         return (
-          <div key={section.id} className={baseStyles['resume-section']}>
-            <h3 className={baseStyles['resume-section-title']}>{section.displayName}</h3>
+          <div key={section.id} className={resumeSectionClass}>
+            <h3 className={resumeSectionTitleClass}>{section.displayName}</h3>
             <div className={baseStyles['resume-items']}>
               {education.map((edu) => (
-                <div key={edu.id} className={baseStyles['resume-item']}>
+                <div key={edu.id} className={resumeItemClass}>
                   <div
                     className={`flex justify-between items-baseline ${baseStyles['resume-row-tight']}`}
                   >
@@ -408,8 +416,8 @@ const AdditionalSection: React.FC<{
   if (!hasContent) return null;
 
   return (
-    <div className={baseStyles['resume-section']}>
-      <h3 className={baseStyles['resume-section-title']}>{displayName}</h3>
+    <div className={resumeSectionClass}>
+      <h3 className={resumeSectionTitleClass}>{displayName}</h3>
       <div className={`${baseStyles['resume-stack']} ${baseStyles['resume-text-sm']}`}>
         {technicalSkills.length > 0 && (
           <div className="flex">

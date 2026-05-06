@@ -58,20 +58,8 @@ export function PublicHeader({ activeTab = null }: PublicHeaderProps): React.Rea
           }
           className="inline-flex min-h-11 items-center justify-center rounded-full bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] px-5 text-sm font-semibold text-[#fff7f9] shadow-[0_12px_26px_rgba(86,15,40,0.14)] transition hover:translate-y-[1px] hover:opacity-95"
         >
-          Add to Chrome
+          Install now
         </a>
-
-        <Link
-          href="/sign-in"
-          onClick={() =>
-            captureEvent(POSTHOG_EVENTS.PUBLIC_SIGN_IN_CLICKED, {
-              entrypoint: activeTab === 'story-bank' ? 'story_bank_header' : 'homepage_header',
-            })
-          }
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e6cad2]/95 bg-[rgba(255,250,251,0.88)] px-5 text-sm font-semibold text-[#6f102d] shadow-[0_12px_26px_rgba(86,15,40,0.06)] transition hover:translate-y-[1px] hover:bg-white hover:text-[#32111d]"
-        >
-          Sign in
-        </Link>
       </div>
     </header>
   );

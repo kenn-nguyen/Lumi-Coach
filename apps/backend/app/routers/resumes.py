@@ -179,7 +179,7 @@ PRESERVED_PERSONAL_INFO_FIELDS = (
     "linkedin",
     "github",
 )
-PRESERVED_EXPERIENCE_FIELDS = ("title", "company", "context", "years")
+PRESERVED_EXPERIENCE_FIELDS = ("title", "company", "website", "context", "years")
 
 
 def _resolve_rewrite_strategy_context(
@@ -1833,7 +1833,12 @@ async def download_resume_pdf(
     showContactIcons: bool = Query(False),
     accentColor: str = Query("blue", pattern="^(blue|green|orange|red)$"),
     dateDisplay: str = Query("month-year", pattern="^(month-year|year-only)$"),
+    experienceHeaderOrder: str = Query(
+        "company-first", pattern="^(company-first|role-first)$"
+    ),
     fitOnePage: bool = Query(True),
+    fitMode: str | None = Query(None, pattern="^(off|gentle|balanced|compact)$"),
+    fitOnePageVerticalScale: float | None = Query(None, ge=0.5, le=2.0),
     lang: str | None = Query(None, pattern="^[a-z]{2}(-[A-Z]{2})?$"),
     filename: str | None = Query(None, max_length=220),
     current_user: AuthenticatedUser = Depends(require_current_user),
@@ -1854,7 +1859,9 @@ async def download_resume_pdf(
     - compactMode: enable tighter spacing
     - showContactIcons: show icons in contact info
     - dateDisplay: month-year or year-only
-    - fitOnePage: scale output down to one page when needed
+    - experienceHeaderOrder: company-first or role-first
+    - fitOnePage: condense slight one-page overflow; long resumes may continue
+    - fitMode/fitOnePageVerticalScale: runtime preview fit layout for PDF parity
     - lang: locale used for print page translations
     """
     resume = db.get_resume(resume_id)
@@ -1880,8 +1887,13 @@ async def download_resume_pdf(
         f"&showContactIcons={str(showContactIcons).lower()}"
         f"&accentColor={accentColor}"
         f"&dateDisplay={dateDisplay}"
+        f"&experienceHeaderOrder={experienceHeaderOrder}"
         f"&fitOnePage={str(fitOnePage).lower()}"
     )
+    if fitMode is not None:
+        params = f"{params}&fitMode={fitMode}"
+    if fitOnePageVerticalScale is not None:
+        params = f"{params}&fitOnePageVerticalScale={fitOnePageVerticalScale}"
     auth_token, _ = create_backend_access_token_for_user(current_user)
     params = f"{params}&authToken={quote(auth_token, safe='')}"
     if lang:
@@ -1895,11 +1907,16 @@ async def download_resume_pdf(
         "bottom": marginBottom,
         "left": marginLeft,
     }
+    explicit_fit_layout = fitMode is not None or fitOnePageVerticalScale is not None
 
     # Render PDF with margins applied to every page
     try:
         pdf_bytes = await render_resume_pdf(
-            url, pageSize, margins=pdf_margins, fit_one_page=fitOnePage
+            url,
+            pageSize,
+            margins=pdf_margins,
+            fit_one_page=fitOnePage and not explicit_fit_layout,
+            calibrate_fit_one_page=fitOnePage and explicit_fit_layout,
         )
     except PDFRenderError as e:
         raise HTTPException(status_code=503, detail=str(e))

@@ -403,18 +403,3 @@ export async function clearAllApiKeys(): Promise<void> {
     throw new Error(data.detail || `Failed to clear API keys (status ${res.status}).`);
   }
 }
-
-// Reset database
-export async function resetDatabase(): Promise<void> {
-  const res = await apiFetch('/config/reset', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ confirm: 'RESET_ALL_DATA' }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to reset database (status ${res.status}).`);
-  }
-}

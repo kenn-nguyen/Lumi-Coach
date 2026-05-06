@@ -65,6 +65,7 @@ const validPrompt1 = {
   do_not_fake: ["SOC 2 expertise"],
   deprioritize: ["company perks"],
   jd_notes: ["JD is heavy on domain language"],
+  flex_notes: "",
 };
 
 const validPrompt2 = {
@@ -183,11 +184,25 @@ const validPrompt2 = {
   skills_to_avoid: ["Kubernetes"],
   signals_to_avoid: ["Security architect"],
   gaps: ["No direct fraud-specialist title"],
+  flex_notes: "",
 };
 
 describe("prompt stage validation", () => {
   it("accepts a valid Prompt 1 payload", () => {
     expect(validatePrompt1Data(validPrompt1)).toEqual([]);
+  });
+
+  it("accepts string, null, and missing Prompt 1 flex_notes values", () => {
+    expect(validatePrompt1Data({ ...validPrompt1, flex_notes: "small note" })).toEqual([]);
+    expect(validatePrompt1Data({ ...validPrompt1, flex_notes: null })).toEqual([]);
+    const { flex_notes: _flexNotes, ...withoutFlexNotes } = validPrompt1;
+    expect(validatePrompt1Data(withoutFlexNotes)).toEqual([]);
+  });
+
+  it("rejects non-string Prompt 1 flex_notes values", () => {
+    expect(validatePrompt1Data({ ...validPrompt1, flex_notes: { note: "bad" } })).toContain(
+      "prompt1.flex_notes must be a string or null.",
+    );
   });
 
   it("rejects a partial Prompt 2 payload shaped like a nested signal object", () => {
@@ -203,6 +218,19 @@ describe("prompt stage validation", () => {
 
   it("accepts a valid Prompt 2 payload", () => {
     expect(validatePrompt2Data(validPrompt2)).toEqual([]);
+  });
+
+  it("accepts string, null, and missing Prompt 2 flex_notes values", () => {
+    expect(validatePrompt2Data({ ...validPrompt2, flex_notes: "small note" })).toEqual([]);
+    expect(validatePrompt2Data({ ...validPrompt2, flex_notes: null })).toEqual([]);
+    const { flex_notes: _flexNotes, ...withoutFlexNotes } = validPrompt2;
+    expect(validatePrompt2Data(withoutFlexNotes)).toEqual([]);
+  });
+
+  it("rejects non-string Prompt 2 flex_notes values", () => {
+    expect(validatePrompt2Data({ ...validPrompt2, flex_notes: ["bad"] })).toContain(
+      "prompt2.flex_notes must be a string or null.",
+    );
   });
 
   it("accepts Prompt 2 summary_sentences of 1 or 2 only", () => {
@@ -237,6 +265,7 @@ const validResumeData = {
       title: "Product Manager",
       company: "Amazon",
       location: "Seattle, WA",
+      website: "https://amazon.com/seller-services",
       context:
         "Helping sellers list products through product testing services.",
       years: "2021 - Present",
@@ -300,6 +329,35 @@ describe("resume data validation", () => {
 
     expect(validateResumeData(invalidContext)).toContain(
       "workExperience[0].context must be a string or null.",
+    );
+  });
+
+  it("accepts string, null, and missing work experience website values", () => {
+    expect(validateResumeData(validResumeData)).toEqual([]);
+
+    const nullWebsite = {
+      ...validResumeData,
+      workExperience: [{ ...validResumeData.workExperience[0], website: null }],
+    };
+    expect(validateResumeData(nullWebsite)).toEqual([]);
+
+    const { website: _website, ...experienceWithoutWebsite } =
+      validResumeData.workExperience[0];
+    const missingWebsite = {
+      ...validResumeData,
+      workExperience: [experienceWithoutWebsite],
+    };
+    expect(validateResumeData(missingWebsite)).toEqual([]);
+  });
+
+  it("rejects non-string work experience website values", () => {
+    const invalidWebsite = {
+      ...validResumeData,
+      workExperience: [{ ...validResumeData.workExperience[0], website: 42 }],
+    };
+
+    expect(validateResumeData(invalidWebsite)).toContain(
+      "workExperience[0].website must be a string or null.",
     );
   });
 });

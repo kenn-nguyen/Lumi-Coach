@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt1.output_contract
-prompt_version: v2.0.1
-prompt_label: jd-analysis-output-contract-gated-signals
-prompt_notes: Defines the Prompt 1 JSON contract with gated, high-signal, and medium-signal requirement buckets.
+prompt_version: v2.0.2
+prompt_label: jd-analysis-output-contract-gated-signals-flex-notes
+prompt_notes: Defines the Prompt 1 JSON contract with gated, high-signal, and medium-signal requirement buckets plus a reserved flexible notes string.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
@@ -79,7 +79,8 @@ Return JSON in this exact shape:
 
   "do_not_fake": [],
   "deprioritize": [],
-  "jd_notes": []
+  "jd_notes": [],
+  "flex_notes": ""
 }
 
 Additional output rules:
@@ -89,6 +90,8 @@ Additional output rules:
 - `type` must be either `exact` or `inferred`.
 - `where_to_use` must be an array containing only: `headline`, `summary`, `experience`, `skills`.
 - All other list fields must contain short strings only.
+- `flex_notes` is optional and must be a string or null; use `""` when unused.
+- Use `flex_notes` only for small non-critical stage notes needed by future prompt variants.
 - Order all arrays from highest to lowest importance.
 - Do not invent requirements, tools, domain context, or qualifications not supported by the JD.
 - Be broad but selective: preserve useful downstream ATS coverage without over-compressing.

@@ -25,8 +25,8 @@ describe('buildContactDisplay', () => {
     );
 
     expect(result.href).toBe('https://www.linkedin.com/in/kenn-nguyen?utm_source=test');
-    expect(result.displayText).toBe('linkedin.com/in/kenn-nguyen');
-    expect(result.socialSlug).toBe('kenn-nguyen');
+    expect(result.displayText).toBe('https://www.linkedin.com/in/kenn-nguyen?utm_source=test');
+    expect(result.socialSlug).toBeNull();
   });
 
   it('builds a GitHub URL from a bare handle', () => {
@@ -43,5 +43,13 @@ describe('buildContactDisplay', () => {
     expect(result.href).toBe('https://github.com/kenn-nguyen');
     expect(result.displayText).toBe('github.com/kenn-nguyen');
     expect(result.socialSlug).toBe('kenn-nguyen');
+  });
+
+  it('preserves full GitHub URLs', () => {
+    const result = buildContactDisplay('GitHub', 'https://github.com/kenn-nguyen');
+
+    expect(result.href).toBe('https://github.com/kenn-nguyen');
+    expect(result.displayText).toBe('https://github.com/kenn-nguyen');
+    expect(result.socialSlug).toBeNull();
   });
 });

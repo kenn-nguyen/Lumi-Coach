@@ -136,14 +136,46 @@ class TestDownloadResumePdf:
         async with client:
             resp = await client.get(
                 "/api/v1/resumes/res-123/pdf",
-                params={"dateDisplay": "year-only", "fitOnePage": "false"},
+                params={
+                    "dateDisplay": "year-only",
+                    "experienceHeaderOrder": "role-first",
+                    "fitOnePage": "false",
+                },
             )
 
         assert resp.status_code == 200
         print_url = mock_render_resume_pdf.call_args.args[0]
         assert "dateDisplay=year-only" in print_url
+        assert "experienceHeaderOrder=role-first" in print_url
         assert "fitOnePage=false" in print_url
         assert mock_render_resume_pdf.call_args.kwargs["fit_one_page"] is False
+        assert mock_render_resume_pdf.call_args.kwargs["calibrate_fit_one_page"] is False
+
+    @patch("app.routers.resumes.render_resume_pdf", new_callable=AsyncMock)
+    @patch("app.routers.resumes.db")
+    async def test_forwards_resolved_fit_layout_with_backend_calibration(
+        self, mock_db, mock_render_resume_pdf, client, mock_resume_record
+    ):
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_render_resume_pdf.return_value = b"%PDF-1.4"
+
+        async with client:
+            resp = await client.get(
+                "/api/v1/resumes/res-123/pdf",
+                params={
+                    "fitOnePage": "true",
+                    "fitMode": "balanced",
+                    "fitOnePageVerticalScale": "1.08",
+                },
+            )
+
+        assert resp.status_code == 200
+        print_url = mock_render_resume_pdf.call_args.args[0]
+        assert "fitOnePage=true" in print_url
+        assert "fitMode=balanced" in print_url
+        assert "fitOnePageVerticalScale=1.08" in print_url
+        assert mock_render_resume_pdf.call_args.kwargs["fit_one_page"] is False
+        assert mock_render_resume_pdf.call_args.kwargs["calibrate_fit_one_page"] is True
 
 
 class TestDeleteResume:

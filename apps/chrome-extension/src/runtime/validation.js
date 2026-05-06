@@ -655,7 +655,6 @@ export function validateResumeData(data) {
   }
 
   if (!isString(data.summary)) errors.push("summary must be a string.");
-
   if (!Array.isArray(data.workExperience)) {
     errors.push("workExperience must be an array.");
   } else {
@@ -669,6 +668,10 @@ export function validateResumeData(data) {
       if (!isNullableString(item.location))
         errors.push(
           `workExperience[${index}].location must be a string or null.`,
+        );
+      if (!isNullableString(item.website))
+        errors.push(
+          `workExperience[${index}].website must be a string or null.`,
         );
       if (!isNullableString(item.context))
         errors.push(
@@ -800,6 +803,7 @@ export function validatePrompt1Data(data) {
     "do_not_fake",
     "deprioritize",
     "jd_notes",
+    "flex_notes",
   ];
 
   if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -861,6 +865,10 @@ export function validatePrompt1Data(data) {
     validateStringArrayField(data[field], `prompt1.${field}`, errors);
   });
 
+  if (!isNullableString(data.flex_notes)) {
+    errors.push("prompt1.flex_notes must be a string or null.");
+  }
+
   if (
     !data.section_targets ||
     typeof data.section_targets !== "object" ||
@@ -912,6 +920,7 @@ export function validatePrompt2Data(data) {
     "signals_to_avoid",
     "gaps",
     "excitement_anchor",
+    "flex_notes",
   ];
 
   if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -995,6 +1004,10 @@ export function validatePrompt2Data(data) {
   ].forEach((field) => {
     validateStringArrayField(data[field], `prompt2.${field}`, errors);
   });
+
+  if (!isNullableString(data.flex_notes)) {
+    errors.push("prompt2.flex_notes must be a string or null.");
+  }
 
   return errors;
 }

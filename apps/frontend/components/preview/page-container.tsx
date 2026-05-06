@@ -14,7 +14,6 @@ interface PageContainerProps {
   children: React.ReactNode;
   contentOffset?: number; // Where this page's content starts (in px)
   contentEnd?: number; // Where this page's content ends (in px)
-  contentScale?: number; // Scale content inside the printable area
 }
 
 /**
@@ -33,7 +32,6 @@ export function PageContainer({
   children,
   contentOffset = 0,
   contentEnd,
-  contentScale = 1,
 }: PageContainerProps) {
   const pageDims = PAGE_DIMENSIONS[pageSize];
   const pageWidthPx = mmToPx(pageDims.width);
@@ -101,8 +99,6 @@ export function PageContainer({
             style={{
               top: -contentOffset,
               width: contentWidth,
-              transform: `scale(${contentScale})`,
-              transformOrigin: 'top left',
             }}
           >
             {children}

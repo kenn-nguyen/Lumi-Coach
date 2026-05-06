@@ -1,6 +1,10 @@
 import { ImprovedResult } from '@/components/common/resume_previewer_context';
 import type { ResumeData } from '@/components/dashboard/resume-component';
-import { type ResumeTemplateSettings, type TemplateSettings } from '@/lib/types/template-settings';
+import {
+  type FitOnePageMode,
+  type ResumeTemplateSettings,
+  type TemplateSettings,
+} from '@/lib/types/template-settings';
 import { type Locale } from '@/i18n/config';
 import {
   API_BASE,
@@ -30,6 +34,7 @@ interface ProcessedResume {
     id: number;
     title?: string;
     company?: string;
+    website?: string | null;
     location?: string | null;
     context?: string | null;
     years?: string;
@@ -57,6 +62,11 @@ interface ProcessedResume {
     certificationsTraining?: string[];
     awards?: string[];
   };
+}
+
+export interface ResumePdfRenderLayout {
+  fitMode?: FitOnePageMode;
+  fitOnePageVerticalScale?: number;
 }
 
 export interface GenerationFeedback {
@@ -284,7 +294,8 @@ export function getResumePdfUrl(
   resumeId: string,
   settings?: TemplateSettings,
   locale?: Locale,
-  filename?: string
+  filename?: string,
+  renderLayout?: ResumePdfRenderLayout
 ): string {
   const normalizedId = normalizeResumeId(resumeId);
   const params = new URLSearchParams();
@@ -307,10 +318,20 @@ export function getResumePdfUrl(
     params.set('showContactIcons', String(settings.showContactIcons));
     params.set('accentColor', settings.accentColor);
     params.set('dateDisplay', settings.dateDisplay);
+    params.set('experienceHeaderOrder', settings.experienceHeaderOrder);
     params.set('fitOnePage', String(settings.fitOnePage));
   } else {
     params.set('template', 'swiss-single');
     params.set('pageSize', 'A4');
+  }
+  if (renderLayout?.fitMode) {
+    params.set('fitMode', renderLayout.fitMode);
+  }
+  if (
+    typeof renderLayout?.fitOnePageVerticalScale === 'number' &&
+    Number.isFinite(renderLayout.fitOnePageVerticalScale)
+  ) {
+    params.set('fitOnePageVerticalScale', String(renderLayout.fitOnePageVerticalScale));
   }
   if (locale) {
     params.set('lang', locale);
@@ -326,9 +347,10 @@ export async function downloadResumePdf(
   resumeId: string,
   settings?: TemplateSettings,
   locale?: Locale,
-  filename?: string
+  filename?: string,
+  renderLayout?: ResumePdfRenderLayout
 ): Promise<Blob> {
-  const url = getResumePdfUrl(resumeId, settings, locale, filename);
+  const url = getResumePdfUrl(resumeId, settings, locale, filename, renderLayout);
   let res: Response;
   try {
     res = await apiFetch(url);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lumi Coach",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "Tailor your resume for LinkedIn jobs and open the result in Lumi Coach.",
   "icons": {
     "16": "src/assets/icons/icon-16.png",
@@ -31,7 +31,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*/*", "http://*/*"],
+      "matches": ["https://www.linkedin.com/*"],
       "js": ["src/content/linkedin-job.js"],
       "run_at": "document_idle"
     }

@@ -28,6 +28,7 @@ export {
   downloadResumePdf,
   deleteResume,
   type ResumeListItem,
+  type ResumePdfRenderLayout,
 } from './resume';
 
 // Config operations

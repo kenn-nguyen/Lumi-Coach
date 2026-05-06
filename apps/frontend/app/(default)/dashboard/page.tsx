@@ -1,13 +1,11 @@
 'use client';
 
 import { SwissGrid } from '@/components/home/swiss-grid';
-import { ResumeUploadDialog } from '@/components/dashboard/resume-upload-dialog';
 import { AccountControl } from '@/components/auth/account-control';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -29,11 +27,11 @@ import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
 import Upload from 'lucide-react/dist/esm/icons/upload';
 import MoreHorizontal from 'lucide-react/dist/esm/icons/more-horizontal';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
+import X from 'lucide-react/dist/esm/icons/x';
 
 import {
   fetchResume,
   fetchResumeList,
-  deleteResume,
   fetchJobDescription,
   type ResumeListItem,
 } from '@/lib/api/resume';
@@ -41,9 +39,6 @@ import { useStatusCache } from '@/lib/context/status-cache';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
 
-const LEGACY_TAILOR_PROMPT_COUNT_KEY = 'som_career_coach_tailor_prompt_count';
-const LEGACY_TAILOR_PROMPT_DISMISSED_KEY = 'som_career_coach_tailor_prompt_dismissed';
-const TAILOR_PROMPT_HIDDEN_KEY = 'som_career_coach_tailor_prompt_hidden_explicit';
 const CHROME_EXTENSION_URL =
   'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
 
@@ -67,27 +62,18 @@ export default function DashboardPage() {
   const [masterResumeId, setMasterResumeId] = useState<string | null>(null);
   const [masterResumeItem, setMasterResumeItem] = useState<ResumeListItem | null>(null);
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>('loading');
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [tailoredResumes, setTailoredResumes] = useState<ResumeListItem[]>([]);
-  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
   const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
   const [showTailorPrompt, setShowTailorPrompt] = useState(false);
-  const [tailorPromptDismissed, setTailorPromptDismissed] = useState(false);
-  const [hideTailorPrompt, setHideTailorPrompt] = useState(false);
+  const [isLlmNoticeDismissed, setIsLlmNoticeDismissed] = useState(false);
   const [searchFieldName, setSearchFieldName] = useState('lumi-resume-filter-field');
   const [isSearchFieldReady, setIsSearchFieldReady] = useState(false);
   const router = useRouter();
 
   // Status cache for optimistic counter updates and LLM status check
-  const {
-    status: systemStatus,
-    isLoading: statusLoading,
-    incrementResumes,
-    decrementResumes,
-    setHasMasterResume,
-  } = useStatusCache();
+  const { status: systemStatus, isLoading: statusLoading } = useStatusCache();
 
   // Request id guard for concurrent loadTailoredResumes invocations
   const loadRequestIdRef = useRef(0);
@@ -98,13 +84,10 @@ export default function DashboardPage() {
   const searchEditedByUserRef = useRef(false);
   const searchQueryRef = useRef('');
 
-  const isLlmConfigured = Boolean(!statusLoading && systemStatus?.llm_configured);
   const hasUserApiKey = Boolean(systemStatus?.has_user_api_key);
   const isFreeModeAvailable = Boolean(systemStatus?.free_llm_available);
-  const shouldShowLlmNotice = Boolean(masterResumeId) && !statusLoading && !hasUserApiKey;
-
-  const isTailorEnabled =
-    Boolean(masterResumeId) && processingStatus === 'ready' && isLlmConfigured;
+  const shouldShowLlmNotice =
+    Boolean(masterResumeId) && !statusLoading && !hasUserApiKey && !isLlmNoticeDismissed;
 
   const formatDate = (value: string) => {
     if (!value) return t('common.unknown');
@@ -136,13 +119,6 @@ export default function DashboardPage() {
       console.error('Failed to check resume status:', err);
       setProcessingStatus('failed');
     }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.removeItem(LEGACY_TAILOR_PROMPT_COUNT_KEY);
-    localStorage.removeItem(LEGACY_TAILOR_PROMPT_DISMISSED_KEY);
-    setTailorPromptDismissed(localStorage.getItem(TAILOR_PROMPT_HIDDEN_KEY) === 'true');
   }, []);
 
   useEffect(() => {
@@ -274,83 +250,9 @@ export default function DashboardPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMasterMenuOpen]);
 
-  const handleUploadComplete = async ({
-    resumeId,
-    isMaster,
-  }: {
-    resumeId: string;
-    isMaster: boolean;
-  }) => {
-    if (isMaster) {
-      localStorage.setItem('master_resume_id', resumeId);
-      setMasterResumeId(resumeId);
-      checkResumeStatus(resumeId);
-    } else {
-      localStorage.removeItem('master_resume_id');
-    }
-    setIsUploadDialogOpen(false);
-    await loadTailoredResumes();
-    // Update cached counters
-    incrementResumes();
-    setHasMasterResume(true);
-  };
-
-  const handleDeleteAndReupload = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsMasterMenuOpen(false);
-    setShowDeleteDialog(true);
-  };
-
-  const confirmDeleteAndReupload = async () => {
-    if (!masterResumeId) return;
-    try {
-      await deleteResume(masterResumeId);
-      decrementResumes();
-      setHasMasterResume(false);
-      localStorage.removeItem('master_resume_id');
-      setMasterResumeId(null);
-      setProcessingStatus('loading');
-      setIsUploadDialogOpen(true);
-      await loadTailoredResumes();
-    } catch (err) {
-      console.error('Failed to delete resume:', err);
-    }
-  };
-
-  const persistTailorPromptPreference = useCallback((shouldHide: boolean) => {
-    if (shouldHide) {
-      localStorage.setItem(TAILOR_PROMPT_HIDDEN_KEY, 'true');
-      setTailorPromptDismissed(true);
-      return;
-    }
-    localStorage.removeItem(TAILOR_PROMPT_HIDDEN_KEY);
-    setTailorPromptDismissed(false);
-  }, []);
-
-  const handleTailorPromptOpenChange = (open: boolean) => {
-    if (!open) {
-      persistTailorPromptPreference(hideTailorPrompt);
-      setHideTailorPrompt(false);
-    }
-    setShowTailorPrompt(open);
-  };
-
-  const handleTailorResumeClick = () => {
-    if (!isTailorEnabled) return;
-    if (tailorPromptDismissed) {
-      router.push('/tailor');
-      return;
-    }
-
-    setHideTailorPrompt(false);
-    setShowTailorPrompt(true);
-  };
-
   const handleTailorPromptContinue = () => {
-    persistTailorPromptPreference(hideTailorPrompt);
     setShowTailorPrompt(false);
-    setHideTailorPrompt(false);
-    router.push('/tailor');
+    window.open(CHROME_EXTENSION_URL, '_blank', 'noopener,noreferrer');
   };
 
   const getStatusDisplay = () => {
@@ -485,7 +387,9 @@ export default function DashboardPage() {
   const masterButtonLabel = masterResumeId
     ? t('dashboard.masterResume')
     : t('dashboard.addMasterResume');
-  const masterStatusText = masterResumeId ? getStatusDisplay().text : t('dashboard.uploadResume');
+  const masterStatusText = masterResumeId
+    ? getStatusDisplay().text
+    : t('dashboard.masterResumeExtensionRequired');
   const masterStatusTone =
     processingStatus === 'failed'
       ? 'text-red-700'
@@ -495,7 +399,7 @@ export default function DashboardPage() {
 
   const handleOpenMasterResume = () => {
     if (!masterResumeId) {
-      setIsUploadDialogOpen(true);
+      setShowTailorPrompt(true);
       return;
     }
     router.push(`/resumes/${masterResumeId}`);
@@ -505,7 +409,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Configuration Warning Banner */}
       {shouldShowLlmNotice && (
-        <div className="mb-6 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sw-sm">
+        <div className="relative mb-6 flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 pr-12 shadow-sw-sm">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-warning" />
             <div>
@@ -552,6 +456,14 @@ export default function DashboardPage() {
               {t('nav.settings')}
             </Button>
           </Link>
+          <button
+            type="button"
+            aria-label="Dismiss notice"
+            onClick={() => setIsLlmNoticeDismissed(true)}
+            className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
@@ -627,17 +539,6 @@ export default function DashboardPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setIsMasterMenuOpen(false);
-                          setIsUploadDialogOpen(true);
-                        }}
-                        className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
-                      >
-                        <span>{t('dashboard.replaceMasterResume')}</span>
-                        <Upload className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
                           if (!masterResumeId) return;
                           setIsMasterMenuOpen(false);
                           handleExportJson(
@@ -652,40 +553,36 @@ export default function DashboardPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={handleDeleteAndReupload}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-wide text-red-700 hover:bg-red-50"
+                        onClick={() => {
+                          setIsMasterMenuOpen(false);
+                          setShowTailorPrompt(true);
+                        }}
+                        className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
                       >
-                        <span>{t('dashboard.removeMasterResume')}</span>
-                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span>{t('dashboard.replaceMasterResumeWithExtension')}</span>
+                        <Upload className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   ) : null}
                 </div>
               ) : (
-                <ResumeUploadDialog
-                  open={isUploadDialogOpen}
-                  onOpenChange={setIsUploadDialogOpen}
-                  onUploadComplete={handleUploadComplete}
-                  trigger={
-                    <Button variant="outline" className="h-10 min-w-[15rem] justify-start px-4">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/10 bg-primary text-white">
-                        <Plus className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="flex min-w-0 flex-col items-start">
-                        <span className="truncate">{masterButtonLabel}</span>
-                        <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">
-                          {masterStatusText}
-                        </span>
-                      </span>
-                    </Button>
-                  }
-                />
+                <Button
+                  variant="outline"
+                  className="h-10 min-w-[15rem] justify-start px-4"
+                  onClick={() => setShowTailorPrompt(true)}
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/10 bg-primary text-white">
+                    <Plus className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="flex min-w-0 flex-col items-start">
+                    <span className="truncate">{masterButtonLabel}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">
+                      {masterStatusText}
+                    </span>
+                  </span>
+                </Button>
               )}
             </div>
-            <Button onClick={handleTailorResumeClick} disabled={!isTailorEnabled}>
-              <Plus className="w-4 h-4" />
-              {t('dashboard.tailorResume')}
-            </Button>
             <AccountControl />
             <Link href="/settings">
               <Button variant="outline" size="icon" aria-label={t('nav.settings')}>
@@ -695,14 +592,6 @@ export default function DashboardPage() {
           </>
         }
       >
-        {masterResumeId ? (
-          <ResumeUploadDialog
-            open={isUploadDialogOpen}
-            onOpenChange={setIsUploadDialogOpen}
-            onUploadComplete={handleUploadComplete}
-            trigger={null}
-          />
-        ) : null}
         <div className="space-y-6">
           <div className="skin-card flex min-h-[32rem] flex-col overflow-hidden rounded-[24px]">
             <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-4">
@@ -764,14 +653,18 @@ export default function DashboardPage() {
             {filteredTailoredResumes.length === 0 ? (
               <div className="px-6 py-12">
                 <p className="font-serif text-2xl">
-                  {tailoredResumes.length === 0
-                    ? t('dashboard.noResumes')
-                    : t('dashboard.noMatchingResumes')}
+                  {!masterResumeId
+                    ? t('dashboard.noMasterResumeTitle')
+                    : tailoredResumes.length === 0
+                      ? t('dashboard.noResumes')
+                      : t('dashboard.noMatchingResumes')}
                 </p>
                 <p className="mt-2 font-mono text-sm text-gray-500 uppercase tracking-wide">
-                  {tailoredResumes.length === 0
-                    ? t('dashboard.noTailoredResumesDescription')
-                    : t('dashboard.tryDifferentSearch')}
+                  {!masterResumeId
+                    ? t('dashboard.noMasterResumeDescription')
+                    : tailoredResumes.length === 0
+                      ? t('dashboard.noTailoredResumesDescription')
+                      : t('dashboard.tryDifferentSearch')}
                 </p>
               </div>
             ) : (
@@ -817,18 +710,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <ConfirmDialog
-          open={showDeleteDialog}
-          onOpenChange={setShowDeleteDialog}
-          title={t('confirmations.deleteMasterResumeTitle')}
-          description={t('confirmations.deleteMasterResumeDescription')}
-          confirmLabel={t('dashboard.deleteAndReupload')}
-          cancelLabel={t('confirmations.keepResumeCancelLabel')}
-          onConfirm={confirmDeleteAndReupload}
-          variant="danger"
-        />
-
-        <Dialog open={showTailorPrompt} onOpenChange={handleTailorPromptOpenChange}>
+        <Dialog open={showTailorPrompt} onOpenChange={setShowTailorPrompt}>
           <DialogContent className="max-w-[32rem] p-0 gap-0">
             <DialogHeader className="border-b border-border p-6 pb-4">
               <DialogTitle className="font-serif text-2xl">
@@ -852,20 +734,10 @@ export default function DashboardPage() {
               <p className="font-mono text-xs leading-relaxed text-gray-600">
                 {t('dashboard.chromeExtensionPrompt.websiteModeNote')}
               </p>
-
-              <label className="flex items-start gap-3 rounded-2xl border border-border px-4 py-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={hideTailorPrompt}
-                  onChange={(event) => setHideTailorPrompt(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded-sm border border-border accent-blue-700"
-                />
-                <span>{t('dashboard.chromeExtensionPrompt.hideOption')}</span>
-              </label>
             </div>
 
             <DialogFooter className="flex-row justify-end gap-3 border-t border-border bg-secondary/60 p-4">
-              <Button variant="outline" onClick={() => handleTailorPromptOpenChange(false)}>
+              <Button variant="outline" onClick={() => setShowTailorPrompt(false)}>
                 {t('common.cancel')}
               </Button>
               <Button onClick={handleTailorPromptContinue}>

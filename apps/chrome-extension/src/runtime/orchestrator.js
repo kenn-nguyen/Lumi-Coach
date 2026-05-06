@@ -3,6 +3,7 @@ import { runApifyLinkedInFallback } from "./apify.js";
 import {
   extractJsonFromText,
   extractPrompt3PayloadFromText,
+  extractPrompt4PayloadFromText,
   extractPrompt4ResumeDataFromText,
 } from "./json.js";
 import { evaluateJobDescriptionGuardrail } from "./job-guardrail.js";
@@ -30,6 +31,7 @@ import {
   linkResumeToJobContext,
   listResumes,
   openPreviewTab,
+  overwriteMasterResume,
   patchResume,
   renameResume,
   uploadStructuredResume,
@@ -358,11 +360,15 @@ function ensureStoryboardContent(storyboardAsset) {
 }
 
 function resolveCurrentResumeSource(masterResumeContextAsset, fetchedResume) {
+  const backendResume = toResumeSource(fetchedResume);
+  if (backendResume) {
+    return backendResume;
+  }
   const localContext = masterResumeContextAsset?.content?.trim();
   if (localContext) {
     return localContext;
   }
-  return toResumeSource(fetchedResume);
+  return "";
 }
 
 function buildResumeTitle(jobTitle, company) {
@@ -405,7 +411,64 @@ const PRESERVED_PERSONAL_INFO_FIELDS = [
   "github",
 ];
 
-const PRESERVED_EXPERIENCE_FIELDS = ["title", "company", "context", "years"];
+const PRESERVED_EXPERIENCE_FIELDS = [
+  "title",
+  "company",
+  "context",
+  "website",
+  "years",
+];
+
+const RESUME_EXTRACTION_FAILED_MESSAGE =
+  "Resume extraction failed. Check that the file contains resume text, then try again.";
+const NON_RESUME_UPLOAD_MESSAGE =
+  "This file does not look like a resume. Choose a resume file and try again.";
+const MASTER_IMPORT_PROVIDER_SETUP_MESSAGE =
+  "AI setup needs attention. Save or change your provider, then upload your Master Resume again.";
+
+export function getMasterResumeImportProviderIssue(profile) {
+  if (!profile?.id) {
+    return "Choose and save your AI setup before uploading your Master Resume.";
+  }
+  if (profile.mode === "web_automation") {
+    return typeof profile.targetUrl === "string" && profile.targetUrl.trim()
+      ? ""
+      : MASTER_IMPORT_PROVIDER_SETUP_MESSAGE;
+  }
+  if (profile.mode === "api") {
+    const hasApiBaseUrl =
+      typeof profile.apiBaseUrl === "string" && profile.apiBaseUrl.trim();
+    const hasModel = typeof profile.model === "string" && profile.model.trim();
+    const hasApiKey =
+      typeof profile.apiKey === "string" && profile.apiKey.trim();
+    return hasApiBaseUrl && hasModel && hasApiKey
+      ? ""
+      : MASTER_IMPORT_PROVIDER_SETUP_MESSAGE;
+  }
+  return MASTER_IMPORT_PROVIDER_SETUP_MESSAGE;
+}
+
+function getPromptRunProviderIssue(message) {
+  const normalized = String(message || "");
+  if (
+    /active LLM profile|LLM runner|API key|required for the active runner|auth_required|Please log into|provider/i.test(
+      normalized,
+    )
+  ) {
+    return MASTER_IMPORT_PROVIDER_SETUP_MESSAGE;
+  }
+  return "";
+}
+
+export function getPrompt4ResumeRejectionMessage(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return "";
+  }
+  if (parsed.error !== "not_resume") {
+    return "";
+  }
+  return NON_RESUME_UPLOAD_MESSAGE;
+}
 
 function preserveExperienceFacts(masterExperience, generatedExperience) {
   if (!Array.isArray(masterExperience) || !Array.isArray(generatedExperience)) {
@@ -445,7 +508,7 @@ function preserveExperienceFacts(masterExperience, generatedExperience) {
   });
 }
 
-function preserveGeneratedResumeFacts(
+export function preserveGeneratedResumeFacts(
   masterResumeData,
   generatedResumeData,
   enabled,
@@ -573,6 +636,24 @@ function normalizePrompt3ResumeData(resumeData) {
   }
 
   return nextResume;
+}
+
+function stripPromptFlexNotesFromResumeData(resumeData) {
+  if (!resumeData || typeof resumeData !== "object" || Array.isArray(resumeData)) {
+    return resumeData;
+  }
+
+  const { flex_notes: _flexNotes, ...resumeDataWithoutFlexNotes } = resumeData;
+  return resumeDataWithoutFlexNotes;
+}
+
+export function stripPromptFlexNotesFromServerArtifact(artifact) {
+  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) {
+    return artifact;
+  }
+
+  const { flex_notes: _flexNotes, ...artifactWithoutFlexNotes } = artifact;
+  return artifactWithoutFlexNotes;
 }
 
 function normalizePrompt3Feedback(feedback) {
@@ -720,6 +801,16 @@ function buildPrompt2RepairPrompt({
 function validatePrompt3RawOutput(rawText) {
   try {
     const prompt3Result = extractPrompt3PayloadFromText(rawText);
+    if (
+      !prompt3Result.usedLegacyShape &&
+      prompt3Result.parsed?.flex_notes != null &&
+      typeof prompt3Result.parsed.flex_notes !== "string"
+    ) {
+      return {
+        valid: false,
+        message: "prompt3.flex_notes must be a string or null.",
+      };
+    }
     const validationErrors = validateResumeData(prompt3Result.resumeData);
     if (validationErrors.length > 0) {
       return {
@@ -752,6 +843,7 @@ function buildPrompt3RepairPrompt({
     "Do not include markdown fences, commentary, or prose before or after the JSON.",
     "The top-level object must contain `resume_data`.",
     "`generation_feedback` is optional, but if present it must be valid JSON with `summary`, `pros`, `cons`, and `caveats`.",
+    "`flex_notes` is optional, but if present it must be a string or null.",
     "Do not use the em dash character `—`; use a normal hyphen `-` instead.",
     "Do not end resume bullet strings with a period `.`.",
     "Do not return the empty schema template. Reuse the same resume content you already generated, but fix the JSON format and schema issues.",
@@ -762,9 +854,24 @@ function buildPrompt3RepairPrompt({
 
 function validatePrompt4RawOutput(rawText) {
   try {
-    const resumeData = extractPrompt4ResumeDataFromText(rawText);
+    const prompt4Result = extractPrompt4PayloadFromText(rawText);
+    if (
+      !prompt4Result.usedLegacyShape &&
+      prompt4Result.parsed?.flex_notes != null &&
+      typeof prompt4Result.parsed.flex_notes !== "string"
+    ) {
+      return {
+        valid: false,
+        message: "prompt4.flex_notes must be a string or null.",
+      };
+    }
+    const resumeData = prompt4Result.resumeData;
+    const rejectionMessage = getPrompt4ResumeRejectionMessage(resumeData);
+    if (rejectionMessage) {
+      return { valid: true };
+    }
     const validationErrors = validateResumeData(
-      normalizePrompt3ResumeData(resumeData),
+      stripPromptFlexNotesFromResumeData(normalizePrompt3ResumeData(resumeData)),
     );
     if (validationErrors.length > 0) {
       return {
@@ -795,8 +902,11 @@ function buildPrompt4RepairPrompt({
     `Validation issue: ${validationMessage}`,
     "Return corrected JSON only.",
     "Do not include markdown fences, commentary, or prose before or after the JSON.",
-    "Return only the ResumeData object itself. Do not wrap it in `resume_data`.",
-    "Do not include `generation_feedback`, explanations, notes, or any other top-level keys.",
+    "If the previous output was a `not_resume` error object, return that same error object unchanged.",
+    "Otherwise return one object with `resume_data` containing the ResumeData object.",
+    "`flex_notes` is optional as a top-level prompt note, but if present it must be a string or null.",
+    "Do not place `flex_notes` inside `resume_data`; it is prompt metadata only.",
+    "Do not include `generation_feedback`, explanations, notes, or any other top-level keys outside `resume_data` and optional `flex_notes`.",
     "Do not use the em dash character `—`; use a normal hyphen `-` instead.",
     "Every `sectionMeta` item must be a full object with these fields: `id`, `key`, `displayName`, `sectionType`, `isDefault`, `isVisible`, `order`.",
     "`sectionMeta[].id`, `sectionMeta[].key`, and `sectionMeta[].displayName` must be strings.",
@@ -896,7 +1006,7 @@ async function bootstrapMasterResumeFromMarkdown({
     }
     if (prompt4Run.status !== "success") {
       logError("Orchestrator", "Prompt 4 failed.", prompt4Run);
-      throw new Error(`Prompt 4 failed: ${prompt4Run.message}`);
+      throw new Error(RESUME_EXTRACTION_FAILED_MESSAGE);
     }
 
     if (prompt4Run.validationError) {
@@ -904,22 +1014,28 @@ async function bootstrapMasterResumeFromMarkdown({
         validationError: prompt4Run.validationError,
         conversationUrl: prompt4Run.conversationUrl ?? null,
       });
-      throw new Error(`Prompt 4 failed: ${prompt4Run.validationError}`);
+      throw new Error(RESUME_EXTRACTION_FAILED_MESSAGE);
     }
 
     logInfo("Orchestrator", "Parsing Prompt 4 output.");
     logPromptDebug("Prompt 4", "output", prompt4Raw);
-    const parsedResumeData = normalizePrompt3ResumeData(
-      extractPrompt4ResumeDataFromText(prompt4Raw),
+    const prompt4Parsed = extractPrompt4ResumeDataFromText(prompt4Raw);
+    const rejectionMessage = getPrompt4ResumeRejectionMessage(prompt4Parsed);
+    if (rejectionMessage) {
+      throw new Error(rejectionMessage);
+    }
+    const parsedResumeData = stripPromptFlexNotesFromResumeData(
+      normalizePrompt3ResumeData(prompt4Parsed),
     );
     await setExtensionState({
       prompt4Result: parsedResumeData,
     });
     const validationErrors = validateResumeData(parsedResumeData);
     if (validationErrors.length > 0) {
-      throw new Error(
-        `Prompt 4 produced invalid ResumeData: ${validationErrors.join(" | ")}`,
-      );
+      logError("Orchestrator", "Prompt 4 produced invalid ResumeData.", {
+        validationErrors,
+      });
+      throw new Error(RESUME_EXTRACTION_FAILED_MESSAGE);
     }
 
     const uploadResponse = await uploadStructuredResume(
@@ -930,7 +1046,7 @@ async function bootstrapMasterResumeFromMarkdown({
     cancel.throwIfCanceled("base resume upload");
     if (!uploadResponse?.resume_id) {
       throw new Error(
-        "Prompt 4 finished, but Lumi Coach did not return a master resume id.",
+        "Resume extraction finished, but Lumi Coach did not return a master resume id.",
       );
     }
 
@@ -956,6 +1072,123 @@ async function bootstrapMasterResumeFromMarkdown({
     });
     throw error instanceof Error ? error : new Error(message);
   }
+}
+
+function buildMasterResumeTitle(filename) {
+  const normalized =
+    typeof filename === "string" && filename.trim()
+      ? filename.trim()
+      : "Master Resume";
+  return normalized.replace(/\.[^.]+$/, "") || "Master Resume";
+}
+
+export async function importMasterResumeFromTextAsset({
+  filename,
+  content,
+  replaceExisting = true,
+} = {}) {
+  const localResumeMarkdown = typeof content === "string" ? content.trim() : "";
+  if (!localResumeMarkdown) {
+    throw new Error("Upload a resume file with text content.");
+  }
+
+  const { llmSettings } = await getUserAssets();
+  const activeLlmProfile = getActiveLlmProfile(llmSettings);
+  const providerIssue = getMasterResumeImportProviderIssue(activeLlmProfile);
+  if (providerIssue) {
+    throw new Error(providerIssue);
+  }
+  const systemPromptRendered = await loadSystemPromptGuardrailsWithMetadata();
+  const systemPrompt = systemPromptRendered.text;
+  const prompt4Rendered = await renderPrompt4WithMetadata(
+    {
+      currentResume: localResumeMarkdown,
+      systemPrompt,
+    },
+    activeLlmProfile,
+  );
+  const prompt4 = prompt4Rendered.text;
+
+  logPromptDebug("Prompt 4", "input", prompt4);
+  logInfo("Orchestrator", "Running Prompt 4 for Master Resume import.");
+  const prompt4Run = await runPrompt(prompt4, {
+    profile: activeLlmProfile,
+    promptLabel: "Prompt 4",
+    systemPrompt,
+    runId: null,
+    validateResponse: validatePrompt4RawOutput,
+    buildRepairPrompt: buildPrompt4RepairPrompt,
+    maxRepairAttempts: 1,
+  });
+
+  const prompt4Raw =
+    prompt4Run.status === "success"
+      ? prompt4Run.rawText
+      : (prompt4Run.partialRawText ?? "");
+
+  if (prompt4Run.status !== "success") {
+    logError("Orchestrator", "Prompt 4 Master Resume import failed.", prompt4Run);
+    const providerRunIssue = getPromptRunProviderIssue(prompt4Run.message);
+    if (providerRunIssue) {
+      throw new Error(providerRunIssue);
+    }
+    throw new Error(RESUME_EXTRACTION_FAILED_MESSAGE);
+  }
+  if (prompt4Run.validationError) {
+    logError("Orchestrator", "Prompt 4 Master Resume import failed validation.", {
+      validationError: prompt4Run.validationError,
+      conversationUrl: prompt4Run.conversationUrl ?? null,
+    });
+    throw new Error(RESUME_EXTRACTION_FAILED_MESSAGE);
+  }
+
+  logPromptDebug("Prompt 4", "output", prompt4Raw);
+  const prompt4Parsed = extractPrompt4ResumeDataFromText(prompt4Raw);
+  const rejectionMessage = getPrompt4ResumeRejectionMessage(prompt4Parsed);
+  if (rejectionMessage) {
+    throw new Error(rejectionMessage);
+  }
+  const parsedResumeData = stripPromptFlexNotesFromResumeData(
+    normalizePrompt3ResumeData(prompt4Parsed),
+  );
+  const validationErrors = validateResumeData(parsedResumeData);
+  if (validationErrors.length > 0) {
+    logError("Orchestrator", "Prompt 4 Master Resume import produced invalid ResumeData.", {
+      validationErrors,
+    });
+    throw new Error(RESUME_EXTRACTION_FAILED_MESSAGE);
+  }
+
+  const resumeList = await listResumes(true);
+  const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
+  let resumeId = masterResume?.resume_id ?? null;
+  let uploadResponse = null;
+
+  if (resumeId && replaceExisting) {
+    await overwriteMasterResume(parsedResumeData);
+  } else {
+    uploadResponse = await uploadStructuredResume(
+      buildBootstrappedMasterFilename({ filename }),
+      parsedResumeData,
+    );
+    resumeId = uploadResponse?.resume_id ?? null;
+  }
+
+  if (!resumeId) {
+    throw new Error("Master Resume was extracted, but Lumi Coach did not return a resume id.");
+  }
+
+  const title = buildMasterResumeTitle(filename);
+  await renameResume(resumeId, title);
+
+  return {
+    resumeId,
+    filename: typeof filename === "string" ? filename : null,
+    title,
+    prompt4Raw,
+    prompt4Result: parsedResumeData,
+    processingStatus: uploadResponse?.processing_status ?? "ready",
+  };
 }
 
 async function resolveBaseResumeId({
@@ -1475,8 +1708,8 @@ export async function generateResumeForLinkedInJob(
   logInfo("Orchestrator", "Parsing Prompt 3 output.");
   logPromptDebug("Prompt 3", "output", prompt3Raw);
   const prompt3Result = extractPrompt3PayloadFromText(prompt3Raw);
-  const normalizedPrompt3Resume = normalizePrompt3ResumeData(
-    prompt3Result.resumeData,
+  const normalizedPrompt3Resume = stripPromptFlexNotesFromResumeData(
+    normalizePrompt3ResumeData(prompt3Result.resumeData),
   );
   const prompt3WithPreservedFacts = preserveGeneratedResumeFacts(
     masterResumeData,
@@ -1491,11 +1724,13 @@ export async function generateResumeForLinkedInJob(
     normalizePrompt3Feedback(prompt3Result.generationFeedback),
     activeLlmProfile,
   );
+  const serverPrompt2Artifact =
+    stripPromptFlexNotesFromServerArtifact(prompt2Result);
   const patchPayload = {
     resume_data: prompt3Parsed,
     generation_feedback: prompt3Feedback,
     generation_artifacts: {
-      prompt2: prompt2Result,
+      prompt2: serverPrompt2Artifact,
     },
   };
   if (prompt3Result.usedLegacyShape) {
@@ -1599,7 +1834,7 @@ export async function generateResumeForLinkedInJob(
       prompt3Parsed,
       prompt3Feedback,
       {
-        prompt2: prompt2Result,
+        prompt2: serverPrompt2Artifact,
       },
       { signal: cancel.signal() },
     );

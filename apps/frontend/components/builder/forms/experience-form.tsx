@@ -313,6 +313,7 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
         id: newId,
         title: '',
         company: '',
+        website: '',
         location: '',
         context: null,
         years: '',
@@ -696,6 +697,14 @@ export const ExperienceForm: React.FC<ExperienceFormProps> = ({
                           onChange={(e) => handleChange(item.id, 'location', e.target.value)}
                           placeholder={t('builder.forms.experience.placeholders.location')}
                           className={cn(builderEditableFieldClass, 'font-semibold')}
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <Input
+                          value={item.website || ''}
+                          onChange={(e) => handleChange(item.id, 'website', e.target.value)}
+                          placeholder={t('builder.forms.experience.placeholders.website')}
+                          className={builderEditableFieldClass}
                         />
                       </div>
                       <div className="space-y-1 md:col-span-2">

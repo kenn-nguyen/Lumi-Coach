@@ -33,6 +33,7 @@ export function extractPrompt3PayloadFromText(rawText) {
       parsed,
       resumeData: parsed,
       generationFeedback: null,
+      flexNotes: null,
       usedLegacyShape: true,
     };
   }
@@ -41,23 +42,33 @@ export function extractPrompt3PayloadFromText(rawText) {
     parsed,
     resumeData: parsed.resume_data,
     generationFeedback: normalizeGenerationFeedback(parsed.generation_feedback),
+    flexNotes: normalizeFlexibleNotes(parsed.flex_notes),
     usedLegacyShape: false,
   };
 }
 
 export function extractPrompt4ResumeDataFromText(rawText) {
+  return extractPrompt4PayloadFromText(rawText).resumeData;
+}
+
+export function extractPrompt4PayloadFromText(rawText) {
   const parsed = extractJsonFromText(rawText);
-  const wrappedResumeData =
+  const hasWrappedResumeData =
     parsed &&
     typeof parsed === "object" &&
     !Array.isArray(parsed) &&
     parsed.resume_data &&
     typeof parsed.resume_data === "object" &&
-    !Array.isArray(parsed.resume_data)
-      ? parsed.resume_data
-      : parsed;
+    !Array.isArray(parsed.resume_data);
 
-  return wrappedResumeData;
+  return {
+    parsed,
+    resumeData: hasWrappedResumeData ? parsed.resume_data : parsed,
+    flexNotes: hasWrappedResumeData
+      ? normalizeFlexibleNotes(parsed.flex_notes)
+      : null,
+    usedLegacyShape: !hasWrappedResumeData,
+  };
 }
 
 function tryParseJson(text, validator) {
@@ -116,6 +127,13 @@ function normalizeGenerationFeedback(value) {
     cons,
     caveats,
   };
+}
+
+function normalizeFlexibleNotes(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  return value.trim() || null;
 }
 
 function normalizeFeedbackItems(value) {

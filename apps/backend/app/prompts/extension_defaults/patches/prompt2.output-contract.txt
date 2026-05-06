@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt2.output_contract
-prompt_version: v2.1.0
-prompt_label: positioning-brief-output-contract-company-context-summary-brevity
-prompt_notes: Defines the Prompt 2 JSON contract with excitement anchor, structured bullet rewrite instructions, company context guidance, and concise summary direction.
+prompt_version: v2.1.1
+prompt_label: positioning-brief-output-contract-company-context-summary-brevity-flex-notes
+prompt_notes: Defines the Prompt 2 JSON contract with excitement anchor, structured bullet rewrite instructions, company context guidance, concise summary direction, and a reserved flexible notes string.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
@@ -106,7 +106,8 @@ Return JSON in this exact shape:
   "cannot_claim": [],
   "skills_to_avoid": [],
   "signals_to_avoid": [],
-  "gaps": []
+  "gaps": [],
+  "flex_notes": ""
 }
 
 Additional output rules:
@@ -130,5 +131,7 @@ Additional output rules:
 - `bullet_rewrite_instructions` should include only bullets that need rewriting
 - `bullet_rewrite_instructions[].instruction` must be an object with exactly: `primary_message`, `primary_metric`, `mechanism`, `optional_context`, `do_not_include`
 - `bullet_rewrite_instructions[].instruction.do_not_include` must contain strings only
+- `flex_notes` is optional and must be a string or null; use `""` when unused
+- Use `flex_notes` only for small non-critical strategy notes needed by future prompt variants
 - do not emit `unsupported_signals` or any other field not present in this schema
 - keep arrays concise and ordered by importance

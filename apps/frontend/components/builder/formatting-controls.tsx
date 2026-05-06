@@ -19,6 +19,7 @@ import {
 import { TemplateThumbnail } from './template-selector';
 import { useTranslations } from '@/lib/i18n';
 import { ToggleSwitch } from '@/components/ui/toggle-switch';
+import { QuickLayoutControls } from '@/components/preview/quick-layout-controls';
 
 interface FormattingControlsProps {
   settings: TemplateSettings;
@@ -104,19 +105,26 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({
     });
   };
 
-  const handleDateDisplayToggle = (nextChecked?: boolean) => {
-    const checked =
-      typeof nextChecked === 'boolean' ? nextChecked : settings.dateDisplay !== 'year-only';
+  const handleDateDisplayChange = (dateDisplay: TemplateSettings['dateDisplay']) => {
     onChange({
       ...settings,
-      dateDisplay: checked ? 'year-only' : 'month-year',
+      dateDisplay,
     });
   };
 
-  const handleFitOnePageToggle = (nextChecked?: boolean) => {
+  const handleExperienceHeaderOrderChange = (
+    experienceHeaderOrder: TemplateSettings['experienceHeaderOrder']
+  ) => {
     onChange({
       ...settings,
-      fitOnePage: typeof nextChecked === 'boolean' ? nextChecked : !settings.fitOnePage,
+      experienceHeaderOrder,
+    });
+  };
+
+  const handleFitOnePageChange = (fitOnePage: boolean) => {
+    onChange({
+      ...settings,
+      fitOnePage,
     });
   };
 
@@ -179,10 +187,7 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({
       {/* Expandable Content */}
       {isExpanded && (
         <div className="space-y-5 border-t border-border px-5 py-5">
-          <div
-            className="grid justify-start gap-5"
-            style={{ gridTemplateColumns: 'max-content minmax(340px, 430px)' }}
-          >
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[max-content_minmax(0,430px)]">
             {/* Page Size Selection */}
             <div className="w-fit">
               <h4 className="mb-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-gray-600">
@@ -269,10 +274,7 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({
             </div>
           </div>
 
-          <div
-            className="grid justify-start gap-4"
-            style={{ gridTemplateColumns: 'minmax(220px, 260px) minmax(340px, 520px)' }}
-          >
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(220px,260px)_minmax(0,420px)]">
             {/* Margins Section */}
             <div className="w-full max-w-[260px]">
               <h4 className="mb-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-gray-600">
@@ -303,11 +305,11 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({
             </div>
 
             {/* Spacing Section */}
-            <div className="w-fit max-w-[390px]">
+            <div className="w-full max-w-[420px]">
               <h4 className="mb-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-gray-600">
                 {t('builder.formatting.spacing')}
               </h4>
-              <div className="w-fit flex flex-col gap-1 rounded-xl border border-border bg-white px-2.5 py-2">
+              <div className="flex w-full max-w-[360px] flex-col gap-1 rounded-xl border border-border bg-white px-2.5 py-2">
                 <SpacingSelector
                   label={t('builder.formatting.spacingSection')}
                   value={settings.spacing.section}
@@ -327,13 +329,13 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({
             </div>
           </div>
 
-          <div className="w-fit max-w-[390px]">
+          <div className="w-full max-w-[520px]">
             {/* Typography Section */}
             <div>
               <h4 className="mb-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-gray-600">
                 {t('builder.formatting.fontSize')}
               </h4>
-              <div className="space-y-2 rounded-xl border border-border bg-white px-3 py-2.5">
+              <div className="space-y-2.5 rounded-xl border border-border bg-white px-3 py-2.5">
                 <SpacingSelector
                   label={t('builder.formatting.baseFontSize')}
                   value={settings.fontSize.base}
@@ -408,31 +410,38 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({
                   <ToggleSwitch
                     checked={settings.compactMode}
                     onCheckedChange={handleCompactModeToggle}
-                    label="Compact"
+                    label={t('builder.formatting.compactMode')}
                     display="inline"
                   />
                   <ToggleSwitch
                     checked={settings.showContactIcons}
                     onCheckedChange={handleShowContactIconsToggle}
-                    label="Icons"
+                    label={t('builder.formatting.contactIcons')}
                     display="inline"
                   />
-                  <div title={t('builder.formatting.yearOnlyDatesHint')}>
-                    <ToggleSwitch
-                      checked={settings.dateDisplay === 'year-only'}
-                      onCheckedChange={handleDateDisplayToggle}
-                      label={t('builder.formatting.yearOnlyDates')}
-                      display="inline"
-                    />
+                </div>
+                <div className="border-t border-gray-200 pt-2.5">
+                  <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">
+                    {t('builder.formatting.options')}
                   </div>
-                  <div title={t('builder.formatting.fitOnePageHint')}>
-                    <ToggleSwitch
-                      checked={settings.fitOnePage}
-                      onCheckedChange={handleFitOnePageToggle}
-                      label={t('builder.formatting.fitOnePage')}
-                      display="inline"
-                    />
-                  </div>
+                  <QuickLayoutControls
+                    dateDisplay={settings.dateDisplay}
+                    experienceHeaderOrder={settings.experienceHeaderOrder}
+                    fitOnePage={settings.fitOnePage}
+                    onDateDisplayChange={handleDateDisplayChange}
+                    onExperienceHeaderOrderChange={handleExperienceHeaderOrderChange}
+                    onFitOnePageChange={handleFitOnePageChange}
+                    labels={{
+                      yearOnly: t('builder.formatting.yearOnlyDates'),
+                      yearOnlyHint: t('builder.formatting.yearOnlyDatesHint'),
+                      companyFirst: t('builder.formatting.companyFirst'),
+                      companyFirstHint: t('builder.formatting.companyFirstHint'),
+                      fitOnePage: t('builder.formatting.fitOnePage'),
+                      fitOnePageHint: t('builder.formatting.fitOnePageHint'),
+                    }}
+                    labelMode="compact"
+                    wrap
+                  />
                 </div>
               </div>
             </div>

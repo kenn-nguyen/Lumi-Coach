@@ -13,7 +13,7 @@ import {
 import { isUserEditablePromptTemplateName } from "./prompt-defaults.js";
 
 const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
-const ONBOARDING_STEPS = ["intro", "sign_in", "assets", "provider", "done"];
+const ONBOARDING_STEPS = ["intro", "sign_in", "provider", "assets", "done"];
 const ACCOUNT_STORAGE_VERSION = 1;
 const MAX_HISTORY_ENTRIES = 1000;
 const LEGACY_ACCOUNT_SCOPED_KEYS = [

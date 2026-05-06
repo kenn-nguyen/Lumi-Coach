@@ -100,9 +100,17 @@ function ExtensionMock(): React.ReactElement {
             <div className="flex min-h-20 items-center justify-center rounded-[28px] border border-[#edd8de]/90 bg-white/84 text-[1.2rem] font-semibold tracking-[-0.04em] text-[#4d1b2b] shadow-[0_14px_28px_rgba(86,15,40,0.06)]">
               Minimize
             </div>
-            <div className="flex min-h-20 items-center justify-center rounded-[28px] bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] text-[1.3rem] font-semibold tracking-[-0.04em] text-[#fff7f9] shadow-[0_20px_34px_rgba(105,23,51,0.32)]">
+            <a
+              href={CHROME_WEB_STORE_URL}
+              onClick={() =>
+                captureEvent(POSTHOG_EVENTS.HERO_CTA_CLICKED, {
+                  target: 'extension_mock_tailor_now',
+                })
+              }
+              className="flex min-h-20 items-center justify-center rounded-[28px] bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] text-[1.3rem] font-semibold tracking-[-0.04em] text-[#fff7f9] shadow-[0_20px_34px_rgba(105,23,51,0.32)] transition hover:translate-y-[1px] hover:opacity-95"
+            >
               Tailor now
-            </div>
+            </a>
           </div>
         </div>
       </div>
@@ -246,7 +254,7 @@ export default function Homepage(): React.ReactElement {
                 }
                 className="inline-flex min-h-14 items-center justify-center rounded-full bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] px-7 text-base font-semibold text-[#fff7f9] shadow-[0_24px_46px_rgba(105,23,51,0.3)] transition hover:translate-y-[1px] hover:opacity-95"
               >
-                Add to Chrome
+                Install now
               </a>
               <span className="max-w-[28ch] text-sm leading-6 text-[#6f4756]">
                 Open the role, tailor in context, review the draft.
@@ -321,7 +329,7 @@ export default function Homepage(): React.ReactElement {
                 href={CHROME_WEB_STORE_URL}
                 className="inline-flex min-h-14 items-center justify-center rounded-full bg-[#fff7f9] px-7 text-base font-semibold text-[#5d1530] shadow-[0_24px_44px_rgba(28,7,14,0.24)] transition hover:translate-y-[1px] hover:opacity-95"
               >
-                Add to Chrome
+                Install now
               </a>
               <Link
                 href="/sign-in"

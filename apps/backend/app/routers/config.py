@@ -34,7 +34,6 @@ from app.schemas import (
     ApiKeysUpdateResponse,
     ExtensionPromptSyncRequest,
     ExtensionPromptSyncResponse,
-    ResetDatabaseRequest,
 )
 from app.prompts import DEFAULT_IMPROVE_PROMPT_ID, IMPROVE_PROMPT_OPTIONS
 from app.config_cache import invalidate_config_cache
@@ -695,29 +694,12 @@ async def delete_api_key(
 
 
 @router.post("/reset")
-async def reset_database_endpoint(request: ResetDatabaseRequest) -> dict:
-    """Reset the database and clear all data.
-
-    WARNING: This action is irreversible. It will:
-    1. Truncate all database tables (resumes, jobs, improvements)
-    2. Delete all uploaded files
-
-    Requires confirmation token for safety.
-
-    Args:
-        request: Request body containing confirmation token
-
-    Returns:
-        Success message
-
-    Note:
-        This is a local-only endpoint for single-user deployments.
-        In production/multi-user scenarios, add proper authentication.
-    """
-    if request.confirm != "RESET_ALL_DATA":
-        raise HTTPException(
-            status_code=400,
-            detail="Confirmation required. Pass confirm=RESET_ALL_DATA in request body.",
-        )
-    db.reset_database()
-    return {"message": "Database and all data have been reset successfully"}
+async def reset_database_endpoint() -> dict[str, str]:
+    """Reject global database resets from the user-facing app."""
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Global database reset is disabled. Delete user-owned resumes "
+            "individually or use a dedicated user data deletion flow."
+        ),
+    )

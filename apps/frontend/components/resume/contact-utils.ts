@@ -75,6 +75,10 @@ function buildSocialHref(label: string, value: string, hrefPrefix: string): stri
   return trimmedValue;
 }
 
+function isExplicitUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim()) || value.trim().startsWith('//');
+}
+
 export function buildContactDisplay(
   label: string,
   value: string | null | undefined,
@@ -92,6 +96,9 @@ export function buildContactDisplay(
 
   const trimmedValue = value.trim();
   const resolvedLabel = inferContactLabel(label, trimmedValue);
+  const explicitUrl = isExplicitUrl(trimmedValue);
+  const explicitSocialUrl =
+    explicitUrl && (resolvedLabel === 'LinkedIn' || resolvedLabel === 'GitHub');
 
   let finalHrefPrefix = hrefPrefix;
   if (
@@ -111,10 +118,11 @@ export function buildContactDisplay(
     finalHrefPrefix.startsWith('mailto:') ||
     finalHrefPrefix.startsWith('tel:');
 
-  const socialSlug = isLink ? extractSocialSlug(resolvedLabel, trimmedValue) : null;
+  const socialSlug =
+    isLink && !explicitSocialUrl ? extractSocialSlug(resolvedLabel, trimmedValue) : null;
 
   let displayText = trimmedValue;
-  if (isLink && ['LinkedIn', 'GitHub', 'Website'].includes(resolvedLabel)) {
+  if (isLink && ['LinkedIn', 'GitHub', 'Website'].includes(resolvedLabel) && !explicitSocialUrl) {
     displayText = stripProtocolAndWww(trimmedValue);
   }
 

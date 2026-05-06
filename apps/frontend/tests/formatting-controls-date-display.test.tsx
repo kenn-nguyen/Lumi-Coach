@@ -14,7 +14,10 @@ vi.mock('@/lib/i18n', () => ({
           'Show supported month/year dates as years only in preview and PDF.',
         'builder.formatting.fitOnePage': 'Fit to 1 Page',
         'builder.formatting.fitOnePageHint':
-          'Scale preview and PDF output down to one page when needed.',
+          'Condense slight one-page overflow. Longer resumes may still continue to page 2.',
+        'builder.formatting.companyFirst': 'Company first',
+        'builder.formatting.companyFirstHint':
+          'Show company, location, context, and link before title and dates in Experience.',
         'builder.formatting.pageSize': 'Page Size',
         'builder.formatting.template': 'Template',
         'builder.formatting.templates.swissSingle.description': 'Single column',
@@ -57,7 +60,7 @@ describe('FormattingControls date display setting', () => {
     render(<FormattingControls settings={initialSettings} onChange={onChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Page Setup and Formatting' }));
-    fireEvent.click(screen.getByRole('switch', { name: 'Year only' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Year only' }));
 
     expect(onChange).toHaveBeenCalledWith({
       ...initialSettings,
@@ -75,11 +78,29 @@ describe('FormattingControls date display setting', () => {
     render(<FormattingControls settings={initialSettings} onChange={onChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Page Setup and Formatting' }));
-    fireEvent.click(screen.getByRole('switch', { name: 'Fit to 1 Page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fit to 1 Page' }));
 
     expect(onChange).toHaveBeenCalledWith({
       ...initialSettings,
       fitOnePage: true,
+    });
+  });
+
+  it('updates template settings when company-first order is toggled', () => {
+    const onChange = vi.fn();
+    const initialSettings = {
+      ...DEFAULT_TEMPLATE_SETTINGS,
+      experienceHeaderOrder: 'role-first' as const,
+    };
+
+    render(<FormattingControls settings={initialSettings} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page Setup and Formatting' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Company first' }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      ...initialSettings,
+      experienceHeaderOrder: 'company-first',
     });
   });
 });

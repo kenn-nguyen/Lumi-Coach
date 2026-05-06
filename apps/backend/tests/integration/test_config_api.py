@@ -363,6 +363,7 @@ class TestOutputConfig:
             "showContactIcons": False,
             "accentColor": "blue",
             "dateDisplay": "month-year",
+            "experienceHeaderOrder": "company-first",
             "fitOnePage": True,
         }
 
@@ -379,6 +380,7 @@ class TestOutputConfig:
         assert data["default_date_display"] == "month-year"
         assert data["default_fit_one_page"] is False
         assert data["default_template_settings"]["fitOnePage"] is False
+        assert data["default_template_settings"]["experienceHeaderOrder"] == "company-first"
 
     @patch("app.routers.config._save_config")
     @patch("app.routers.config._load_config")
@@ -457,25 +459,26 @@ class TestResetDatabase:
     """POST /api/v1/config/reset"""
 
     @patch("app.routers.config.db")
-    async def test_reset_with_correct_token(self, mock_db, client):
+    async def test_reset_endpoint_rejects_global_reset(self, mock_db, client):
         async with client:
             resp = await client.post("/api/v1/config/reset", json={
                 "confirm": "RESET_ALL_DATA",
             })
-        assert resp.status_code == 200
-        mock_db.reset_database.assert_called_once()
+        assert resp.status_code == 410
+        assert "Global database reset is disabled" in resp.json()["detail"]
+        mock_db.reset_database.assert_not_called()
 
-    async def test_reset_without_token_returns_400(self, client):
+    async def test_reset_endpoint_rejects_wrong_token(self, client):
         async with client:
             resp = await client.post("/api/v1/config/reset", json={
                 "confirm": "wrong_token",
             })
-        assert resp.status_code == 400
+        assert resp.status_code == 410
 
-    async def test_reset_missing_body_returns_422(self, client):
+    async def test_reset_endpoint_rejects_missing_body(self, client):
         async with client:
             resp = await client.post("/api/v1/config/reset")
-        assert resp.status_code == 422
+        assert resp.status_code == 410
 
 
 class TestExtensionPromptSync:

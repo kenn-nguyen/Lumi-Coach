@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt3.template
-prompt_version: v2.1.0
-prompt_label: tailored-resume-writer-company-context-summary-brevity
-prompt_notes: Adds explicit workExperience.context handling and enforces concise one-column summary writing while preserving story-bank firewall rules.
+prompt_version: v2.1.1
+prompt_label: tailored-resume-writer-company-context-summary-brevity-flex-notes
+prompt_notes: Adds explicit workExperience.context handling, enforces concise one-column summary writing, and reserves flex_notes while preserving story-bank firewall rules.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 1. ROLE AND OBJECTIVES
@@ -44,6 +44,7 @@ When instructions conflict, follow this order:
 4. Style and ATS optimization
 
 If Prompt 2 suggests something that cannot be represented in the fixed app schema, preserve truth and honor the app schema.
+If you need to pass a small non-critical note for a future prompt variant, use the optional top-level `flex_notes` string. Leave it as `""` when unused. Do not place `flex_notes` inside `resume_data`; it is prompt metadata only.
 
 4. MUTABILITY MATRIX
 
@@ -58,6 +59,7 @@ LOCKED - copy exactly from CURRENT_RESUME unless explicitly corrected by user-ap
 - workExperience.id
 - workExperience.company
 - workExperience.location
+- workExperience.website
 - workExperience.years
 - education.id
 - education.institution
@@ -293,6 +295,11 @@ Company context handling:
 - If Prompt 2 provides `company_context_guidance`, apply supported `preserve`, `add`, `revise`, or `omit` actions.
 - Preserve existing `workExperience[].context` from CURRENT_RESUME unless Prompt 2 gives supported guidance to revise or omit it.
 - If context is unsupported or redundant, use `null` or omit it.
+
+Experience website handling:
+- Preserve existing `workExperience[].website` from CURRENT_RESUME when present.
+- Use `null` or omit `workExperience[].website` when no source URL exists.
+- Do not invent role, company, case-study, or employer URLs.
 
 14. STRUCTURE RULES
 

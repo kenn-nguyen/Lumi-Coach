@@ -176,7 +176,10 @@ export function DiffPreviewModal({
 
           {diffSummary.high_risk_changes > 0 && (
             <div className="mt-4 border-2 border-[#F97316] bg-[#FFF7ED] p-3 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-[#F97316] shrink-0 mt-0.5" />
+              <AlertTriangle
+                data-testid="diff-warning-icon"
+                className="w-5 h-5 text-[#F97316] shrink-0 mt-0.5"
+              />
               <div>
                 <p className="font-mono text-xs font-bold uppercase text-[#C2410C]">
                   {t('tailor.diffModal.warningTitle', {
@@ -419,7 +422,10 @@ function ChangeItem({ change }: ChangeItemProps) {
           )}
         </div>
         {change.change_type === 'added' && change.confidence === 'high' && (
-          <AlertTriangle className="w-4 h-4 text-[#F97316] shrink-0" />
+          <AlertTriangle
+            data-testid="diff-warning-icon"
+            className="w-4 h-4 text-[#F97316] shrink-0"
+          />
         )}
       </div>
     </div>

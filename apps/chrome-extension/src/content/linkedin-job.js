@@ -12,6 +12,7 @@ const BOARD_MINIMIZE_ID = "resume-matcher-board-minimize";
 const RUN_VIEW_ID = "resume-matcher-run-view";
 const RUN_SOURCE_LINKEDIN_ID = "resume-matcher-run-source-linkedin";
 const RUN_SOURCE_MANUAL_ID = "resume-matcher-run-source-manual";
+const RUN_SOURCE_TOGGLE_ID = "resume-matcher-run-source-toggle";
 const RUN_READY_ID = "resume-matcher-job-ready";
 const RUN_META_ID = "resume-matcher-job-meta";
 const RUN_ONBOARDING_ID = "resume-matcher-run-onboarding";
@@ -38,12 +39,30 @@ const SETTINGS_VIEW_ID = "resume-matcher-settings-view";
 const MASTER_RESUME_LABEL_ID = "resume-matcher-master-resume-label";
 const MASTER_RESUME_INPUT_ID = "resume-matcher-master-resume-input";
 const MASTER_RESUME_ACTION_ID = "resume-matcher-master-resume-action";
+const MASTER_RESUME_REPLACE_ID = "resume-matcher-master-resume-replace";
+const MASTER_RESUME_REPLACE_PANEL_ID =
+  "resume-matcher-master-resume-replace-panel";
+const MASTER_RESUME_CANCEL_REPLACE_ID =
+  "resume-matcher-master-resume-cancel-replace";
+const BACKEND_MASTER_REFRESH_MAX_AGE_MS = 60_000;
+const SETTINGS_HEALTH_ID = "resume-matcher-settings-health";
 const STORYBOARD_LABEL_ID = "resume-matcher-storyboard-label";
 const STORYBOARD_INPUT_ID = "resume-matcher-storyboard-input";
 const STORYBOARD_ACTION_ID = "resume-matcher-storyboard-action";
+const STORYBOARD_UPLOAD_ID = "resume-matcher-storyboard-upload";
+const STORYBOARD_CANCEL_ID = "resume-matcher-storyboard-cancel";
+const STORYBOARD_PANEL_ID = "resume-matcher-storyboard-panel";
 const ACCOUNT_ACTION_ID = "resume-matcher-account-action";
 const ACCOUNT_DETAIL_ID = "resume-matcher-account-detail";
+const ACCOUNT_STATUS_ID = "resume-matcher-account-status";
 const PROVIDER_SELECT_ID = "resume-matcher-provider-select";
+const PROVIDER_ROW_ID = "resume-matcher-provider-row";
+const PROVIDER_STATUS_ID = "resume-matcher-provider-status";
+const PROVIDER_VALUE_ID = "resume-matcher-provider-value";
+const PROVIDER_DETAIL_ID = "resume-matcher-provider-detail";
+const PROVIDER_CHANGE_ID = "resume-matcher-provider-change";
+const PROVIDER_PANEL_ID = "resume-matcher-provider-panel";
+const PROVIDER_CANCEL_ID = "resume-matcher-provider-cancel";
 const PROVIDER_WEB_ROW_ID = "resume-matcher-provider-web-row";
 const PROVIDER_WEB_INPUT_ID = "resume-matcher-provider-web-input";
 const PROVIDER_API_BASE_ROW_ID = "resume-matcher-provider-api-base-row";
@@ -56,8 +75,6 @@ const PROVIDER_API_KEY_INPUT_ID = "resume-matcher-provider-api-key-input";
 const PROVIDER_SAVE_ID = "resume-matcher-provider-save";
 const ONBOARDING_PROVIDER_API_KEY_INPUT_ID =
   "resume-matcher-onboarding-provider-api-key-input";
-const APP_URL_INPUT_ID = "resume-matcher-app-url-input";
-const API_URL_INPUT_ID = "resume-matcher-api-url-input";
 const APIFY_ENABLED_INPUT_ID = "resume-matcher-apify-enabled";
 const APIFY_TOKEN_ROW_ID = "resume-matcher-apify-token-row";
 const APIFY_TOKEN_INPUT_ID = "resume-matcher-apify-token-input";
@@ -65,7 +82,6 @@ const APIFY_TOKEN_TOGGLE_ID = "resume-matcher-apify-token-toggle";
 const APIFY_SAVE_ID = "resume-matcher-apify-save";
 const PROMPT_REFRESH_ID = "resume-matcher-prompt-refresh";
 const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
-const RUNTIME_URLS_ROW_ID = "resume-matcher-runtime-urls";
 const RESET_LOCAL_ID = "resume-matcher-reset-local";
 const RESET_DEFAULTS_ID = "resume-matcher-reset-defaults";
 const EXPORT_DATA_ID = "resume-matcher-export-data";
@@ -94,6 +110,13 @@ const EXTENSION_VERSION = (() => {
   }
 })();
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
+const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
+const PROVIDER_SAVE_REQUIRED_MESSAGE =
+  "Save your AI setup before uploading your Master Resume.";
+const UNSUPPORTED_PROVIDER_MESSAGE =
+  "Choose a supported AI provider before uploading your Master Resume.";
+const NON_RESUME_UPLOAD_MESSAGE =
+  "This file does not look like a resume. Choose a resume file and try again.";
 const RUN_WAIT_MESSAGE_INTERVAL_MS = 10000;
 const RUN_PROGRESS_HEARTBEAT_FRESH_MS = 15000;
 const RUN_WAIT_MESSAGE_POOLS = {
@@ -328,6 +351,7 @@ const ICONS = {
       <path d="M10 8.4v4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
       <circle cx="10" cy="5.9" r="1" fill="currentColor"/>
     </svg>`,
+  warning: `<img src="${chrome.runtime.getURL("src/assets/warning.png")}" alt="" aria-hidden="true" />`,
   eye: `
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path d="M2.5 10s2.5-4.5 7.5-4.5 7.5 4.5 7.5 4.5-2.5 4.5-7.5 4.5S2.5 10 2.5 10Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
@@ -382,7 +406,6 @@ let routePollTimer = null;
 let lastRouteSignature = "";
 let pointerDragState = null;
 let suppressNextClick = false;
-let runtimeUrlsSaveTimer = null;
 let jobLoadTimer = null;
 let selectedJobRefreshTimer = null;
 let runningStatusMessageTimer = null;
@@ -449,9 +472,18 @@ const state = {
   historySortDirection: "desc",
   historyPage: 1,
   historyFilterOpen: false,
+  historyConnecting: false,
   deletingHistoryRunId: null,
   promptSyncPromise: null,
   runSourceMode: null,
+  masterResumeReplaceOpen: false,
+  storyboardReplaceOpen: false,
+  providerSettingsEditOpen: false,
+  masterResumeImportInFlight: false,
+  masterResumeImportMessage: "",
+  masterResumeImportTone: "neutral",
+  providerValidationAttempted: false,
+  providerValidationMissingFields: [],
 };
 
 function logError(message, data) {
@@ -468,6 +500,10 @@ function hasVisibleLauncherRoute() {
 
 function hasActiveSelectedJobRoute() {
   return state.routeMode === "active";
+}
+
+function isNonLinkedInManualRoute() {
+  return state.routeMode === "manual" && location.hostname !== "www.linkedin.com";
 }
 
 function deriveFallbackRouteModeFromLocation() {
@@ -556,17 +592,69 @@ function maskSecret(value) {
   return `${normalized.slice(0, 3)}...${normalized.slice(-3)}`;
 }
 
+function truncateDisplayText(value, maxLength = 28) {
+  const normalized = String(value || "").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(1, maxLength - 3))}...`;
+}
+
+function formatMasterResumeImportError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (/not implemented|not available|unsupported|ChatGPT API/i.test(message)) {
+    return UNSUPPORTED_PROVIDER_MESSAGE;
+  }
+  if (/not_resume|not a resume|does not look like a resume|does not contain enough resume/i.test(message)) {
+    return NON_RESUME_UPLOAD_MESSAGE;
+  }
+  if (
+    /active LLM profile|LLM runner|API key|required for the active runner|auth_required|Please log into|provider|AI setup/i.test(
+      message,
+    )
+  ) {
+    return "AI setup needs attention. Save or change your provider, then upload your Master Resume again.";
+  }
+  if (/prompt\s*4|resumedata|validation|json|schema|extract/i.test(message)) {
+    return "Resume extraction failed. Check that the file contains resume text, then try again.";
+  }
+  return message || "Unable to save Master Resume.";
+}
+
 function getSecretPlaceholder(inputId) {
   if (inputId === APIFY_TOKEN_INPUT_ID) {
     return "Paste your Apify API token";
   }
-  return "Paste new API key";
+  return "API key required";
 }
 
 function getSavedProfileById(profileId, settings = null) {
   const resolvedSettings = settings || state.assets?.llmSettings;
   if (!resolvedSettings?.profiles || !profileId) return null;
   return resolvedSettings.profiles[profileId] ?? null;
+}
+
+function isUnsupportedLlmProfile(profile) {
+  return false;
+}
+
+function isLlmProfileReady(profile) {
+  if (!profile || isUnsupportedLlmProfile(profile)) return false;
+  if (profile.mode === "web_automation") {
+    return Boolean(String(profile.targetUrl || "").trim());
+  }
+  if (profile.mode === "api") {
+    return Boolean(
+      String(profile.apiBaseUrl || "").trim() &&
+        String(profile.model || "").trim() &&
+        normalizeSecretValue(profile.apiKey),
+    );
+  }
+  return false;
+}
+
+function getDefaultProviderDraftProfileId(settings) {
+  const activeProfile = getSavedProfileById(settings?.activeProfileId, settings);
+  if (!isLlmProfileReady(activeProfile)) return "";
+  return activeProfile.id || "";
 }
 
 function createProviderDraftState(profileId = null, settings = null) {
@@ -583,10 +671,9 @@ function createProviderDraftState(profileId = null, settings = null) {
   }
 
   const resolvedProfileId =
-    profileId ||
-    resolvedSettings.activeProfileId ||
-    Object.keys(resolvedSettings.profiles)[0] ||
-    "";
+    typeof profileId === "string"
+      ? profileId
+      : getDefaultProviderDraftProfileId(resolvedSettings);
   const profile =
     getSavedProfileById(resolvedProfileId, resolvedSettings) || {};
   return {
@@ -602,6 +689,7 @@ function createProviderDraftState(profileId = null, settings = null) {
 function hasProviderDraftChanges(draft, settings = null) {
   const resolvedSettings = settings || state.assets?.llmSettings;
   if (!resolvedSettings?.profiles || !draft) return false;
+  if (!draft.selectedProfileId) return false;
   if (
     (draft.selectedProfileId || "") !== (resolvedSettings.activeProfileId || "")
   ) {
@@ -625,14 +713,18 @@ function hasProviderDraftChanges(draft, settings = null) {
 
 function syncProviderDraftState({ force = false } = {}) {
   const settings = state.assets?.llmSettings;
+  const selectedProfile = getSavedProfileById(
+    providerDraftState?.selectedProfileId,
+    settings,
+  );
   if (
     force ||
     !providerDraftState ||
     !providerDraftState.dirty ||
-    !getSavedProfileById(providerDraftState.selectedProfileId, settings)
+    !selectedProfile
   ) {
     providerDraftState = createProviderDraftState(
-      providerDraftState?.selectedProfileId,
+      selectedProfile ? providerDraftState?.selectedProfileId : null,
       settings,
     );
   }
@@ -692,6 +784,39 @@ function getCurrentSecretValue(inputId) {
 
 function normalizeSecretValue(value) {
   return String(value || "").trim();
+}
+
+function getSavedProviderImportReadiness() {
+  const settings = state.assets?.llmSettings;
+  const profile = getSavedProfileById(settings?.activeProfileId, settings);
+  if (!profile) {
+    return {
+      ready: false,
+      message: CHOOSE_AI_PROVIDER_MESSAGE,
+    };
+  }
+  if (isUnsupportedLlmProfile(profile)) {
+    return {
+      ready: false,
+      message: UNSUPPORTED_PROVIDER_MESSAGE,
+    };
+  }
+  if (profile.mode === "web_automation") {
+    return {
+      ready: isLlmProfileReady(profile),
+      message: PROVIDER_SAVE_REQUIRED_MESSAGE,
+    };
+  }
+  if (profile.mode === "api") {
+    return {
+      ready: isLlmProfileReady(profile),
+      message: PROVIDER_SAVE_REQUIRED_MESSAGE,
+    };
+  }
+  return {
+    ready: false,
+    message: PROVIDER_SAVE_REQUIRED_MESSAGE,
+  };
 }
 
 function syncSecretInput(inputId) {
@@ -786,13 +911,26 @@ function getOnboardingProviderDraftState() {
     providerSettings,
   );
   if (!selectedProfile) {
-    return { ready: false, selectedProfile: null };
+    return {
+      ready: false,
+      selectedProfile: null,
+      message: "",
+    };
+  }
+
+  if (isUnsupportedLlmProfile(selectedProfile)) {
+    return {
+      ready: false,
+      selectedProfile,
+      message: "",
+    };
   }
 
   if (selectedProfile.mode === "web_automation") {
     return {
       ready: Boolean(providerDraft.targetUrl.trim()),
       selectedProfile,
+      message: PROVIDER_SAVE_REQUIRED_MESSAGE,
     };
   }
 
@@ -804,12 +942,14 @@ function getOnboardingProviderDraftState() {
         normalizeSecretValue(providerDraft.apiKey),
       ),
       selectedProfile,
+      message: PROVIDER_SAVE_REQUIRED_MESSAGE,
     };
   }
 
   return {
     ready: false,
     selectedProfile,
+    message: PROVIDER_SAVE_REQUIRED_MESSAGE,
   };
 }
 
@@ -821,12 +961,86 @@ function syncOnboardingProviderContinueState() {
   );
   if (!(nextButton instanceof HTMLButtonElement)) return;
   nextButton.disabled = !getOnboardingProviderDraftState().ready;
+  syncProviderValidationIndicators();
+}
+
+function getProviderDraftMissingFields(draft = syncProviderDraftState()) {
+  const profile = getSavedProfileById(draft?.selectedProfileId);
+  if (!profile) return ["provider"];
+  if (profile.mode === "web_automation") {
+    return String(draft.targetUrl || "").trim() ? [] : ["targetUrl"];
+  }
+  if (profile.mode === "api") {
+    const missing = [];
+    if (!String(draft.apiBaseUrl || "").trim()) missing.push("apiBaseUrl");
+    if (!String(draft.model || "").trim()) missing.push("model");
+    if (!normalizeSecretValue(draft.apiKey)) missing.push("apiKey");
+    return missing;
+  }
+  return ["provider"];
+}
+
+function getProviderMissingFieldsMessage(missingFields) {
+  const labels = {
+    provider: "AI provider",
+    targetUrl: "provider URL",
+    apiBaseUrl: "API endpoint",
+    model: "model",
+    apiKey: "API key",
+  };
+  const names = missingFields.map((field) => labels[field] || field);
+  if (names.length === 1) return `Add ${names[0]} before saving.`;
+  return `Add ${names.slice(0, -1).join(", ")} and ${names.at(-1)} before saving.`;
+}
+
+function setProviderValidationState(missingFields = [], attempted = true) {
+  state.providerValidationAttempted = attempted;
+  state.providerValidationMissingFields = [...missingFields];
+}
+
+function refreshProviderValidationState() {
+  if (!state.providerValidationAttempted) return;
+  state.providerValidationMissingFields = getProviderDraftMissingFields();
+}
+
+function syncProviderValidationIndicators() {
+  if (state.providerValidationAttempted) {
+    refreshProviderValidationState();
+  }
+  const missingFields = state.providerValidationAttempted
+    ? new Set(state.providerValidationMissingFields)
+    : new Set();
+  const requiredEmptyFields = new Set(getProviderDraftMissingFields());
+  const mark = (id, field) => {
+    const node = $(id);
+    if (node instanceof HTMLElement) {
+      const isInvalid = missingFields.has(field);
+      node.dataset.invalid = isInvalid ? "true" : "false";
+      node.dataset.requiredEmpty = !isInvalid && requiredEmptyFields.has(field)
+        ? "true"
+        : "false";
+    }
+  };
+  mark(PROVIDER_SELECT_ID, "provider");
+  mark(PROVIDER_WEB_ROW_ID, "targetUrl");
+  mark(PROVIDER_API_BASE_ROW_ID, "apiBaseUrl");
+  mark(PROVIDER_MODEL_ROW_ID, "model");
+  mark(PROVIDER_API_KEY_ROW_ID, "apiKey");
+  mark("resume-matcher-onboarding-provider-select", "provider");
+  mark("resume-matcher-onboarding-provider-web-row", "targetUrl");
+  mark("resume-matcher-onboarding-provider-api-row", "apiBaseUrl");
+  mark("resume-matcher-onboarding-provider-model-row", "model");
+  mark("resume-matcher-onboarding-provider-key-row", "apiKey");
 }
 
 function syncProviderSaveButtonState() {
   const button = $(PROVIDER_SAVE_ID);
   if (!(button instanceof HTMLButtonElement)) return;
-  button.disabled = !syncProviderDraftState().dirty;
+  button.disabled =
+    !state.providerSettingsEditOpen ||
+    !state.assets?.activeAccountKey ||
+    !syncProviderDraftState().dirty;
+  syncProviderValidationIndicators();
 }
 
 function syncApifySaveButtonState() {
@@ -871,6 +1085,62 @@ function toAbsoluteAppUrl(url) {
   } catch {
     return String(url || "");
   }
+}
+
+function getBackendMasterResume() {
+  return state.assets?.backendMasterResume ?? null;
+}
+
+function hasBackendMasterResume() {
+  return Boolean(getBackendMasterResume()?.resumeId);
+}
+
+function getBackendMasterResumeLabel() {
+  const master = getBackendMasterResume();
+  return (
+    master?.title?.trim?.() ||
+    master?.filename?.trim?.() ||
+    "Master Resume"
+  );
+}
+
+function getBackendMasterResumeUrl() {
+  const resumeId = getBackendMasterResume()?.resumeId;
+  return resumeId
+    ? `${getAppOrigin()}/resumes/${encodeURIComponent(resumeId)}`
+    : getAppOrigin();
+}
+
+function isProviderReadyForMasterImport() {
+  return getSavedProviderImportReadiness().ready === true;
+}
+
+function getResolvedOnboardingStep() {
+  const setupState = state.setupState;
+  if (!setupState || setupState.mode !== "onboarding") {
+    return null;
+  }
+  if (setupState.step === "assets" && !isProviderReadyForMasterImport()) {
+    return "provider";
+  }
+  if (
+    setupState.step === "provider" &&
+    isProviderReadyForMasterImport()
+  ) {
+    return "assets";
+  }
+  return setupState.step;
+}
+
+function getResolvedOnboardingTitle() {
+  const resolvedStep = getResolvedOnboardingStep();
+  if (resolvedStep === "assets") {
+    return "Master Resume";
+  }
+  if (resolvedStep === "provider") {
+    return "Choose your AI setup";
+  }
+  return state.setupState?.title || "Welcome";
 }
 
 function renderFileActionIcon(action) {
@@ -1419,6 +1689,14 @@ function injectStyles() {
       border-color: rgba(255, 255, 255, 0.82);
       color: rgba(0, 0, 0, 0.84);
       transform: translateY(-0.5px);
+    }
+
+    .resume-matcher-icon-button:disabled,
+    .resume-matcher-icon-button:disabled:hover {
+      cursor: not-allowed;
+      opacity: 0.42;
+      transform: none;
+      box-shadow: none;
     }
 
     .resume-matcher-icon-button svg,
@@ -2245,6 +2523,15 @@ function injectStyles() {
       color: #b42318;
     }
 
+    .resume-matcher-button.is-quiet {
+      border-color: transparent;
+      background: transparent;
+      color: rgba(74, 35, 51, 0.76);
+      box-shadow: none;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
     .resume-matcher-button:disabled {
       cursor: default;
       opacity: 0.55;
@@ -2660,6 +2947,219 @@ function injectStyles() {
       color: #667085;
     }
 
+    .resume-matcher-settings-health {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 36px;
+      margin: -2px 0 8px;
+      padding: 7px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(231, 197, 207, 0.56);
+      background: rgba(255, 252, 252, 0.58);
+      color: rgba(91, 26, 48, 0.82);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .resume-matcher-settings-health[data-state="ready"] {
+      border-color: rgba(134, 239, 172, 0.36);
+      background: rgba(240, 253, 244, 0.54);
+      color: rgba(22, 101, 52, 0.9);
+    }
+
+    .resume-matcher-settings-row-card {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      padding: 10px 0;
+      border-top: 1px solid rgba(226, 188, 200, 0.48);
+    }
+
+    .resume-matcher-settings-row-card:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .resume-matcher-settings-row-card__main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(92px, max-content);
+      align-items: center;
+      gap: 12px;
+    }
+
+    .resume-matcher-settings-row-card__copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .resume-matcher-settings-row-card__topline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .resume-matcher-settings-row-card__title {
+      min-width: 0;
+      color: #4c1d2d;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .resume-matcher-settings-row-card__warning-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      color: rgba(146, 64, 14, 0.92);
+      flex: 0 0 auto;
+    }
+
+    .resume-matcher-settings-row-card__warning-icon img,
+    .resume-matcher-settings-row-card__warning-icon svg {
+      width: 24px;
+      height: 24px;
+      display: block;
+    }
+
+    .resume-matcher-settings-row-card__value {
+      min-width: 0;
+      color: rgba(76, 29, 45, 0.9);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .resume-matcher-settings-row-card__detail {
+      min-width: 0;
+      color: rgba(79, 30, 45, 0.72);
+      font-size: 12px;
+      line-height: 1.38;
+    }
+
+    .resume-matcher-settings-row-card__detail--secondary {
+      color: rgba(79, 30, 45, 0.56);
+      font-size: 11px;
+    }
+
+    .resume-matcher-settings-row-card__detail a {
+      color: rgba(142, 34, 71, 0.74);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .resume-matcher-secondary-link {
+      font-weight: 600;
+    }
+
+    .resume-matcher-settings-row-card__actions {
+      display: inline-flex;
+      justify-content: flex-end;
+      align-items: center;
+      flex-wrap: nowrap;
+      gap: 6px;
+      min-width: 92px;
+    }
+
+    .resume-matcher-settings-row-card__panel {
+      display: grid;
+      gap: 8px;
+      border-radius: 14px;
+      border: 1px solid rgba(231, 197, 207, 0.86);
+      background: rgba(255, 252, 252, 0.78);
+      padding: 10px;
+    }
+
+    .resume-matcher-settings-row-card__panel[hidden] {
+      display: none;
+    }
+
+    .resume-matcher-settings-row-card__panel > select,
+    .resume-matcher-settings-row-card__panel input {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      min-height: 40px;
+      border-radius: 12px;
+      border: 1px solid rgba(231, 197, 207, 0.96);
+      background: rgba(255, 252, 252, 0.94);
+      color: #4c1d2d;
+      box-shadow: inset 0 1px 2px rgba(91, 26, 48, 0.04);
+      padding: 9px 11px;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .resume-matcher-settings-row-card__panel > select {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(91, 26, 48, 0.66) 50%),
+        linear-gradient(135deg, rgba(91, 26, 48, 0.66) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) calc(50% - 2px),
+        calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 34px;
+    }
+
+    .resume-matcher-settings-row-card__panel select:focus,
+    .resume-matcher-settings-row-card__panel input:focus {
+      outline: none !important;
+      border-color: rgba(152, 35, 72, 0.64) !important;
+      box-shadow:
+        0 0 0 3px rgba(168, 85, 110, 0.12),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04) !important;
+    }
+
+    .resume-matcher-settings-status-pill {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      max-width: 100%;
+      border-radius: 999px;
+      padding: 3px 7px;
+      border: 1px solid rgba(203, 213, 225, 0.54);
+      background: rgba(248, 250, 252, 0.58);
+      color: rgba(71, 85, 105, 0.78);
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .resume-matcher-settings-status-pill[data-tone="ready"],
+    .resume-matcher-settings-status-pill[data-tone="saved"],
+    .resume-matcher-settings-status-pill[data-tone="connected"] {
+      border-color: rgba(134, 239, 172, 0.42);
+      background: rgba(220, 252, 231, 0.5);
+      color: rgba(22, 101, 52, 0.9);
+    }
+
+    .resume-matcher-settings-status-pill[data-tone="optional"] {
+      border-color: rgba(251, 191, 36, 0.52);
+      background: rgba(255, 251, 235, 0.74);
+      color: rgba(146, 64, 14, 0.94);
+    }
+
+    .resume-matcher-settings-status-pill[data-tone="needed"],
+    .resume-matcher-settings-status-pill[data-tone="error"] {
+      border-color: rgba(252, 165, 165, 0.42);
+      background: rgba(254, 242, 242, 0.62);
+      color: rgba(153, 27, 27, 0.9);
+    }
+
     .resume-matcher-settings-stack {
       display: grid;
       gap: 10px;
@@ -2739,6 +3239,54 @@ function injectStyles() {
       color: rgba(29, 78, 216, 0.92);
       text-decoration: underline;
       text-underline-offset: 2px;
+    }
+
+    .resume-matcher-master-row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .resume-matcher-master-row__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .resume-matcher-master-row__copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .resume-matcher-master-row__filename {
+      display: inline-block;
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: bottom;
+      white-space: nowrap;
+    }
+
+    .resume-matcher-master-row__actions {
+      display: inline-flex;
+      flex: 0 0 auto;
+      gap: 6px;
+    }
+
+    .resume-matcher-master-row__panel {
+      display: grid;
+      gap: 8px;
+      border-radius: 14px;
+      border: 1px solid rgba(231, 197, 207, 0.9);
+      background: rgba(255, 252, 252, 0.76);
+      padding: 10px;
+    }
+
+    .resume-matcher-master-row__status {
+      font-size: 11px;
+      line-height: 1.35;
+      color: rgba(71, 85, 105, 0.86);
     }
 
     .resume-matcher-settings-item__link {
@@ -2832,6 +3380,35 @@ function injectStyles() {
         inset 0 1px 2px rgba(91, 26, 48, 0.04);
     }
 
+    .resume-matcher-field[data-invalid="true"] input,
+    .resume-matcher-field[data-invalid="true"] select,
+    .resume-matcher-settings-item[data-invalid="true"] input,
+    .resume-matcher-settings-item select[data-invalid="true"] {
+      border-color: rgba(185, 28, 28, 0.84);
+      background: rgba(254, 242, 242, 0.96);
+      box-shadow:
+        0 0 0 3px rgba(248, 113, 113, 0.16),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04);
+    }
+
+    .resume-matcher-field[data-required-empty="true"] input,
+    .resume-matcher-field[data-required-empty="true"] select,
+    .resume-matcher-settings-item[data-required-empty="true"] input,
+    .resume-matcher-settings-item select[data-required-empty="true"] {
+      border-color: rgba(152, 35, 72, 0.58) !important;
+      background: rgba(255, 247, 250, 0.98) !important;
+      box-shadow:
+        0 0 0 3px rgba(168, 85, 110, 0.12),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04) !important;
+    }
+
+    .resume-matcher-field[data-required-empty="true"] input::placeholder,
+    .resume-matcher-settings-item[data-required-empty="true"] input::placeholder {
+      color: rgba(152, 35, 72, 0.8);
+      font-weight: 600;
+      opacity: 1;
+    }
+
     .resume-matcher-settings-item .resume-matcher-button,
     .resume-matcher-settings-group .resume-matcher-button {
       min-height: 36px;
@@ -2922,6 +3499,26 @@ function injectStyles() {
       min-height: 36px;
       padding: 9px 12px;
       font-size: 12px;
+    }
+
+    .resume-matcher-settings-row-card__actions .resume-matcher-button {
+      min-width: 70px;
+      min-height: 34px;
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    .resume-matcher-settings-row-card__actions .resume-matcher-google-button.is-quiet {
+      min-width: 0;
+      min-height: 30px;
+      padding: 5px 6px;
+      font-size: 11px;
+      color: rgba(91, 26, 48, 0.66);
+    }
+
+    #${ACCOUNT_DETAIL_ID} {
+      color: rgba(76, 29, 45, 0.78);
+      font-weight: 500;
     }
 
     .resume-matcher-settings-row .resume-matcher-button-row {
@@ -3065,6 +3662,10 @@ function injectStyles() {
       padding: 12px 0;
     }
 
+    .resume-matcher-empty .resume-matcher-button {
+      margin-top: 10px;
+    }
+
     #${ROOT_ID} {
       color: #381622;
     }
@@ -3128,15 +3729,24 @@ function injectStyles() {
 
     .resume-matcher-icon-button {
       border-color: rgba(255, 229, 236, 0.86);
-      background: rgba(255, 247, 249, 0.82);
-      color: rgba(91, 26, 48, 0.76);
-      box-shadow: 0 8px 18px rgba(91, 26, 48, 0.08);
+      background: rgba(255, 247, 249, 0.58);
+      color: rgba(91, 26, 48, 0.58);
+      box-shadow: 0 6px 14px rgba(91, 26, 48, 0.04);
+      opacity: 0.82;
     }
 
     .resume-matcher-icon-button:hover {
       background: rgba(255, 242, 246, 0.96);
       border-color: rgba(226, 171, 188, 0.92);
       color: rgba(91, 26, 48, 0.9);
+      opacity: 1;
+    }
+
+    .resume-matcher-icon-button:disabled,
+    .resume-matcher-icon-button:disabled:hover {
+      background: rgba(255, 247, 249, 0.72);
+      border-color: rgba(255, 229, 236, 0.72);
+      color: rgba(91, 26, 48, 0.38);
     }
 
     .resume-matcher-icon-button.is-active {
@@ -3151,11 +3761,19 @@ function injectStyles() {
         0 0 0 1px rgba(255, 244, 247, 0.24),
         0 0 18px rgba(162, 45, 84, 0.16),
         0 10px 22px rgba(91, 26, 48, 0.12);
+      opacity: 1;
     }
 
     .resume-matcher-icon-button.is-active::after {
       border-color: rgba(170, 52, 91, 0.38);
       box-shadow: 0 0 14px rgba(170, 52, 91, 0.12);
+    }
+
+    #${BOARD_MINIMIZE_ID}.resume-matcher-icon-button {
+      margin-left: 2px;
+      background: rgba(255, 250, 251, 0.76);
+      color: rgba(91, 26, 48, 0.72);
+      opacity: 1;
     }
 
     .resume-matcher-section,
@@ -3239,6 +3857,49 @@ function injectStyles() {
       box-shadow: 0 0 0 3px rgba(168, 85, 110, 0.14);
     }
 
+    .resume-matcher-settings-row-card__panel select:focus,
+    .resume-matcher-settings-row-card__panel input:focus,
+    #${PROVIDER_SELECT_ID}:focus,
+    #${PROVIDER_WEB_INPUT_ID}:focus,
+    #${PROVIDER_API_BASE_INPUT_ID}:focus,
+    #${PROVIDER_MODEL_INPUT_ID}:focus,
+    #${PROVIDER_API_KEY_INPUT_ID}:focus {
+      outline: none !important;
+      border-color: rgba(152, 35, 72, 0.64) !important;
+      box-shadow:
+        0 0 0 3px rgba(168, 85, 110, 0.12),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04) !important;
+    }
+
+    .resume-matcher-field[data-invalid="true"] input,
+    .resume-matcher-field[data-invalid="true"] select,
+    .resume-matcher-settings-item[data-invalid="true"] input,
+    .resume-matcher-settings-item select[data-invalid="true"] {
+      border-color: rgba(185, 28, 28, 0.84);
+      background: rgba(254, 242, 242, 0.96);
+      box-shadow:
+        0 0 0 3px rgba(248, 113, 113, 0.16),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04);
+    }
+
+    .resume-matcher-field[data-required-empty="true"] input,
+    .resume-matcher-field[data-required-empty="true"] select,
+    .resume-matcher-settings-item[data-required-empty="true"] input,
+    .resume-matcher-settings-item select[data-required-empty="true"] {
+      border-color: rgba(152, 35, 72, 0.58) !important;
+      background: rgba(255, 247, 250, 0.98) !important;
+      box-shadow:
+        0 0 0 3px rgba(168, 85, 110, 0.12),
+        inset 0 1px 2px rgba(91, 26, 48, 0.04) !important;
+    }
+
+    .resume-matcher-field[data-required-empty="true"] input::placeholder,
+    .resume-matcher-settings-item[data-required-empty="true"] input::placeholder {
+      color: rgba(152, 35, 72, 0.8);
+      font-weight: 600;
+      opacity: 1;
+    }
+
     .resume-matcher-run-shell .resume-matcher-field input,
     .resume-matcher-run-shell .resume-matcher-field textarea {
       border-color: rgba(237, 210, 219, 0.98);
@@ -3290,6 +3951,13 @@ function injectStyles() {
       color: #b42318;
       border-color: rgba(248, 113, 113, 0.38);
       background: rgba(255, 247, 247, 0.92);
+    }
+
+    .resume-matcher-button.is-quiet {
+      border-color: transparent;
+      background: transparent;
+      color: rgba(91, 26, 48, 0.72);
+      box-shadow: none;
     }
 
     .resume-matcher-status-card[data-tone="running"] {
@@ -3680,24 +4348,26 @@ function dismissLauncher() {
 }
 
 function openBoard(view = "run", options = {}) {
+  const requestedView = view;
+  const resolvedView = resolveAllowedBoardView(requestedView);
   const previousOpen = state.boardOpen;
   const previousView = state.currentView;
   state.boardOpen = true;
-  state.currentView = view;
+  state.currentView = resolvedView;
   state.launcherAlert = false;
   render();
   syncDockedPosition($(ROOT_ID));
-  if (!previousOpen || previousView !== view) {
+  if (!previousOpen || previousView !== resolvedView) {
     const eventName =
-      view === "settings"
+      resolvedView === "settings"
         ? "extension_settings_viewed"
-        : view === "history"
+        : resolvedView === "history"
           ? "extension_runs_viewed"
           : "extension_board_opened";
     const surface =
-      view === "settings"
+      resolvedView === "settings"
         ? "settings_view"
-        : view === "history"
+        : resolvedView === "history"
           ? "runs_view"
           : "run_view";
     void trackAnalyticsEvent(
@@ -3705,18 +4375,29 @@ function openBoard(view = "run", options = {}) {
       { surface },
     );
   }
-  void syncPromptDefaultsForOpen(view, previousOpen, previousView);
+  void syncPromptDefaultsForOpen(resolvedView, previousOpen, previousView);
+  const shouldRefreshBackendMaster =
+    resolvedView === "settings" ||
+    (isOnboardingMode() && getResolvedOnboardingStep() === "assets");
   const shouldCheckConnection =
-    view === "settings" ? true : hasSelectedJobTarget();
+    resolvedView === "settings" ? true : hasSelectedJobTarget();
   if (
     !options.skipConnectionCheck &&
     shouldCheckConnection &&
-    (view === "run" || view === "history" || view === "settings")
+    (resolvedView === "run" ||
+      resolvedView === "history" ||
+      resolvedView === "settings")
   ) {
-    void reconcileConnectionStatus(view);
+    void reconcileConnectionStatus({
+      refreshBackendMaster: shouldRefreshBackendMaster,
+      backendMasterMaxAgeMs: BACKEND_MASTER_REFRESH_MAX_AGE_MS,
+    });
     return;
   }
-  void refreshBoardData();
+  void refreshBoardData({
+    refreshBackendMaster: shouldRefreshBackendMaster,
+    backendMasterMaxAgeMs: BACKEND_MASTER_REFRESH_MAX_AGE_MS,
+  });
 }
 
 function minimizeBoard() {
@@ -4030,28 +4711,29 @@ function scheduleSelectedJobRefresh(options = {}) {
 }
 
 function getSetupRequirementStatus(messageOverride = "") {
+  if (
+    state.connectionState === "signed_out" &&
+    !state.websiteAuthenticated &&
+    !state.extensionConnected
+  ) {
+    return {
+      tone: "blocked",
+      title: "You’ve been signed out",
+      detail:
+        messageOverride ||
+        "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.",
+      actions: [
+        {
+          id: "connect",
+          label: "Continue with Google",
+          variant: "primary",
+        },
+      ],
+    };
+  }
+
   const setupState = state.setupState;
   if (!setupState) {
-    if (
-      state.connectionState === "signed_out" &&
-      !state.websiteAuthenticated &&
-      !state.extensionConnected
-    ) {
-      return {
-        tone: "blocked",
-        title: "You’ve been signed out",
-        detail:
-          messageOverride ||
-          "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.",
-        actions: [
-          {
-            id: "connect",
-            label: "Continue with Google",
-            variant: "primary",
-          },
-        ],
-      };
-    }
     return null;
   }
 
@@ -4323,6 +5005,10 @@ function getRunStateFromExtensionSession() {
 
 function syncVisibleRunStateFromExtensionSession() {
   if (getSetupRequirementStatus() || isHardPrerequisiteBlocker()) {
+    state.isRunning = false;
+    state.isCanceling = false;
+    state.awaitingAuth = false;
+    state.awaitingStoryboard = false;
     state.activeRunJob = null;
     return;
   }
@@ -4419,6 +5105,8 @@ function canAttemptRecoveryRun() {
 }
 
 function getRunBlockingState() {
+  const setupRequirement = getSetupRequirementStatus();
+
   if (isManualRunMode()) {
     if (hasManualJobDescription()) {
       return null;
@@ -4432,6 +5120,10 @@ function getRunBlockingState() {
     };
   }
 
+  if (setupRequirement) {
+    return setupRequirement;
+  }
+
   if (isWaitingForJobSelection()) {
     return {
       tone: "info",
@@ -4439,11 +5131,6 @@ function getRunBlockingState() {
       detail: "Choose a job from the list, then I’ll load it here.",
       actions: [],
     };
-  }
-
-  const setupRequirement = getSetupRequirementStatus();
-  if (setupRequirement) {
-    return setupRequirement;
   }
 
   if (hasManualJobDescription()) {
@@ -4475,6 +5162,53 @@ function getRunBlockingState() {
   }
 
   return null;
+}
+
+function getManualSetupAction(requirement = getSetupRequirementStatus()) {
+  if (!requirement) return null;
+  const primaryAction = Array.isArray(requirement.actions)
+    ? requirement.actions[0]
+    : null;
+  const actionId = primaryAction?.id || "";
+
+  if (actionId === "connect") {
+    return {
+      id: "connect",
+      label: "Connect and tailor",
+    };
+  }
+
+  if (actionId === "upload_resume") {
+    return {
+      id: "upload_resume",
+      label: "Add Master Resume",
+    };
+  }
+
+  if (
+    actionId === "open_settings" ||
+    actionId === "open-settings" ||
+    actionId === "configure_provider" ||
+    state.setupState?.state === "missing_provider_config"
+  ) {
+    return {
+      id: actionId || "open_settings",
+      label: "Finish AI setup",
+    };
+  }
+
+  return {
+    id: actionId || "",
+    label: primaryAction?.label || "Finish setup",
+  };
+}
+
+function getManualPrimaryButtonLabel() {
+  if (!isManualRunMode() || !hasManualJobDescription()) {
+    return "Tailor";
+  }
+  const setupAction = getManualSetupAction();
+  return setupAction?.label || "Tailor";
 }
 
 function getPreflightRunStatus() {
@@ -4702,7 +5436,10 @@ function getSelectedProfile(selectId = PROVIDER_SELECT_ID, settings = null) {
   const resolvedSettings = settings || state.assets?.llmSettings;
   if (!resolvedSettings?.profiles) return null;
   const select = $(selectId);
-  const profileId = select?.value || resolvedSettings.activeProfileId;
+  const profileId =
+    select instanceof HTMLSelectElement
+      ? select.value
+      : resolvedSettings.activeProfileId;
   return resolvedSettings.profiles[profileId] ?? null;
 }
 
@@ -4710,12 +5447,86 @@ function isOnboardingMode() {
   return state.setupState?.mode === "onboarding";
 }
 
+function isSignedOutNavigationLocked() {
+  return (
+    state.connectionState !== "connected" ||
+    ["signed_out", "signed_out_returning"].includes(state.setupState?.state)
+  );
+}
+
+function isMasterResumeUploadNavigationLocked() {
+  if (isSignedOutNavigationLocked()) return false;
+  if (state.setupState?.state === "missing_resume") return true;
+  return isOnboardingMode() && !hasBackendMasterResume();
+}
+
+function isHistoryNavigationLocked() {
+  return false;
+}
+
+function isSettingsNavigationLocked() {
+  return false;
+}
+
+function canOpenBoardView(view) {
+  if (view === "history") return !isHistoryNavigationLocked();
+  if (view === "settings") return !isSettingsNavigationLocked();
+  return true;
+}
+
+function resolveAllowedBoardView(view = "run") {
+  return canOpenBoardView(view) ? view : "run";
+}
+
+function resolveBackendMasterResumeForRender({
+  shouldRefreshBackendMaster,
+  previousBackendMaster,
+  nextBackendMaster,
+  fallbackBackendMaster,
+} = {}) {
+  if (nextBackendMaster?.resumeId) return nextBackendMaster;
+  if (fallbackBackendMaster?.resumeId) return fallbackBackendMaster;
+  if (!shouldRefreshBackendMaster && previousBackendMaster?.resumeId) {
+    return previousBackendMaster;
+  }
+  return nextBackendMaster ?? null;
+}
+
 function renderPrimaryButtonMarkup(label, actionId, extraAttrs = "") {
   return `<button type="button" class="resume-matcher-button is-primary" data-onboarding-action="${escapeHtml(actionId)}" ${extraAttrs}>${escapeHtml(label)}</button>`;
 }
 
-function renderProviderOptions(settings) {
-  return Object.values(settings?.profiles || {})
+function renderSettingsStatusPill(label, tone = "neutral") {
+  return `<span class="resume-matcher-settings-status-pill" data-tone="${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+}
+
+function setSettingsStatusPill(node, label, tone = "neutral") {
+  if (!(node instanceof HTMLElement)) return;
+  if (!label) {
+    node.hidden = true;
+    node.textContent = "";
+    return;
+  }
+  node.hidden = false;
+  node.textContent = label;
+  node.dataset.tone = tone;
+}
+
+function renderSettingsActionButton(id, label, { variant = "secondary", disabled = false } = {}) {
+  const variantClass =
+    variant === "primary"
+      ? " is-primary"
+      : variant === "danger"
+        ? " is-danger"
+        : variant === "quiet"
+          ? " is-quiet"
+          : "";
+  return `<button id="${escapeHtml(id)}" type="button" class="resume-matcher-button${variantClass}"${disabled ? " disabled" : ""}>${escapeHtml(label)}</button>`;
+}
+
+function renderProviderOptions(settings, selectedProfileId = "") {
+  const normalizedSelectedProfileId = String(selectedProfileId || "");
+  const options = Object.values(settings?.profiles || {})
     .sort((left, right) =>
       (left?.label || "").localeCompare(right?.label || "", undefined, {
         sensitivity: "base",
@@ -4723,18 +5534,19 @@ function renderProviderOptions(settings) {
     )
     .map(
       (profile) =>
-        `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.label)}</option>`,
+        `<option value="${escapeHtml(profile.id)}"${profile.id === normalizedSelectedProfileId ? " selected" : ""}>${escapeHtml(profile.label)}</option>`,
     )
     .join("");
+  return `<option value="" disabled${normalizedSelectedProfileId ? "" : " selected"}>Choose your AI provider</option>${options}`;
 }
 
 function getOnboardingStepIndex(step) {
   switch (step) {
     case "sign_in":
       return 1;
-    case "assets":
-      return 2;
     case "provider":
+      return 2;
+    case "assets":
     case "done":
       return 3;
     case "intro":
@@ -4747,8 +5559,8 @@ function renderOnboardingProgress(currentStep) {
   const currentIndex = getOnboardingStepIndex(currentStep);
   const steps = [
     { label: "Sign in", index: 1 },
-    { label: "Add resume", index: 2 },
-    { label: "Choose AI", index: 3 },
+    { label: "Choose AI", index: 2 },
+    { label: "Master Resume", index: 3 },
   ];
 
   return `
@@ -4783,8 +5595,21 @@ function renderOnboardingStep() {
     return "";
   }
 
-  const hasResume = Boolean(state.assets?.masterResumeContextAsset?.filename);
+  const hasResume = hasBackendMasterResume();
   const hasStoryboard = Boolean(state.assets?.storyboardAsset?.filename);
+  const masterLabel = getBackendMasterResumeLabel();
+  const compactMasterLabel = truncateDisplayText(masterLabel, 28);
+  const storyboardLabel =
+    state.assets?.storyboardAsset?.filename?.trim() || "Story bank added";
+  const compactStoryboardLabel = truncateDisplayText(storyboardLabel, 28);
+  const providerReadyForImport = isProviderReadyForMasterImport();
+  let importStatus = "";
+  if (state.masterResumeImportInFlight || state.masterResumeImportMessage) {
+    importStatus = `<span class="resume-matcher-onboarding__status">${escapeHtml(state.masterResumeImportMessage || "Extracting and saving...")}</span>`;
+  } else if (!providerReadyForImport) {
+    importStatus =
+      '<span class="resume-matcher-onboarding__status">Choose AI before uploading.</span>';
+  }
   const providerSettings = state.assets?.llmSettings;
   const providerDraft = syncProviderDraftState();
   const selectedProfile = getSavedProfileById(
@@ -4792,10 +5617,12 @@ function renderOnboardingStep() {
     providerSettings,
   );
 
-  switch (setupState.step) {
+  const resolvedStep = getResolvedOnboardingStep() || setupState.step;
+
+  switch (resolvedStep) {
     case "sign_in":
       return `
-        ${renderOnboardingProgress(setupState.step)}
+        ${renderOnboardingProgress(resolvedStep)}
         <p class="resume-matcher-onboarding__text">${escapeHtml(setupState.detail)}</p>
         ${
           state.connectionState === "connected"
@@ -4808,7 +5635,7 @@ function renderOnboardingStep() {
               ? renderPrimaryButtonMarkup(
                   "Next",
                   "onboarding_next",
-                  'data-next-step="assets"',
+                  'data-next-step="provider"',
                 )
               : `<button type="button" class="resume-matcher-button is-primary resume-matcher-google-button" data-onboarding-action="connect">${renderGoogleButtonLabel("Continue with Google")}</button>`
           }
@@ -4816,66 +5643,80 @@ function renderOnboardingStep() {
       `;
     case "assets":
       return `
-        ${renderOnboardingProgress(setupState.step)}
-        <p class="resume-matcher-onboarding__text">Use TXT, MD, or JSON for both files.</p>
+        ${renderOnboardingProgress(resolvedStep)}
         <div class="resume-matcher-onboarding__row">
           <div class="resume-matcher-onboarding__file">
             <div class="resume-matcher-onboarding__file-top">
-              <span class="resume-matcher-onboarding__label">Resume</span>
-              ${hasResume ? renderOnboardingStatusPill("Added", "complete") : renderOnboardingStatusPill("Required", "required")}
+              <span class="resume-matcher-onboarding__label">Master Resume</span>
+              ${hasResume ? renderOnboardingStatusPill("Ready", "complete") : renderOnboardingStatusPill("Required", "required")}
             </div>
             ${
               hasResume
-                ? `<span class="resume-matcher-onboarding__status">${escapeHtml(state.assets?.masterResumeContextAsset?.filename || "Resume added")}</span>`
+                ? ""
+                : '<p class="resume-matcher-onboarding__help">Add your Master Resume to Lumi Coach. Use TXT, MD, or JSON.</p>'
+            }
+            ${
+              hasResume
+                ? `<span class="resume-matcher-onboarding__status" title="${escapeHtml(masterLabel)}">${escapeHtml(compactMasterLabel)}</span>`
                 : ""
             }
-            <button type="button" class="resume-matcher-button" data-onboarding-action="upload_resume">${hasResume ? "Replace" : "Upload"}</button>
+            ${importStatus}
+            <button type="button" class="resume-matcher-button" data-onboarding-action="upload_resume"${!providerReadyForImport || state.masterResumeImportInFlight ? " disabled" : ""}>${hasResume ? "Replace" : "Add Master Resume"}</button>
           </div>
           <div class="resume-matcher-onboarding__file">
             <div class="resume-matcher-onboarding__file-top">
               <span class="resume-matcher-onboarding__label">Story bank</span>
               ${hasStoryboard ? renderOnboardingStatusPill("Added", "complete") : renderOnboardingStatusPill("Optional", "optional")}
             </div>
-            <p class="resume-matcher-onboarding__help">Use a story bank for fuller bullet details and extra wins beyond your main resume. It gives the AI stronger stories to pull into the tailored version.</p>
+            <p class="resume-matcher-onboarding__help">Optional. Use TXT, MD, or JSON. Saved locally in this browser for fuller bullet details and extra wins beyond your main resume.</p>
             <a class="resume-matcher-settings-item__link" href="${STORY_BANK_GUIDE_URL}" target="_blank" rel="noopener noreferrer">Optional, but useful. Learn more.</a>
             ${
               hasStoryboard
-                ? `<span class="resume-matcher-onboarding__status">${escapeHtml(state.assets?.storyboardAsset?.filename || "Story bank added")}</span>`
+                ? `<span class="resume-matcher-onboarding__status" title="${escapeHtml(storyboardLabel)}">${escapeHtml(compactStoryboardLabel)}</span>`
                 : ""
             }
             <button type="button" class="resume-matcher-button" data-onboarding-action="upload_storyboard">${hasStoryboard ? "Replace" : "Upload"}</button>
           </div>
         </div>
         <div class="resume-matcher-onboarding__actions">
-          ${renderPrimaryButtonMarkup("Next", "onboarding_next", `data-next-step="provider"${hasResume ? "" : " disabled"}`)}
+          ${renderPrimaryButtonMarkup("Start tailoring", "complete_onboarding", `${hasResume && !state.masterResumeImportInFlight ? "" : " disabled"}`)}
         </div>
       `;
     case "provider": {
       const effectiveProviderState = getOnboardingProviderDraftState();
       const isWeb = selectedProfile?.mode === "web_automation";
       const isApi = selectedProfile?.mode === "api";
+      const missingFields = state.providerValidationAttempted
+        ? new Set(state.providerValidationMissingFields)
+        : new Set();
+      const requiredEmptyFields = new Set(getProviderDraftMissingFields(providerDraft));
       return `
-        ${renderOnboardingProgress(setupState.step)}
+        ${renderOnboardingProgress(resolvedStep)}
         <div class="resume-matcher-onboarding__provider-grid">
           <p class="resume-matcher-onboarding__provider-note"><strong>API key</strong> is more stable.</p>
           <p class="resume-matcher-onboarding__provider-note"><strong>Web automation</strong> uses your browser login and is less stable.</p>
           <div class="resume-matcher-field">
-            <select id="resume-matcher-onboarding-provider-select">${renderProviderOptions(providerSettings)}</select>
+            <select id="resume-matcher-onboarding-provider-select" data-invalid="${missingFields.has("provider") ? "true" : "false"}" data-required-empty="${!missingFields.has("provider") && requiredEmptyFields.has("provider") ? "true" : "false"}">${renderProviderOptions(providerSettings, providerDraft.selectedProfileId)}</select>
           </div>
-          <div id="resume-matcher-onboarding-provider-web-row" class="resume-matcher-field"${isWeb ? "" : " hidden"}>
+          <div id="resume-matcher-onboarding-provider-web-row" class="resume-matcher-field" data-invalid="${missingFields.has("targetUrl") ? "true" : "false"}" data-required-empty="${!missingFields.has("targetUrl") && requiredEmptyFields.has("targetUrl") ? "true" : "false"}"${isWeb ? "" : " hidden"}>
             <input id="resume-matcher-onboarding-provider-web-input" type="url" placeholder="Provider URL" value="${escapeHtml(isWeb ? providerDraft.targetUrl || "" : "")}" />
           </div>
-          <div id="resume-matcher-onboarding-provider-api-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
+          <div id="resume-matcher-onboarding-provider-api-row" class="resume-matcher-field" data-invalid="${missingFields.has("apiBaseUrl") ? "true" : "false"}" data-required-empty="${!missingFields.has("apiBaseUrl") && requiredEmptyFields.has("apiBaseUrl") ? "true" : "false"}"${isApi ? "" : " hidden"}>
             <input id="resume-matcher-onboarding-provider-api-base-input" type="url" placeholder="API endpoint" value="${escapeHtml(isApi ? providerDraft.apiBaseUrl || "" : "")}" />
           </div>
-          <div id="resume-matcher-onboarding-provider-model-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
+          <div id="resume-matcher-onboarding-provider-model-row" class="resume-matcher-field" data-invalid="${missingFields.has("model") ? "true" : "false"}" data-required-empty="${!missingFields.has("model") && requiredEmptyFields.has("model") ? "true" : "false"}"${isApi ? "" : " hidden"}>
             <input id="resume-matcher-onboarding-provider-model-input" type="text" placeholder="Model" value="${escapeHtml(isApi ? providerDraft.model || "" : "")}" />
           </div>
-          <div id="resume-matcher-onboarding-provider-key-row" class="resume-matcher-field"${isApi ? "" : " hidden"}>
+          <div id="resume-matcher-onboarding-provider-key-row" class="resume-matcher-field" data-invalid="${missingFields.has("apiKey") ? "true" : "false"}" data-required-empty="${!missingFields.has("apiKey") && requiredEmptyFields.has("apiKey") ? "true" : "false"}"${isApi ? "" : " hidden"}>
             <input id="${ONBOARDING_PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" value="" />
           </div>
         </div>
         <p class="resume-matcher-onboarding__help resume-matcher-onboarding__help--subtle"><em>Most tested: ChatGPT web automation and Claude API.</em></p>
+        ${
+          !effectiveProviderState.ready && effectiveProviderState.message
+            ? `<p class="resume-matcher-onboarding__help">${escapeHtml(effectiveProviderState.message)}</p>`
+            : ""
+        }
         <div class="resume-matcher-onboarding__actions">
           ${renderPrimaryButtonMarkup("Save and continue", "save_provider_continue", `${effectiveProviderState.ready ? "" : " disabled"}`)}
         </div>
@@ -4883,7 +5724,7 @@ function renderOnboardingStep() {
     }
     case "done":
       return `
-        ${renderOnboardingProgress(setupState.step)}
+        ${renderOnboardingProgress(resolvedStep)}
         <p class="resume-matcher-onboarding__text">${escapeHtml(setupState.detail)}</p>
         <div class="resume-matcher-onboarding__actions">
           ${renderPrimaryButtonMarkup("Start tailoring", "complete_onboarding")}
@@ -4892,7 +5733,7 @@ function renderOnboardingStep() {
     case "intro":
     default:
       return `
-        ${renderOnboardingProgress(setupState.step)}
+        ${renderOnboardingProgress(resolvedStep)}
         <p class="resume-matcher-onboarding__text">${escapeHtml(setupState.detail)}</p>
         <div class="resume-matcher-onboarding__actions">
           ${renderPrimaryButtonMarkup("Continue", "onboarding_next", 'data-next-step="sign_in"')}
@@ -5335,10 +6176,10 @@ function formatErrorText(message) {
   if (/extension context invalidated/i.test(normalized)) {
     return "Refresh the LinkedIn page and try again.";
   }
+  if (/Prompt 4/i.test(raw)) {
+    return "Resume extraction failed. Check that the file contains resume text, then try again.";
+  }
   if (hasResumeSchemaError) {
-    if (/Prompt 4/i.test(raw)) {
-      return "Couldn't read your resume. Try again.";
-    }
     return "The draft came back in the wrong format. Try again.";
   }
   return normalized;
@@ -5445,6 +6286,10 @@ function renderHistory() {
     searchInput.value = state.historySearch;
   }
 
+  const connected = state.connectionState === "connected";
+  if (searchInput) {
+    searchInput.disabled = state.historyConnecting || !connected;
+  }
   if (filterRoot) {
     filterRoot.dataset.open = state.historyFilterOpen ? "true" : "false";
   }
@@ -5458,6 +6303,21 @@ function renderHistory() {
   );
 
   const { items, totalItems, totalPages } = getVisibleHistory();
+
+  if (state.historyConnecting || !connected) {
+    state.historyFilterOpen = false;
+    historyRoot.innerHTML = state.historyConnecting
+      ? `<div class="resume-matcher-empty">Connecting to Lumi Coach...</div>`
+      : `<div class="resume-matcher-empty">
+          <div><strong>Connect Lumi Coach to view saved runs.</strong></div>
+          <div>Your runs are saved in your Lumi workspace.</div>
+          <button type="button" class="resume-matcher-button is-primary" data-history-connect>Continue with Google</button>
+        </div>`;
+    if (pageNode) pageNode.textContent = "0/0";
+    if (prevButton) prevButton.disabled = true;
+    if (nextButton) nextButton.disabled = true;
+    return;
+  }
 
   if (!totalItems) {
     historyRoot.innerHTML = `<div class="resume-matcher-empty">${state.historySearch.trim() ? "No matching runs." : "No runs yet."}</div>`;
@@ -5515,11 +6375,14 @@ function renderProviderFields() {
   const providerDraft = syncProviderDraftState();
   const select = $(PROVIDER_SELECT_ID);
   if (!settings || !select) return;
+  const panel = $(PROVIDER_PANEL_ID);
+  if (panel) {
+    panel.hidden = !state.providerSettingsEditOpen;
+  }
 
-  const options = renderProviderOptions(settings);
+  const options = renderProviderOptions(settings, providerDraft.selectedProfileId);
   select.innerHTML = options;
-  select.value =
-    providerDraft.selectedProfileId || settings.activeProfileId || "";
+  select.value = providerDraft.selectedProfileId || "";
 
   const profile = getSavedProfileById(
     providerDraft.selectedProfileId,
@@ -5527,11 +6390,28 @@ function renderProviderFields() {
   );
   const isWeb = profile?.mode === "web_automation";
   const isApi = profile?.mode === "api";
+  const missingFields = state.providerValidationAttempted
+    ? new Set(state.providerValidationMissingFields)
+    : new Set();
+  const requiredEmptyFields = new Set(getProviderDraftMissingFields(providerDraft));
 
   const toggleRow = (id, visible) => {
     const node = $(id);
     if (!node) return;
     node.hidden = !visible;
+  };
+  const markInvalid = (id, field) => {
+    const node = $(id);
+    if (!(node instanceof HTMLElement)) return;
+    node.dataset.invalid = missingFields.has(field) ? "true" : "false";
+  };
+  const markRequiredEmpty = (id, field) => {
+    const node = $(id);
+    if (!(node instanceof HTMLElement)) return;
+    node.dataset.requiredEmpty =
+      !missingFields.has(field) && requiredEmptyFields.has(field)
+        ? "true"
+        : "false";
   };
 
   toggleRow(PROVIDER_WEB_ROW_ID, isWeb);
@@ -5539,6 +6419,19 @@ function renderProviderFields() {
   toggleRow(PROVIDER_API_GRID_ID, isApi);
   toggleRow(PROVIDER_MODEL_ROW_ID, isApi);
   toggleRow(PROVIDER_API_KEY_ROW_ID, isApi);
+  select.dataset.invalid = missingFields.has("provider") ? "true" : "false";
+  select.dataset.requiredEmpty =
+    !missingFields.has("provider") && requiredEmptyFields.has("provider")
+      ? "true"
+      : "false";
+  markInvalid(PROVIDER_WEB_ROW_ID, "targetUrl");
+  markInvalid(PROVIDER_API_BASE_ROW_ID, "apiBaseUrl");
+  markInvalid(PROVIDER_MODEL_ROW_ID, "model");
+  markInvalid(PROVIDER_API_KEY_ROW_ID, "apiKey");
+  markRequiredEmpty(PROVIDER_WEB_ROW_ID, "targetUrl");
+  markRequiredEmpty(PROVIDER_API_BASE_ROW_ID, "apiBaseUrl");
+  markRequiredEmpty(PROVIDER_MODEL_ROW_ID, "model");
+  markRequiredEmpty(PROVIDER_API_KEY_ROW_ID, "apiKey");
 
   const webInput = $(PROVIDER_WEB_INPUT_ID);
   if (webInput) webInput.value = isWeb ? providerDraft.targetUrl || "" : "";
@@ -5552,23 +6445,107 @@ function renderProviderFields() {
 
 function renderSettings() {
   const assets = state.assets;
-  const hasActiveWorkspace = Boolean(assets?.activeAccountKey);
-  const accountControlsDisabled = !hasActiveWorkspace;
   const accountLabel = assets?.extensionAuth?.user?.email?.trim() || "";
+  const hasMaster = hasBackendMasterResume();
+  const providerReadiness = getSavedProviderImportReadiness();
+  const providerReady = providerReadiness.ready === true;
+  const connected = state.connectionState === "connected";
+  const accountControlsDisabled = !connected;
+  const readyToTailor = connected && providerReady && hasMaster;
+  const settingsHealth = $(SETTINGS_HEALTH_ID);
+  if (settingsHealth) {
+    settingsHealth.textContent = readyToTailor ? "Ready to tailor" : "Finish setup";
+    settingsHealth.dataset.state = readyToTailor ? "ready" : "incomplete";
+  }
+
   const masterLabel = $(MASTER_RESUME_LABEL_ID);
   const storyboardLabel = $(STORYBOARD_LABEL_ID);
   if (masterLabel) {
-    const hasFile = Boolean(assets?.masterResumeContextAsset?.filename);
-    const label =
-      assets?.masterResumeContextAsset?.filename?.trim() || "Master resume";
-    masterLabel.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(label)}</span><button id="${MASTER_RESUME_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="${hasFile ? "Delete master resume" : "Upload master resume"}" title="${hasFile ? "Delete master resume" : "Upload master resume"}">${renderFileActionIcon(hasFile ? "delete" : "upload")}</button>`;
-    masterLabel.classList.toggle("is-placeholder", !hasFile);
+    const label = getBackendMasterResumeLabel();
+    const compactLabel = truncateDisplayText(label, 28);
+    const canImportMasterResume = !state.masterResumeImportInFlight;
+    const statusText = state.masterResumeImportInFlight
+      ? "Extracting and saving..."
+      : state.masterResumeImportTone === "error"
+        ? state.masterResumeImportMessage
+        : "";
+    masterLabel.className = "resume-matcher-settings-row-card";
+    masterLabel.innerHTML = `
+      <div class="resume-matcher-settings-row-card__main">
+        <div class="resume-matcher-settings-row-card__copy">
+          <div class="resume-matcher-settings-row-card__topline">
+            <div class="resume-matcher-settings-row-card__title">Master Resume</div>
+            ${hasMaster ? "" : renderSettingsStatusPill("Needs setup", "needed")}
+          </div>
+          <div class="resume-matcher-settings-row-card__value" title="${escapeHtml(hasMaster ? label : "Not added")}">${hasMaster ? escapeHtml(compactLabel) : "Not added"}</div>
+          <div class="resume-matcher-settings-row-card__detail">
+            ${
+              hasMaster
+                ? `Saved in <a class="resume-matcher-secondary-link" href="${escapeHtml(getBackendMasterResumeUrl())}" target="_blank" rel="noopener noreferrer">Lumi Coach</a>`
+                : "Required before tailoring."
+            }
+          </div>
+        </div>
+        <div class="resume-matcher-settings-row-card__actions">
+          ${
+            hasMaster
+              ? renderSettingsActionButton(MASTER_RESUME_REPLACE_ID, "Replace", { disabled: !canImportMasterResume })
+              : renderSettingsActionButton(MASTER_RESUME_ACTION_ID, "Add", { variant: "primary", disabled: !canImportMasterResume })
+          }
+        </div>
+      </div>
+      ${
+        statusText
+          ? `<div class="resume-matcher-settings-row-card__detail">${escapeHtml(statusText)}</div>`
+          : ""
+      }
+      ${
+        state.masterResumeReplaceOpen && hasMaster
+          ? `<div id="${MASTER_RESUME_REPLACE_PANEL_ID}" class="resume-matcher-settings-row-card__panel">
+              <div class="resume-matcher-settings-row-card__detail">Replace the Master Resume used for future tailoring. Existing generated resumes will not change.</div>
+              <div class="resume-matcher-button-row">
+                ${renderSettingsActionButton(MASTER_RESUME_ACTION_ID, "Upload resume", { variant: "primary", disabled: !canImportMasterResume })}
+                ${renderSettingsActionButton(MASTER_RESUME_CANCEL_REPLACE_ID, "Cancel", { variant: "quiet", disabled: state.masterResumeImportInFlight })}
+              </div>
+            </div>`
+          : ""
+      }
+    `;
   }
   if (storyboardLabel) {
     const hasFile = Boolean(assets?.storyboardAsset?.filename);
     const label = assets?.storyboardAsset?.filename?.trim() || "Story bank";
-    storyboardLabel.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(label)}</span><button id="${STORYBOARD_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="${hasFile ? "Delete story bank" : "Upload story bank"}" title="${hasFile ? "Delete story bank" : "Upload story bank"}">${renderFileActionIcon(hasFile ? "delete" : "upload")}</button>`;
-    storyboardLabel.classList.toggle("is-placeholder", !hasFile);
+    const compactLabel = truncateDisplayText(label, 28);
+    storyboardLabel.className = "resume-matcher-settings-row-card";
+    storyboardLabel.innerHTML = `
+      <div class="resume-matcher-settings-row-card__main">
+        <div class="resume-matcher-settings-row-card__copy">
+          <div class="resume-matcher-settings-row-card__topline">
+            <div class="resume-matcher-settings-row-card__title">Story bank</div>
+            ${hasFile ? "" : `<span class="resume-matcher-settings-row-card__warning-icon" title="Optional, but useful">${icon("warning")}</span>`}
+          </div>
+          <div class="resume-matcher-settings-row-card__value" title="${escapeHtml(hasFile ? label : "Not added")}">${hasFile ? escapeHtml(compactLabel) : "Not added"}</div>
+          <div class="resume-matcher-settings-row-card__detail">
+            Add richer context for stronger bullets and extra wins. Optional.
+            <a class="resume-matcher-secondary-link" href="${STORY_BANK_GUIDE_URL}" target="_blank" rel="noopener noreferrer">Learn more</a>
+          </div>
+        </div>
+        <div class="resume-matcher-settings-row-card__actions">
+          ${renderSettingsActionButton(STORYBOARD_ACTION_ID, hasFile ? "Replace" : "Add")}
+        </div>
+      </div>
+      ${
+        state.storyboardReplaceOpen
+          ? `<div id="${STORYBOARD_PANEL_ID}" class="resume-matcher-settings-row-card__panel">
+              <div class="resume-matcher-settings-row-card__detail">Upload TXT, MD, or JSON with achievements, project notes, and examples. It stays local to this browser.</div>
+              <div class="resume-matcher-button-row">
+                ${renderSettingsActionButton(STORYBOARD_UPLOAD_ID, "Upload story bank", { variant: "primary" })}
+                ${renderSettingsActionButton(STORYBOARD_CANCEL_ID, "Cancel", { variant: "quiet" })}
+              </div>
+            </div>`
+          : ""
+      }
+    `;
   }
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
     const chip = $(promptLabelId(templateName));
@@ -5584,10 +6561,6 @@ function renderSettings() {
     chip.classList.toggle("is-placeholder", !hasFile);
   });
 
-  const appUrl = $(APP_URL_INPUT_ID);
-  if (appUrl) appUrl.value = assets?.appOrigin || "";
-  const apiUrl = $(API_URL_INPUT_ID);
-  if (apiUrl) apiUrl.value = assets?.apiOrigin || "";
   const apifyDraft = syncApifyDraftState();
   const apifyEnabled = $(APIFY_ENABLED_INPUT_ID);
   if (apifyEnabled) {
@@ -5602,35 +6575,73 @@ function renderSettings() {
     syncSecretInput(APIFY_TOKEN_INPUT_ID);
     syncSecretRevealToggle(APIFY_TOKEN_INPUT_ID);
   }
-  const runtimeUrlsRow = $(RUNTIME_URLS_ROW_ID);
-  if (runtimeUrlsRow) {
-    runtimeUrlsRow.hidden = false;
+
+  const savedProvider = getSavedProfileById(
+    assets?.llmSettings?.activeProfileId,
+    assets?.llmSettings,
+  );
+  const providerValue =
+    providerReady && savedProvider?.label
+      ? savedProvider.label
+      : "Choose your AI provider";
+  const providerStatus = $(PROVIDER_STATUS_ID);
+  setSettingsStatusPill(
+    providerStatus,
+    providerReady ? "" : "Needs setup",
+    "needed",
+  );
+  const providerValueNode = $(PROVIDER_VALUE_ID);
+  if (providerValueNode) {
+    providerValueNode.textContent = providerValue;
+    providerValueNode.title = providerValue;
+  }
+  const providerDetail = $(PROVIDER_DETAIL_ID);
+  if (providerDetail) {
+    providerDetail.textContent = providerReady
+      ? "Used for extraction and tailoring."
+      : providerReadiness.message || "Required before tailoring.";
+  }
+  const providerChangeButton = $(PROVIDER_CHANGE_ID);
+  if (providerChangeButton) {
+    providerChangeButton.hidden = state.providerSettingsEditOpen;
+  }
+  const providerPanel = $(PROVIDER_PANEL_ID);
+  if (providerPanel) {
+    providerPanel.hidden = !state.providerSettingsEditOpen;
   }
 
   const accountButton = $(ACCOUNT_ACTION_ID);
   const accountDetail = $(ACCOUNT_DETAIL_ID);
+  const accountStatus = $(ACCOUNT_STATUS_ID);
+  setSettingsStatusPill(
+    accountStatus,
+    connected ? "" : "Needs setup",
+    "needed",
+  );
   if (accountButton) {
-    const connected = state.connectionState === "connected";
-    accountButton.classList.add("resume-matcher-google-button");
+    accountButton.className = `resume-matcher-button resume-matcher-google-button${connected ? " is-quiet" : " is-primary"}`;
     accountButton.innerHTML = renderGoogleButtonLabel(
-      connected ? "Sign out" : "Sign in with Google",
+      connected ? "Sign out" : "Sign in",
     );
     accountButton.disabled = false;
   }
   if (accountDetail) {
     accountDetail.textContent =
-      state.connectionState === "connected"
-        ? accountLabel
-          ? `Signed in as ${accountLabel}. This account uses its own local workspace.`
-          : "Signed in. This account uses its own local workspace."
-        : "Sign in to activate this account’s local workspace.";
+      connected ? accountLabel || "Signed in" : "Not signed in";
+    accountDetail.title = accountDetail.textContent;
   }
 
   [
     MASTER_RESUME_ACTION_ID,
+    MASTER_RESUME_REPLACE_ID,
+    MASTER_RESUME_CANCEL_REPLACE_ID,
     MASTER_RESUME_INPUT_ID,
     STORYBOARD_ACTION_ID,
+    STORYBOARD_UPLOAD_ID,
+    STORYBOARD_CANCEL_ID,
     STORYBOARD_INPUT_ID,
+    PROVIDER_CHANGE_ID,
+    PROVIDER_CANCEL_ID,
     PROVIDER_SELECT_ID,
     PROVIDER_WEB_INPUT_ID,
     PROVIDER_API_BASE_INPUT_ID,
@@ -5645,7 +6656,13 @@ function renderSettings() {
   ].forEach((id) => {
     const control = $(id);
     if (control) {
-      control.disabled = accountControlsDisabled;
+      const preserveMasterDisabledState =
+        id === MASTER_RESUME_ACTION_ID ||
+        id === MASTER_RESUME_REPLACE_ID ||
+        id === MASTER_RESUME_CANCEL_REPLACE_ID;
+      control.disabled =
+        accountControlsDisabled ||
+        (preserveMasterDisabledState && control.disabled);
     }
   });
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, editable }) => {
@@ -5661,23 +6678,42 @@ function renderSettings() {
   }
 
   $(MASTER_RESUME_ACTION_ID)?.addEventListener("click", async () => {
-    if (accountControlsDisabled) return;
-    if (state.assets?.masterResumeContextAsset?.filename) {
-      await sendMessage("CLEAR_MASTER_RESUME_CONTEXT").catch(() => {});
-      await refreshBoardData();
+    if (
+      accountControlsDisabled ||
+      state.masterResumeImportInFlight
+    )
       return;
-    }
+    if (!(await ensureProviderReadyForMasterResumeImport())) return;
     $(MASTER_RESUME_INPUT_ID)?.click();
   });
-
+  $(MASTER_RESUME_REPLACE_ID)?.addEventListener("click", () => {
+    if (
+      accountControlsDisabled ||
+      state.masterResumeImportInFlight
+    )
+      return;
+    state.masterResumeReplaceOpen = true;
+    state.masterResumeImportMessage = "";
+    renderSettings();
+  });
+  $(MASTER_RESUME_CANCEL_REPLACE_ID)?.addEventListener("click", () => {
+    if (state.masterResumeImportInFlight) return;
+    state.masterResumeReplaceOpen = false;
+    state.masterResumeImportMessage = "";
+    renderSettings();
+  });
   $(STORYBOARD_ACTION_ID)?.addEventListener("click", async () => {
     if (accountControlsDisabled) return;
-    if (state.assets?.storyboardAsset?.filename) {
-      await sendMessage("CLEAR_STORYBOARD").catch(() => {});
-      await refreshBoardData();
-      return;
-    }
+    state.storyboardReplaceOpen = true;
+    renderSettings();
+  });
+  $(STORYBOARD_UPLOAD_ID)?.addEventListener("click", () => {
+    if (accountControlsDisabled) return;
     $(STORYBOARD_INPUT_ID)?.click();
+  });
+  $(STORYBOARD_CANCEL_ID)?.addEventListener("click", () => {
+    state.storyboardReplaceOpen = false;
+    renderSettings();
   });
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
     $(promptActionId(templateName))?.addEventListener("click", async () => {
@@ -5767,11 +6803,14 @@ function autoGrowTextarea(textarea) {
 function renderRunView() {
   syncRunSourceModeForRoute();
   const status = getRunStatusCopy();
+  const setupRequirement = getSetupRequirementStatus();
+  const nonLinkedInManualRoute = isNonLinkedInManualRoute();
   const readyPill = $(RUN_READY_ID);
   const jobMeta = $(RUN_META_ID);
   const onboardingRoot = $(RUN_ONBOARDING_ID);
   const manualJdField = $(RUN_MANUAL_JD_FIELD_ID);
   const manualJdInput = $(RUN_MANUAL_JD_ID);
+  const sourceToggle = $(RUN_SOURCE_TOGGLE_ID);
   const sourceLinkedInButton = $(RUN_SOURCE_LINKEDIN_ID);
   const sourceManualButton = $(RUN_SOURCE_MANUAL_ID);
   const notesField = $(RUN_NOTES_ID)?.closest(".resume-matcher-field");
@@ -5779,24 +6818,34 @@ function renderRunView() {
   const isLoadingJob =
     state.jobLoadState === "loading" &&
     (state.selectedJobRefreshing || !hasEnoughJobContext(state.currentJob));
-  const hasScrapeProblem = shouldShowManualJdFallback();
-  const hardBlocker = isHardPrerequisiteBlocker();
+  const onboardingMode = isOnboardingMode();
+  const showOnboarding = onboardingMode && !nonLinkedInManualRoute;
+  const hardBlocker =
+    !manualMode && (Boolean(setupRequirement) || isHardPrerequisiteBlocker());
+  const missingMasterResumeBlocker =
+    !onboardingMode &&
+    !manualMode &&
+    state.setupState?.state === "missing_resume";
   const waitingForSelection = isWaitingForJobSelection();
   const canRun = isRunReady();
-  const onboardingMode = isOnboardingMode();
   const runningDifferentJob =
     state.isRunning && !doesActiveRunMatchCurrentJob();
   const canRefreshJob = !manualMode && canManuallyRescrapeJob();
+  const missingManualJdStatus =
+    manualMode &&
+    !hasManualJobDescription() &&
+    status?.tone === "info" &&
+    status?.title === "Paste a job description";
 
   if (onboardingRoot) {
-    onboardingRoot.hidden = !onboardingMode;
-    onboardingRoot.innerHTML = onboardingMode ? renderOnboardingStep() : "";
-    if (onboardingMode && state.setupState?.step === "provider") {
+    onboardingRoot.hidden = !showOnboarding;
+    onboardingRoot.innerHTML = showOnboarding ? renderOnboardingStep() : "";
+    if (showOnboarding && getResolvedOnboardingStep() === "provider") {
       const providerDraft = syncProviderDraftState();
       const onboardingProviderSelect = $(
         "resume-matcher-onboarding-provider-select",
       );
-      if (onboardingProviderSelect && providerDraft.selectedProfileId) {
+      if (onboardingProviderSelect) {
         onboardingProviderSelect.value = providerDraft.selectedProfileId;
       }
     }
@@ -5813,9 +6862,12 @@ function renderRunView() {
     sourceLinkedInButton.setAttribute("aria-selected", String(!manualMode));
     sourceManualButton.setAttribute("aria-selected", String(manualMode));
   }
+  if (sourceToggle) {
+    sourceToggle.hidden = nonLinkedInManualRoute || missingMasterResumeBlocker;
+  }
 
   if (readyPill) {
-    readyPill.hidden = onboardingMode || hardBlocker || waitingForSelection || manualMode;
+    readyPill.hidden = showOnboarding || hardBlocker || waitingForSelection || manualMode;
     readyPill.innerHTML = canRefreshJob
       ? icon("refresh")
       : canRun
@@ -5857,7 +6909,7 @@ function renderRunView() {
   }
 
   if (jobMeta) {
-    jobMeta.hidden = onboardingMode || hardBlocker || waitingForSelection || manualMode;
+    jobMeta.hidden = showOnboarding || hardBlocker || waitingForSelection || manualMode;
     if (state.selectedJobRefreshing) {
       jobMeta.innerHTML = "";
     } else {
@@ -5885,39 +6937,42 @@ function renderRunView() {
   }
   if (manualJdField) {
     manualJdField.hidden =
-      onboardingMode || hardBlocker || waitingForSelection || !shouldShowManualJdInput();
+      showOnboarding || hardBlocker || waitingForSelection || !shouldShowManualJdInput();
   }
   if (manualJdInput && manualJdInput.value !== state.manualJobDescription) {
     manualJdInput.value = state.manualJobDescription;
     autoGrowTextarea(manualJdInput);
   }
   if (notesField) {
-    notesField.hidden = onboardingMode || hardBlocker || waitingForSelection;
+    notesField.hidden = showOnboarding || hardBlocker || waitingForSelection;
   }
 
   const primaryButton = $(RUN_PRIMARY_ID);
   if (primaryButton) {
+    const manualReady = manualMode && hasManualJobDescription();
     primaryButton.disabled =
-      onboardingMode ||
+      showOnboarding ||
       waitingForSelection ||
       state.isRunning ||
       state.isCanceling ||
-      !canRun;
+      (manualMode ? !manualReady : !canRun);
     primaryButton.textContent = state.isRunning
       ? runningDifferentJob
         ? "Working on other job"
         : "Running…"
       : state.isCanceling
         ? "Canceling..."
-        : "Tailor";
-    primaryButton.hidden = onboardingMode || hardBlocker || waitingForSelection;
+        : manualMode
+          ? getManualPrimaryButtonLabel()
+          : "Tailor";
+    primaryButton.hidden = showOnboarding || hardBlocker || waitingForSelection;
   }
 
   const cancelRow = $(RUN_CANCEL_ROW_ID);
   const cancelButton = $(RUN_CANCEL_ID);
   if (cancelRow && cancelButton) {
     const showCancel =
-      !onboardingMode &&
+      !showOnboarding &&
       !hardBlocker &&
       !waitingForSelection &&
       isRunCancelable();
@@ -5929,12 +6984,21 @@ function renderRunView() {
   const mainActions = $(RUN_ACTIONS_ID);
   const statusRoot = $(RUN_STATUS_ID);
   const statusActions = $(RUN_STATUS_ACTIONS_ID);
+  const hideManualComposeStatus =
+    manualMode &&
+    hasManualJobDescription() &&
+    !state.awaitingAuth &&
+    !state.awaitingStoryboard &&
+    status?.tone === "blocked";
   if (statusRoot && statusActions) {
-    statusRoot.hidden = onboardingMode;
-    statusActions.hidden = onboardingMode;
+    statusRoot.hidden = showOnboarding || missingManualJdStatus || hideManualComposeStatus;
+    statusActions.hidden = showOnboarding || missingManualJdStatus || hideManualComposeStatus;
     statusRoot.classList.toggle(
       "is-visible",
-      !onboardingMode && Boolean(status),
+      !showOnboarding &&
+        !missingManualJdStatus &&
+        !hideManualComposeStatus &&
+        Boolean(status),
     );
     statusRoot.dataset.tone = status?.tone || "neutral";
     statusRoot.innerHTML = status
@@ -5960,28 +7024,31 @@ function renderRunView() {
     const shouldHideMainActions = Boolean(
       status?.actions?.length &&
       (status.tone === "blocked" || status.tone === "warning") &&
+      !hideManualComposeStatus &&
       !state.awaitingAuth &&
       !state.awaitingStoryboard,
     );
     mainActions.classList.toggle(
       "is-hidden",
-      onboardingMode || hardBlocker || waitingForSelection || shouldHideMainActions,
+      showOnboarding || hardBlocker || waitingForSelection || shouldHideMainActions,
     );
   }
 
   const titleNode = document.querySelector("#resume-matcher-job-title");
   if (titleNode) {
     titleNode.textContent = onboardingMode
-      ? state.setupState?.title || "Welcome"
+      ? nonLinkedInManualRoute
+        ? "Paste job description"
+        : getResolvedOnboardingTitle()
+      : hardBlocker
+        ? setupRequirement?.title || state.setupState?.title || "Finish setup"
       : waitingForSelection
         ? "Select a job"
       : manualMode
         ? "Paste job description"
-      : hardBlocker
-        ? state.setupState?.title || "Finish setup"
-        : isLoadingJob
-          ? state.selectedJobRefreshing
-            ? "Loading selected job"
+      : isLoadingJob
+        ? state.selectedJobRefreshing
+          ? "Loading selected job"
             : "Loading job"
           : state.currentJob?.title ||
             (hasUsableJobContext(state.currentJob)
@@ -6065,18 +7132,37 @@ function syncRunningInteractivity() {
 }
 
 function renderViews() {
+  state.currentView = resolveAllowedBoardView(state.currentView);
   const runView = $(RUN_VIEW_ID);
   const historyView = $(HISTORY_VIEW_ID);
   const settingsView = $(SETTINGS_VIEW_ID);
+  const historyLocked = isHistoryNavigationLocked();
+  const settingsLocked = isSettingsNavigationLocked();
   runView?.classList.toggle("is-active", state.currentView === "run");
   historyView?.classList.toggle("is-active", state.currentView === "history");
   settingsView?.classList.toggle("is-active", state.currentView === "settings");
   $(BOARD_HOME_ID)?.classList.toggle("is-active", state.currentView === "run");
-  $(BOARD_RUNS_ID)?.classList.toggle("is-active", state.currentView === "history");
-  $(BOARD_SETTINGS_ID)?.classList.toggle(
+  const runsButton = $(BOARD_RUNS_ID);
+  const settingsButton = $(BOARD_SETTINGS_ID);
+  runsButton?.classList.toggle("is-active", state.currentView === "history");
+  if (runsButton instanceof HTMLButtonElement) {
+    runsButton.disabled = historyLocked;
+    runsButton.title =
+      state.connectionState === "connected"
+        ? "Runs"
+        : "Connect to view runs";
+    runsButton.setAttribute("aria-label", runsButton.title);
+  }
+  settingsButton?.classList.toggle(
     "is-active",
     state.currentView === "settings",
   );
+  if (settingsButton instanceof HTMLButtonElement) {
+    settingsButton.disabled = settingsLocked;
+    const title = "Settings";
+    settingsButton.title = title;
+    settingsButton.setAttribute("aria-label", title);
+  }
 }
 
 function render() {
@@ -6090,6 +7176,7 @@ function render() {
   } else {
     stopRunningStatusRotation();
   }
+  state.currentView = resolveAllowedBoardView(state.currentView);
   renderRootFlags();
   renderViews();
   renderRunView();
@@ -6123,14 +7210,40 @@ function syncPromptDefaultsForOpen(view, previousOpen, previousView) {
   return syncPromise;
 }
 
-async function refreshBoardData() {
+async function refreshBoardData(options = {}) {
   try {
-    const response = await sendMessage("GET_STATE");
+    const shouldRefreshBackendMaster = options.refreshBackendMaster === true;
+    const previousBackendMaster = state.assets?.backendMasterResume ?? null;
+    const fallbackBackendMaster =
+      options.fallbackBackendMaster?.resumeId ? options.fallbackBackendMaster : null;
+    const response = await sendMessage("GET_STATE", {
+      refreshBackendMaster: shouldRefreshBackendMaster,
+      backendMasterMaxAgeMs: Number.isFinite(options.backendMasterMaxAgeMs)
+        ? options.backendMasterMaxAgeMs
+        : 0,
+    });
     if (!response?.ok) {
       throw new Error(response?.error || "Failed to load extension state.");
     }
-    state.assets = response.assets ?? null;
-    state.setupState = response.setupState ?? state.setupState;
+    const nextAssets = response.assets ?? null;
+    const resolvedBackendMaster = resolveBackendMasterResumeForRender({
+      shouldRefreshBackendMaster,
+      previousBackendMaster,
+      nextBackendMaster: nextAssets?.backendMasterResume ?? null,
+      fallbackBackendMaster,
+    });
+    const preservedBackendMaster =
+      resolvedBackendMaster?.resumeId &&
+      !nextAssets?.backendMasterResume?.resumeId;
+    state.assets = {
+      ...(nextAssets || {}),
+      backendMasterResume: resolvedBackendMaster,
+    };
+    const nextSetupState = response.setupState ?? state.setupState;
+    state.setupState =
+      preservedBackendMaster && nextSetupState?.state === "missing_resume"
+        ? state.setupState
+        : nextSetupState;
     state.history = response.history ?? [];
     state.extensionState = response.state ?? null;
     state.routeMode = response.route?.mode || "hidden";
@@ -6149,14 +7262,38 @@ async function refreshBoardData() {
   }
 }
 
-async function reconcileConnectionStatus() {
+async function reconcileConnectionStatus(options = {}) {
+  const refreshBackendMaster =
+    typeof options === "object" && options?.refreshBackendMaster === true;
+  const backendMasterMaxAgeMs =
+    typeof options === "object" && Number.isFinite(options?.backendMasterMaxAgeMs)
+      ? options.backendMasterMaxAgeMs
+      : 0;
   try {
-    const response = await sendMessage("CHECK_CONNECTION_STATUS");
+    const previousBackendMaster = state.assets?.backendMasterResume ?? null;
+    const response = await sendMessage("CHECK_CONNECTION_STATUS", {
+      refreshBackendMaster,
+      backendMasterMaxAgeMs,
+    });
     if (!response?.ok) {
       throw new Error(response?.error || "Failed to check connection status.");
     }
-    state.assets = response.assets ?? state.assets;
-    state.setupState = response.setupState ?? state.setupState;
+    const nextAssets = response.assets ?? state.assets;
+    const preservedBackendMaster =
+      !refreshBackendMaster &&
+      previousBackendMaster?.resumeId &&
+      !nextAssets?.backendMasterResume?.resumeId;
+    state.assets = preservedBackendMaster
+      ? {
+          ...nextAssets,
+          backendMasterResume: previousBackendMaster,
+        }
+      : nextAssets;
+    const nextSetupState = response.setupState ?? state.setupState;
+    state.setupState =
+      preservedBackendMaster && nextSetupState?.state === "missing_resume"
+        ? state.setupState
+        : nextSetupState;
     state.history = response.history ?? state.history;
     state.extensionState = response.state ?? state.extensionState;
     state.routeMode = response.route?.mode || state.routeMode;
@@ -6203,11 +7340,64 @@ async function saveTextAsset(file, type) {
   }
 }
 
+async function importMasterResumeFile(file) {
+  if (!file) return;
+  if (!(await ensureProviderReadyForMasterResumeImport())) {
+    return;
+  }
+  state.masterResumeImportInFlight = true;
+  state.masterResumeImportTone = "neutral";
+  state.masterResumeImportMessage = "Extracting and saving...";
+  clearExplicitRunStatus("master-resume-import-start");
+  render();
+  try {
+    const content = await file.text();
+    const response = await sendMessage("IMPORT_MASTER_RESUME_CONTEXT", {
+      filename: file.name,
+      content,
+      replaceExisting: true,
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Failed to save Master Resume.");
+    }
+    const importedMasterResume = response.masterResume?.resumeId
+      ? response.masterResume
+      : null;
+    if (importedMasterResume) {
+      state.assets = {
+        ...(state.assets || {}),
+        backendMasterResume: importedMasterResume,
+      };
+    }
+    state.masterResumeImportTone = "success";
+    state.masterResumeImportMessage = "Master Resume ready.";
+    state.masterResumeReplaceOpen = false;
+    await refreshBoardData({
+      refreshBackendMaster: true,
+      fallbackBackendMaster: importedMasterResume,
+    });
+  } catch (error) {
+    state.masterResumeImportTone = "error";
+    state.masterResumeImportMessage = formatMasterResumeImportError(error);
+    setRunStatus("error", "Save failed", state.masterResumeImportMessage, [
+      {
+        id: "upload_resume",
+        label: "Choose file again",
+        variant: "primary",
+      },
+    ]);
+  } finally {
+    state.masterResumeImportInFlight = false;
+    render();
+  }
+}
+
 async function persistProviderSelection(selectId = PROVIDER_SELECT_ID) {
   const select = $(selectId);
   if (!(select instanceof HTMLSelectElement)) return;
   endSecretEdit(PROVIDER_API_KEY_INPUT_ID);
   endSecretEdit(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
+  setProviderValidationState([], false);
   setProviderDraftState(createProviderDraftState(select.value), {
     replace: true,
   });
@@ -6237,10 +7427,26 @@ function getSelectedProviderSettingsPayload() {
 
 async function persistSelectedProviderSettings() {
   const payload = getSelectedProviderSettingsPayload();
-  if (!payload) return false;
+  if (!payload) {
+    const missingFields = ["provider"];
+    setProviderValidationState(missingFields, true);
+    renderSettings();
+    renderRunView();
+    throw new Error(getProviderMissingFieldsMessage(missingFields));
+  }
   const providerDraft = syncProviderDraftState();
+  const missingFields = getProviderDraftMissingFields(providerDraft);
+  if (missingFields.length > 0) {
+    setProviderValidationState(missingFields, true);
+    renderSettings();
+    renderRunView();
+    throw new Error(getProviderMissingFieldsMessage(missingFields));
+  }
 
   if (!providerDraft.dirty) {
+    setProviderValidationState([], false);
+    state.providerSettingsEditOpen = false;
+    renderSettings();
     return true;
   }
 
@@ -6259,11 +7465,38 @@ async function persistSelectedProviderSettings() {
     payload.profileId,
     response.llmSettings,
   );
+  setProviderValidationState([], false);
+  state.providerSettingsEditOpen = false;
   endSecretEdit(PROVIDER_API_KEY_INPUT_ID);
   endSecretEdit(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
   renderSettings();
   renderRunView();
   return true;
+}
+
+async function ensureProviderReadyForMasterResumeImport() {
+  let readiness = getSavedProviderImportReadiness();
+  if (readiness.ready) {
+    return true;
+  }
+
+  const draftState = getOnboardingProviderDraftState();
+  const providerDraft = syncProviderDraftState();
+  if (draftState.ready && providerDraft.dirty) {
+    await persistSelectedProviderSettings();
+    readiness = getSavedProviderImportReadiness();
+    if (readiness.ready) {
+      return true;
+    }
+  }
+
+  const message =
+    draftState.message || readiness.message || PROVIDER_SAVE_REQUIRED_MESSAGE;
+  state.masterResumeImportTone = "error";
+  state.masterResumeImportMessage = message;
+  setRunStatus("error", "AI setup needed", message);
+  render();
+  return false;
 }
 
 async function persistOnboardingProviderSettingsAndContinue() {
@@ -6273,7 +7506,7 @@ async function persistOnboardingProviderSettingsAndContinue() {
   }
   await persistSelectedProviderSettings();
   const response = await sendMessage("SET_ONBOARDING_STEP", {
-    step: "done",
+    step: "assets",
   });
   if (!response?.ok) {
     throw new Error(response?.error || "Failed to continue onboarding.");
@@ -6303,32 +7536,6 @@ async function persistApifyFallbackSettings() {
   apifyDraftState = createApifyDraftState();
   endSecretEdit(APIFY_TOKEN_INPUT_ID);
   renderSettings();
-}
-
-async function persistRuntimeUrls() {
-  const response = await sendMessage("SAVE_RUNTIME_URLS", {
-    appUrl: $(APP_URL_INPUT_ID)?.value.trim() || "",
-    apiUrl: $(API_URL_INPUT_ID)?.value.trim() || "",
-  });
-  if (!response?.ok) {
-    throw new Error(response?.error || "Failed to save URLs.");
-  }
-}
-
-function scheduleRuntimeUrlsSave() {
-  if (runtimeUrlsSaveTimer) {
-    window.clearTimeout(runtimeUrlsSaveTimer);
-  }
-  runtimeUrlsSaveTimer = window.setTimeout(() => {
-    runtimeUrlsSaveTimer = null;
-    persistRuntimeUrls().catch((error) => {
-      setRunStatus(
-        "error",
-        "Save failed",
-        error instanceof Error ? error.message : "Unable to save URLs.",
-      );
-    });
-  }, 350);
 }
 
 function canManuallyRescrapeJob() {
@@ -6424,16 +7631,74 @@ async function handleGenerateClick() {
   if (!connected) {
     state.isRunning = false;
     state.isCanceling = false;
+    state.awaitingAuth = true;
     state.activeRunId = null;
     state.activeRunJob = null;
-    if (state.explicitRunStatus?.kind === "running") {
-      clearExplicitRunStatus("connection-preflight-failed");
-    } else {
-      render();
-    }
+    const requirement = getSetupRequirementStatus() || {
+      tone: "blocked",
+      title: "Connect Lumi Coach",
+      detail: "Connect your Lumi Coach account before tailoring.",
+      actions: [
+        {
+          id: "connect",
+          label: "Continue with Google",
+          variant: "primary",
+        },
+      ],
+    };
+    setExplicitRunStatus(
+      "interrupted",
+      requirement.tone,
+      requirement.title,
+      requirement.detail,
+      (requirement.actions || []).map((action) =>
+        action.id === "connect"
+          ? {
+              ...action,
+              label: "Connect and tailor",
+            }
+          : action,
+      ),
+    );
     return;
   }
   if (state.isCanceling || state.explicitRunStatus?.kind === "canceled") {
+    return;
+  }
+
+  const manualSetupRequirement = isManualRunMode()
+    ? getSetupRequirementStatus()
+    : null;
+  if (manualSetupRequirement) {
+    state.isRunning = false;
+    state.isCanceling = false;
+    state.awaitingAuth = false;
+    state.activeRunId = null;
+    state.activeRunJob = null;
+    const setupAction = getManualSetupAction(manualSetupRequirement);
+    clearExplicitRunStatus("manual-setup-repair", { renderNow: false });
+    if (setupAction?.id === "upload_resume") {
+      await handleStatusAction("upload_resume");
+      render();
+      return;
+    }
+    if (
+      setupAction?.id === "open_settings" ||
+      setupAction?.id === "open-settings" ||
+      setupAction?.id === "configure_provider"
+    ) {
+      state.providerSettingsEditOpen = true;
+      await handleStatusAction(setupAction.id);
+      render();
+      return;
+    }
+    setExplicitRunStatus(
+      "interrupted",
+      manualSetupRequirement.tone,
+      manualSetupRequirement.title,
+      manualSetupRequirement.detail,
+      manualSetupRequirement.actions,
+    );
     return;
   }
 
@@ -6584,12 +7849,18 @@ async function handleGenerateClick() {
 
 async function handleStatusAction(actionId) {
   if (actionId === "open_settings" || actionId === "open-settings") {
-    state.currentView = "settings";
-    render();
+    openBoard("settings");
+    if (state.currentView !== "settings") {
+      return;
+    }
     const focusTarget =
       state.setupState?.primaryAction?.focusTarget ||
       state.setupState?.secondaryAction?.focusTarget ||
       "";
+    if (focusTarget.startsWith("provider")) {
+      state.providerSettingsEditOpen = true;
+      renderSettings();
+    }
     const targetId =
       focusTarget === "resume"
         ? MASTER_RESUME_ACTION_ID
@@ -6614,22 +7885,26 @@ async function handleStatusAction(actionId) {
   }
 
   if (actionId === "upload_resume") {
-    state.currentView = "settings";
-    render();
+    if (state.masterResumeImportInFlight) return;
+    if (!(await ensureProviderReadyForMasterResumeImport())) return;
     $(MASTER_RESUME_INPUT_ID)?.click();
     return;
   }
 
   if (actionId === "upload_storyboard") {
-    state.currentView = "settings";
-    render();
+    if (isSignedOutNavigationLocked()) {
+      openBoard("run");
+      return;
+    }
     $(STORYBOARD_INPUT_ID)?.click();
     return;
   }
 
   if (actionId === "configure_provider") {
-    state.currentView = "settings";
-    render();
+    openBoard("settings");
+    if (state.currentView !== "settings") {
+      return;
+    }
     const focusTarget = state.setupState?.primaryAction?.focusTarget;
     const targetId =
       focusTarget === "providerApiKey"
@@ -6749,6 +8024,8 @@ async function handleOnboardingAction(actionId, nextStep = "") {
   }
 
   if (actionId === "upload_resume") {
+    if (state.masterResumeImportInFlight) return;
+    if (!(await ensureProviderReadyForMasterResumeImport())) return;
     $(MASTER_RESUME_INPUT_ID)?.click();
     return;
   }
@@ -6826,7 +8103,7 @@ function ensureRoot() {
         <section id="${RUN_VIEW_ID}" class="resume-matcher-view is-active">
           <article class="resume-matcher-run-shell">
             <div class="resume-matcher-run-shell__body">
-              <div class="resume-matcher-source-toggle" role="tablist" aria-label="Job source">
+              <div id="${RUN_SOURCE_TOGGLE_ID}" class="resume-matcher-source-toggle" role="tablist" aria-label="Job source">
                 <button id="${RUN_SOURCE_LINKEDIN_ID}" type="button" class="resume-matcher-source-toggle__button is-active" role="tab" aria-selected="true">LinkedIn job</button>
                 <button id="${RUN_SOURCE_MANUAL_ID}" type="button" class="resume-matcher-source-toggle__button" role="tab" aria-selected="false">Paste JD</button>
               </div>
@@ -6880,61 +8157,73 @@ function ensureRoot() {
         <section id="${SETTINGS_VIEW_ID}" class="resume-matcher-view">
           <div class="resume-matcher-settings-stack">
             <section class="resume-matcher-settings-group">
-              <h3 class="resume-matcher-settings-title">Core</h3>
+              <h3 class="resume-matcher-settings-title">Setup status</h3>
+              <div id="${SETTINGS_HEALTH_ID}" class="resume-matcher-settings-health" data-state="incomplete">Finish setup</div>
               <div class="resume-matcher-settings-list">
-                <div class="resume-matcher-settings-item">
-                  <div class="resume-matcher-file-row">
-                    <div id="${MASTER_RESUME_LABEL_ID}" class="resume-matcher-file-chip is-placeholder">
-                      <span class="resume-matcher-file-chip__text">Master resume</span>
-                      <button id="${MASTER_RESUME_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="Upload master resume" title="Upload master resume">${renderFileActionIcon("upload")}</button>
-                    </div>
-                    <input id="${MASTER_RESUME_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
-                  </div>
-                </div>
-                <div class="resume-matcher-settings-item">
-                  <div class="resume-matcher-file-row">
-                    <div id="${STORYBOARD_LABEL_ID}" class="resume-matcher-file-chip is-placeholder">
-                      <span class="resume-matcher-file-chip__text">Story bank</span>
-                      <button id="${STORYBOARD_ACTION_ID}" type="button" class="resume-matcher-file-chip__action" aria-label="Upload story bank" title="Upload story bank">${renderFileActionIcon("upload")}</button>
-                    </div>
-                    <input id="${STORYBOARD_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
-                  </div>
-                  <a class="resume-matcher-settings-item__link" href="${STORY_BANK_GUIDE_URL}" target="_blank" rel="noopener noreferrer">Story bank helps tailoring. Learn more.</a>
-                </div>
-                <div class="resume-matcher-settings-item">
-                  <div class="resume-matcher-settings-item__title">Google sign-in</div>
-                  <div id="${ACCOUNT_DETAIL_ID}" class="resume-matcher-settings-item__detail">Sign in to activate this account’s local workspace.</div>
-                  <div class="resume-matcher-google-connect">
-                    <button id="${ACCOUNT_ACTION_ID}" type="button" class="resume-matcher-button resume-matcher-google-button">${renderGoogleButtonLabel("Sign in with Google")}</button>
-                  </div>
-                </div>
-                <div class="resume-matcher-settings-item">
-                  <div class="resume-matcher-settings-item__title">Provider</div>
-                  <select id="${PROVIDER_SELECT_ID}"></select>
-                  <div class="resume-matcher-settings-substack">
-                    <div id="${PROVIDER_WEB_ROW_ID}" class="resume-matcher-settings-item" hidden>
-                      <div class="resume-matcher-settings-item__title">Target</div>
-                      <input id="${PROVIDER_WEB_INPUT_ID}" type="url" placeholder="Provider URL" />
-                    </div>
-                    <div id="${PROVIDER_API_BASE_ROW_ID}" class="resume-matcher-settings-item" hidden>
-                      <div class="resume-matcher-settings-item__title">API</div>
-                      <input id="${PROVIDER_API_BASE_INPUT_ID}" type="url" placeholder="API endpoint" />
-                    </div>
-                    <div id="${PROVIDER_API_GRID_ID}" class="resume-matcher-settings-grid" hidden>
-                      <div id="${PROVIDER_MODEL_ROW_ID}" class="resume-matcher-field" hidden>
-                        <input id="${PROVIDER_MODEL_INPUT_ID}" type="text" placeholder="Model" />
+                <div id="${MASTER_RESUME_LABEL_ID}" class="resume-matcher-settings-row-card"></div>
+                <input id="${MASTER_RESUME_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+                <div id="${PROVIDER_ROW_ID}" class="resume-matcher-settings-row-card">
+                  <div class="resume-matcher-settings-row-card__main">
+                    <div class="resume-matcher-settings-row-card__copy">
+                      <div class="resume-matcher-settings-row-card__topline">
+                        <div class="resume-matcher-settings-row-card__title">AI Provider</div>
+                        <span id="${PROVIDER_STATUS_ID}" class="resume-matcher-settings-status-pill" data-tone="needed">Needs setup</span>
                       </div>
-                      <div id="${PROVIDER_API_KEY_ROW_ID}" class="resume-matcher-field" hidden>
-                        <input id="${PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" />
+                      <div id="${PROVIDER_VALUE_ID}" class="resume-matcher-settings-row-card__value">Choose provider</div>
+                      <div id="${PROVIDER_DETAIL_ID}" class="resume-matcher-settings-row-card__detail">Required before tailoring.</div>
+                    </div>
+                    <div class="resume-matcher-settings-row-card__actions">
+                      <button id="${PROVIDER_CHANGE_ID}" type="button" class="resume-matcher-button">Change</button>
+                    </div>
+                  </div>
+                  <div id="${PROVIDER_PANEL_ID}" class="resume-matcher-settings-row-card__panel" hidden>
+                    <div class="resume-matcher-settings-row-card__detail">Change the AI setup used for extraction and tailoring.</div>
+                    <select id="${PROVIDER_SELECT_ID}"></select>
+                    <div class="resume-matcher-settings-substack">
+                      <div id="${PROVIDER_WEB_ROW_ID}" class="resume-matcher-settings-item" hidden>
+                        <div class="resume-matcher-settings-item__title">Target</div>
+                        <input id="${PROVIDER_WEB_INPUT_ID}" type="url" placeholder="Provider URL" />
+                      </div>
+                      <div id="${PROVIDER_API_BASE_ROW_ID}" class="resume-matcher-settings-item" hidden>
+                        <div class="resume-matcher-settings-item__title">API</div>
+                        <input id="${PROVIDER_API_BASE_INPUT_ID}" type="url" placeholder="API endpoint" />
+                      </div>
+                      <div id="${PROVIDER_API_GRID_ID}" class="resume-matcher-settings-grid" hidden>
+                        <div id="${PROVIDER_MODEL_ROW_ID}" class="resume-matcher-field" hidden>
+                          <input id="${PROVIDER_MODEL_INPUT_ID}" type="text" placeholder="Model" />
+                        </div>
+                        <div id="${PROVIDER_API_KEY_ROW_ID}" class="resume-matcher-field" hidden>
+                          <input id="${PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" />
+                        </div>
+                      </div>
+                      <div class="resume-matcher-button-row">
+                        <button id="${PROVIDER_SAVE_ID}" type="button" class="resume-matcher-button is-primary">Save</button>
+                        <button id="${PROVIDER_CANCEL_ID}" type="button" class="resume-matcher-button is-quiet">Cancel</button>
                       </div>
                     </div>
-                    <button id="${PROVIDER_SAVE_ID}" type="button" class="resume-matcher-button is-primary">Save provider</button>
+                  </div>
+                </div>
+                <div id="${STORYBOARD_LABEL_ID}" class="resume-matcher-settings-row-card"></div>
+                <input id="${STORYBOARD_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+                <div class="resume-matcher-settings-row-card">
+                  <div class="resume-matcher-settings-row-card__main">
+                    <div class="resume-matcher-settings-row-card__copy">
+                      <div class="resume-matcher-settings-row-card__topline">
+                        <div class="resume-matcher-settings-row-card__title">Account</div>
+                        <span id="${ACCOUNT_STATUS_ID}" class="resume-matcher-settings-status-pill" data-tone="needed">Needs setup</span>
+                      </div>
+                      <div id="${ACCOUNT_DETAIL_ID}" class="resume-matcher-settings-row-card__value">Not signed in</div>
+                      <div class="resume-matcher-settings-row-card__detail">Used to save and open resumes in Lumi Coach.</div>
+                    </div>
+                    <div class="resume-matcher-settings-row-card__actions">
+                      <button id="${ACCOUNT_ACTION_ID}" type="button" class="resume-matcher-button resume-matcher-google-button">${renderGoogleButtonLabel("Sign in")}</button>
+                    </div>
                   </div>
                 </div>
               </div>
             </section>
             <details id="${ADVANCED_TOGGLE_ID}" class="resume-matcher-advanced">
-              <summary>Advanced</summary>
+              <summary>Support tools</summary>
               <section class="resume-matcher-settings-group">
                 <div class="resume-matcher-settings-list">
                   <div class="resume-matcher-settings-item resume-matcher-field--full">
@@ -6990,16 +8279,6 @@ function ensureRoot() {
                     <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
                     <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local storage</button>
                   </div>
-                  <div id="${RUNTIME_URLS_ROW_ID}" class="resume-matcher-settings-grid resume-matcher-settings-grid--single">
-                    <div class="resume-matcher-settings-item">
-                      <div class="resume-matcher-settings-item__title">App URL</div>
-                      <input id="${APP_URL_INPUT_ID}" type="url" placeholder="App URL" />
-                    </div>
-                    <div class="resume-matcher-settings-item">
-                      <div class="resume-matcher-settings-item__title">API URL</div>
-                      <input id="${API_URL_INPUT_ID}" type="url" placeholder="API URL" />
-                    </div>
-                  </div>
                   <div class="resume-matcher-settings-item__detail resume-matcher-field--full">
                     Send me a message:
                     <a href="https://www.linkedin.com/in/kenn-nguyen/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
@@ -7042,8 +8321,21 @@ function ensureRoot() {
     openBoard("run", { skipConnectionCheck: true });
     activateRunInspection();
   });
-  $(BOARD_RUNS_ID)?.addEventListener("click", () => {
-    openBoard("history");
+  $(BOARD_RUNS_ID)?.addEventListener("click", async () => {
+    state.historyConnecting = state.connectionState !== "connected";
+    openBoard("history", { skipConnectionCheck: true });
+    if (!state.historyConnecting) {
+      return;
+    }
+    const connected = await reconcileConnectionStatus({
+      refreshBackendMaster: false,
+      backendMasterMaxAgeMs: BACKEND_MASTER_REFRESH_MAX_AGE_MS,
+    });
+    state.historyConnecting = false;
+    if (connected) {
+      state.currentView = "history";
+    }
+    render();
   });
   $(BOARD_SETTINGS_ID)?.addEventListener("click", () => {
     if (state.currentView === "settings") {
@@ -7115,13 +8407,14 @@ function ensureRoot() {
   $(MASTER_RESUME_INPUT_ID)?.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    await saveTextAsset(file, "SAVE_MASTER_RESUME_CONTEXT");
+    await importMasterResumeFile(file);
     event.target.value = "";
   });
   $(STORYBOARD_INPUT_ID)?.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     await saveTextAsset(file, "SAVE_STORYBOARD");
+    state.storyboardReplaceOpen = false;
     event.target.value = "";
   });
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
@@ -7190,8 +8483,18 @@ function ensureRoot() {
         );
       });
   });
-  [APP_URL_INPUT_ID, API_URL_INPUT_ID].forEach((id) => {
-    $(id)?.addEventListener("input", scheduleRuntimeUrlsSave);
+  $(PROVIDER_CHANGE_ID)?.addEventListener("click", () => {
+    state.providerSettingsEditOpen = true;
+    setProviderValidationState([], false);
+    syncProviderDraftState({ force: true });
+    renderSettings();
+  });
+  $(PROVIDER_CANCEL_ID)?.addEventListener("click", () => {
+    state.providerSettingsEditOpen = false;
+    setProviderValidationState([], false);
+    providerDraftState = createProviderDraftState(null, state.assets?.llmSettings);
+    endSecretEdit(PROVIDER_API_KEY_INPUT_ID);
+    renderSettings();
   });
   $(APIFY_ENABLED_INPUT_ID)?.addEventListener("change", () => {
     setApifyDraftState({
@@ -7331,6 +8634,13 @@ function ensureRoot() {
       event.preventDefault();
       state.historyPage += 1;
       renderHistory();
+      return;
+    }
+
+    const historyConnectButton = target.closest("[data-history-connect]");
+    if (historyConnectButton) {
+      event.preventDefault();
+      await handleStatusAction("connect");
       return;
     }
 
@@ -7540,6 +8850,14 @@ function handleViewportChange() {
 
 function activateRunInspection(options = {}) {
   const { recheckConnection = true } = options;
+  if (isNonLinkedInManualRoute()) {
+    state.jobInspectionRequested = false;
+    state.currentJob = null;
+    resetJobLoadingState();
+    stopSelectedJobDetailWatcher();
+    render();
+    return;
+  }
   state.jobInspectionRequested = true;
   syncFloatingAction({ recheckConnection });
 }
@@ -7659,6 +8977,14 @@ function syncFloatingAction(options = {}) {
     return;
   }
   ensureRoot();
+  if (isNonLinkedInManualRoute()) {
+    state.jobInspectionRequested = false;
+    state.currentJob = null;
+    resetJobLoadingState();
+    stopSelectedJobDetailWatcher();
+    render();
+    return;
+  }
   if (!state.jobInspectionRequested) {
     state.currentJob = null;
     resetJobLoadingState();
@@ -7682,7 +9008,11 @@ function reconcileRouteState(options = {}) {
   lastUrl = location.href;
   lastRouteSignature = getCurrentRouteSignature();
   resetJobLoadingState();
-  if (state.jobInspectionRequested) {
+  if (isNonLinkedInManualRoute()) {
+    state.jobInspectionRequested = false;
+    state.currentJob = null;
+    stopSelectedJobDetailWatcher();
+  } else if (state.jobInspectionRequested) {
     updateJobReadiness(extractCurrentJob());
   } else {
     state.currentJob = null;
@@ -7897,7 +9227,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     state.extensionConnected = true;
     openBoard("run");
     clearExplicitRunStatus("auth-completed");
-    void refreshBoardData();
+    void refreshBoardData({ refreshBackendMaster: true });
     sendResponse({ ok: true });
     return true;
   }

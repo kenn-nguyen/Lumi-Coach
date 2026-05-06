@@ -3,19 +3,31 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { ZoomIn, ZoomOut, Eye, EyeOff, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ToggleSwitch } from '@/components/ui/toggle-switch';
 import { type ResumeData } from '@/components/dashboard/resume-component';
-import { type TemplateSettings } from '@/lib/types/template-settings';
+import {
+  getFitOnePageEffectiveSettings,
+  getFitOnePageModeForMeasurements,
+  getFitOnePageVerticalScale,
+  shouldRenderAsSingleFitPage,
+  type FitOnePageMode,
+  type TemplateSettings,
+} from '@/lib/types/template-settings';
 import { PageContainer } from './page-container';
+import { QuickLayoutControls } from './quick-layout-controls';
 import { ResumePrintContent } from './resume-print-content';
 import { usePagination } from './use-pagination';
 import { PAGE_DIMENSIONS, mmToPx, getContentAreaPx } from '@/lib/constants/page-dimensions';
 import { useTranslations } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 
 interface PaginatedPreviewProps {
   resumeData: ResumeData;
   settings: TemplateSettings;
   onSettingsChange?: (settings: TemplateSettings) => void;
+  onResolvedLayoutChange?: (layout: {
+    fitMode: FitOnePageMode;
+    fitOnePageVerticalScale: number;
+  }) => void;
 }
 
 const MIN_ZOOM = 0.4;
@@ -31,17 +43,133 @@ export function PaginatedPreview({
   resumeData,
   settings,
   onSettingsChange,
+  onResolvedLayoutChange,
 }: PaginatedPreviewProps) {
   const { t } = useTranslations();
-  const measurementRef = useRef<HTMLDivElement>(null);
+  const baseMeasurementRef = useRef<HTMLDivElement>(null);
+  const gentleMeasurementRef = useRef<HTMLDivElement>(null);
+  const balancedMeasurementRef = useRef<HTMLDivElement>(null);
+  const compactMeasurementRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(DEFAULT_AUTO_ZOOM);
   const [showMargins, setShowMargins] = useState(false);
   const [autoZoom, setAutoZoom] = useState(true);
-  const resumeSettings: TemplateSettings = {
+  const baseResumeSettings: TemplateSettings = {
     ...settings,
     margins: { top: 0, bottom: 0, left: 0, right: 0 },
   };
+  const baseContentArea = getContentAreaPx(settings.pageSize, settings.margins);
+  const {
+    pages: basePages,
+    totalContentHeight: baseTotalContentHeight,
+    isCalculating: isBaseCalculating,
+  } = usePagination({
+    pageSize: settings.pageSize,
+    margins: settings.margins,
+    measurementRef: baseMeasurementRef,
+  });
+  const gentleSettings = getFitOnePageEffectiveSettings(settings, 'gentle');
+  const balancedSettings = getFitOnePageEffectiveSettings(settings, 'balanced');
+  const compactSettings = getFitOnePageEffectiveSettings(settings, 'compact');
+  const gentleContentArea = getContentAreaPx(gentleSettings.pageSize, gentleSettings.margins);
+  const balancedContentArea = getContentAreaPx(balancedSettings.pageSize, balancedSettings.margins);
+  const compactContentArea = getContentAreaPx(compactSettings.pageSize, compactSettings.margins);
+  const {
+    pages: gentlePages,
+    totalContentHeight: gentleTotalContentHeight,
+    isCalculating: isGentleCalculating,
+  } = usePagination({
+    pageSize: gentleSettings.pageSize,
+    margins: gentleSettings.margins,
+    measurementRef: gentleMeasurementRef,
+  });
+  const {
+    pages: balancedPages,
+    totalContentHeight: balancedTotalContentHeight,
+    isCalculating: isBalancedCalculating,
+  } = usePagination({
+    pageSize: balancedSettings.pageSize,
+    margins: balancedSettings.margins,
+    measurementRef: balancedMeasurementRef,
+  });
+  const {
+    pages: compactPages,
+    totalContentHeight: compactTotalContentHeight,
+    isCalculating: isCompactCalculating,
+  } = usePagination({
+    pageSize: compactSettings.pageSize,
+    margins: compactSettings.margins,
+    measurementRef: compactMeasurementRef,
+  });
+  const baseContentRatio =
+    baseContentArea.height > 0 ? baseTotalContentHeight / baseContentArea.height : 0;
+  const candidateContentRatios = {
+    gentle: gentleContentArea.height > 0 ? gentleTotalContentHeight / gentleContentArea.height : 0,
+    balanced:
+      balancedContentArea.height > 0 ? balancedTotalContentHeight / balancedContentArea.height : 0,
+    compact:
+      compactContentArea.height > 0 ? compactTotalContentHeight / compactContentArea.height : 0,
+  };
+  const fitMode = getFitOnePageModeForMeasurements(
+    settings.fitOnePage,
+    baseContentRatio,
+    candidateContentRatios
+  );
+  const selectedContentRatio =
+    fitMode === 'gentle'
+      ? candidateContentRatios.gentle
+      : fitMode === 'balanced'
+        ? candidateContentRatios.balanced
+        : fitMode === 'compact'
+          ? candidateContentRatios.compact
+          : baseContentRatio;
+  const fitOnePageVerticalScale = getFitOnePageVerticalScale(
+    settings.fitOnePage,
+    baseContentRatio,
+    selectedContentRatio
+  );
+  const shouldUseSingleFitPage = shouldRenderAsSingleFitPage(
+    settings.fitOnePage,
+    baseContentRatio,
+    fitMode
+  );
+  const effectiveSettings = {
+    ...getFitOnePageEffectiveSettings(settings, fitMode),
+    fitOnePageVerticalScale,
+  };
+  const resumeSettings: TemplateSettings = {
+    ...effectiveSettings,
+    margins: { top: 0, bottom: 0, left: 0, right: 0 },
+  };
+  const selectedPages =
+    fitMode === 'gentle'
+      ? gentlePages
+      : fitMode === 'balanced'
+        ? balancedPages
+        : fitMode === 'compact'
+          ? compactPages
+          : basePages;
+  const effectiveContentArea = getContentAreaPx(
+    effectiveSettings.pageSize,
+    effectiveSettings.margins
+  );
+  const visiblePages = shouldUseSingleFitPage
+    ? [
+        {
+          pageNumber: 1,
+          contentOffset: 0,
+          contentEnd: effectiveContentArea.height,
+        },
+      ]
+    : selectedPages;
+  const isCalculating =
+    isBaseCalculating || isGentleCalculating || isBalancedCalculating || isCompactCalculating;
+  const shouldHighlightPageCount = !isCalculating && visiblePages.length > 1;
+
+  useEffect(() => {
+    if (!onResolvedLayoutChange || isCalculating) return;
+    onResolvedLayoutChange({ fitMode, fitOnePageVerticalScale });
+  }, [fitMode, fitOnePageVerticalScale, isCalculating, onResolvedLayoutChange]);
 
   const additionalSectionLabels = React.useMemo(
     () => ({
@@ -73,12 +201,6 @@ export function PaginatedPreview({
     [t]
   );
 
-  const { pages, isCalculating } = usePagination({
-    pageSize: settings.pageSize,
-    margins: settings.margins,
-    measurementRef,
-  });
-
   // Calculate auto-zoom to fit container width
   const calculateAutoZoom = useCallback(() => {
     if (!containerRef.current || !autoZoom) return;
@@ -109,39 +231,29 @@ export function PaginatedPreview({
   };
 
   const toggleMargins = () => setShowMargins((s) => !s);
-  const toggleFitOnePage = (nextChecked?: boolean) => {
+  const handleFitOnePageChange = (fitOnePage: boolean) => {
     if (!onSettingsChange) return;
     onSettingsChange({
       ...settings,
-      fitOnePage: typeof nextChecked === 'boolean' ? nextChecked : !settings.fitOnePage,
+      fitOnePage,
     });
   };
-  const toggleDateDisplay = (nextChecked?: boolean) => {
+  const handleDateDisplayChange = (dateDisplay: TemplateSettings['dateDisplay']) => {
     if (!onSettingsChange) return;
-    const checked =
-      typeof nextChecked === 'boolean' ? nextChecked : settings.dateDisplay !== 'year-only';
     onSettingsChange({
       ...settings,
-      dateDisplay: checked ? 'year-only' : 'month-year',
+      dateDisplay,
     });
   };
-
-  // Get content area dimensions for the hidden measurement container
-  const contentArea = getContentAreaPx(settings.pageSize, settings.margins);
-  const measuredContentHeight = pages[pages.length - 1]?.contentEnd ?? contentArea.height;
-  const fitContentScale =
-    settings.fitOnePage && pages.length > 0
-      ? Math.max(0.1, Math.min(1, contentArea.height / Math.max(1, measuredContentHeight)))
-      : 1;
-  const visiblePages = settings.fitOnePage
-    ? [
-        {
-          pageNumber: 1,
-          contentOffset: 0,
-          contentEnd: Math.max(1, measuredContentHeight),
-        },
-      ]
-    : pages;
+  const handleExperienceHeaderOrderChange = (
+    experienceHeaderOrder: TemplateSettings['experienceHeaderOrder']
+  ) => {
+    if (!onSettingsChange) return;
+    onSettingsChange({
+      ...settings,
+      experienceHeaderOrder,
+    });
+  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -187,31 +299,31 @@ export function PaginatedPreview({
 
         {/* Page count + fit toggle */}
         <div className="flex flex-wrap items-center justify-end gap-2 text-gray-600">
-          <div title={t('preview.yearOnlyDatesHint')}>
-            <ToggleSwitch
-              checked={settings.dateDisplay === 'year-only'}
-              onCheckedChange={toggleDateDisplay}
-              label={t('preview.yearOnlyDates')}
-              display="inline"
-              disabled={!onSettingsChange}
-            />
-          </div>
-          <div title={t('preview.fitToOnePageHint')}>
-            <ToggleSwitch
-              checked={settings.fitOnePage}
-              onCheckedChange={toggleFitOnePage}
-              label={t('preview.fitToOnePage')}
-              display="inline"
-              disabled={!onSettingsChange}
-              className={
-                !isCalculating && !settings.fitOnePage && pages.length > 1
-                  ? '[&_span:last-child]:text-blue-700 [&_span:last-child]:font-bold'
-                  : ''
-              }
-            />
-          </div>
+          <QuickLayoutControls
+            dateDisplay={settings.dateDisplay}
+            experienceHeaderOrder={settings.experienceHeaderOrder}
+            fitOnePage={settings.fitOnePage}
+            onDateDisplayChange={handleDateDisplayChange}
+            onExperienceHeaderOrderChange={handleExperienceHeaderOrderChange}
+            onFitOnePageChange={handleFitOnePageChange}
+            labels={{
+              yearOnly: t('preview.yearOnlyDates'),
+              yearOnlyHint: t('preview.yearOnlyDatesHint'),
+              companyFirst: t('preview.companyFirst'),
+              companyFirstHint: t('preview.companyFirstHint'),
+              fitOnePage: t('preview.fitToOnePage'),
+              fitOnePageHint: t('preview.fitToOnePageHint'),
+            }}
+            disabled={!onSettingsChange}
+            labelMode="compact"
+          />
           <FileText className="w-4 h-4" />
-          <span className="font-mono text-xs uppercase">
+          <span
+            className={cn(
+              'font-mono text-xs font-bold uppercase',
+              shouldHighlightPageCount ? 'text-blue-700' : 'text-gray-600'
+            )}
+          >
             {isCalculating
               ? t('preview.calculating')
               : visiblePages.length === 1
@@ -231,12 +343,12 @@ export function PaginatedPreview({
           backgroundSize: '20px 20px',
         }}
       >
-        {/* Hidden measurement container - renders content at actual size */}
+        {/* Hidden base measurement - used only to decide whether fit mode should engage. */}
         <div
-          ref={measurementRef}
+          ref={baseMeasurementRef}
           className="absolute opacity-0 pointer-events-none"
           style={{
-            width: contentArea.width,
+            width: baseContentArea.width,
             left: -9999,
             top: 0,
           }}
@@ -244,7 +356,64 @@ export function PaginatedPreview({
         >
           <ResumePrintContent
             resumeData={resumeData}
-            settings={resumeSettings}
+            settings={baseResumeSettings}
+            additionalSectionLabels={additionalSectionLabels}
+            sectionHeadings={sectionHeadings}
+            fallbackLabels={fallbackLabels}
+          />
+        </div>
+
+        <div
+          ref={gentleMeasurementRef}
+          className="absolute opacity-0 pointer-events-none"
+          style={{
+            width: gentleContentArea.width,
+            left: -9999,
+            top: 0,
+          }}
+          aria-hidden="true"
+        >
+          <ResumePrintContent
+            resumeData={resumeData}
+            settings={{ ...gentleSettings, margins: { top: 0, bottom: 0, left: 0, right: 0 } }}
+            additionalSectionLabels={additionalSectionLabels}
+            sectionHeadings={sectionHeadings}
+            fallbackLabels={fallbackLabels}
+          />
+        </div>
+
+        <div
+          ref={balancedMeasurementRef}
+          className="absolute opacity-0 pointer-events-none"
+          style={{
+            width: balancedContentArea.width,
+            left: -9999,
+            top: 0,
+          }}
+          aria-hidden="true"
+        >
+          <ResumePrintContent
+            resumeData={resumeData}
+            settings={{ ...balancedSettings, margins: { top: 0, bottom: 0, left: 0, right: 0 } }}
+            additionalSectionLabels={additionalSectionLabels}
+            sectionHeadings={sectionHeadings}
+            fallbackLabels={fallbackLabels}
+          />
+        </div>
+
+        <div
+          ref={compactMeasurementRef}
+          className="absolute opacity-0 pointer-events-none"
+          style={{
+            width: compactContentArea.width,
+            left: -9999,
+            top: 0,
+          }}
+          aria-hidden="true"
+        >
+          <ResumePrintContent
+            resumeData={resumeData}
+            settings={{ ...compactSettings, margins: { top: 0, bottom: 0, left: 0, right: 0 } }}
             additionalSectionLabels={additionalSectionLabels}
             sectionHeadings={sectionHeadings}
             fallbackLabels={fallbackLabels}
@@ -265,15 +434,14 @@ export function PaginatedPreview({
                 </div>
               )}
               <PageContainer
-                pageSize={settings.pageSize}
-                margins={settings.margins}
+                pageSize={effectiveSettings.pageSize}
+                margins={effectiveSettings.margins}
                 pageNumber={page.pageNumber}
                 totalPages={visiblePages.length}
                 scale={zoom}
                 showMarginGuides={showMargins}
                 contentOffset={page.contentOffset}
                 contentEnd={page.contentEnd}
-                contentScale={settings.fitOnePage ? fitContentScale : 1}
               >
                 <ResumePrintContent
                   resumeData={resumeData}

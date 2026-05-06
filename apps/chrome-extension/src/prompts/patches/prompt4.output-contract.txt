@@ -1,50 +1,69 @@
 ---
 prompt_artifact: prompt4.output_contract
-prompt_version: v2.0.1
-prompt_label: master-resume-output-contract-company-context
-prompt_notes: Defines the master resume extraction contract, including optional workExperience.context company context lines.
+prompt_version: v2.2.2
+prompt_label: master-resume-output-contract-two-path-wrapper-flex-notes
+prompt_notes: Defines the two valid Prompt 4 output shapes: immediate non-resume rejection or a wrapped extracted ResumeData plus prompt-only flexible notes.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
 - Return one valid JSON object only
-- The top-level object must be ResumeData itself
-- Do not wrap the output in `resume_data`
+- There are exactly two valid output shapes:
+  1. Non-resume rejection object
+  2. Resume extraction object with `resume_data`
 - Do not include `generation_feedback`
-- Do not include any keys outside the ResumeData schema
+- Do not include any keys outside `resume_data` and optional top-level `flex_notes` unless returning the explicit non-resume rejection object
 - Use integer `id` values for `workExperience`, `education`, and `personalProjects`
 - Use `null` only where the schema allows nullable strings
 - Use empty arrays or empty strings instead of inventing content
 
-Required top-level keys:
+Shape 1 - non-resume rejection:
+- If the uploaded input does not contain enough direct resume facts to populate at least one meaningful resume area, return this exact JSON object and no other keys:
 {
-  "personalInfo": {
-    "name": "",
-    "title": "",
-    "customTagline": null,
-    "email": "",
-    "phone": "",
-    "location": "",
-    "website": null,
-    "linkedin": null,
-    "github": null
+  "error": "not_resume",
+  "message": "The uploaded file does not contain enough resume information."
+}
+- Do not return an empty ResumeData template for non-resume input.
+
+Shape 2 - Resume extraction object:
+- Only use this shape when the input is resume-like.
+- Required top-level keys:
+{
+  "resume_data": {
+    "personalInfo": {
+      "name": "",
+      "title": "",
+      "customTagline": null,
+      "email": "",
+      "phone": "",
+      "location": "",
+      "website": null,
+      "linkedin": null,
+      "github": null
+    },
+    "summary": "",
+    "workExperience": [],
+    "education": [],
+    "personalProjects": [],
+    "additional": {
+      "technicalSkills": [],
+      "languages": [],
+      "certificationsTraining": [],
+      "awards": []
+    },
+    "sectionMeta": [],
+    "customSections": {}
   },
-  "summary": "",
-  "workExperience": [],
-  "education": [],
-  "personalProjects": [],
-  "additional": {
-    "technicalSkills": [],
-    "languages": [],
-    "certificationsTraining": [],
-    "awards": []
-  },
-  "sectionMeta": [],
-  "customSections": {}
+  "flex_notes": ""
 }
 
 Validation notes:
+- `resume_data` is required in Shape 2
+- `flex_notes` is optional as a top-level prompt note and must be a string or null; use `""` when unused
+- Do not place `flex_notes` inside `resume_data`; it is prompt metadata only
+- Do not include `flex_notes` in the non-resume rejection object
 - `workExperience[].description` must be an array of strings
 - `workExperience[].context` may be a string or null and is optional
+- `workExperience[].website` may be a string or null and is optional
 - `personalProjects[].description` must be an array of strings
 - `education[].description` must be a string or null
 - `customSections` must be an object, even when empty

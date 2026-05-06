@@ -9,6 +9,10 @@ import { formatDateRange } from '@/lib/utils';
 import { SafeHtml } from './safe-html';
 import baseStyles from './styles/_base.module.css';
 
+const resumeSectionClass = `${baseStyles['resume-section']} resume-section`;
+const resumeSectionTitleClass = `${baseStyles['resume-section-title']} resume-section-title`;
+const resumeItemClass = `${baseStyles['resume-item']} resume-item`;
+
 interface DynamicResumeSectionProps {
   sectionMeta: SectionMeta;
   resumeData: ResumeData;
@@ -46,8 +50,8 @@ export const DynamicResumeSection: React.FC<DynamicResumeSectionProps> = ({
   if (!hasContent) return null;
 
   return (
-    <div className={baseStyles['resume-section']}>
-      <h3 className={baseStyles['resume-section-title']}>{sectionMeta.displayName}</h3>
+    <div className={resumeSectionClass}>
+      <h3 className={resumeSectionTitleClass}>{sectionMeta.displayName}</h3>
       {renderContent(sectionMeta.sectionType, customSection)}
     </div>
   );
@@ -87,7 +91,7 @@ const ItemListSectionContent: React.FC<{ items: CustomSectionItem[] }> = ({ item
   return (
     <div className={baseStyles['resume-items']}>
       {items.map((item) => (
-        <div key={item.id} className={baseStyles['resume-item']}>
+        <div key={item.id} className={resumeItemClass}>
           {/* Title and Years Row */}
           <div className={`flex justify-between items-baseline ${baseStyles['resume-row-tight']}`}>
             <h4 className={baseStyles['resume-item-title']}>{item.title}</h4>

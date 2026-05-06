@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt3.output_contract
-prompt_version: v2.1.0
-prompt_label: tailored-resume-output-contract-company-context-summary-brevity
-prompt_notes: Defines the final resume output contract, including optional workExperience.context placement constraints and concise summary budget.
+prompt_version: v2.1.1
+prompt_label: tailored-resume-output-contract-company-context-summary-brevity-flex-notes
+prompt_notes: Defines the final resume output contract, including optional workExperience.context placement constraints, concise summary budget, and a reserved flexible notes string.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
@@ -36,6 +36,7 @@ Return exactly one JSON object matching this schema:
         "company": "",
         "location": null,
         "context": null,
+        "website": null,
         "years": "",
         "description": []
       }
@@ -91,12 +92,16 @@ Return exactly one JSON object matching this schema:
     "pros": [],
     "cons": [],
     "caveats": []
-  }
+  },
+  "flex_notes": ""
 }
 
 Additional schema rules:
 - `resume_data` is required.
 - `generation_feedback` is optional but recommended when there are concise user-facing notes worth showing.
+- `flex_notes` is optional and must be a string or null; use `""` when unused.
+- Use `flex_notes` only for small non-critical writer notes needed by future prompt variants.
+- Do not place `flex_notes` inside `resume_data`; it is prompt metadata only.
 - Do not use the em dash character `—` anywhere in the JSON output. Use a normal hyphen `-` instead.
 - `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences, target 35-45 words, and hard maximum 50 words.
 - For resume bullet arrays such as experience bullets, project bullets, and custom-section bullets, do not end items with a period `.`.
@@ -108,6 +113,8 @@ Additional schema rules:
 - `workExperience[].context` is optional and must be a string or null when present.
 - Use `null` or omit `workExperience[].context` when no supported company context exists.
 - Do not put company context inside `workExperience[].description`.
+- `workExperience[].website` is optional and must be a string or null when present.
+- Preserve source experience websites; do not invent role, company, case-study, or employer URLs.
 - Valid `sectionType` values are:
   - `personalInfo`
   - `text`

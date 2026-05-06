@@ -1,5 +1,7 @@
 import { getActiveLlmProfile } from "./llm/profiles.js";
 
+const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
+
 function hasTextContent(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -22,7 +24,7 @@ function getProviderRequirement(llmSettings) {
     return {
       ready: false,
       label: "Provider",
-      detail: "Choose a provider to continue.",
+      detail: CHOOSE_AI_PROVIDER_MESSAGE,
       actionLabel: "Choose provider",
       focusTarget: "provider",
       mode: null,
@@ -47,15 +49,20 @@ function getProviderRequirement(llmSettings) {
   const hasApiBaseUrl = hasTextContent(profile.apiBaseUrl);
   const hasModel = hasTextContent(profile.model);
   const hasApiKey = hasTextContent(profile.apiKey);
+  const shouldChooseProvider = profile.id === "chatgpt:api" && !hasApiKey;
 
   return {
     ready: hasApiBaseUrl && hasModel && hasApiKey,
     label: profile.label,
-    detail: hasApiKey
+    detail: shouldChooseProvider
+      ? CHOOSE_AI_PROVIDER_MESSAGE
+      : hasApiKey
       ? `${profile.label} is ready.`
       : `Add your ${profile.label} API key to continue.`,
     actionLabel: "Choose provider",
-    focusTarget: !hasApiKey
+    focusTarget: shouldChooseProvider
+      ? "provider"
+      : !hasApiKey
       ? "providerApiKey"
       : !hasModel
         ? "providerModel"
@@ -76,7 +83,7 @@ function buildChecklist(connected, hasResume, provider, hasStoryboard) {
     },
     {
       id: "resume",
-      label: "Resume uploaded",
+      label: "Master Resume",
       done: hasResume,
       optional: false,
     },
@@ -130,19 +137,25 @@ export function getExtensionSetupState({
   onboardingProgress,
 } = {}) {
   const normalizedOnboarding = normalizeOnboardingProgress(onboardingProgress);
-  const hasResume = hasTextContent(assets?.masterResumeContextAsset?.content);
+  const hasResume = hasTextContent(assets?.backendMasterResume?.resumeId);
   const hasStoryboard = hasTextContent(assets?.storyboardAsset?.content);
   const provider = getProviderRequirement(assets?.llmSettings);
-  const connected = extensionConnected && websiteAuthenticated;
+  const connected = extensionConnected;
   const checklist = buildChecklist(
     connected,
     hasResume,
     provider,
     hasStoryboard,
   );
+  const onboardingStep =
+    normalizedOnboarding.hasCompletedOnboarding || !connected
+      ? normalizedOnboarding.onboardingStep
+      : provider.ready
+        ? "assets"
+        : "provider";
 
   if (!normalizedOnboarding.hasCompletedOnboarding) {
-    switch (normalizedOnboarding.onboardingStep) {
+    switch (onboardingStep) {
       case "intro":
       case "sign_in":
         return buildBaseState({
@@ -155,7 +168,7 @@ export function getExtensionSetupState({
             ? "You’re signed in. Continue."
             : "Use Google to connect your account.",
           primaryAction: connected
-            ? { id: "onboarding_next", label: "Next", nextStep: "assets" }
+            ? { id: "onboarding_next", label: "Next", nextStep: "provider" }
             : { id: "connect", label: "Sign in with Google" },
           provider,
           checklist,
@@ -167,12 +180,13 @@ export function getExtensionSetupState({
           state: "onboarding_assets",
           step: "assets",
           hasCompletedOnboarding: false,
-          title: "Add your resume",
-          detail: "Your resume is required. Story bank is optional.",
+          title: "Master Resume",
+          detail: hasResume
+            ? "Master Resume ready."
+            : "Add your Master Resume to Lumi Coach.",
           primaryAction: {
-            id: "onboarding_next",
-            label: "Next",
-            nextStep: "provider",
+            id: hasResume ? "complete_onboarding" : "upload_resume",
+            label: hasResume ? "Start tailoring" : "Add Master Resume",
           },
           provider,
           checklist,
@@ -185,11 +199,11 @@ export function getExtensionSetupState({
           step: "provider",
           hasCompletedOnboarding: false,
           title: "Choose your AI setup",
-          detail: "ChatGPT is selected by default.",
+          detail: CHOOSE_AI_PROVIDER_MESSAGE,
           primaryAction: {
             id: "onboarding_next",
             label: "Next",
-            nextStep: "done",
+            nextStep: "assets",
           },
           provider,
           checklist,
@@ -218,7 +232,7 @@ export function getExtensionSetupState({
             ? "You’re signed in. Continue."
             : "Use Google to connect your account.",
           primaryAction: connected
-            ? { id: "onboarding_next", label: "Next", nextStep: "assets" }
+            ? { id: "onboarding_next", label: "Next", nextStep: "provider" }
             : { id: "connect", label: "Sign in with Google" },
           provider,
           checklist,
@@ -245,24 +259,6 @@ export function getExtensionSetupState({
     });
   }
 
-  if (!hasResume) {
-    return buildBaseState({
-      mode: "run",
-      state: "missing_resume",
-      hasCompletedOnboarding: true,
-      title: "Add your resume",
-      detail: "Your base resume is missing. Open Settings to add it back.",
-      primaryAction: {
-        id: "open_settings",
-        label: "Open Settings",
-        focusTarget: "resume",
-      },
-      provider,
-      checklist,
-      canContinue: false,
-    });
-  }
-
   if (!provider.ready) {
     return buildBaseState({
       mode: "run",
@@ -274,6 +270,24 @@ export function getExtensionSetupState({
         id: "open_settings",
         label: "Open Settings",
         focusTarget: provider.focusTarget,
+      },
+      provider,
+      checklist,
+      canContinue: false,
+    });
+  }
+
+  if (!hasResume) {
+    return buildBaseState({
+      mode: "run",
+      state: "missing_resume",
+      hasCompletedOnboarding: true,
+      title: "Add your Master Resume",
+      detail: "Add your Master Resume to Lumi Coach before tailoring.",
+      primaryAction: {
+        id: "upload_resume",
+        label: "Add Master Resume",
+        focusTarget: "resume",
       },
       provider,
       checklist,

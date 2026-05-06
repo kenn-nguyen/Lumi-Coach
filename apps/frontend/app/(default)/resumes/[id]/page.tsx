@@ -5,9 +5,9 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { ToggleSwitch } from '@/components/ui/toggle-switch';
 import type { ResumeData } from '@/components/dashboard/resume-component';
 import { PageContainer } from '@/components/preview/page-container';
+import { QuickLayoutControls } from '@/components/preview/quick-layout-controls';
 import { ResumePrintContent } from '@/components/preview/resume-print-content';
 import { usePagination } from '@/components/preview/use-pagination';
 import {
@@ -22,8 +22,7 @@ import {
 } from '@/lib/api/resume';
 import { fetchOutputConfig } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
-import { ArrowLeft, Edit, Download, Loader2, AlertCircle, Sparkles, Pencil } from 'lucide-react';
-import { EnrichmentModal } from '@/components/enrichment/enrichment-modal';
+import { ArrowLeft, Edit, Download, Loader2, AlertCircle, Pencil } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
@@ -39,6 +38,10 @@ import {
 } from '@/lib/utils/template-settings';
 import {
   DEFAULT_TEMPLATE_SETTINGS,
+  getFitOnePageEffectiveSettings,
+  getFitOnePageModeForMeasurements,
+  getFitOnePageVerticalScale,
+  shouldRenderAsSingleFitPage,
   type DateDisplayMode,
   type TemplateSettings,
 } from '@/lib/types/template-settings';
@@ -63,7 +66,6 @@ export default function ResumeViewerPage() {
   const [showDeleteSuccessDialog, setShowDeleteSuccessDialog] = useState(false);
   const [showDownloadSuccessDialog, setShowDownloadSuccessDialog] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [showEnrichmentModal, setShowEnrichmentModal] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [resumeTitle, setResumeTitle] = useState<string | null>(null);
@@ -72,7 +74,10 @@ export default function ResumeViewerPage() {
   const [generationFeedback, setGenerationFeedback] = useState<GenerationFeedback | null>(null);
   const [templateSettings, setTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
-  const measurementRef = useRef<HTMLDivElement>(null);
+  const baseMeasurementRef = useRef<HTMLDivElement>(null);
+  const gentleMeasurementRef = useRef<HTMLDivElement>(null);
+  const balancedMeasurementRef = useRef<HTMLDivElement>(null);
+  const compactMeasurementRef = useRef<HTMLDivElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
 
@@ -85,12 +90,113 @@ export default function ResumeViewerPage() {
     return withLocalizedDefaultSections(resumeData, t);
   }, [resumeData, t]);
   const previewResumeData = localizedResumeData || resumeData;
-  const previewPrintSettings: TemplateSettings = useMemo(
+  const basePreviewPrintSettings: TemplateSettings = useMemo(
     () => ({
       ...templateSettings,
       margins: { top: 0, bottom: 0, left: 0, right: 0 },
     }),
     [templateSettings]
+  );
+  const baseContentArea = getContentAreaPx(templateSettings.pageSize, templateSettings.margins);
+  const { pages: basePages, totalContentHeight: baseTotalContentHeight } = usePagination({
+    pageSize: templateSettings.pageSize,
+    margins: templateSettings.margins,
+    measurementRef: baseMeasurementRef,
+  });
+  const gentleSettings = useMemo(
+    () => getFitOnePageEffectiveSettings(templateSettings, 'gentle'),
+    [templateSettings]
+  );
+  const balancedSettings = useMemo(
+    () => getFitOnePageEffectiveSettings(templateSettings, 'balanced'),
+    [templateSettings]
+  );
+  const compactSettings = useMemo(
+    () => getFitOnePageEffectiveSettings(templateSettings, 'compact'),
+    [templateSettings]
+  );
+  const gentlePrintSettings = useMemo(
+    () => ({ ...gentleSettings, margins: { top: 0, bottom: 0, left: 0, right: 0 } }),
+    [gentleSettings]
+  );
+  const balancedPrintSettings = useMemo(
+    () => ({ ...balancedSettings, margins: { top: 0, bottom: 0, left: 0, right: 0 } }),
+    [balancedSettings]
+  );
+  const compactPrintSettings = useMemo(
+    () => ({ ...compactSettings, margins: { top: 0, bottom: 0, left: 0, right: 0 } }),
+    [compactSettings]
+  );
+  const gentleContentArea = getContentAreaPx(gentleSettings.pageSize, gentleSettings.margins);
+  const balancedContentArea = getContentAreaPx(balancedSettings.pageSize, balancedSettings.margins);
+  const compactContentArea = getContentAreaPx(compactSettings.pageSize, compactSettings.margins);
+  const { pages: gentlePages, totalContentHeight: gentleTotalContentHeight } = usePagination({
+    pageSize: gentleSettings.pageSize,
+    margins: gentleSettings.margins,
+    measurementRef: gentleMeasurementRef,
+  });
+  const { pages: balancedPages, totalContentHeight: balancedTotalContentHeight } = usePagination({
+    pageSize: balancedSettings.pageSize,
+    margins: balancedSettings.margins,
+    measurementRef: balancedMeasurementRef,
+  });
+  const { pages: compactPages, totalContentHeight: compactTotalContentHeight } = usePagination({
+    pageSize: compactSettings.pageSize,
+    margins: compactSettings.margins,
+    measurementRef: compactMeasurementRef,
+  });
+  const baseContentRatio =
+    baseContentArea.height > 0 ? baseTotalContentHeight / baseContentArea.height : 0;
+  const candidateContentRatios = {
+    gentle: gentleContentArea.height > 0 ? gentleTotalContentHeight / gentleContentArea.height : 0,
+    balanced:
+      balancedContentArea.height > 0 ? balancedTotalContentHeight / balancedContentArea.height : 0,
+    compact:
+      compactContentArea.height > 0 ? compactTotalContentHeight / compactContentArea.height : 0,
+  };
+  const fitMode = getFitOnePageModeForMeasurements(
+    templateSettings.fitOnePage,
+    baseContentRatio,
+    candidateContentRatios
+  );
+  const selectedContentRatio =
+    fitMode === 'gentle'
+      ? candidateContentRatios.gentle
+      : fitMode === 'balanced'
+        ? candidateContentRatios.balanced
+        : fitMode === 'compact'
+          ? candidateContentRatios.compact
+          : baseContentRatio;
+  const fitOnePageVerticalScale = getFitOnePageVerticalScale(
+    templateSettings.fitOnePage,
+    baseContentRatio,
+    selectedContentRatio
+  );
+  const shouldUseSingleFitPage = shouldRenderAsSingleFitPage(
+    templateSettings.fitOnePage,
+    baseContentRatio,
+    fitMode
+  );
+  const effectivePreviewSettings = useMemo(
+    () => ({
+      ...getFitOnePageEffectiveSettings(templateSettings, fitMode),
+      fitOnePageVerticalScale,
+    }),
+    [templateSettings, fitMode, fitOnePageVerticalScale]
+  );
+  const pdfRenderLayout = useMemo(
+    () => ({
+      fitMode,
+      fitOnePageVerticalScale,
+    }),
+    [fitMode, fitOnePageVerticalScale]
+  );
+  const previewPrintSettings: TemplateSettings = useMemo(
+    () => ({
+      ...effectivePreviewSettings,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    }),
+    [effectivePreviewSettings]
   );
   const additionalSectionLabels = useMemo(
     () => ({
@@ -116,33 +222,35 @@ export default function ResumeViewerPage() {
     [t]
   );
   const fallbackLabels = useMemo(() => ({ name: t('resume.defaults.name') }), [t]);
-  const contentArea = getContentAreaPx(templateSettings.pageSize, templateSettings.margins);
-  const { pages } = usePagination({
-    pageSize: templateSettings.pageSize,
-    margins: templateSettings.margins,
-    measurementRef,
-  });
-  const measuredContentHeight = pages[pages.length - 1]?.contentEnd ?? contentArea.height;
-  const fitContentScale = templateSettings.fitOnePage
-    ? Math.max(0.1, Math.min(1, contentArea.height / Math.max(1, measuredContentHeight)))
-    : 1;
-  const visiblePages = templateSettings.fitOnePage
+  const selectedPages =
+    fitMode === 'gentle'
+      ? gentlePages
+      : fitMode === 'balanced'
+        ? balancedPages
+        : fitMode === 'compact'
+          ? compactPages
+          : basePages;
+  const effectiveContentArea = getContentAreaPx(
+    effectivePreviewSettings.pageSize,
+    effectivePreviewSettings.margins
+  );
+  const pages = shouldUseSingleFitPage
     ? [
         {
           pageNumber: 1,
           contentOffset: 0,
-          contentEnd: Math.max(1, measuredContentHeight),
+          contentEnd: effectiveContentArea.height,
         },
       ]
-    : pages;
+    : selectedPages;
 
   const calculatePreviewZoom = useCallback(() => {
     const container = previewContainerRef.current;
     if (!container) return;
     const containerWidth = container.clientWidth - 48;
-    const pageWidthPx = mmToPx(PAGE_DIMENSIONS[templateSettings.pageSize].width);
+    const pageWidthPx = mmToPx(PAGE_DIMENSIONS[effectivePreviewSettings.pageSize].width);
     setPreviewZoom(Math.max(0.35, Math.min(1, containerWidth / pageWidthPx)));
-  }, [templateSettings.pageSize]);
+  }, [effectivePreviewSettings.pageSize]);
 
   useEffect(() => {
     calculatePreviewZoom();
@@ -247,8 +355,7 @@ export default function ResumeViewerPage() {
     router.push(`/builder?id=${resumeId}`);
   };
 
-  const handleDateDisplayToggle = (nextChecked: boolean) => {
-    const dateDisplay: DateDisplayMode = nextChecked ? 'year-only' : 'month-year';
+  const handleDateDisplayChange = (dateDisplay: DateDisplayMode) => {
     setTemplateSettings((current) => {
       const nextSettings = { ...current, dateDisplay };
       void updateResumeTemplateSettings(resumeId, nextSettings).catch((err) => {
@@ -258,7 +365,19 @@ export default function ResumeViewerPage() {
     });
   };
 
-  const handleFitOnePageToggle = (fitOnePage: boolean) => {
+  const handleExperienceHeaderOrderChange = (
+    experienceHeaderOrder: TemplateSettings['experienceHeaderOrder']
+  ) => {
+    setTemplateSettings((current) => {
+      const nextSettings = { ...current, experienceHeaderOrder };
+      void updateResumeTemplateSettings(resumeId, nextSettings).catch((err) => {
+        console.error('Failed to save resume template settings:', err);
+      });
+      return nextSettings;
+    });
+  };
+
+  const handleFitOnePageChange = (fitOnePage: boolean) => {
     setTemplateSettings((current) => {
       const nextSettings = { ...current, fitOnePage };
       void updateResumeTemplateSettings(resumeId, nextSettings).catch((err) => {
@@ -291,27 +410,9 @@ export default function ResumeViewerPage() {
     }
   };
 
-  // Reload resume data after enrichment
-  const reloadResumeData = async () => {
-    try {
-      const data = await fetchResume(resumeId);
-      setGenerationFeedback(data.generation_feedback ?? null);
-      if (data.processed_resume) {
-        setResumeData(data.processed_resume as ResumeData);
-        setError(null);
-      }
-    } catch (err) {
-      console.error('Failed to reload resume:', err);
-    }
-  };
-
-  const handleEnrichmentComplete = () => {
-    setShowEnrichmentModal(false);
-    reloadResumeData();
-  };
-
   const handleDownload = async () => {
     setIsDownloading(true);
+    let syncedForDownload = false;
     try {
       const userName = resumeData?.personalInfo?.name?.trim() || null;
       const filename = buildResumeArtifactFilename(
@@ -321,12 +422,24 @@ export default function ResumeViewerPage() {
         'resume',
         'pdf'
       );
-      const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage, filename);
+      await updateResumeTemplateSettings(resumeId, templateSettings);
+      syncedForDownload = true;
+      const blob = await downloadResumePdf(
+        resumeId,
+        templateSettings,
+        uiLanguage,
+        filename,
+        pdfRenderLayout
+      );
       downloadBlobAsFile(blob, filename);
       setShowDownloadSuccessDialog(true);
     } catch (err) {
       console.error('Failed to download resume:', err);
-      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+      if (
+        syncedForDownload &&
+        err instanceof TypeError &&
+        err.message.includes('Failed to fetch')
+      ) {
         const userName = resumeData?.personalInfo?.name?.trim() || null;
         const filename = buildResumeArtifactFilename(
           userName,
@@ -335,7 +448,13 @@ export default function ResumeViewerPage() {
           'resume',
           'pdf'
         );
-        const fallbackUrl = getResumePdfUrl(resumeId, templateSettings, uiLanguage, filename);
+        const fallbackUrl = getResumePdfUrl(
+          resumeId,
+          templateSettings,
+          uiLanguage,
+          filename,
+          pdfRenderLayout
+        );
         const didOpen = openUrlInNewTab(fallbackUrl);
         if (!didOpen) {
           alert(t('common.popupBlocked', { url: fallbackUrl }));
@@ -486,38 +605,27 @@ export default function ResumeViewerPage() {
           </Button>
 
           <div className="flex flex-wrap items-center gap-3">
-            {isMasterResume && (
-              <Button onClick={() => setShowEnrichmentModal(true)} className="gap-2">
-                <Sparkles className="w-4 h-4" />
-                {t('resumeViewer.enhanceResume')}
-              </Button>
-            )}
             <Button variant="outline" onClick={handleEdit}>
               <Edit className="w-4 h-4" />
               {t('dashboard.editResume')}
             </Button>
-            <div
-              className="flex h-10 shrink-0 items-center rounded-full border border-border bg-card px-4 shadow-xs"
-              title={t('builder.formatting.yearOnlyDatesHint')}
-            >
-              <ToggleSwitch
-                checked={templateSettings.dateDisplay === 'year-only'}
-                onCheckedChange={handleDateDisplayToggle}
-                label={t('builder.formatting.yearOnlyDates')}
-                display="inline"
-              />
-            </div>
-            <div
-              className="flex h-10 shrink-0 items-center rounded-full border border-border bg-card px-4 shadow-xs"
-              title={t('preview.fitToOnePageHint')}
-            >
-              <ToggleSwitch
-                checked={templateSettings.fitOnePage}
-                onCheckedChange={handleFitOnePageToggle}
-                label={t('preview.fitToOnePage')}
-                display="inline"
-              />
-            </div>
+            <QuickLayoutControls
+              dateDisplay={templateSettings.dateDisplay}
+              experienceHeaderOrder={templateSettings.experienceHeaderOrder}
+              fitOnePage={templateSettings.fitOnePage}
+              onDateDisplayChange={handleDateDisplayChange}
+              onExperienceHeaderOrderChange={handleExperienceHeaderOrderChange}
+              onFitOnePageChange={handleFitOnePageChange}
+              labels={{
+                yearOnly: t('builder.formatting.yearOnlyDates'),
+                yearOnlyHint: t('builder.formatting.yearOnlyDatesHint'),
+                companyFirst: t('builder.formatting.companyFirst'),
+                companyFirstHint: t('builder.formatting.companyFirstHint'),
+                fitOnePage: t('preview.fitToOnePage'),
+                fitOnePageHint: t('preview.fitToOnePageHint'),
+              }}
+              labelMode="compact"
+            />
             <Button variant="success" onClick={handleDownload} disabled={isDownloading}>
               <Download className="w-4 h-4" />
               {isDownloading ? t('common.generating') : t('resumeViewer.downloadResume')}
@@ -596,40 +704,95 @@ export default function ResumeViewerPage() {
         {/* Resume Viewer */}
         <div ref={previewContainerRef} className="relative overflow-x-auto pb-4">
           {previewResumeData && (
-            <div
-              ref={measurementRef}
-              className="absolute opacity-0 pointer-events-none"
-              style={{
-                width: contentArea.width,
-                left: -9999,
-                top: 0,
-              }}
-              aria-hidden="true"
-            >
-              <ResumePrintContent
-                resumeData={previewResumeData}
-                settings={previewPrintSettings}
-                additionalSectionLabels={additionalSectionLabels}
-                sectionHeadings={sectionHeadings}
-                fallbackLabels={fallbackLabels}
-              />
-            </div>
+            <>
+              <div
+                ref={baseMeasurementRef}
+                className="absolute opacity-0 pointer-events-none"
+                style={{
+                  width: baseContentArea.width,
+                  left: -9999,
+                  top: 0,
+                }}
+                aria-hidden="true"
+              >
+                <ResumePrintContent
+                  resumeData={previewResumeData}
+                  settings={basePreviewPrintSettings}
+                  additionalSectionLabels={additionalSectionLabels}
+                  sectionHeadings={sectionHeadings}
+                  fallbackLabels={fallbackLabels}
+                />
+              </div>
+              <div
+                ref={gentleMeasurementRef}
+                className="absolute opacity-0 pointer-events-none"
+                style={{
+                  width: gentleContentArea.width,
+                  left: -9999,
+                  top: 0,
+                }}
+                aria-hidden="true"
+              >
+                <ResumePrintContent
+                  resumeData={previewResumeData}
+                  settings={gentlePrintSettings}
+                  additionalSectionLabels={additionalSectionLabels}
+                  sectionHeadings={sectionHeadings}
+                  fallbackLabels={fallbackLabels}
+                />
+              </div>
+              <div
+                ref={balancedMeasurementRef}
+                className="absolute opacity-0 pointer-events-none"
+                style={{
+                  width: balancedContentArea.width,
+                  left: -9999,
+                  top: 0,
+                }}
+                aria-hidden="true"
+              >
+                <ResumePrintContent
+                  resumeData={previewResumeData}
+                  settings={balancedPrintSettings}
+                  additionalSectionLabels={additionalSectionLabels}
+                  sectionHeadings={sectionHeadings}
+                  fallbackLabels={fallbackLabels}
+                />
+              </div>
+              <div
+                ref={compactMeasurementRef}
+                className="absolute opacity-0 pointer-events-none"
+                style={{
+                  width: compactContentArea.width,
+                  left: -9999,
+                  top: 0,
+                }}
+                aria-hidden="true"
+              >
+                <ResumePrintContent
+                  resumeData={previewResumeData}
+                  settings={compactPrintSettings}
+                  additionalSectionLabels={additionalSectionLabels}
+                  sectionHeadings={sectionHeadings}
+                  fallbackLabels={fallbackLabels}
+                />
+              </div>
+            </>
           )}
 
           <div className="flex flex-col items-center gap-4">
             {previewResumeData &&
-              visiblePages.map((page) => (
+              pages.map((page) => (
                 <PageContainer
                   key={page.pageNumber}
-                  pageSize={templateSettings.pageSize}
-                  margins={templateSettings.margins}
+                  pageSize={effectivePreviewSettings.pageSize}
+                  margins={effectivePreviewSettings.margins}
                   pageNumber={page.pageNumber}
-                  totalPages={visiblePages.length}
+                  totalPages={pages.length}
                   scale={previewZoom}
                   showMarginGuides={false}
                   contentOffset={page.contentOffset}
                   contentEnd={page.contentEnd}
-                  contentScale={templateSettings.fitOnePage ? fitContentScale : 1}
                 >
                   <ResumePrintContent
                     resumeData={previewResumeData}
@@ -705,16 +868,6 @@ export default function ResumeViewerPage() {
           onConfirm={() => setDeleteError(null)}
           variant="danger"
           showCancelButton={false}
-        />
-      )}
-
-      {/* Enrichment Modal - Only for master resume */}
-      {isMasterResume && (
-        <EnrichmentModal
-          resumeId={resumeId}
-          isOpen={showEnrichmentModal}
-          onClose={() => setShowEnrichmentModal(false)}
-          onComplete={handleEnrichmentComplete}
         />
       )}
     </div>

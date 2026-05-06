@@ -18,6 +18,7 @@ export interface ExperienceEntry {
   id: number;
   title: string;
   company: string;
+  website?: string | null;
   location?: string;
   context?: string | null;
   years?: string;

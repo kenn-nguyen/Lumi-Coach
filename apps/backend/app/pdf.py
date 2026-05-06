@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Awaitable, NoReturn, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from playwright.async_api import (
     Browser,
@@ -28,6 +29,20 @@ _browser: Optional[Browser] = None
 _init_lock = asyncio.Lock()  # Lock to prevent race condition during initialization
 _subprocess_lock = asyncio.Lock()
 _subprocess_supported = True
+
+_MM_TO_PX = 96 / 25.4
+_FIT_ONE_PAGE_MAX_OVERFLOW_RATIO = 1.25
+_FIT_ONE_PAGE_MIN_FILL_RATIO = 0.75
+_FIT_ONE_PAGE_TARGET_RATIO = 0.995
+_FIT_ONE_PAGE_MIN_VERTICAL_SCALE = (
+    _FIT_ONE_PAGE_TARGET_RATIO / _FIT_ONE_PAGE_MAX_OVERFLOW_RATIO
+)
+_FIT_ONE_PAGE_MAX_VERTICAL_SCALE = _FIT_ONE_PAGE_TARGET_RATIO / _FIT_ONE_PAGE_MIN_FILL_RATIO
+_FIT_ONE_PAGE_CANDIDATE_MODES = ("gentle", "balanced", "compact")
+_PAGE_SIZE_MM = {
+    "A4": {"width": 210.0, "height": 297.0},
+    "Letter": {"width": 215.9, "height": 279.4},
+}
 
 
 async def init_pdf_renderer() -> None:
@@ -70,23 +85,229 @@ def _resolve_pdf_margins(margins: Optional[dict]) -> dict:
     return {"top": "10mm", "right": "10mm", "bottom": "10mm", "left": "10mm"}
 
 
-def _resolve_page_height_mm(page_size: str) -> float:
-    if page_size == "LETTER":
-        return 279.4
-    return 297.0
+def _margin_mm(value: object, default: float = 10.0) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text.endswith("mm"):
+            text = text[:-2]
+        try:
+            return float(text)
+        except ValueError:
+            return default
+    return default
 
 
-def _resolve_fit_scale(
-    *, content_height_px: float, page_size: str, margins: Optional[dict]
+def _printable_dimensions_px(pdf_format: str, pdf_margins: dict) -> dict[str, int]:
+    page = _PAGE_SIZE_MM.get(pdf_format, _PAGE_SIZE_MM["A4"])
+    left = _margin_mm(pdf_margins.get("left"))
+    right = _margin_mm(pdf_margins.get("right"))
+    top = _margin_mm(pdf_margins.get("top"))
+    bottom = _margin_mm(pdf_margins.get("bottom"))
+    width_mm = max(1.0, page["width"] - left - right)
+    height_mm = max(1.0, page["height"] - top - bottom)
+    return {
+        "width": max(1, round(width_mm * _MM_TO_PX)),
+        "height": max(1, round(height_mm * _MM_TO_PX)),
+    }
+
+
+def _should_attempt_fit_one_page(ratio: float) -> bool:
+    return ratio > 1 and ratio <= _FIT_ONE_PAGE_MAX_OVERFLOW_RATIO
+
+
+def _should_target_one_page(ratio: float) -> bool:
+    return ratio >= _FIT_ONE_PAGE_MIN_FILL_RATIO and ratio <= _FIT_ONE_PAGE_MAX_OVERFLOW_RATIO
+
+
+def _clamp_fit_one_page_vertical_scale(value: float) -> float:
+    return min(
+        _FIT_ONE_PAGE_MAX_VERTICAL_SCALE,
+        max(_FIT_ONE_PAGE_MIN_VERTICAL_SCALE, value),
+    )
+
+
+def _url_with_fit_mode(url: str, mode: str) -> str:
+    parts = urlsplit(url)
+    params = dict(parse_qsl(parts.query, keep_blank_values=True))
+    params["fitMode"] = mode
+    return urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode(params),
+            parts.fragment,
+        )
+    )
+
+
+async def _measure_resume_height_ratio(
+    page: Page,
+    selector: str,
+    printable_height_px: int,
 ) -> float:
-    if content_height_px <= 0:
-        return 1.0
-    margin_top = float((margins or {}).get("top", 10))
-    margin_bottom = float((margins or {}).get("bottom", 10))
-    printable_height_mm = max(1.0, _resolve_page_height_mm(page_size) - margin_top - margin_bottom)
-    printable_height_px = printable_height_mm * 96 / 25.4
-    scale = printable_height_px / content_height_px
-    return max(0.1, min(1.0, scale))
+    content_height = await page.evaluate(
+        """(selector) => {
+            const element = document.querySelector(selector);
+            if (!element) return 0;
+            const rect = element.getBoundingClientRect();
+            return Math.max(element.scrollHeight, rect.height);
+        }""",
+        selector,
+    )
+    if not isinstance(content_height, (int, float)) or printable_height_px <= 0:
+        return 0.0
+    return float(content_height) / float(printable_height_px)
+
+
+async def _load_print_page(page: Page, url: str, selector: str) -> None:
+    await page.goto(url, wait_until="networkidle")
+    await page.wait_for_selector(selector)
+    await page.evaluate("document.fonts.ready")
+
+
+async def _apply_resume_vertical_scale(
+    page: Page,
+    selector: str,
+    printable_height_px: int,
+    current_ratio: float,
+) -> None:
+    if current_ratio <= 0:
+        return
+
+    target_floor = _FIT_ONE_PAGE_TARGET_RATIO - 0.005
+    if target_floor <= current_ratio <= 1:
+        return
+
+    vertical_scale = _clamp_fit_one_page_vertical_scale(
+        _FIT_ONE_PAGE_TARGET_RATIO / current_ratio
+    )
+
+    for _ in range(6):
+        await page.evaluate(
+            """({ selector, verticalScale }) => {
+                const root = document.querySelector(selector);
+                const body = root?.querySelector('.resume-body') ?? document.querySelector('.resume-body');
+                if (!body) return;
+                const styles = window.getComputedStyle(body);
+                const rootFontSize = parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+                const toPx = (raw) => {
+                    const value = String(raw || '').trim();
+                    const number = parseFloat(value);
+                    if (!Number.isFinite(number)) return 0;
+                    if (value.endsWith('rem')) return number * rootFontSize;
+                    return number;
+                };
+                if (!body.dataset.fitBaseSectionGap) {
+                    body.dataset.fitBaseSectionGap = String(toPx(styles.getPropertyValue('--section-gap')));
+                    body.dataset.fitBaseItemGap = String(toPx(styles.getPropertyValue('--item-gap')));
+                    body.dataset.fitBaseLineHeight = String(parseFloat(styles.getPropertyValue('--line-height')) || 1);
+                }
+                const baseSectionGap = Number(body.dataset.fitBaseSectionGap) || 0;
+                const baseItemGap = Number(body.dataset.fitBaseItemGap) || 0;
+                const baseLineHeight = Number(body.dataset.fitBaseLineHeight) || 1;
+                body.style.setProperty('--section-gap', `${baseSectionGap * verticalScale}px`);
+                body.style.setProperty('--item-gap', `${baseItemGap * verticalScale}px`);
+                body.style.setProperty('--line-height', String(baseLineHeight * verticalScale));
+            }""",
+            {"selector": selector, "verticalScale": vertical_scale},
+        )
+        await page.evaluate("document.fonts.ready")
+        next_ratio = await _measure_resume_height_ratio(
+            page,
+            selector,
+            printable_height_px,
+        )
+        if next_ratio <= 0:
+            return
+
+        if target_floor <= next_ratio <= 1:
+            return
+
+        next_vertical_scale = _clamp_fit_one_page_vertical_scale(
+            vertical_scale * (_FIT_ONE_PAGE_TARGET_RATIO / next_ratio)
+        )
+        if abs(next_vertical_scale - vertical_scale) <= 0.001:
+            return
+
+        vertical_scale = next_vertical_scale
+
+
+async def _calibrate_loaded_fit_one_page_layout(
+    page: Page,
+    selector: str,
+    printable_height_px: int,
+) -> None:
+    current_ratio = await _measure_resume_height_ratio(
+        page,
+        selector,
+        printable_height_px,
+    )
+    if not _should_target_one_page(current_ratio):
+        return
+
+    await _apply_resume_vertical_scale(
+        page,
+        selector,
+        printable_height_px,
+        current_ratio,
+    )
+
+
+async def _apply_fit_one_page_layout(
+    page: Page,
+    url: str,
+    selector: str,
+    printable_height_px: int,
+) -> None:
+    base_url = _url_with_fit_mode(url, "off")
+    base_ratio = await _measure_resume_height_ratio(
+        page,
+        selector,
+        printable_height_px,
+    )
+    if not _should_target_one_page(base_ratio):
+        return
+
+    if base_ratio <= 1:
+        await _apply_resume_vertical_scale(page, selector, printable_height_px, base_ratio)
+        return
+
+    if not _should_attempt_fit_one_page(base_ratio):
+        return
+
+    best_fitting_mode: Optional[str] = None
+    best_fitting_ratio = 0.0
+    tightest_mode: Optional[str] = None
+    tightest_ratio = sys.float_info.max
+
+    for mode in _FIT_ONE_PAGE_CANDIDATE_MODES:
+        await _load_print_page(page, _url_with_fit_mode(url, mode), selector)
+        mode_ratio = await _measure_resume_height_ratio(
+            page,
+            selector,
+            printable_height_px,
+        )
+        if mode_ratio > 0 and mode_ratio <= 1:
+            if mode_ratio > best_fitting_ratio:
+                best_fitting_mode = mode
+                best_fitting_ratio = mode_ratio
+        if mode_ratio > 0 and mode_ratio < tightest_ratio:
+            tightest_mode = mode
+            tightest_ratio = mode_ratio
+
+    selected_mode = best_fitting_mode or tightest_mode
+    selected_ratio = best_fitting_ratio if best_fitting_mode is not None else tightest_ratio
+
+    if selected_mode is not None and selected_ratio < sys.float_info.max:
+        await _load_print_page(page, _url_with_fit_mode(url, selected_mode), selector)
+        await _apply_resume_vertical_scale(page, selector, printable_height_px, selected_ratio)
+        return
+
+    # If every compacting profile still spills, prefer the normal two-page layout.
+    await _load_print_page(page, base_url, selector)
 
 
 def _find_chromium_executable() -> Optional[str]:
@@ -151,34 +372,42 @@ async def _render_page_to_pdf(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
-    page_size: str,
-    raw_margins: Optional[dict],
     fit_one_page: bool,
+    calibrate_fit_one_page: bool,
 ) -> bytes:
-    await page.goto(url, wait_until="networkidle")
-    await page.wait_for_selector(selector)
-    await page.evaluate("document.fonts.ready")
-    pdf_scale = 1.0
+    printable_dimensions = _printable_dimensions_px(pdf_format, pdf_margins)
+    await page.set_viewport_size(
+        {
+            "width": printable_dimensions["width"],
+            "height": printable_dimensions["height"],
+        }
+    )
+    await page.emulate_media(media="print")
+    render_url = (
+        _url_with_fit_mode(url, "off")
+        if fit_one_page and selector == ".resume-print"
+        else url
+    )
+    await _load_print_page(page, render_url, selector)
+
     if fit_one_page and selector == ".resume-print":
-        content_height = await page.evaluate(
-            """(selector) => {
-                const element = document.querySelector(selector);
-                if (!element) return 0;
-                const rect = element.getBoundingClientRect();
-                return Math.max(element.scrollHeight || 0, rect.height || 0);
-            }""",
+        await _apply_fit_one_page_layout(
+            page,
+            render_url,
             selector,
+            printable_dimensions["height"],
         )
-        pdf_scale = _resolve_fit_scale(
-            content_height_px=float(content_height),
-            page_size=page_size,
-            margins=raw_margins,
+    elif calibrate_fit_one_page and selector == ".resume-print":
+        await _calibrate_loaded_fit_one_page_layout(
+            page,
+            selector,
+            printable_dimensions["height"],
         )
+
     return await page.pdf(
         format=pdf_format,
         print_background=True,
         margin=pdf_margins,
-        scale=pdf_scale,
     )
 
 
@@ -188,9 +417,8 @@ async def _render_with_browser(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
-    page_size: str,
-    raw_margins: Optional[dict],
     fit_one_page: bool,
+    calibrate_fit_one_page: bool,
 ) -> bytes:
     page: Page = await browser.new_page()
     try:
@@ -200,9 +428,8 @@ async def _render_with_browser(
             selector,
             pdf_format,
             pdf_margins,
-            page_size,
-            raw_margins,
             fit_one_page,
+            calibrate_fit_one_page,
         )
     finally:
         await page.close()
@@ -232,9 +459,8 @@ def _render_resume_pdf_sync(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
-    page_size: str,
-    raw_margins: Optional[dict],
     fit_one_page: bool,
+    calibrate_fit_one_page: bool,
 ) -> bytes:
     async def _run() -> bytes:
         async with async_playwright() as playwright:
@@ -246,9 +472,8 @@ def _render_resume_pdf_sync(
                     selector,
                     pdf_format,
                     pdf_margins,
-                    page_size,
-                    raw_margins,
                     fit_one_page,
+                    calibrate_fit_one_page,
                 )
             finally:
                 await browser.close()
@@ -261,9 +486,8 @@ async def _render_resume_pdf_in_thread(
     selector: str,
     pdf_format: str,
     pdf_margins: dict,
-    page_size: str,
-    raw_margins: Optional[dict],
     fit_one_page: bool,
+    calibrate_fit_one_page: bool,
 ) -> bytes:
     return await asyncio.to_thread(
         _render_resume_pdf_sync,
@@ -271,9 +495,8 @@ async def _render_resume_pdf_in_thread(
         selector,
         pdf_format,
         pdf_margins,
-        page_size,
-        raw_margins,
         fit_one_page,
+        calibrate_fit_one_page,
     )
 
 
@@ -325,6 +548,7 @@ async def render_resume_pdf(
     selector: str = ".resume-print",
     margins: Optional[dict] = None,
     fit_one_page: bool = False,
+    calibrate_fit_one_page: bool = False,
 ) -> bytes:
     """Render a URL to PDF bytes.
 
@@ -337,6 +561,10 @@ async def render_resume_pdf(
     Note:
         Margins are applied via Playwright's PDF margins, ensuring they appear
         on every page (not just the first page like HTML padding would).
+        When fit_one_page is enabled, the renderer chooses and calibrates the
+        print layout. When calibrate_fit_one_page is enabled, the renderer keeps
+        the loaded URL layout and only performs the final print-side
+        spacing/line-height calibration.
     """
     global _subprocess_supported
 
@@ -351,9 +579,8 @@ async def render_resume_pdf(
                 selector,
                 pdf_format,
                 pdf_margins,
-                page_size,
-                margins,
                 fit_one_page,
+                calibrate_fit_one_page,
             )
         except PlaywrightError as e:
             _raise_playwright_error(e, url)
@@ -377,7 +604,12 @@ async def render_resume_pdf(
     if not subprocess_supported:
         try:
             return await _render_resume_pdf_in_thread(
-                url, selector, pdf_format, pdf_margins, page_size, margins, fit_one_page
+                url,
+                selector,
+                pdf_format,
+                pdf_margins,
+                fit_one_page,
+                calibrate_fit_one_page,
             )
         except PlaywrightError as e:
             _raise_playwright_error(e, url)
@@ -392,9 +624,8 @@ async def render_resume_pdf(
             selector,
             pdf_format,
             pdf_margins,
-            page_size,
-            margins,
             fit_one_page,
+            calibrate_fit_one_page,
         )
     except PlaywrightError as e:
         _raise_playwright_error(e, url)

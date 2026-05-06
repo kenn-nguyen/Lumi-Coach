@@ -60,7 +60,7 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
         )}
       >
         {toggleButton}
-        <span id={labelId} className="font-mono text-xs text-gray-700">
+        <span id={labelId} className="text-sm font-semibold tracking-[0.01em] text-foreground">
           {label}
         </span>
       </label>

@@ -64,7 +64,6 @@ export async function verifyWebsiteSession() {
   }
 
   if (response.status === 401) {
-    await clearExtensionAuth();
     logWarn("ExtensionAuth", "Website session is not authenticated.", {
       endpoint,
     });
@@ -128,7 +127,6 @@ export async function fetchExtensionAccessToken() {
   }
 
   if (response.status === 401) {
-    await clearExtensionAuth();
     logWarn(
       "ExtensionAuth",
       "Website refused extension token request because the session is unauthenticated.",

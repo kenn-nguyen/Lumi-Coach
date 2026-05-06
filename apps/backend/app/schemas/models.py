@@ -138,6 +138,7 @@ class Experience(BaseModel):
     id: int = 0
     title: str = ""
     company: str = ""
+    website: str | None = None
     location: str | None = None
     context: str | None = None
     years: str = ""
@@ -430,6 +431,7 @@ class ResumeUpdateRequest(BaseModel):
 
 
 DateDisplayMode = Literal["month-year", "year-only"]
+ExperienceHeaderOrder = Literal["company-first", "role-first"]
 TemplateType = Literal["swiss-single", "swiss-two-column", "modern", "modern-two-column"]
 PageSize = Literal["A4", "LETTER"]
 SpacingLevel = Literal[1, 2, 3, 4, 5]
@@ -479,6 +481,7 @@ DEFAULT_RESUME_TEMPLATE_SETTINGS: dict[str, Any] = {
     "showContactIcons": False,
     "accentColor": "blue",
     "dateDisplay": "month-year",
+    "experienceHeaderOrder": "company-first",
     "fitOnePage": True,
 }
 
@@ -495,6 +498,7 @@ class ResumeTemplateSettingsUpdate(BaseModel):
     showContactIcons: bool | None = None
     accentColor: AccentColor | None = None
     dateDisplay: DateDisplayMode | None = None
+    experienceHeaderOrder: ExperienceHeaderOrder | None = None
     fitOnePage: bool | None = None
 
 
@@ -510,6 +514,7 @@ class ResumeTemplateSettings(BaseModel):
     showContactIcons: bool | None = None
     accentColor: AccentColor | None = None
     dateDisplay: DateDisplayMode | None = None
+    experienceHeaderOrder: ExperienceHeaderOrder | None = None
     fitOnePage: bool | None = None
 
 
@@ -922,12 +927,6 @@ class RewriteSummaryResponse(BaseModel):
 
     rewritten_summary: str
     message: str
-
-
-class ResetDatabaseRequest(BaseModel):
-    """Request to reset database with confirmation."""
-
-    confirm: str | None = None
 
 
 class GenerateContentResponse(BaseModel):

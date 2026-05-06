@@ -44,6 +44,7 @@ import {
   generateCoverLetter,
   generateOutreachMessage,
   fetchJobDescription,
+  type ResumePdfRenderLayout,
 } from '@/lib/api/resume';
 import { JDComparisonView } from './jd-comparison-view';
 import { StrategyMatchView } from './strategy-match-view';
@@ -154,6 +155,9 @@ const ResumeBuilderContent = () => {
   const [, setLoadingState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [templateSettings, setTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
+  const [resumePdfRenderLayout, setResumePdfRenderLayout] = useState<ResumePdfRenderLayout | null>(
+    null
+  );
   const templateSettingsRef = useRef<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
   const { improvedData } = useResumePreview();
   const improvedPreview = improvedData?.data?.resume_preview;
@@ -170,6 +174,18 @@ const ResumeBuilderContent = () => {
   const [isResizingPanels, setIsResizingPanels] = useState(false);
   const [isDesktopSplit, setIsDesktopSplit] = useState(false);
   const editorWidthPercent = editorWidthByTab[activeTab];
+
+  const handleResolvedPreviewLayoutChange = useCallback((layout: ResumePdfRenderLayout) => {
+    setResumePdfRenderLayout((previous) => {
+      if (
+        previous?.fitMode === layout.fitMode &&
+        previous?.fitOnePageVerticalScale === layout.fitOnePageVerticalScale
+      ) {
+        return previous;
+      }
+      return layout;
+    });
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -601,9 +617,23 @@ const ResumeBuilderContent = () => {
       showNotification(t('builder.alerts.downloadNotAvailable'), 'warning');
       return;
     }
+    let syncedForDownload = false;
     try {
       setIsDownloading(true);
-      const userName = resumeData.personalInfo?.name?.trim() || null;
+      const dataToSave = commitPendingSectionRemovals(resumeData);
+      const [updated] = await Promise.all([
+        updateResume(resumeId, dataToSave),
+        updateResumeTemplateSettings(resumeId, templateSettings),
+      ]);
+      const nextData = (updated.processed_resume || dataToSave) as ResumeData;
+      setResumeData(nextData);
+      setLastSavedData(nextData);
+      setGenerationArtifacts(updated.generation_artifacts ?? null);
+      setHasUnsavedChanges(false);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextData));
+      syncedForDownload = true;
+
+      const userName = nextData.personalInfo?.name?.trim() || null;
       const filename = buildResumeArtifactFilename(
         userName,
         resumeTitle,
@@ -611,12 +641,22 @@ const ResumeBuilderContent = () => {
         'resume',
         'pdf'
       );
-      const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage, filename);
+      const blob = await downloadResumePdf(
+        resumeId,
+        templateSettings,
+        uiLanguage,
+        filename,
+        resumePdfRenderLayout ?? undefined
+      );
       downloadBlobAsFile(blob, filename);
       showNotification(t('builder.alerts.downloadSuccess'), 'success');
     } catch (error) {
       console.error('Failed to download resume:', error);
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      if (
+        syncedForDownload &&
+        error instanceof TypeError &&
+        error.message.includes('Failed to fetch')
+      ) {
         const userName = resumeData.personalInfo?.name?.trim() || null;
         const filename = buildResumeArtifactFilename(
           userName,
@@ -625,7 +665,13 @@ const ResumeBuilderContent = () => {
           'resume',
           'pdf'
         );
-        const fallbackUrl = getResumePdfUrl(resumeId, templateSettings, uiLanguage, filename);
+        const fallbackUrl = getResumePdfUrl(
+          resumeId,
+          templateSettings,
+          uiLanguage,
+          filename,
+          resumePdfRenderLayout ?? undefined
+        );
         const didOpen = openUrlInNewTab(fallbackUrl);
         if (!didOpen) {
           showNotification(t('common.popupBlocked', { url: fallbackUrl }), 'warning');
@@ -1211,6 +1257,7 @@ const ResumeBuilderContent = () => {
                   resumeData={localizedResumeDataForPreview}
                   settings={templateSettings}
                   onSettingsChange={handleSettingsChange}
+                  onResolvedLayoutChange={handleResolvedPreviewLayoutChange}
                 />
               )}
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { extractJsonFromText } from "./json.js";
+import {
+  extractJsonFromText,
+  extractPrompt3PayloadFromText,
+  extractPrompt4ResumeDataFromText,
+} from "./json.js";
 import { validatePrompt2Data } from "./validation.js";
 
 const validPrompt2 = {
@@ -130,5 +134,35 @@ describe("extractJsonFromText", () => {
 
     expect(parsed.validated_role).toBe("Senior Product Manager");
     expect(parsed.signal_map).toHaveLength(1);
+  });
+
+  it("extracts optional Prompt 3 flex_notes from the wrapped output", () => {
+    const parsed = extractPrompt3PayloadFromText(
+      JSON.stringify({
+        resume_data: { personalInfo: {}, summary: "" },
+        generation_feedback: null,
+        flex_notes: "reserved handoff note",
+      }),
+    );
+
+    expect(parsed.flexNotes).toBe("reserved handoff note");
+    expect(parsed.usedLegacyShape).toBe(false);
+  });
+
+  it("extracts Prompt 4 resume_data without prompt-level flex_notes", () => {
+    const resumeData = {
+      personalInfo: {},
+      summary: "Resume summary",
+      workExperience: [],
+    };
+
+    const parsed = extractPrompt4ResumeDataFromText(
+      JSON.stringify({
+        resume_data: resumeData,
+        flex_notes: "reserved extraction note",
+      }),
+    );
+
+    expect(parsed).toEqual(resumeData);
   });
 });
