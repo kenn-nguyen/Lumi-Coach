@@ -1,4 +1,11 @@
 import { logError, logInfo } from '../../log.js';
+import {
+  buildApiHttpError,
+  buildApiNetworkError,
+  buildApiResponseError,
+} from '../api-errors.js';
+
+const PROVIDER_LABEL = 'ChatGPT';
 
 function isAbortError(error) {
   if (!error) return false;
@@ -68,8 +75,7 @@ async function callChatGptApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, 
       message,
     });
     return {
-      status: 'error',
-      message: `ChatGPT API request failed before response: ${message}`,
+      ...buildApiNetworkError(PROVIDER_LABEL, message),
     };
   }
 
@@ -83,8 +89,7 @@ async function callChatGptApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, 
       body,
     });
     return {
-      status: 'error',
-      message: `ChatGPT API request failed (status ${response.status}): ${body}`,
+      ...buildApiHttpError(PROVIDER_LABEL, response.status, body),
     };
   }
 
@@ -102,8 +107,7 @@ async function callChatGptApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, 
       body,
     });
     return {
-      status: 'error',
-      message: `ChatGPT API returned a non-JSON response body: ${message}`,
+      ...buildApiResponseError(PROVIDER_LABEL, message),
     };
   }
 
@@ -130,8 +134,7 @@ async function callChatGptApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, 
       payload,
     });
     return {
-      status: 'error',
-      message,
+      ...buildApiResponseError(PROVIDER_LABEL, message),
     };
   }
 }

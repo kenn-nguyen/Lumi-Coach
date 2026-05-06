@@ -1,4 +1,11 @@
 import { logError, logInfo } from '../../log.js';
+import {
+  buildApiHttpError,
+  buildApiNetworkError,
+  buildApiResponseError,
+} from '../api-errors.js';
+
+const PROVIDER_LABEL = 'Gemini';
 
 function isAbortError(error) {
   if (!error) return false;
@@ -72,8 +79,7 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
       message,
     });
     return {
-      status: 'error',
-      message: `Gemini API request failed before response: ${message}`,
+      ...buildApiNetworkError(PROVIDER_LABEL, message),
     };
   }
 
@@ -87,8 +93,7 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
       body,
     });
     return {
-      status: 'error',
-      message: `Gemini API request failed (status ${response.status}): ${body}`,
+      ...buildApiHttpError(PROVIDER_LABEL, response.status, body),
     };
   }
 
@@ -106,8 +111,7 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
       body,
     });
     return {
-      status: 'error',
-      message: `Gemini API returned a non-JSON response body: ${message}`,
+      ...buildApiResponseError(PROVIDER_LABEL, message),
     };
   }
 
@@ -132,8 +136,7 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
       payload,
     });
     return {
-      status: 'error',
-      message,
+      ...buildApiResponseError(PROVIDER_LABEL, message),
     };
   }
 }

@@ -32,10 +32,31 @@ export function getActiveRun(runId = null) {
   return activeRun;
 }
 
+export function getActiveRunConflict(runId = null) {
+  if (!activeRun) return null;
+  if (runId && activeRun.runId === runId) return null;
+  const phase = String(activeRun.phase || "").trim();
+  if (
+    activeRun.inFlight === true ||
+    activeRun.cancelRequested === true ||
+    phase === "preflight"
+  ) {
+    return activeRun;
+  }
+  return null;
+}
+
 export function ensureActiveRun(init = {}) {
   const runId = init.runId ?? activeRun?.runId ?? null;
   if (!runId) {
     throw new Error("A run id is required to create active run state.");
+  }
+
+  const conflict = getActiveRunConflict(runId);
+  if (conflict) {
+    throw new Error(
+      "A tailoring run is already in progress. Cancel it before starting another.",
+    );
   }
 
   if (!activeRun || activeRun.runId !== runId) {

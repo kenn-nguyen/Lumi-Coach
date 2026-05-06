@@ -1,6 +1,12 @@
 import { logError, logInfo } from '../../log.js';
+import {
+  buildApiHttpError,
+  buildApiNetworkError,
+  buildApiResponseError,
+} from '../api-errors.js';
 
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
+const PROVIDER_LABEL = 'Claude';
 
 function isAbortError(error) {
   if (!error) return false;
@@ -69,8 +75,7 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
       message,
     });
     return {
-      status: 'error',
-      message: `Claude API request failed before response: ${message}`,
+      ...buildApiNetworkError(PROVIDER_LABEL, message),
     };
   }
 
@@ -84,8 +89,7 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
       body,
     });
     return {
-      status: 'error',
-      message: `Claude API request failed (status ${response.status}): ${body}`,
+      ...buildApiHttpError(PROVIDER_LABEL, response.status, body),
     };
   }
 
@@ -103,8 +107,7 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
       body,
     });
     return {
-      status: 'error',
-      message: `Claude API returned a non-JSON response body: ${message}`,
+      ...buildApiResponseError(PROVIDER_LABEL, message),
     };
   }
 
@@ -132,8 +135,7 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
       payload,
     });
     return {
-      status: 'error',
-      message,
+      ...buildApiResponseError(PROVIDER_LABEL, message),
     };
   }
 }

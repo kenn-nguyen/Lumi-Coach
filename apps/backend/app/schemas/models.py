@@ -2,6 +2,7 @@
 
 import copy
 import re
+from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
@@ -600,6 +601,34 @@ class LinkedInApifyFallbackResponse(BaseModel):
     date_posted: str | None = None
     raw_text: str
     diagnostics: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExtensionRunUpsertRequest(BaseModel):
+    """Sanitized extension run summary for backend persistence."""
+
+    run_id: str = Field(min_length=1, max_length=128)
+    status: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=500)
+    company: str | None = Field(default=None, max_length=500)
+    location: str | None = Field(default=None, max_length=500)
+    source_url: str | None = Field(default=None, max_length=2000)
+    job_source: str | None = Field(default=None, max_length=64)
+    resume_id: str | None = Field(default=None, max_length=128)
+    preview_url: str | None = Field(default=None, max_length=2000)
+    provider_id: str | None = Field(default=None, max_length=128)
+    provider_label: str | None = Field(default=None, max_length=256)
+    generated_at: datetime | None = None
+    total_duration_ms: int | None = Field(default=None, ge=0)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    prompt_artifacts: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExtensionRunUpsertResponse(BaseModel):
+    """Response after saving a sanitized extension run summary."""
+
+    request_id: str
+    run_id: str
+    status: str
 
 
 # Improvement Models

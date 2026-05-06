@@ -18,7 +18,14 @@ from app import __version__
 from app.config import settings
 from app.database import db
 from app.pdf import close_pdf_renderer, init_pdf_renderer
-from app.routers import config_router, enrichment_router, health_router, jobs_router, resumes_router
+from app.routers import (
+    config_router,
+    enrichment_router,
+    extension_router,
+    health_router,
+    jobs_router,
+    resumes_router,
+)
 
 
 def _configure_application_logging() -> None:
@@ -73,6 +80,7 @@ app.include_router(config_router, prefix="/api/v1")
 app.include_router(resumes_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(enrichment_router, prefix="/api/v1")
+app.include_router(extension_router, prefix="/api/v1")
 
 
 @app.get("/")

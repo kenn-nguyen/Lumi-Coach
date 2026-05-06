@@ -243,8 +243,9 @@ export function getExtensionSetupState({
 
   if (!connected) {
     return buildBaseState({
-      mode: "run",
+      mode: "onboarding",
       state: "signed_out_returning",
+      step: "sign_in",
       hasCompletedOnboarding: true,
       title: "You’ve been signed out",
       detail:
@@ -259,35 +260,45 @@ export function getExtensionSetupState({
     });
   }
 
-  if (!provider.ready) {
+  if (!hasResume) {
+    const step = provider.ready ? "assets" : "provider";
     return buildBaseState({
-      mode: "run",
-      state: "missing_provider_config",
-      hasCompletedOnboarding: true,
-      title: "Finish provider setup",
-      detail: provider.detail,
-      primaryAction: {
-        id: "open_settings",
-        label: "Open Settings",
-        focusTarget: provider.focusTarget,
-      },
+      mode: "onboarding",
+      state: step === "assets" ? "onboarding_assets" : "onboarding_provider",
+      step,
+      hasCompletedOnboarding: normalizedOnboarding.hasCompletedOnboarding,
+      title: step === "assets" ? "Master Resume" : "Choose your AI setup",
+      detail:
+        step === "assets"
+          ? "Add your Master Resume to Lumi Coach."
+          : provider.detail,
+      primaryAction:
+        step === "assets"
+          ? { id: "upload_resume", label: "Add Master Resume" }
+          : {
+              id: "onboarding_next",
+              label: "Next",
+              nextStep: "assets",
+            },
       provider,
       checklist,
-      canContinue: false,
+      canContinue: step === "assets" ? false : provider.ready,
     });
   }
 
-  if (!hasResume) {
+  if (!provider.ready) {
     return buildBaseState({
-      mode: "run",
-      state: "missing_resume",
+      mode: "onboarding",
+      state: "missing_provider_config",
+      step: "provider",
       hasCompletedOnboarding: true,
-      title: "Add your Master Resume",
-      detail: "Add your Master Resume to Lumi Coach before tailoring.",
+      title: "Choose your AI setup",
+      detail: provider.detail,
       primaryAction: {
-        id: "upload_resume",
-        label: "Add Master Resume",
-        focusTarget: "resume",
+        id: "onboarding_next",
+        label: "Next",
+        nextStep: "assets",
+        focusTarget: provider.focusTarget,
       },
       provider,
       checklist,

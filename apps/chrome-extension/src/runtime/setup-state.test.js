@@ -166,11 +166,38 @@ describe("getExtensionSetupState onboarding", () => {
     });
 
     expect(state).toMatchObject({
-      state: "missing_resume",
-      title: "Add your Master Resume",
+      mode: "onboarding",
+      state: "onboarding_assets",
+      step: "assets",
+      title: "Master Resume",
       primaryAction: {
         id: "upload_resume",
         label: "Add Master Resume",
+      },
+    });
+  });
+
+  it("moves returning users to provider setup when both provider and backend master are missing", () => {
+    const state = getExtensionSetupState({
+      assets: {
+        llmSettings: getDefaultLlmSettings(),
+        backendMasterResume: null,
+      },
+      extensionConnected: true,
+      websiteAuthenticated: true,
+      onboardingProgress: {
+        hasCompletedOnboarding: true,
+        onboardingStep: "done",
+      },
+    });
+
+    expect(state).toMatchObject({
+      mode: "onboarding",
+      state: "onboarding_provider",
+      step: "provider",
+      title: "Choose your AI setup",
+      provider: {
+        ready: false,
       },
     });
   });

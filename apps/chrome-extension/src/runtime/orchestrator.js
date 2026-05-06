@@ -51,11 +51,16 @@ import { captureExtensionEvent } from "./analytics.js";
 import { getActiveLlmProfile } from "./llm/profiles.js";
 import { runPrompt } from "./llm/runners.js";
 import {
+  formatApiProviderErrorForUser,
+  isApiProviderError,
+} from "./llm/api-errors.js";
+import {
   createRunAbortSignal,
   isRunCanceledError,
   markRunPreviewHandoffStarted,
   throwIfRunCanceled,
 } from "./run-control.js";
+import { syncExtensionRun } from "./extension-runs.js";
 
 export async function saveStoryboardAsset(payload) {
   await setStoryboardAsset({
@@ -63,6 +68,11 @@ export async function saveStoryboardAsset(payload) {
     content: payload.content,
     uploadedAt: new Date().toISOString(),
   });
+}
+
+async function upsertAndSyncHistoryEntry(entry) {
+  await upsertHistoryEntry(entry);
+  await syncExtensionRun(entry);
 }
 
 function createCancelHelpers(runId) {
@@ -450,6 +460,9 @@ export function getMasterResumeImportProviderIssue(profile) {
 
 function getPromptRunProviderIssue(message) {
   const normalized = String(message || "");
+  if (isApiProviderError(normalized)) {
+    return formatApiProviderErrorForUser(normalized);
+  }
   if (
     /active LLM profile|LLM runner|API key|required for the active runner|auth_required|Please log into|provider/i.test(
       normalized,
@@ -1006,6 +1019,14 @@ async function bootstrapMasterResumeFromMarkdown({
     }
     if (prompt4Run.status !== "success") {
       logError("Orchestrator", "Prompt 4 failed.", prompt4Run);
+      if (isApiProviderError(prompt4Run)) {
+        throw new Error(
+          formatApiProviderErrorForUser(
+            prompt4Run,
+            activeLlmProfile?.label || "AI API",
+          ),
+        );
+      }
       throw new Error(RESUME_EXTRACTION_FAILED_MESSAGE);
     }
 
@@ -1128,7 +1149,12 @@ export async function importMasterResumeFromTextAsset({
 
   if (prompt4Run.status !== "success") {
     logError("Orchestrator", "Prompt 4 Master Resume import failed.", prompt4Run);
-    const providerRunIssue = getPromptRunProviderIssue(prompt4Run.message);
+    const providerRunIssue = isApiProviderError(prompt4Run)
+      ? formatApiProviderErrorForUser(
+          prompt4Run,
+          activeLlmProfile?.label || "AI API",
+        )
+      : getPromptRunProviderIssue(prompt4Run.message);
     if (providerRunIssue) {
       throw new Error(providerRunIssue);
     }
@@ -1852,7 +1878,7 @@ export async function generateResumeForLinkedInJob(
       patchError: message,
       status: SESSION_STATUS.error,
     });
-    await upsertHistoryEntry(
+    await upsertAndSyncHistoryEntry(
       createHistoryEntry(
         "patch_failed",
         await buildPreviewUrl(resumeId, {
@@ -1899,7 +1925,7 @@ export async function generateResumeForLinkedInJob(
       status: SESSION_STATUS.error,
       jobContextLinked: false,
     });
-    await upsertHistoryEntry(
+    await upsertAndSyncHistoryEntry(
       createHistoryEntry(
         "job_context_link_failed",
         await buildPreviewUrl(resumeId, {
@@ -1987,7 +2013,7 @@ export async function generateResumeForLinkedInJob(
     previewUrl,
   });
   markRunPreviewHandoffStarted(runId);
-  await upsertHistoryEntry(createHistoryEntry("generated", previewUrl));
+  await upsertAndSyncHistoryEntry(createHistoryEntry("generated", previewUrl));
   await captureExtensionEvent("tailor_completed", {
     surface: "run_view",
     run_id: runId,

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     create_engine,
@@ -123,6 +124,35 @@ class ImprovementModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class ExtensionRunModel(Base):
+    __tablename__ = "extension_runs"
+
+    user_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    run_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    company: Mapped[str | None] = mapped_column(Text, nullable=True)
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    job_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resume_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    preview_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    provider_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    prompt_artifacts: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class Database:
     """PostgreSQL-backed repository for SOM Career Coach data."""
 
@@ -146,6 +176,7 @@ class Database:
     def init_schema(self) -> None:
         Base.metadata.create_all(self._engine)
         self._ensure_resume_schema()
+        self._ensure_extension_runs_schema()
 
     def _ensure_resume_schema(self) -> None:
         """Apply lightweight additive schema updates for local/dev databases."""
@@ -157,6 +188,25 @@ class Database:
         with self._engine.begin() as connection:
             connection.execute(text("ALTER TABLE resumes ADD COLUMN template_settings JSONB"))
         logger.info("Added resumes.template_settings column")
+
+    def _ensure_extension_runs_schema(self) -> None:
+        """Apply additive schema updates for extension run telemetry."""
+        inspector = inspect(self._engine)
+        if "extension_runs" not in inspector.get_table_names():
+            return
+
+        columns = {column["name"] for column in inspector.get_columns("extension_runs")}
+        if "prompt_artifacts" in columns:
+            return
+
+        with self._engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE extension_runs "
+                    "ADD COLUMN prompt_artifacts JSONB DEFAULT '{}'::jsonb"
+                )
+            )
+        logger.info("Added extension_runs.prompt_artifacts column")
 
     def close(self) -> None:
         self._engine.dispose()
@@ -240,6 +290,28 @@ class Database:
             "job_id": improvement.job_id,
             "improvements": improvement.improvements,
             "created_at": self._to_iso(improvement.created_at),
+        }
+
+    def _serialize_extension_run(self, run: ExtensionRunModel) -> dict[str, Any]:
+        return {
+            "user_id": run.user_id,
+            "run_id": run.run_id,
+            "status": run.status,
+            "title": run.title,
+            "company": run.company,
+            "location": run.location,
+            "source_url": run.source_url,
+            "job_source": run.job_source,
+            "resume_id": run.resume_id,
+            "preview_url": run.preview_url,
+            "provider_id": run.provider_id,
+            "provider_label": run.provider_label,
+            "generated_at": self._to_iso(run.generated_at),
+            "total_duration_ms": run.total_duration_ms,
+            "summary": run.summary,
+            "prompt_artifacts": run.prompt_artifacts,
+            "created_at": self._to_iso(run.created_at),
+            "updated_at": self._to_iso(run.updated_at),
         }
 
     def upsert_user(
@@ -562,11 +634,66 @@ class Database:
             improvement = query.order_by(ImprovementModel.created_at.desc()).first()
             return self._serialize_improvement(improvement) if improvement else None
 
+    def upsert_extension_run(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        user_id: str | None = None,
+        title: str | None = None,
+        company: str | None = None,
+        location: str | None = None,
+        source_url: str | None = None,
+        job_source: str | None = None,
+        resume_id: str | None = None,
+        preview_url: str | None = None,
+        provider_id: str | None = None,
+        provider_label: str | None = None,
+        generated_at: datetime | None = None,
+        total_duration_ms: int | None = None,
+        summary: dict[str, Any] | None = None,
+        prompt_artifacts: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_user_id = self._resolve_user_scope(user_id)
+        if not resolved_user_id:
+            raise ValueError("Extension run requires an authenticated user")
+
+        with self._session() as session:
+            run = session.get(ExtensionRunModel, (resolved_user_id, run_id))
+            if run is None:
+                run = ExtensionRunModel(
+                    user_id=resolved_user_id,
+                    run_id=run_id,
+                    status=status,
+                )
+                session.add(run)
+
+            run.status = status
+            run.title = title
+            run.company = company
+            run.location = location
+            run.source_url = source_url
+            run.job_source = job_source
+            run.resume_id = resume_id
+            run.preview_url = preview_url
+            run.provider_id = provider_id
+            run.provider_label = provider_label
+            run.generated_at = generated_at
+            run.total_duration_ms = total_duration_ms
+            run.summary = summary or {}
+            run.prompt_artifacts = prompt_artifacts or {}
+            run.updated_at = _utcnow()
+
+            session.commit()
+            session.refresh(run)
+            return self._serialize_extension_run(run)
+
     def get_stats(self) -> dict[str, Any]:
         with self._session() as session:
             total_resumes = session.query(ResumeModel).count()
             total_jobs = session.query(JobModel).count()
             total_improvements = session.query(ImprovementModel).count()
+            total_extension_runs = session.query(ExtensionRunModel).count()
             has_master_resume = (
                 session.query(ResumeModel)
                 .filter(ResumeModel.is_master.is_(True))
@@ -577,11 +704,13 @@ class Database:
                 "total_resumes": total_resumes,
                 "total_jobs": total_jobs,
                 "total_improvements": total_improvements,
+                "total_extension_runs": total_extension_runs,
                 "has_master_resume": has_master_resume,
             }
 
     def reset_database(self) -> None:
         with self._session() as session:
+            session.execute(delete(ExtensionRunModel))
             session.execute(delete(ImprovementModel))
             session.execute(delete(JobModel))
             session.execute(delete(ResumeModel))

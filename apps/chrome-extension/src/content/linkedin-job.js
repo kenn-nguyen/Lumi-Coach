@@ -506,6 +506,15 @@ function isNonLinkedInManualRoute() {
   return state.routeMode === "manual" && location.hostname !== "www.linkedin.com";
 }
 
+function setRouteMode(nextMode) {
+  const normalizedMode = nextMode || "hidden";
+  if (state.routeMode === normalizedMode) {
+    return;
+  }
+  state.routeMode = normalizedMode;
+  state.runSourceMode = null;
+}
+
 function deriveFallbackRouteModeFromLocation() {
   if (!/^https?:$/.test(location.protocol || "")) {
     return "hidden";
@@ -600,7 +609,10 @@ function truncateDisplayText(value, maxLength = 28) {
 
 function formatMasterResumeImportError(error) {
   const message = error instanceof Error ? error.message : String(error || "");
-  if (/not implemented|not available|unsupported|ChatGPT API/i.test(message)) {
+  if (/AI API error|API request failed|API returned|status\s+\d{3}/i.test(message)) {
+    return message;
+  }
+  if (/not implemented|not available|unsupported/i.test(message)) {
     return UNSUPPORTED_PROVIDER_MESSAGE;
   }
   if (/not_resume|not a resume|does not look like a resume|does not contain enough resume/i.test(message)) {
@@ -4376,7 +4388,11 @@ function openBoard(view = "run", options = {}) {
     );
   }
   void syncPromptDefaultsForOpen(resolvedView, previousOpen, previousView);
+  const shouldRunSetupCheck =
+    options.refreshSetup === true || previousOpen === false;
   const shouldRefreshBackendMaster =
+    options.refreshBackendMaster === true ||
+    shouldRunSetupCheck ||
     resolvedView === "settings" ||
     (isOnboardingMode() && getResolvedOnboardingStep() === "assets");
   const shouldCheckConnection =
@@ -4769,7 +4785,7 @@ function hasManualJobDescription() {
 }
 
 function getDefaultRunSourceMode() {
-  return hasActiveSelectedJobRoute() ? "linkedin" : "manual";
+  return canUseLinkedInRunMode() ? "linkedin" : "manual";
 }
 
 function canUseLinkedInRunMode() {
@@ -5108,6 +5124,10 @@ function getRunBlockingState() {
   const setupRequirement = getSetupRequirementStatus();
 
   if (isManualRunMode()) {
+    if (isSignedOutNavigationLocked() && setupRequirement) {
+      return setupRequirement;
+    }
+
     if (hasManualJobDescription()) {
       return null;
     }
@@ -5461,11 +5481,21 @@ function isMasterResumeUploadNavigationLocked() {
 }
 
 function isHistoryNavigationLocked() {
-  return false;
+  return isSignedOutNavigationLocked();
+}
+
+function isTailoringParameterChangeLocked() {
+  const sessionStatus = state.extensionState?.status || "";
+  return (
+    state.isRunning ||
+    state.isCanceling ||
+    sessionStatus === "canceling" ||
+    runStatusHelpers.isRehydratableExtensionSessionStatus(sessionStatus)
+  );
 }
 
 function isSettingsNavigationLocked() {
-  return false;
+  return isSignedOutNavigationLocked() || isTailoringParameterChangeLocked();
 }
 
 function canOpenBoardView(view) {
@@ -6176,6 +6206,9 @@ function formatErrorText(message) {
   if (/extension context invalidated/i.test(normalized)) {
     return "Refresh the LinkedIn page and try again.";
   }
+  if (/AI API error|API request failed|API returned|status\s+\d{3}/i.test(normalized)) {
+    return normalized;
+  }
   if (/Prompt 4/i.test(raw)) {
     return "Resume extraction failed. Check that the file contains resume text, then try again.";
   }
@@ -6819,9 +6852,11 @@ function renderRunView() {
     state.jobLoadState === "loading" &&
     (state.selectedJobRefreshing || !hasEnoughJobContext(state.currentJob));
   const onboardingMode = isOnboardingMode();
-  const showOnboarding = onboardingMode && !nonLinkedInManualRoute;
+  const signedOutBlocker = isSignedOutNavigationLocked();
+  const showOnboarding = onboardingMode;
   const hardBlocker =
-    !manualMode && (Boolean(setupRequirement) || isHardPrerequisiteBlocker());
+    (!manualMode || signedOutBlocker) &&
+    (Boolean(setupRequirement) || isHardPrerequisiteBlocker());
   const missingMasterResumeBlocker =
     !onboardingMode &&
     !manualMode &&
@@ -7036,10 +7071,8 @@ function renderRunView() {
 
   const titleNode = document.querySelector("#resume-matcher-job-title");
   if (titleNode) {
-    titleNode.textContent = onboardingMode
-      ? nonLinkedInManualRoute
-        ? "Paste job description"
-        : getResolvedOnboardingTitle()
+    titleNode.textContent = showOnboarding
+      ? getResolvedOnboardingTitle()
       : hardBlocker
         ? setupRequirement?.title || state.setupState?.title || "Finish setup"
       : waitingForSelection
@@ -7159,7 +7192,11 @@ function renderViews() {
   );
   if (settingsButton instanceof HTMLButtonElement) {
     settingsButton.disabled = settingsLocked;
-    const title = "Settings";
+    const title = isSignedOutNavigationLocked()
+      ? "Sign in to change settings"
+      : isTailoringParameterChangeLocked()
+        ? "Settings are locked while tailoring"
+        : "Settings";
     settingsButton.title = title;
     settingsButton.setAttribute("aria-label", title);
   }
@@ -7246,7 +7283,12 @@ async function refreshBoardData(options = {}) {
         : nextSetupState;
     state.history = response.history ?? [];
     state.extensionState = response.state ?? null;
-    state.routeMode = response.route?.mode || "hidden";
+    setRouteMode(response.route?.mode || "hidden");
+    state.connectionState =
+      response.connectionState ||
+      (response.connected ? "connected" : "signed_out");
+    state.websiteAuthenticated = response.websiteAuthenticated === true;
+    state.extensionConnected = response.extensionConnected === true;
     if (state.jobInspectionRequested) {
       updateJobReadiness(extractCurrentJob());
     } else {
@@ -7296,7 +7338,7 @@ async function reconcileConnectionStatus(options = {}) {
         : nextSetupState;
     state.history = response.history ?? state.history;
     state.extensionState = response.state ?? state.extensionState;
-    state.routeMode = response.route?.mode || state.routeMode;
+    setRouteMode(response.route?.mode || state.routeMode);
     state.connectionState =
       response.connectionState ||
       (response.connected ? "connected" : "signed_out");
@@ -7804,6 +7846,20 @@ async function handleGenerateClick() {
     }
     if (response?.canceled) {
       applyCanceledRunState(response.runId || state.activeRunId);
+      await refreshBoardData();
+      return;
+    }
+    if (response?.blockedByActiveRun) {
+      state.isRunning = false;
+      state.isCanceling = false;
+      state.activeRunId = response.runId || null;
+      setExplicitRunStatus(
+        "interrupted",
+        "warning",
+        "Tailoring already running",
+        response.error ||
+          "Cancel the current run before starting another tailored resume.",
+      );
       await refreshBoardData();
       return;
     }
@@ -8322,6 +8378,9 @@ function ensureRoot() {
     activateRunInspection();
   });
   $(BOARD_RUNS_ID)?.addEventListener("click", async () => {
+    if (isHistoryNavigationLocked()) {
+      return;
+    }
     state.historyConnecting = state.connectionState !== "connected";
     openBoard("history", { skipConnectionCheck: true });
     if (!state.historyConnecting) {
@@ -8338,6 +8397,9 @@ function ensureRoot() {
     render();
   });
   $(BOARD_SETTINGS_ID)?.addEventListener("click", () => {
+    if (isSettingsNavigationLocked()) {
+      return;
+    }
     if (state.currentView === "settings") {
       openBoard("run", { skipConnectionCheck: true });
       activateRunInspection();
@@ -8863,7 +8925,7 @@ function activateRunInspection(options = {}) {
 }
 
 async function handleShowLauncher() {
-  await refreshBoardData();
+  await refreshBoardData({ refreshBackendMaster: true });
   ensureRoot();
   showLauncher();
 }
@@ -9043,9 +9105,7 @@ function startUrlFallbackPolling() {
     }
 
     const nextMode = deriveFallbackRouteModeFromLocation();
-    if (state.routeMode !== nextMode) {
-      state.routeMode = nextMode;
-    }
+    setRouteMode(nextMode);
     reconcileRouteState({ force: true });
   }, 1000);
 }
@@ -9131,7 +9191,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === "EXTENSION_ROUTE_CHANGED") {
-    state.routeMode = message.payload?.route?.mode || "hidden";
+    setRouteMode(message.payload?.route?.mode || "hidden");
     reconcileRouteState({ force: true });
     sendResponse({ ok: true });
     return true;
@@ -9380,6 +9440,6 @@ void loadRunStatusHelpers().finally(() => {
     .catch(() => {});
 
   window.addEventListener("resize", handleViewportChange);
-  void refreshBoardData();
+  void refreshBoardData({ refreshBackendMaster: true });
   startUrlFallbackPolling();
 });

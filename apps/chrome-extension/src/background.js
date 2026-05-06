@@ -8,6 +8,7 @@ import { logError, logInfo, logWarn, setLogRelayTabId } from "./runtime/log.js";
 import { clearPromptTemplateCache } from "./runtime/prompt-loader.js";
 import {
   deleteResume,
+  fetchResumeById,
   fetchExtensionAccessToken,
   listResumes,
   openPreviewTab,
@@ -27,6 +28,12 @@ import {
   LINKEDIN_ROUTE_MODE,
 } from "./shared/linkedin-route.js";
 import { getExtensionSetupState } from "./runtime/setup-state.js";
+import { syncExtensionRun } from "./runtime/extension-runs.js";
+import {
+  getActiveLlmProfile,
+  updateLlmSettings,
+} from "./runtime/llm/profiles.js";
+import { validateApiProfile } from "./runtime/llm/api-check.js";
 import {
   activateAccountWorkspace,
   clearAccountDisconnectState,
@@ -72,6 +79,7 @@ import {
 import {
   clearActiveRun,
   ensureActiveRun,
+  getActiveRunConflict,
   getActiveRun,
   isRunCanceledError,
   markRunTerminal,
@@ -82,6 +90,14 @@ import {
 let suppressSourceFocusUntil = 0;
 let backendMasterResumeCache = {
   accountKey: null,
+  hasValue: false,
+  value: null,
+  promise: null,
+  fetchedAt: 0,
+};
+let backendMasterResumeDataCache = {
+  accountKey: null,
+  resumeId: null,
   hasValue: false,
   value: null,
   promise: null,
@@ -237,6 +253,13 @@ async function getRuntimeSnapshot({
     forceRefresh: refreshBackendMaster,
     maxAgeMs: backendMasterMaxAgeMs,
   });
+  if (backendMasterResume?.resumeId) {
+    void prefetchBackendMasterResumeDataForAccount({
+      accountKey: assets.activeAccountKey,
+      backendMasterResume,
+      forceRefresh: refreshBackendMaster,
+    });
+  }
   const assetsWithBackendMaster = {
     ...assets,
     backendMasterResume,
@@ -292,6 +315,20 @@ function setCachedBackendMasterResume(accountKey, value) {
     promise: null,
     fetchedAt: Date.now(),
   };
+  if (
+    !value?.resumeId ||
+    backendMasterResumeDataCache.accountKey !== accountKey ||
+    backendMasterResumeDataCache.resumeId !== value.resumeId
+  ) {
+    backendMasterResumeDataCache = {
+      accountKey: null,
+      resumeId: null,
+      hasValue: false,
+      value: null,
+      promise: null,
+      fetchedAt: 0,
+    };
+  }
 }
 
 function clearBackendMasterResumeCache() {
@@ -302,6 +339,81 @@ function clearBackendMasterResumeCache() {
     promise: null,
     fetchedAt: 0,
   };
+  backendMasterResumeDataCache = {
+    accountKey: null,
+    resumeId: null,
+    hasValue: false,
+    value: null,
+    promise: null,
+    fetchedAt: 0,
+  };
+}
+
+function setCachedBackendMasterResumeData(accountKey, resumeId, value) {
+  backendMasterResumeDataCache = {
+    accountKey: accountKey || null,
+    resumeId: resumeId || null,
+    hasValue: Boolean(accountKey && resumeId),
+    value: value ?? null,
+    promise: null,
+    fetchedAt: Date.now(),
+  };
+}
+
+function prefetchBackendMasterResumeDataForAccount({
+  accountKey,
+  backendMasterResume,
+  forceRefresh = false,
+} = {}) {
+  const resumeId = backendMasterResume?.resumeId ?? null;
+  if (!accountKey || !resumeId) {
+    return Promise.resolve(null);
+  }
+
+  if (
+    !forceRefresh &&
+    backendMasterResumeDataCache.accountKey === accountKey &&
+    backendMasterResumeDataCache.resumeId === resumeId &&
+    backendMasterResumeDataCache.hasValue
+  ) {
+    return Promise.resolve(backendMasterResumeDataCache.value);
+  }
+
+  if (
+    backendMasterResumeDataCache.accountKey === accountKey &&
+    backendMasterResumeDataCache.resumeId === resumeId &&
+    backendMasterResumeDataCache.promise
+  ) {
+    return backendMasterResumeDataCache.promise;
+  }
+
+  const promise = fetchResumeById(resumeId)
+    .then((resumePayload) => {
+      setCachedBackendMasterResumeData(accountKey, resumeId, resumePayload);
+      logInfo("Background", "Backend Master Resume prefetched.", {
+        resumeId,
+      });
+      return resumePayload;
+    })
+    .catch((error) => {
+      backendMasterResumeDataCache = {
+        ...backendMasterResumeDataCache,
+        promise: null,
+      };
+      logWarn("Background", "Failed to prefetch backend Master Resume.", {
+        resumeId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+
+  backendMasterResumeDataCache = {
+    ...backendMasterResumeDataCache,
+    accountKey,
+    resumeId,
+    promise,
+  };
+  return promise;
 }
 
 async function resolveBackendMasterResumeForAccount({
@@ -562,7 +674,7 @@ async function finalizeCanceledRun(run, options = {}) {
 
   const sourceUrl = getCurrentRunSourceUrl(extensionState);
   if (sourceUrl) {
-    await upsertHistoryEntry({
+    const historyEntry = {
       jobKey: sourceUrl,
       sourceUrl,
       title:
@@ -625,7 +737,9 @@ async function finalizeCanceledRun(run, options = {}) {
       prompt3Feedback: extensionState?.prompt3Feedback ?? null,
       cancelReason,
       cancelPhase,
-    });
+    };
+    await upsertHistoryEntry(historyEntry);
+    await syncExtensionRun(historyEntry);
   }
 
   await clearPendingExtensionAction();
@@ -1304,6 +1418,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true };
 
       case "SAVE_LLM_SETTINGS":
+        {
+          const currentAssets = await getUserAssets();
+          const candidateSettings = updateLlmSettings(
+            currentAssets.llmSettings,
+            message.payload?.activeProfileId,
+            message.payload?.profileUpdates,
+          );
+          const candidateProfile = getActiveLlmProfile(candidateSettings);
+          const validation = await validateApiProfile(candidateProfile);
+          if (!validation.ok) {
+            return {
+              ok: false,
+              error:
+                validation.error ||
+                "AI API error. Check your API provider setup and try again.",
+            };
+          }
+        }
         const llmSettings = await saveLlmSettings(
           message.payload?.activeProfileId,
           message.payload?.profileUpdates,
@@ -1377,6 +1509,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const runId =
           message.payload?.runId ||
           crypto.randomUUID();
+        const activeRunConflict = getActiveRunConflict(runId);
+        if (activeRunConflict) {
+          return {
+            ok: false,
+            blockedByActiveRun: true,
+            runId: activeRunConflict.runId,
+            error:
+              "A tailoring run is already in progress. Cancel it before starting another.",
+          };
+        }
         const pendingAction = {
           runId,
           type: "generate_active_job",

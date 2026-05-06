@@ -254,6 +254,58 @@ export async function syncExtensionPromptDefaults(manifest = {}) {
   };
 }
 
+export async function saveExtensionRun(runSummary, requestOptions = {}) {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/extension/runs`;
+  logInfo("ExtensionRunApi", "Saving extension run summary.", {
+    endpoint,
+    runId: runSummary?.run_id ?? null,
+    status: runSummary?.status ?? null,
+  });
+
+  let response;
+  try {
+    response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
+      method: "POST",
+      headers: {
+        ...(requestOptions.headers || {}),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(runSummary),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logWarn("ExtensionRunApi", "Extension run save failed before response.", {
+      endpoint,
+      runId: runSummary?.run_id ?? null,
+      error: message,
+    });
+    throw new Error(
+      `Extension run save failed before response at ${endpoint}: ${message}`,
+    );
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    logWarn("ExtensionRunApi", "Extension run save returned a non-OK status.", {
+      endpoint,
+      runId: runSummary?.run_id ?? null,
+      status: response.status,
+      body: text,
+    });
+    throw new Error(
+      `Failed to save extension run (status ${response.status}): ${text}`,
+    );
+  }
+
+  const payload = await response.json().catch(() => null);
+  logInfo("ExtensionRunApi", "Extension run summary saved.", {
+    runId: runSummary?.run_id ?? null,
+  });
+  return payload;
+}
+
 export async function listResumes(includeMaster = false, requestOptions = {}) {
   const { apiBase } = await getRuntimeEndpoints();
   const endpoint = `${apiBase}/resumes/list${includeMaster ? "?include_master=true" : ""}`;
