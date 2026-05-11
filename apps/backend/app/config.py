@@ -131,6 +131,14 @@ class Settings(BaseSettings):
         default="",
         alias="LLM_CONFIG_ENCRYPTION_KEY",
     )
+    pii_encryption_key: str = Field(
+        default="",
+        alias="PII_ENCRYPTION_KEY",
+    )
+    pii_hash_key: str = Field(
+        default="",
+        alias="PII_HASH_KEY",
+    )
     log_llm: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "WARNING"
 
     @field_validator("llm_provider", mode="before")

@@ -25,6 +25,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import settings
+from app.pii_crypto import (
+    decrypt_json,
+    decrypt_text,
+    encrypt_json,
+    encrypt_text,
+    hash_lookup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +48,11 @@ class UserModel(Base):
     __tablename__ = "users"
 
     user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
-    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
+    email_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
     picture: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -175,8 +185,36 @@ class Database:
 
     def init_schema(self) -> None:
         Base.metadata.create_all(self._engine)
+        self._ensure_user_schema()
         self._ensure_resume_schema()
         self._ensure_extension_runs_schema()
+
+    def _ensure_user_schema(self) -> None:
+        """Apply additive schema updates for encrypted user lookup."""
+        inspector = inspect(self._engine)
+        if "users" not in inspector.get_table_names():
+            return
+
+        user_columns = inspector.get_columns("users")
+        columns = {column["name"] for column in user_columns}
+        column_types = {
+            column["name"]: str(column["type"]).upper()
+            for column in user_columns
+        }
+        with self._engine.begin() as connection:
+            if "CHAR" in column_types.get("email", ""):
+                connection.execute(text("ALTER TABLE users ALTER COLUMN email TYPE TEXT"))
+            if "CHAR" in column_types.get("name", ""):
+                connection.execute(text("ALTER TABLE users ALTER COLUMN name TYPE TEXT"))
+            if "email_hash" not in columns:
+                connection.execute(text("ALTER TABLE users ADD COLUMN email_hash VARCHAR(64)"))
+                logger.info("Added users.email_hash column")
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "ix_users_email_hash ON users (email_hash)"
+                )
+            )
 
     def _ensure_resume_schema(self) -> None:
         """Apply lightweight additive schema updates for local/dev databases."""
@@ -231,9 +269,9 @@ class Database:
     def _serialize_user(self, user: UserModel) -> dict[str, Any]:
         return {
             "user_id": user.user_id,
-            "email": user.email,
-            "name": user.name,
-            "picture": user.picture,
+            "email": decrypt_text(user.email) or "",
+            "name": decrypt_text(user.name),
+            "picture": decrypt_text(user.picture),
             "created_at": self._to_iso(user.created_at),
             "updated_at": self._to_iso(user.updated_at),
         }
@@ -253,20 +291,20 @@ class Database:
         return {
             "resume_id": resume.resume_id,
             "user_id": resume.user_id,
-            "content": resume.content,
+            "content": decrypt_text(resume.content) or "",
             "content_type": resume.content_type,
-            "filename": resume.filename,
+            "filename": decrypt_text(resume.filename),
             "is_master": resume.is_master,
             "parent_id": resume.parent_id,
-            "processed_data": resume.processed_data,
+            "processed_data": decrypt_json(resume.processed_data),
             "processing_status": resume.processing_status,
-            "cover_letter": resume.cover_letter,
-            "outreach_message": resume.outreach_message,
-            "generation_feedback": resume.generation_feedback,
-            "generation_artifacts": resume.generation_artifacts,
+            "cover_letter": decrypt_text(resume.cover_letter),
+            "outreach_message": decrypt_text(resume.outreach_message),
+            "generation_feedback": decrypt_json(resume.generation_feedback),
+            "generation_artifacts": decrypt_json(resume.generation_artifacts),
             "template_settings": resume.template_settings,
-            "title": resume.title,
-            "original_markdown": resume.original_markdown,
+            "title": decrypt_text(resume.title),
+            "original_markdown": decrypt_text(resume.original_markdown),
             "created_at": self._to_iso(resume.created_at),
             "updated_at": self._to_iso(resume.updated_at),
         }
@@ -275,7 +313,7 @@ class Database:
         return {
             "job_id": job.job_id,
             "user_id": job.user_id,
-            "content": job.content,
+            "content": decrypt_text(job.content) or "",
             "resume_id": job.resume_id,
             "created_at": self._to_iso(job.created_at),
             "updated_at": self._to_iso(job.updated_at),
@@ -288,7 +326,7 @@ class Database:
             "original_resume_id": improvement.original_resume_id,
             "tailored_resume_id": improvement.tailored_resume_id,
             "job_id": improvement.job_id,
-            "improvements": improvement.improvements,
+            "improvements": decrypt_json(improvement.improvements),
             "created_at": self._to_iso(improvement.created_at),
         }
 
@@ -297,19 +335,19 @@ class Database:
             "user_id": run.user_id,
             "run_id": run.run_id,
             "status": run.status,
-            "title": run.title,
-            "company": run.company,
-            "location": run.location,
-            "source_url": run.source_url,
+            "title": decrypt_text(run.title),
+            "company": decrypt_text(run.company),
+            "location": decrypt_text(run.location),
+            "source_url": decrypt_text(run.source_url),
             "job_source": run.job_source,
             "resume_id": run.resume_id,
-            "preview_url": run.preview_url,
+            "preview_url": decrypt_text(run.preview_url),
             "provider_id": run.provider_id,
             "provider_label": run.provider_label,
             "generated_at": self._to_iso(run.generated_at),
             "total_duration_ms": run.total_duration_ms,
-            "summary": run.summary,
-            "prompt_artifacts": run.prompt_artifacts,
+            "summary": decrypt_json(run.summary),
+            "prompt_artifacts": decrypt_json(run.prompt_artifacts),
             "created_at": self._to_iso(run.created_at),
             "updated_at": self._to_iso(run.updated_at),
         }
@@ -322,25 +360,35 @@ class Database:
         name: str | None = None,
         picture: str | None = None,
     ) -> dict[str, Any]:
+        normalized_email = email.strip().lower()
+        email_hash = hash_lookup(normalized_email)
         with self._session() as session:
             user = session.get(UserModel, user_id)
+            if user is None:
+                user = (
+                    session.query(UserModel)
+                    .filter(UserModel.email_hash == email_hash)
+                    .first()
+                )
             if user is None:
                 user = session.query(UserModel).filter(UserModel.email == email).first()
             if user is None:
                 user = UserModel(
                     user_id=user_id,
-                    email=email,
-                    name=name,
-                    picture=picture,
+                    email=encrypt_text(email) or "",
+                    email_hash=email_hash,
+                    name=encrypt_text(name),
+                    picture=encrypt_text(picture),
                 )
                 session.add(user)
             else:
                 # Keep the existing stored user_id when this email has already been
                 # seen before. Auth.js can hand us a different transient subject for
                 # the same Google account, but app data ownership must remain stable.
-                user.email = email
-                user.name = name
-                user.picture = picture
+                user.email = encrypt_text(email) or ""
+                user.email_hash = email_hash
+                user.name = encrypt_text(name)
+                user.picture = encrypt_text(picture)
                 user.updated_at = _utcnow()
             session.commit()
             session.refresh(user)
@@ -414,20 +462,20 @@ class Database:
             resume = ResumeModel(
                 resume_id=str(uuid4()),
                 user_id=resolved_user_id,
-                content=content,
+                content=encrypt_text(content) or "",
                 content_type=content_type,
-                filename=filename,
+                filename=encrypt_text(filename),
                 is_master=is_master,
                 parent_id=parent_id,
-                processed_data=processed_data,
+                processed_data=encrypt_json(processed_data),
                 processing_status=processing_status,
-                cover_letter=cover_letter,
-                outreach_message=outreach_message,
-                generation_feedback=generation_feedback,
-                generation_artifacts=generation_artifacts,
+                cover_letter=encrypt_text(cover_letter),
+                outreach_message=encrypt_text(outreach_message),
+                generation_feedback=encrypt_json(generation_feedback),
+                generation_artifacts=encrypt_json(generation_artifacts),
                 template_settings=template_settings,
-                title=title,
-                original_markdown=original_markdown,
+                title=encrypt_text(title),
+                original_markdown=encrypt_text(original_markdown),
             )
             session.add(resume)
             session.commit()
@@ -508,6 +556,21 @@ class Database:
 
             for key, value in updates.items():
                 if hasattr(resume, key):
+                    if key in {
+                        "content",
+                        "filename",
+                        "cover_letter",
+                        "outreach_message",
+                        "title",
+                        "original_markdown",
+                    }:
+                        value = encrypt_text(value)
+                    elif key in {
+                        "processed_data",
+                        "generation_feedback",
+                        "generation_artifacts",
+                    }:
+                        value = encrypt_json(value)
                     setattr(resume, key, value)
             resume.updated_at = _utcnow()
             session.commit()
@@ -564,7 +627,7 @@ class Database:
             job = JobModel(
                 job_id=str(uuid4()),
                 user_id=resolved_user_id,
-                content=content,
+                content=encrypt_text(content) or "",
                 resume_id=resume_id,
             )
             session.add(job)
@@ -592,6 +655,8 @@ class Database:
                 return None
             for key, value in updates.items():
                 if hasattr(job, key):
+                    if key == "content":
+                        value = encrypt_text(value)
                     setattr(job, key, value)
             job.updated_at = _utcnow()
             session.commit()
@@ -614,7 +679,7 @@ class Database:
                 original_resume_id=original_resume_id,
                 tailored_resume_id=tailored_resume_id,
                 job_id=job_id,
-                improvements=improvements,
+                improvements=encrypt_json(improvements),
             )
             session.add(improvement)
             session.commit()
@@ -669,19 +734,19 @@ class Database:
                 session.add(run)
 
             run.status = status
-            run.title = title
-            run.company = company
-            run.location = location
-            run.source_url = source_url
+            run.title = encrypt_text(title)
+            run.company = encrypt_text(company)
+            run.location = encrypt_text(location)
+            run.source_url = encrypt_text(source_url)
             run.job_source = job_source
             run.resume_id = resume_id
-            run.preview_url = preview_url
+            run.preview_url = encrypt_text(preview_url)
             run.provider_id = provider_id
             run.provider_label = provider_label
             run.generated_at = generated_at
             run.total_duration_ms = total_duration_ms
-            run.summary = summary or {}
-            run.prompt_artifacts = prompt_artifacts or {}
+            run.summary = encrypt_json(summary or {})
+            run.prompt_artifacts = encrypt_json(prompt_artifacts or {})
             run.updated_at = _utcnow()
 
             session.commit()
