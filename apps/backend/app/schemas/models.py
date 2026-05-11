@@ -559,6 +559,7 @@ class ResumeSummary(BaseModel):
     created_at: str
     updated_at: str
     title: str | None = None
+    job_source_url: str | None = None
 
 
 class ResumeListResponse(BaseModel):

@@ -102,12 +102,16 @@ class TestListResumes:
             {"resume_id": "master", "is_master": True, "created_at": "2026-01-01", "updated_at": "2026-01-01"},
             {"resume_id": "tailored-1", "is_master": False, "created_at": "2026-01-02", "updated_at": "2026-01-02"},
         ]
+        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {
+            "tailored-1": "https://www.linkedin.com/jobs/view/123/"
+        }
         async with client:
             resp = await client.get("/api/v1/resumes/list")
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert len(data) == 1
         assert data[0]["resume_id"] == "tailored-1"
+        assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/123/"
 
     @patch("app.routers.resumes.db")
     async def test_list_includes_master_when_requested(self, mock_db, client):
@@ -115,11 +119,16 @@ class TestListResumes:
             {"resume_id": "master", "is_master": True, "created_at": "2026-01-01", "updated_at": "2026-01-01"},
             {"resume_id": "tailored-1", "is_master": False, "created_at": "2026-01-02", "updated_at": "2026-01-02"},
         ]
+        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {
+            "tailored-1": "https://www.linkedin.com/jobs/view/123/"
+        }
         async with client:
             resp = await client.get("/api/v1/resumes/list", params={"include_master": True})
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert len(data) == 2
+        assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/123/"
+        assert data[1]["job_source_url"] is None
 
 
 class TestDownloadResumePdf:

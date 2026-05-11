@@ -673,12 +673,20 @@ export default function DashboardPage() {
                   const title = getResumeTitle(resume);
                   const color = cardPalette[hashTitle(title) % cardPalette.length];
                   return (
-                    <button
+                    <div
                       key={resume.resume_id}
-                      type="button"
                       onClick={() => router.push(`/resumes/${resume.resume_id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          router.push(`/resumes/${resume.resume_id}`);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
                       className={cn(
                         'flex w-full items-center gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         index > 0 && 'border-t border-border'
                       )}
                     >
@@ -695,6 +703,17 @@ export default function DashboardPage() {
                             date: formatDate(resume.updated_at || resume.created_at),
                           })}
                         </p>
+                        {resume.job_source_url ? (
+                          <a
+                            href={resume.job_source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="mt-1 inline-flex font-mono text-[10px] uppercase tracking-[0.18em] text-blue-700 underline underline-offset-2"
+                          >
+                            Open JD
+                          </a>
+                        ) : null}
                       </div>
                       <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
                         {renderStatusPill(resume.processing_status)}
@@ -702,7 +721,7 @@ export default function DashboardPage() {
                           <ChevronRight className="h-3 w-3" />
                         </span>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>

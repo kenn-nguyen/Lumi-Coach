@@ -44,7 +44,6 @@ import {
   getUserAssets,
   setExtensionState,
   setStoryboardAsset,
-  upsertHistoryEntry,
 } from "./storage.js";
 import { alignSectionMetaToSourceResume } from "./resume-structure.js";
 import { captureExtensionEvent } from "./analytics.js";
@@ -72,20 +71,6 @@ export async function saveStoryboardAsset(payload) {
 
 async function upsertAndSyncHistoryEntry(entry) {
   await syncExtensionRun(entry);
-  try {
-    await upsertHistoryEntry(entry);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logWarn(
-      "ExtensionHistory",
-      "Failed to persist local history entry after backend sync.",
-      {
-        runId: entry?.runId ?? null,
-        status: entry?.status ?? null,
-        error: message,
-      },
-    );
-  }
 }
 
 function createCancelHelpers(runId) {

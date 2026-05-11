@@ -994,13 +994,21 @@ async def clone_resume_endpoint(resume_id: str) -> ResumeFetchResponse:
 
 
 @router.get("/list", response_model=ResumeListResponse)
-async def list_resumes(include_master: bool = Query(False)) -> ResumeListResponse:
+async def list_resumes(
+    include_master: bool = Query(False),
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> ResumeListResponse:
     """List resumes, optionally including the master resume."""
-    resumes = db.list_resumes()
+    user_id = _resolve_current_user_id(current_user)
+    resumes = db.list_resumes(user_id=user_id)
     if not include_master:
         resumes = [resume for resume in resumes if not resume.get("is_master", False)]
 
     resumes.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    source_urls_by_resume_id = db.get_extension_run_source_urls_by_resume_ids(
+        [resume["resume_id"] for resume in resumes if not resume.get("is_master", False)],
+        user_id=user_id,
+    )
 
     summaries = [
         ResumeSummary(
@@ -1012,6 +1020,7 @@ async def list_resumes(include_master: bool = Query(False)) -> ResumeListRespons
             created_at=resume.get("created_at", ""),
             updated_at=resume.get("updated_at", ""),
             title=resume.get("title"),
+            job_source_url=source_urls_by_resume_id.get(resume["resume_id"]),
         )
         for resume in resumes
     ]

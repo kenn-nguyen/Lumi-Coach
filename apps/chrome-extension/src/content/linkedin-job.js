@@ -6,7 +6,6 @@ const BOARD_ID = "resume-matcher-board";
 const BOARD_WEBSITE_ID = "resume-matcher-board-website";
 const BOARD_TITLE_ID = "resume-matcher-board-title-link";
 const BOARD_HOME_ID = "resume-matcher-board-home";
-const BOARD_RUNS_ID = "resume-matcher-board-runs";
 const BOARD_SETTINGS_ID = "resume-matcher-board-settings";
 const BOARD_MINIMIZE_ID = "resume-matcher-board-minimize";
 const RUN_VIEW_ID = "resume-matcher-run-view";
@@ -5499,7 +5498,6 @@ function isSettingsNavigationLocked() {
 }
 
 function canOpenBoardView(view) {
-  if (view === "history") return !isHistoryNavigationLocked();
   if (view === "settings") return !isSettingsNavigationLocked();
   return true;
 }
@@ -7167,25 +7165,12 @@ function syncRunningInteractivity() {
 function renderViews() {
   state.currentView = resolveAllowedBoardView(state.currentView);
   const runView = $(RUN_VIEW_ID);
-  const historyView = $(HISTORY_VIEW_ID);
   const settingsView = $(SETTINGS_VIEW_ID);
-  const historyLocked = isHistoryNavigationLocked();
   const settingsLocked = isSettingsNavigationLocked();
   runView?.classList.toggle("is-active", state.currentView === "run");
-  historyView?.classList.toggle("is-active", state.currentView === "history");
   settingsView?.classList.toggle("is-active", state.currentView === "settings");
   $(BOARD_HOME_ID)?.classList.toggle("is-active", state.currentView === "run");
-  const runsButton = $(BOARD_RUNS_ID);
   const settingsButton = $(BOARD_SETTINGS_ID);
-  runsButton?.classList.toggle("is-active", state.currentView === "history");
-  if (runsButton instanceof HTMLButtonElement) {
-    runsButton.disabled = historyLocked;
-    runsButton.title =
-      state.connectionState === "connected"
-        ? "Runs"
-        : "Connect to view runs";
-    runsButton.setAttribute("aria-label", runsButton.title);
-  }
   settingsButton?.classList.toggle(
     "is-active",
     state.currentView === "settings",
@@ -7217,7 +7202,6 @@ function render() {
   renderRootFlags();
   renderViews();
   renderRunView();
-  renderHistory();
   renderSettings();
   syncRunningInteractivity();
 }
@@ -7281,7 +7265,6 @@ async function refreshBoardData(options = {}) {
       preservedBackendMaster && nextSetupState?.state === "missing_resume"
         ? state.setupState
         : nextSetupState;
-    state.history = response.history ?? [];
     state.extensionState = response.state ?? null;
     setRouteMode(response.route?.mode || "hidden");
     state.connectionState =
@@ -7336,7 +7319,6 @@ async function reconcileConnectionStatus(options = {}) {
       preservedBackendMaster && nextSetupState?.state === "missing_resume"
         ? state.setupState
         : nextSetupState;
-    state.history = response.history ?? state.history;
     state.extensionState = response.state ?? state.extensionState;
     setRouteMode(response.route?.mode || state.routeMode);
     state.connectionState =
@@ -8150,7 +8132,6 @@ function ensureRoot() {
         </div>
         <div class="resume-matcher-board__header-actions">
           <button id="${BOARD_HOME_ID}" class="resume-matcher-icon-button" type="button" aria-label="Run" title="Run">${icon("aiStar")}</button>
-          <button id="${BOARD_RUNS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Runs" title="Runs">${icon("history")}</button>
           <button id="${BOARD_SETTINGS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Settings" title="Settings">${icon("settings")}</button>
           <button id="${BOARD_MINIMIZE_ID}" class="resume-matcher-icon-button" type="button" aria-label="Minimize" title="Minimize">${icon("minimize")}</button>
         </div>
@@ -8185,28 +8166,6 @@ function ensureRoot() {
                 <button id="${RUN_CANCEL_ID}" type="button" class="resume-matcher-run-cancel">Cancel run</button>
               </div>
               <div id="${RUN_STATUS_ACTIONS_ID}" class="resume-matcher-button-row"></div>
-            </div>
-          </article>
-        </section>
-        <section id="${HISTORY_VIEW_ID}" class="resume-matcher-view">
-          <article class="resume-matcher-section">
-            <div class="resume-matcher-history-toolbar">
-              <div class="resume-matcher-history-search">
-                <input id="${HISTORY_SEARCH_ID}" type="search" placeholder="Search runs" aria-label="Search runs" />
-                <div id="${HISTORY_FILTER_ID}" class="resume-matcher-history-filter" data-open="false">
-                  <button type="button" class="resume-matcher-history-filter__button" aria-label="Sort runs" title="Sort runs">${icon("filter")}</button>
-                  <div id="${HISTORY_FILTER_MENU_ID}" class="resume-matcher-history-filter__menu" role="menu" aria-label="Sort runs">
-                    <button id="${HISTORY_SORT_DESC_ID}" type="button" class="resume-matcher-history-filter__option" data-history-sort="desc">Newest first</button>
-                    <button id="${HISTORY_SORT_ASC_ID}" type="button" class="resume-matcher-history-filter__option" data-history-sort="asc">Oldest first</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div id="${HISTORY_LIST_ID}" class="resume-matcher-history-list"></div>
-            <div class="resume-matcher-history-pagination">
-              <button id="${HISTORY_PREV_ID}" type="button" aria-label="Previous page" title="Previous page">${icon("chevronLeft")}</button>
-              <span id="${HISTORY_PAGE_ID}">0/0</span>
-              <button id="${HISTORY_NEXT_ID}" type="button" aria-label="Next page" title="Next page">${icon("chevronRight")}</button>
             </div>
           </article>
         </section>
@@ -8330,7 +8289,6 @@ function ensureRoot() {
                     </div>
                   </div>
                   <div class="resume-matcher-advanced-actions resume-matcher-field--full">
-                    <button id="resume-matcher-open-history-web" type="button" class="resume-matcher-button">Open runs</button>
                     <button id="${EXPORT_DATA_ID}" type="button" class="resume-matcher-button">Export run data</button>
                     <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
                     <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local storage</button>
@@ -8376,25 +8334,6 @@ function ensureRoot() {
   $(BOARD_HOME_ID)?.addEventListener("click", () => {
     openBoard("run", { skipConnectionCheck: true });
     activateRunInspection();
-  });
-  $(BOARD_RUNS_ID)?.addEventListener("click", async () => {
-    if (isHistoryNavigationLocked()) {
-      return;
-    }
-    state.historyConnecting = state.connectionState !== "connected";
-    openBoard("history", { skipConnectionCheck: true });
-    if (!state.historyConnecting) {
-      return;
-    }
-    const connected = await reconcileConnectionStatus({
-      refreshBackendMaster: false,
-      backendMasterMaxAgeMs: BACKEND_MASTER_REFRESH_MAX_AGE_MS,
-    });
-    state.historyConnecting = false;
-    if (connected) {
-      state.currentView = "history";
-    }
-    render();
   });
   $(BOARD_SETTINGS_ID)?.addEventListener("click", () => {
     if (isSettingsNavigationLocked()) {
@@ -8632,9 +8571,6 @@ function ensureRoot() {
         error instanceof Error ? error.message : "Unable to export run data.",
       );
     }
-  });
-  $("resume-matcher-open-history-web")?.addEventListener("click", () => {
-    openBoard("history");
   });
   root.addEventListener("click", async (event) => {
     const target = event.target;

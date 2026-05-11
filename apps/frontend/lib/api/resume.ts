@@ -139,6 +139,7 @@ export interface ResumeListItem {
   created_at: string;
   updated_at: string;
   title?: string | null;
+  job_source_url?: string | null;
   // Optional lightweight snippet of associated job description (populated client-side)
   jobSnippet?: string;
 }

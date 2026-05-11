@@ -16,10 +16,8 @@ import { isUserEditablePromptTemplateName } from "./prompt-defaults.js";
 const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
 const ONBOARDING_STEPS = ["intro", "sign_in", "provider", "assets", "done"];
 const ACCOUNT_STORAGE_VERSION = 1;
-const MAX_HISTORY_ENTRIES = 100;
 const STORAGE_LOCAL_QUOTA_BYTES = 10_485_760;
 const STORAGE_SOFT_QUOTA_BYTES = Math.floor(STORAGE_LOCAL_QUOTA_BYTES * 0.8);
-const STORAGE_EMERGENCY_HISTORY_ENTRIES = 25;
 const LEGACY_ACCOUNT_SCOPED_KEYS = [
   STORAGE_KEYS.masterResumeContextAsset,
   STORAGE_KEYS.storyboardAsset,
@@ -36,7 +34,6 @@ const LEGACY_ACCOUNT_SCOPED_KEYS = [
   STORAGE_KEYS.apifyFallbackSettings,
   STORAGE_KEYS.extensionPendingAction,
   STORAGE_KEYS.extensionSession,
-  STORAGE_KEYS.historyEntries,
   STORAGE_KEYS.lastError,
 ];
 const ACCOUNT_SETTINGS_SCOPED_KEYS = [
@@ -302,120 +299,6 @@ function sanitizeExtensionStateForStorage(extensionState) {
   return next;
 }
 
-function sanitizeHistoryEntryForStorage(entry) {
-  if (!entry || typeof entry !== "object") {
-    return null;
-  }
-
-  const next = {};
-  if (typeof entry.jobKey === "string" && entry.jobKey) {
-    next.jobKey = entry.jobKey;
-  }
-  if (typeof entry.sourceUrl === "string" && entry.sourceUrl) {
-    next.sourceUrl = entry.sourceUrl;
-  }
-  if (typeof entry.title === "string" && entry.title) {
-    next.title = entry.title;
-  }
-  if (typeof entry.company === "string" && entry.company) {
-    next.company = entry.company;
-  }
-  if (typeof entry.location === "string" && entry.location) {
-    next.location = entry.location;
-  }
-  if (typeof entry.datePosted === "string" && entry.datePosted) {
-    next.datePosted = entry.datePosted;
-  }
-  if (typeof entry.generatedAt === "string" && entry.generatedAt) {
-    next.generatedAt = entry.generatedAt;
-  }
-  if (typeof entry.resumeId === "string" && entry.resumeId) {
-    next.resumeId = entry.resumeId;
-  }
-  if (typeof entry.previewUrl === "string" && entry.previewUrl) {
-    next.previewUrl = entry.previewUrl;
-  }
-  if (typeof entry.status === "string" && entry.status) {
-    next.status = entry.status;
-  }
-  if (typeof entry.runId === "string" && entry.runId) {
-    next.runId = entry.runId;
-  }
-  if (typeof entry.providerId === "string" && entry.providerId) {
-    next.providerId = entry.providerId;
-  }
-  if (typeof entry.providerLabel === "string" && entry.providerLabel) {
-    next.providerLabel = entry.providerLabel;
-  }
-  if (typeof entry.providerVendor === "string" && entry.providerVendor) {
-    next.providerVendor = entry.providerVendor;
-  }
-  if (typeof entry.providerMode === "string" && entry.providerMode) {
-    next.providerMode = entry.providerMode;
-  }
-  if (typeof entry.jobSource === "string" && entry.jobSource) {
-    next.jobSource = entry.jobSource;
-  }
-  if (typeof entry.jobReadiness === "string" && entry.jobReadiness) {
-    next.jobReadiness = entry.jobReadiness;
-  }
-  if (
-    typeof entry.descriptionProvenance === "string" &&
-    entry.descriptionProvenance
-  ) {
-    next.descriptionProvenance = entry.descriptionProvenance;
-  }
-  if (typeof entry.descriptionLength === "number") {
-    next.descriptionLength = entry.descriptionLength;
-  }
-  if (typeof entry.scrapeConfidence === "number") {
-    next.scrapeConfidence = entry.scrapeConfidence;
-  }
-  if (typeof entry.manualJobInputUsed === "boolean") {
-    next.manualJobInputUsed = entry.manualJobInputUsed;
-  }
-  if (typeof entry.customContextProvided === "boolean") {
-    next.customContextProvided = entry.customContextProvided;
-  }
-  if (typeof entry.customContextLength === "number") {
-    next.customContextLength = entry.customContextLength;
-  }
-  if (typeof entry.storyboardPresent === "boolean") {
-    next.storyboardPresent = entry.storyboardPresent;
-  }
-  if (typeof entry.prompt1DurationMs === "number") {
-    next.prompt1DurationMs = entry.prompt1DurationMs;
-  }
-  if (typeof entry.prompt2DurationMs === "number") {
-    next.prompt2DurationMs = entry.prompt2DurationMs;
-  }
-  if (typeof entry.prompt3DurationMs === "number") {
-    next.prompt3DurationMs = entry.prompt3DurationMs;
-  }
-  if (typeof entry.patchDurationMs === "number") {
-    next.patchDurationMs = entry.patchDurationMs;
-  }
-  if (typeof entry.totalDurationMs === "number") {
-    next.totalDurationMs = entry.totalDurationMs;
-  }
-  if (typeof entry.prompt3ValidationErrorCount === "number") {
-    next.prompt3ValidationErrorCount = entry.prompt3ValidationErrorCount;
-  }
-
-  return next;
-}
-
-function sanitizeHistoryEntriesForStorage(entries, limit = MAX_HISTORY_ENTRIES) {
-  if (!Array.isArray(entries)) {
-    return [];
-  }
-
-  return entries
-    .map((entry) => sanitizeHistoryEntryForStorage(entry))
-    .filter((entry) => entry && entry.jobKey)
-    .slice(0, limit);
-}
-
 function isQuotaExceededError(error) {
   const message = error instanceof Error ? error.message : String(error || "");
   return /quota/i.test(message);
@@ -513,9 +396,6 @@ function buildScopedStorageEntries(accountKey, values) {
         if (storageKey === STORAGE_KEYS.extensionSession) {
           return [storageKey, sanitizeExtensionStateForStorage(value)];
         }
-        if (storageKey === STORAGE_KEYS.historyEntries) {
-          return [storageKey, sanitizeHistoryEntriesForStorage(value)];
-        }
         return [storageKey, value];
       })
       .map(([storageKey, value]) => [
@@ -528,9 +408,6 @@ function buildScopedStorageEntries(accountKey, values) {
 function normalizeScopedStoredValue(storageKey, value) {
   if (storageKey === STORAGE_KEYS.extensionSession) {
     return sanitizeExtensionStateForStorage(value);
-  }
-  if (storageKey === STORAGE_KEYS.historyEntries) {
-    return sanitizeHistoryEntriesForStorage(value);
   }
   return value;
 }
@@ -660,23 +537,15 @@ async function maybeCompactScopedStorage(accountKey, reason = "storage") {
     return { compacted: false, bytesInUse: usageBytes };
   }
 
-  const compactKeys = [
-    STORAGE_KEYS.extensionSession,
-    STORAGE_KEYS.historyEntries,
-  ];
+  const compactKeys = [STORAGE_KEYS.extensionSession];
   const current = await getScopedStorageValues(compactKeys, accountKey);
   const compactedSession = sanitizeExtensionStateForStorage(
     current[STORAGE_KEYS.extensionSession],
-  );
-  const compactedHistory = sanitizeHistoryEntriesForStorage(
-    current[STORAGE_KEYS.historyEntries],
-    STORAGE_EMERGENCY_HISTORY_ENTRIES,
   );
 
   await storageSet(
     buildScopedStorageEntries(accountKey, {
       [STORAGE_KEYS.extensionSession]: compactedSession,
-      [STORAGE_KEYS.historyEntries]: compactedHistory,
     }),
   );
 
@@ -685,7 +554,6 @@ async function maybeCompactScopedStorage(accountKey, reason = "storage") {
     reason,
     bytesBefore: usageBytes,
     bytesAfter: nextBytes,
-    historyEntries: compactedHistory.length,
   });
   return { compacted: true, bytesInUse: nextBytes };
 }
@@ -1243,36 +1111,6 @@ export async function setExtensionState(nextState) {
 export async function setLastError(message) {
   await setScopedStorageValues({ [STORAGE_KEYS.lastError]: message });
   await setExtensionState({ status: SESSION_STATUS.error });
-}
-
-export async function getHistoryEntries() {
-  const data = await getScopedStorageValues([STORAGE_KEYS.historyEntries]);
-  return data[STORAGE_KEYS.historyEntries] ?? [];
-}
-
-export async function upsertHistoryEntry(entry) {
-  const current = await getHistoryEntries();
-  const next = [
-    entry,
-    ...current.filter((item) => item.jobKey !== entry.jobKey),
-  ].slice(0, MAX_HISTORY_ENTRIES);
-  await setScopedStorageValues({ [STORAGE_KEYS.historyEntries]: next });
-  return next;
-}
-
-export async function removeHistoryEntryByRunId(runId) {
-  const normalizedRunId = String(runId || "").trim();
-  if (!normalizedRunId) {
-    throw new Error("Missing run id for history deletion.");
-  }
-
-  const current = await getHistoryEntries();
-  const next = current.filter((entry) => entry?.runId !== normalizedRunId);
-  await setScopedStorageValues({ [STORAGE_KEYS.historyEntries]: next });
-  return {
-    removed: next.length !== current.length,
-    history: next,
-  };
 }
 
 export async function getActiveAccountKey() {

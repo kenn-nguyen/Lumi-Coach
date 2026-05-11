@@ -7,7 +7,6 @@ import { captureExtensionEvent } from "./runtime/analytics.js";
 import { logError, logInfo, logWarn, setLogRelayTabId } from "./runtime/log.js";
 import { clearPromptTemplateCache } from "./runtime/prompt-loader.js";
 import {
-  deleteResume,
   fetchResumeById,
   fetchExtensionAccessToken,
   listResumes,
@@ -45,13 +44,11 @@ import {
   getActiveAccountKey,
   getExtensionAuth,
   getExtensionState,
-  getHistoryEntries,
   getOnboardingProgress,
   getUserAssets,
   getPendingExtensionAction,
   getServerPromptDefaults,
   hasValidExtensionAuth,
-  removeHistoryEntryByRunId,
   resetExtensionSettingsToDefault,
   applyServerPromptDefaultsSyncResult,
   saveApifyFallbackSettings,
@@ -68,7 +65,6 @@ import {
   savePromptTemplateProfileSelection,
   setStoryboardAsset,
   setPromptTemplateAsset,
-  upsertHistoryEntry,
 } from "./runtime/storage.js";
 import {
   getPackagedPromptArtifactText,
@@ -239,11 +235,10 @@ async function getRuntimeSnapshot({
   refreshBackendMaster = false,
   backendMasterMaxAgeMs = 0,
 } = {}) {
-  const [extensionState, assets, history, connection, onboardingProgress] =
+  const [extensionState, assets, connection, onboardingProgress] =
     await Promise.all([
       getExtensionState(),
       getUserAssets(),
-      getHistoryEntries(),
       getConnectionSnapshot({ trySync }),
       getOnboardingProgress(),
     ]);
@@ -269,7 +264,6 @@ async function getRuntimeSnapshot({
     ok: true,
     state: extensionState,
     assets: assetsWithBackendMaster,
-    history,
     route: classifyLinkedInJobsRoute(currentUrl),
     ...connection,
     setupState: getExtensionSetupState({
@@ -738,7 +732,6 @@ async function finalizeCanceledRun(run, options = {}) {
       cancelReason,
       cancelPhase,
     };
-    await upsertHistoryEntry(historyEntry);
     await syncExtensionRun(historyEntry);
   }
 
@@ -1383,35 +1376,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 : "Failed to delete prompt template.",
           };
         }
-
-      case "DELETE_HISTORY_ENTRY": {
-        const runId = String(message.payload?.runId || "").trim();
-        const resumeId = String(message.payload?.resumeId || "").trim();
-        if (!runId) {
-          return { ok: false, error: "Missing run id for history deletion." };
-        }
-
-        try {
-          if (resumeId) {
-            await deleteResume(resumeId);
-          }
-          const result = await removeHistoryEntryByRunId(runId);
-          return {
-            ok: true,
-            deletedBackendResume: Boolean(resumeId),
-            removedLocalHistory: result.removed,
-            history: result.history,
-          };
-        } catch (error) {
-          return {
-            ok: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to delete run history.",
-          };
-        }
-      }
 
       case "SAVE_CHATGPT_URL":
         await setChatGptTargetUrl(message.payload?.url);

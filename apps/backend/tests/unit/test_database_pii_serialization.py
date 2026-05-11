@@ -10,7 +10,7 @@ import pytest
 
 from app.config import settings
 from app.database import Database
-from app.pii_crypto import encrypt_json, encrypt_text
+from app.pii_crypto import decrypt_json, encrypt_json, encrypt_text
 
 
 @pytest.fixture(autouse=True)
@@ -136,3 +136,81 @@ def test_serialize_job_and_extension_run_decrypt_sensitive_fields() -> None:
     assert serialized_run["company"] == "Acme"
     assert serialized_run["summary"] == {"jd": "private jd"}
     assert serialized_run["prompt_artifacts"] == {"prompt1Input": "private input"}
+
+
+class _FakeExtensionRunQuery:
+    def __init__(self, runs: list[SimpleNamespace]) -> None:
+        self._runs = runs
+
+    def filter(self, *_args: object, **_kwargs: object) -> "_FakeExtensionRunQuery":
+        return self
+
+    def order_by(self, *_args: object, **_kwargs: object) -> "_FakeExtensionRunQuery":
+        return self
+
+    def all(self) -> list[SimpleNamespace]:
+        return self._runs
+
+
+class _FakeSession:
+    def __init__(self, runs: list[SimpleNamespace]) -> None:
+        self._runs = runs
+
+    def query(self, _model: object) -> _FakeExtensionRunQuery:
+        return _FakeExtensionRunQuery(self._runs)
+
+
+def test_prune_extension_run_prompt_artifacts_keeps_recent_runs_per_user() -> None:
+    db = _database_without_engine()
+    runs = [
+        SimpleNamespace(
+            user_id="user-1",
+            run_id="run-3",
+            title=encrypt_text("Newest"),
+            prompt_artifacts=encrypt_json({"prompt1": "keep-newest"}),
+        ),
+        SimpleNamespace(
+            user_id="user-1",
+            run_id="run-2",
+            title=encrypt_text("Middle"),
+            prompt_artifacts=encrypt_json({"prompt1": "keep-middle"}),
+        ),
+        SimpleNamespace(
+            user_id="user-1",
+            run_id="run-1",
+            title=encrypt_text("Oldest"),
+            prompt_artifacts=encrypt_json({"prompt1": "prune-oldest"}),
+        ),
+    ]
+
+    db._prune_extension_run_prompt_artifacts(
+        _FakeSession(runs),
+        user_id="user-1",
+        retain_count=2,
+    )
+
+    assert decrypt_json(runs[0].prompt_artifacts) == {"prompt1": "keep-newest"}
+    assert decrypt_json(runs[1].prompt_artifacts) == {"prompt1": "keep-middle"}
+    assert runs[2].prompt_artifacts == {}
+    assert db._serialize_extension_run(
+        SimpleNamespace(
+            user_id="user-1",
+            run_id="run-1",
+            status="generated",
+            title=runs[2].title,
+            company=None,
+            location=None,
+            source_url=None,
+            job_source=None,
+            resume_id=None,
+            preview_url=None,
+            provider_id=None,
+            provider_label=None,
+            generated_at=None,
+            total_duration_ms=None,
+            summary={},
+            prompt_artifacts=runs[2].prompt_artifacts,
+            created_at=None,
+            updated_at=None,
+        )
+    )["title"] == "Oldest"

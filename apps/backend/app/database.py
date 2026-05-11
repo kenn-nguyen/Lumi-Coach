@@ -34,6 +34,7 @@ from app.pii_crypto import (
 )
 
 logger = logging.getLogger(__name__)
+EXTENSION_RUN_PROMPT_ARTIFACT_RETENTION_COUNT = 100
 
 
 def _utcnow() -> datetime:
@@ -598,6 +599,62 @@ class Database:
             resumes = query.order_by(ResumeModel.updated_at.desc()).all()
             return [self._serialize_resume(resume) for resume in resumes]
 
+    def get_extension_run_source_urls_by_resume_ids(
+        self,
+        resume_ids: list[str],
+        user_id: str | None = None,
+    ) -> dict[str, str]:
+        resolved_user_id = self._resolve_user_scope(user_id)
+        normalized_resume_ids = [resume_id for resume_id in resume_ids if resume_id]
+        if not normalized_resume_ids:
+            return {}
+
+        with self._session() as session:
+            query = session.query(ExtensionRunModel).filter(
+                ExtensionRunModel.resume_id.in_(normalized_resume_ids)
+            )
+            if resolved_user_id is not None:
+                query = query.filter(ExtensionRunModel.user_id == resolved_user_id)
+            runs = query.order_by(
+                ExtensionRunModel.generated_at.desc(),
+                ExtensionRunModel.updated_at.desc(),
+            ).all()
+
+            source_urls: dict[str, str] = {}
+            for run in runs:
+                if not run.resume_id or run.resume_id in source_urls:
+                    continue
+                source_url = decrypt_text(run.source_url)
+                if source_url:
+                    source_urls[run.resume_id] = source_url
+            return source_urls
+
+    def _prune_extension_run_prompt_artifacts(
+        self,
+        session: Session,
+        *,
+        user_id: str,
+        retain_count: int = EXTENSION_RUN_PROMPT_ARTIFACT_RETENTION_COUNT,
+    ) -> None:
+        if retain_count < 0:
+            retain_count = 0
+
+        runs = (
+            session.query(ExtensionRunModel)
+            .filter(ExtensionRunModel.user_id == user_id)
+            .order_by(
+                ExtensionRunModel.generated_at.desc().nullslast(),
+                ExtensionRunModel.updated_at.desc(),
+                ExtensionRunModel.created_at.desc(),
+            )
+            .all()
+        )
+
+        for run in runs[retain_count:]:
+            if run.prompt_artifacts in ({}, None):
+                continue
+            run.prompt_artifacts = encrypt_json({})
+
     def set_master_resume(self, resume_id: str, user_id: str | None = None) -> bool:
         resolved_user_id = self._resolve_user_scope(user_id)
         with self._session() as session:
@@ -748,6 +805,10 @@ class Database:
             run.summary = encrypt_json(summary or {})
             run.prompt_artifacts = encrypt_json(prompt_artifacts or {})
             run.updated_at = _utcnow()
+            self._prune_extension_run_prompt_artifacts(
+                session,
+                user_id=resolved_user_id,
+            )
 
             session.commit()
             session.refresh(run)

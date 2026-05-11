@@ -10,17 +10,14 @@ import {
   clearExtensionLocalData,
   getActiveAccountKey,
   getExtensionState,
-  getHistoryEntries,
   getPendingExtensionAction,
   getServerPromptDefaults,
   getUserAssets,
-  removeHistoryEntryByRunId,
   setExtensionState,
   setPromptTemplateAsset,
   setExtensionAuth,
   setMasterResumeContextAsset,
   setPendingExtensionAction,
-  upsertHistoryEntry,
 } from "./storage.js";
 
 function createChromeMock(initialValues = {}) {
@@ -111,7 +108,6 @@ describe("account-scoped extension storage", () => {
         filename: "alpha-story.md",
         content: "Story",
       },
-      [STORAGE_KEYS.historyEntries]: [{ jobKey: "job-a" }],
     });
     vi.stubGlobal("chrome", legacyChrome.chrome);
 
@@ -122,7 +118,6 @@ describe("account-scoped extension storage", () => {
     expect(assets.activeAccountKey).toBe(accountKey);
     expect(assets.masterResumeContextAsset?.filename).toBe("alpha-resume.md");
     expect(assets.storyboardAsset?.filename).toBe("alpha-story.md");
-    expect(await getHistoryEntries()).toHaveLength(1);
     expect(legacyChrome.store.has(STORAGE_KEYS.masterResumeContextAsset)).toBe(
       false,
     );
@@ -208,7 +203,6 @@ describe("account-scoped extension storage", () => {
       filename: "alpha-resume.md",
       content: "# Alpha",
     });
-    await upsertHistoryEntry({ jobKey: "alpha-job" });
 
     await setExtensionAuth(createAuth(userB));
     await activateAccountWorkspace(userB);
@@ -230,20 +224,6 @@ describe("account-scoped extension storage", () => {
     expect(await getActiveAccountKey()).toBeNull();
     expect((await getUserAssets()).masterResumeContextAsset).toBeNull();
     expect((await getUserAssets()).extensionAuth).toBeNull();
-  });
-
-  it("keeps only the newest 100 history entries per account", async () => {
-    await setExtensionAuth(createAuth(userA));
-    await activateAccountWorkspace(userA);
-
-    for (let index = 0; index < 105; index += 1) {
-      await upsertHistoryEntry({ jobKey: `job-${index}`, title: `Job ${index}` });
-    }
-
-    const entries = await getHistoryEntries();
-    expect(entries).toHaveLength(100);
-    expect(entries[0]?.jobKey).toBe("job-104");
-    expect(entries.at(-1)?.jobKey).toBe("job-5");
   });
 
   it("stores only a small extension checkpoint locally", async () => {
@@ -289,36 +269,6 @@ describe("account-scoped extension storage", () => {
     expect(storedState).not.toHaveProperty("patchPayload");
   });
 
-  it("stores only summary history fields locally", async () => {
-    const chromeMock = createChromeMock();
-    vi.stubGlobal("chrome", chromeMock.chrome);
-
-    await setExtensionAuth(createAuth(userA));
-    await activateAccountWorkspace(userA);
-
-    await upsertHistoryEntry({
-      jobKey: "job-1",
-      title: "Senior PM",
-      prompt1Input: "prompt 1 input",
-      prompt2Raw: "{\"strategy\":true}",
-      prompt3Parsed: { personalInfo: { name: "Private" } },
-      promptMetadata: { prompt1: { version: "v1" } },
-      totalDurationMs: 3210,
-    });
-
-    const [entry] = await getHistoryEntries();
-    const accountKey = await getActiveAccountKey();
-    const storedEntries = chromeMock.store.get(
-      `account::${accountKey}::${STORAGE_KEYS.historyEntries}`,
-    );
-    expect(entry.title).toBe("Senior PM");
-    expect(entry.totalDurationMs).toBe(3210);
-    expect(storedEntries[0]).not.toHaveProperty("prompt1Input");
-    expect(storedEntries[0]).not.toHaveProperty("prompt2Raw");
-    expect(storedEntries[0]).not.toHaveProperty("prompt3Parsed");
-    expect(storedEntries[0]).not.toHaveProperty("promptMetadata");
-  });
-
   it("compacts oversized local storage before writing new checkpoints", async () => {
     const chromeMock = createChromeMock();
     vi.stubGlobal("chrome", chromeMock.chrome);
@@ -326,17 +276,8 @@ describe("account-scoped extension storage", () => {
     await setExtensionAuth(createAuth(userA));
     await activateAccountWorkspace(userA);
     const accountKey = await getActiveAccountKey();
-    const historyKey = `account::${accountKey}::${STORAGE_KEYS.historyEntries}`;
     const sessionKey = `account::${accountKey}::${STORAGE_KEYS.extensionSession}`;
 
-    chromeMock.store.set(
-      historyKey,
-      Array.from({ length: 60 }, (_, index) => ({
-        jobKey: `job-${index}`,
-        title: `Job ${index}`,
-        prompt1Raw: "x".repeat(200_000),
-      })),
-    );
     chromeMock.store.set(sessionKey, {
       sessionId: "run-legacy",
       prompt1Raw: "x".repeat(500_000),
@@ -348,29 +289,11 @@ describe("account-scoped extension storage", () => {
       status: "scraped",
     });
 
-    const storedHistory = chromeMock.store.get(historyKey);
     const storedState = chromeMock.store.get(sessionKey);
 
-    expect(storedHistory).toHaveLength(25);
-    expect(storedHistory[0]).not.toHaveProperty("prompt1Raw");
     expect(storedState.sessionId).toBe("run-next");
     expect(storedState).not.toHaveProperty("prompt1Raw");
     expect(storedState).not.toHaveProperty("resumeSource");
-  });
-
-  it("removes one history entry by run id", async () => {
-    await setExtensionAuth(createAuth(userA));
-    await activateAccountWorkspace(userA);
-
-    await upsertHistoryEntry({ jobKey: "job-a", runId: "run-a" });
-    await upsertHistoryEntry({ jobKey: "job-b", runId: "run-b" });
-
-    const result = await removeHistoryEntryByRunId("run-a");
-    const entries = await getHistoryEntries();
-
-    expect(result.removed).toBe(true);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.runId).toBe("run-b");
   });
 
   it("stores server-managed prompt artifacts separately from user overrides", async () => {
