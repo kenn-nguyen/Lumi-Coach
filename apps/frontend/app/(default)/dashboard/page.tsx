@@ -703,19 +703,20 @@ export default function DashboardPage() {
                             date: formatDate(resume.updated_at || resume.created_at),
                           })}
                         </p>
+                      </div>
+                      <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
                         {resume.job_source_url ? (
                           <a
                             href={resume.job_source_url}
                             target="_blank"
                             rel="noreferrer"
                             onClick={(event) => event.stopPropagation()}
-                            className="mt-1 inline-flex font-mono text-[10px] uppercase tracking-[0.18em] text-blue-700 underline underline-offset-2"
+                            onKeyDown={(event) => event.stopPropagation()}
+                            className="inline-flex h-8 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                           >
                             Open JD
                           </a>
                         ) : null}
-                      </div>
-                      <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
                         {renderStatusPill(resume.processing_status)}
                         <span className="flex h-6 w-6 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
                           <ChevronRight className="h-3 w-3" />
