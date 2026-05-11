@@ -10,12 +10,16 @@ import {
   mergeLlmSettings,
   updateLlmSettings,
 } from "./llm/profiles.js";
+import { logWarn } from "./log.js";
 import { isUserEditablePromptTemplateName } from "./prompt-defaults.js";
 
 const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
 const ONBOARDING_STEPS = ["intro", "sign_in", "provider", "assets", "done"];
 const ACCOUNT_STORAGE_VERSION = 1;
-const MAX_HISTORY_ENTRIES = 1000;
+const MAX_HISTORY_ENTRIES = 100;
+const STORAGE_LOCAL_QUOTA_BYTES = 10_485_760;
+const STORAGE_SOFT_QUOTA_BYTES = Math.floor(STORAGE_LOCAL_QUOTA_BYTES * 0.8);
+const STORAGE_EMERGENCY_HISTORY_ENTRIES = 25;
 const LEGACY_ACCOUNT_SCOPED_KEYS = [
   STORAGE_KEYS.masterResumeContextAsset,
   STORAGE_KEYS.storyboardAsset,
@@ -155,6 +159,268 @@ function getDefaultExtensionState() {
   };
 }
 
+function sanitizeActiveRunJobForStorage(activeRunJob) {
+  if (!activeRunJob || typeof activeRunJob !== "object") {
+    return null;
+  }
+
+  return {
+    title:
+      typeof activeRunJob.title === "string" ? activeRunJob.title : "",
+    company:
+      typeof activeRunJob.company === "string" ? activeRunJob.company : "",
+    location:
+      typeof activeRunJob.location === "string" ? activeRunJob.location : "",
+    datePosted:
+      typeof activeRunJob.datePosted === "string" ? activeRunJob.datePosted : null,
+    sourceUrl:
+      typeof activeRunJob.sourceUrl === "string" ? activeRunJob.sourceUrl : "",
+  };
+}
+
+function sanitizeJobSnapshotForStorage(jobSnapshot) {
+  if (!jobSnapshot || typeof jobSnapshot !== "object") {
+    return null;
+  }
+
+  return {
+    source:
+      typeof jobSnapshot.source === "string" ? jobSnapshot.source : null,
+    sourceUrl:
+      typeof jobSnapshot.sourceUrl === "string" ? jobSnapshot.sourceUrl : "",
+    title:
+      typeof jobSnapshot.title === "string" ? jobSnapshot.title : "",
+    company:
+      typeof jobSnapshot.company === "string" ? jobSnapshot.company : "",
+    location:
+      typeof jobSnapshot.location === "string" ? jobSnapshot.location : "",
+    datePosted:
+      typeof jobSnapshot.datePosted === "string" ? jobSnapshot.datePosted : null,
+    extractedAt:
+      typeof jobSnapshot.extractedAt === "string"
+        ? jobSnapshot.extractedAt
+        : null,
+    readiness:
+      typeof jobSnapshot.readiness === "string" ? jobSnapshot.readiness : null,
+    provenance:
+      jobSnapshot.provenance && typeof jobSnapshot.provenance === "object"
+        ? cloneValue(jobSnapshot.provenance)
+        : null,
+    quality:
+      jobSnapshot.quality && typeof jobSnapshot.quality === "object"
+        ? cloneValue(jobSnapshot.quality)
+        : null,
+  };
+}
+
+function sanitizeExtensionStateForStorage(extensionState) {
+  const source =
+    extensionState && typeof extensionState === "object" ? extensionState : {};
+  const next = {};
+
+  if (typeof source.sessionId === "string" && source.sessionId) {
+    next.sessionId = source.sessionId;
+  }
+  if (typeof source.sourceTabId === "number") {
+    next.sourceTabId = source.sourceTabId;
+  }
+  if (typeof source.selectedResumeId === "string" && source.selectedResumeId) {
+    next.selectedResumeId = source.selectedResumeId;
+  }
+  if (typeof source.status === "string" && source.status) {
+    next.status = source.status;
+  }
+  if (typeof source.llmProfileId === "string" && source.llmProfileId) {
+    next.llmProfileId = source.llmProfileId;
+  }
+  if (typeof source.llmProfileLabel === "string" && source.llmProfileLabel) {
+    next.llmProfileLabel = source.llmProfileLabel;
+  }
+
+  const activeRunJob = sanitizeActiveRunJobForStorage(source.activeRunJob);
+  if (activeRunJob) {
+    next.activeRunJob = activeRunJob;
+  }
+
+  const jobSnapshot = sanitizeJobSnapshotForStorage(source.jobSnapshot);
+  if (jobSnapshot) {
+    next.jobSnapshot = jobSnapshot;
+  }
+
+  if (typeof source.jobId === "string" && source.jobId) {
+    next.jobId = source.jobId;
+  }
+  if (typeof source.originalResumeId === "string" && source.originalResumeId) {
+    next.originalResumeId = source.originalResumeId;
+  }
+  if (typeof source.tailoredResumeId === "string" && source.tailoredResumeId) {
+    next.tailoredResumeId = source.tailoredResumeId;
+  }
+  if (typeof source.previewUrl === "string" && source.previewUrl) {
+    next.previewUrl = source.previewUrl;
+  }
+  if (typeof source.jobContextLinked === "boolean") {
+    next.jobContextLinked = source.jobContextLinked;
+  }
+
+  const validationErrors = Array.isArray(source.prompt3ValidationErrors)
+    ? source.prompt3ValidationErrors
+        .filter((value) => typeof value === "string")
+        .slice(0, 20)
+    : [];
+  if (validationErrors.length) {
+    next.prompt3ValidationErrors = validationErrors;
+  }
+  if (source.promptMetadata && typeof source.promptMetadata === "object") {
+    next.promptMetadata = cloneValue(source.promptMetadata);
+  }
+  if (typeof source.patchError === "string" && source.patchError) {
+    next.patchError = source.patchError;
+  }
+  if (typeof source.prompt1DurationMs === "number") {
+    next.prompt1DurationMs = source.prompt1DurationMs;
+  }
+  if (typeof source.prompt2DurationMs === "number") {
+    next.prompt2DurationMs = source.prompt2DurationMs;
+  }
+  if (typeof source.prompt3DurationMs === "number") {
+    next.prompt3DurationMs = source.prompt3DurationMs;
+  }
+  if (typeof source.patchDurationMs === "number") {
+    next.patchDurationMs = source.patchDurationMs;
+  }
+  if (typeof source.cancelReason === "string" && source.cancelReason) {
+    next.cancelReason = source.cancelReason;
+  }
+  if (typeof source.cancelPhase === "string" && source.cancelPhase) {
+    next.cancelPhase = source.cancelPhase;
+  }
+  if (typeof source.updatedAt === "string" && source.updatedAt) {
+    next.updatedAt = source.updatedAt;
+  }
+
+  return next;
+}
+
+function sanitizeHistoryEntryForStorage(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const next = {};
+  if (typeof entry.jobKey === "string" && entry.jobKey) {
+    next.jobKey = entry.jobKey;
+  }
+  if (typeof entry.sourceUrl === "string" && entry.sourceUrl) {
+    next.sourceUrl = entry.sourceUrl;
+  }
+  if (typeof entry.title === "string" && entry.title) {
+    next.title = entry.title;
+  }
+  if (typeof entry.company === "string" && entry.company) {
+    next.company = entry.company;
+  }
+  if (typeof entry.location === "string" && entry.location) {
+    next.location = entry.location;
+  }
+  if (typeof entry.datePosted === "string" && entry.datePosted) {
+    next.datePosted = entry.datePosted;
+  }
+  if (typeof entry.generatedAt === "string" && entry.generatedAt) {
+    next.generatedAt = entry.generatedAt;
+  }
+  if (typeof entry.resumeId === "string" && entry.resumeId) {
+    next.resumeId = entry.resumeId;
+  }
+  if (typeof entry.previewUrl === "string" && entry.previewUrl) {
+    next.previewUrl = entry.previewUrl;
+  }
+  if (typeof entry.status === "string" && entry.status) {
+    next.status = entry.status;
+  }
+  if (typeof entry.runId === "string" && entry.runId) {
+    next.runId = entry.runId;
+  }
+  if (typeof entry.providerId === "string" && entry.providerId) {
+    next.providerId = entry.providerId;
+  }
+  if (typeof entry.providerLabel === "string" && entry.providerLabel) {
+    next.providerLabel = entry.providerLabel;
+  }
+  if (typeof entry.providerVendor === "string" && entry.providerVendor) {
+    next.providerVendor = entry.providerVendor;
+  }
+  if (typeof entry.providerMode === "string" && entry.providerMode) {
+    next.providerMode = entry.providerMode;
+  }
+  if (typeof entry.jobSource === "string" && entry.jobSource) {
+    next.jobSource = entry.jobSource;
+  }
+  if (typeof entry.jobReadiness === "string" && entry.jobReadiness) {
+    next.jobReadiness = entry.jobReadiness;
+  }
+  if (
+    typeof entry.descriptionProvenance === "string" &&
+    entry.descriptionProvenance
+  ) {
+    next.descriptionProvenance = entry.descriptionProvenance;
+  }
+  if (typeof entry.descriptionLength === "number") {
+    next.descriptionLength = entry.descriptionLength;
+  }
+  if (typeof entry.scrapeConfidence === "number") {
+    next.scrapeConfidence = entry.scrapeConfidence;
+  }
+  if (typeof entry.manualJobInputUsed === "boolean") {
+    next.manualJobInputUsed = entry.manualJobInputUsed;
+  }
+  if (typeof entry.customContextProvided === "boolean") {
+    next.customContextProvided = entry.customContextProvided;
+  }
+  if (typeof entry.customContextLength === "number") {
+    next.customContextLength = entry.customContextLength;
+  }
+  if (typeof entry.storyboardPresent === "boolean") {
+    next.storyboardPresent = entry.storyboardPresent;
+  }
+  if (typeof entry.prompt1DurationMs === "number") {
+    next.prompt1DurationMs = entry.prompt1DurationMs;
+  }
+  if (typeof entry.prompt2DurationMs === "number") {
+    next.prompt2DurationMs = entry.prompt2DurationMs;
+  }
+  if (typeof entry.prompt3DurationMs === "number") {
+    next.prompt3DurationMs = entry.prompt3DurationMs;
+  }
+  if (typeof entry.patchDurationMs === "number") {
+    next.patchDurationMs = entry.patchDurationMs;
+  }
+  if (typeof entry.totalDurationMs === "number") {
+    next.totalDurationMs = entry.totalDurationMs;
+  }
+  if (typeof entry.prompt3ValidationErrorCount === "number") {
+    next.prompt3ValidationErrorCount = entry.prompt3ValidationErrorCount;
+  }
+
+  return next;
+}
+
+function sanitizeHistoryEntriesForStorage(entries, limit = MAX_HISTORY_ENTRIES) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries
+    .map((entry) => sanitizeHistoryEntryForStorage(entry))
+    .filter((entry) => entry && entry.jobKey)
+    .slice(0, limit);
+}
+
+function isQuotaExceededError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /quota/i.test(message);
+}
+
 function mergePromptTemplateProfiles(storedProfiles, legacyAssets = {}) {
   const defaults = getDefaultPromptTemplateProfiles();
   const merged = cloneValue(defaults);
@@ -216,6 +482,19 @@ function storageSet(values) {
   return chrome.storage.local.set(values);
 }
 
+async function storageGetBytesInUse(keys = null) {
+  if (typeof chrome?.storage?.local?.getBytesInUse !== "function") {
+    return null;
+  }
+
+  try {
+    const bytes = await chrome.storage.local.getBytesInUse(keys);
+    return typeof bytes === "number" ? bytes : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 function buildScopedStorageKey(accountKey, storageKey) {
   return `account::${accountKey}::${storageKey}`;
 }
@@ -230,11 +509,30 @@ function buildScopedStorageEntries(accountKey, values) {
   return Object.fromEntries(
     Object.entries(values)
       .filter(([, value]) => value !== undefined)
+      .map(([storageKey, value]) => {
+        if (storageKey === STORAGE_KEYS.extensionSession) {
+          return [storageKey, sanitizeExtensionStateForStorage(value)];
+        }
+        if (storageKey === STORAGE_KEYS.historyEntries) {
+          return [storageKey, sanitizeHistoryEntriesForStorage(value)];
+        }
+        return [storageKey, value];
+      })
       .map(([storageKey, value]) => [
         buildScopedStorageKey(accountKey, storageKey),
         value,
       ]),
   );
+}
+
+function normalizeScopedStoredValue(storageKey, value) {
+  if (storageKey === STORAGE_KEYS.extensionSession) {
+    return sanitizeExtensionStateForStorage(value);
+  }
+  if (storageKey === STORAGE_KEYS.historyEntries) {
+    return sanitizeHistoryEntriesForStorage(value);
+  }
+  return value;
 }
 
 function hasLegacyScopedValue(storageKey, value) {
@@ -349,11 +647,47 @@ async function getScopedStorageValues(storageKeys, accountKey = null) {
   );
 
   return Object.fromEntries(
-    storageKeys.map((storageKey) => [
-      storageKey,
-      data[buildScopedStorageKey(resolvedAccountKey, storageKey)],
-    ]),
+    storageKeys.map((storageKey) => {
+      const value = data[buildScopedStorageKey(resolvedAccountKey, storageKey)];
+      return [storageKey, normalizeScopedStoredValue(storageKey, value)];
+    }),
   );
+}
+
+async function maybeCompactScopedStorage(accountKey, reason = "storage") {
+  const usageBytes = await storageGetBytesInUse(null);
+  if (usageBytes !== null && usageBytes < STORAGE_SOFT_QUOTA_BYTES) {
+    return { compacted: false, bytesInUse: usageBytes };
+  }
+
+  const compactKeys = [
+    STORAGE_KEYS.extensionSession,
+    STORAGE_KEYS.historyEntries,
+  ];
+  const current = await getScopedStorageValues(compactKeys, accountKey);
+  const compactedSession = sanitizeExtensionStateForStorage(
+    current[STORAGE_KEYS.extensionSession],
+  );
+  const compactedHistory = sanitizeHistoryEntriesForStorage(
+    current[STORAGE_KEYS.historyEntries],
+    STORAGE_EMERGENCY_HISTORY_ENTRIES,
+  );
+
+  await storageSet(
+    buildScopedStorageEntries(accountKey, {
+      [STORAGE_KEYS.extensionSession]: compactedSession,
+      [STORAGE_KEYS.historyEntries]: compactedHistory,
+    }),
+  );
+
+  const nextBytes = await storageGetBytesInUse(null);
+  logWarn("ExtensionStorage", "Compacted local storage usage.", {
+    reason,
+    bytesBefore: usageBytes,
+    bytesAfter: nextBytes,
+    historyEntries: compactedHistory.length,
+  });
+  return { compacted: true, bytesInUse: nextBytes };
 }
 
 async function setScopedStorageValues(values, accountKey = null) {
@@ -365,7 +699,23 @@ async function setScopedStorageValues(values, accountKey = null) {
 
   const entries = buildScopedStorageEntries(resolvedAccountKey, values);
   if (Object.keys(entries).length) {
-    await storageSet(entries);
+    const usageBytes = await storageGetBytesInUse(null);
+    if (usageBytes !== null && usageBytes >= STORAGE_SOFT_QUOTA_BYTES) {
+      await maybeCompactScopedStorage(
+        resolvedAccountKey,
+        "soft-quota-threshold",
+      );
+    }
+
+    try {
+      await storageSet(entries);
+    } catch (error) {
+      if (!isQuotaExceededError(error)) {
+        throw error;
+      }
+      await maybeCompactScopedStorage(resolvedAccountKey, "quota-exceeded");
+      await storageSet(entries);
+    }
   }
 
   return resolvedAccountKey;
@@ -873,7 +1223,10 @@ export async function getExtensionState() {
     STORAGE_KEYS.extensionSession,
     STORAGE_KEYS.lastError,
   ]);
-  return data[STORAGE_KEYS.extensionSession] ?? getDefaultExtensionState();
+  return {
+    ...getDefaultExtensionState(),
+    ...(data[STORAGE_KEYS.extensionSession] ?? {}),
+  };
 }
 
 export async function setExtensionState(nextState) {
