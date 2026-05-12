@@ -76,6 +76,8 @@ export interface GenerationFeedback {
   caveats?: string[];
   prompt_setup?: {
     prompt_profile_id?: string | null;
+    prompt1_version_id?: string | null;
+    prompt2_version_id?: string | null;
     prompt3_version_id?: string | null;
     system_prompt_version_id?: string | null;
   } | null;
@@ -90,6 +92,7 @@ interface ResumeResponse {
   request_id: string;
   data: {
     resume_id: string;
+    filename?: string | null;
     raw_resume: {
       id: number | null;
       content: string;

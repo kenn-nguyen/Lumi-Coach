@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 _TEXT_VALUE_KEYS = (
     "text",
@@ -416,16 +416,24 @@ class GenerationFeedback(BaseModel):
             return [item for item in normalized_items if item]
         return []
 
+    @field_serializer("prompt_setup")
+    def _serialize_prompt_setup(self, value: "PromptSetup | None") -> dict[str, Any] | None:
+        return value.model_dump(exclude_none=True) if value else None
+
 
 class PromptSetup(BaseModel):
     """Prompt provenance attached by runtime after generation."""
 
     prompt_profile_id: str | None = None
+    prompt1_version_id: str | None = None
+    prompt2_version_id: str | None = None
     prompt3_version_id: str | None = None
     system_prompt_version_id: str | None = None
 
     @field_validator(
         "prompt_profile_id",
+        "prompt1_version_id",
+        "prompt2_version_id",
         "prompt3_version_id",
         "system_prompt_version_id",
         mode="before",
@@ -549,6 +557,7 @@ class ResumeFetchData(BaseModel):
     """Data payload for resume fetch response."""
 
     resume_id: str
+    filename: str | None = None
     raw_resume: RawResume
     processed_resume: ResumeData | None = None
     generation_feedback: GenerationFeedback | None = None

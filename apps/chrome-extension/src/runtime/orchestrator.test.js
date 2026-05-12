@@ -277,7 +277,7 @@ describe("stripPromptFlexNotesFromServerArtifact", () => {
 });
 
 describe("prefixGenerationFeedbackSummary", () => {
-  it("adds provider, prompt profile, and prompt version summary details", () => {
+  it("adds provider prefix and attaches prompt setup metadata separately", () => {
     expect(
       prefixGenerationFeedbackSummary(
         { summary: "Tailored toward the role." },
@@ -285,6 +285,12 @@ describe("prefixGenerationFeedbackSummary", () => {
         {
           promptProfileId: "profile2",
           prompts: {
+            prompt1: {
+              versionId: "prompt1-version-aaaa1111bbbb",
+            },
+            prompt2: {
+              versionId: "prompt2-version-cccc2222dddd",
+            },
             prompt3: {
               versionId: "prompt3-version-abcdef123456",
             },
@@ -295,10 +301,11 @@ describe("prefixGenerationFeedbackSummary", () => {
         },
       ),
     ).toEqual({
-      summary:
-        "CHATGPT API: Tailored toward the role.\nPrompt setup: Profile profile2 | Prompt 3 prompt3-vers | System system-versi",
+      summary: "CHATGPT API: Tailored toward the role.",
       prompt_setup: {
         prompt_profile_id: "profile2",
+        prompt1_version_id: "prompt1-version-aaaa1111bbbb",
+        prompt2_version_id: "prompt2-version-cccc2222dddd",
         prompt3_version_id: "prompt3-version-abcdef123456",
         system_prompt_version_id: "system-version-fedcba654321",
       },

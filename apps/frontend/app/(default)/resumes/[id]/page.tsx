@@ -48,6 +48,74 @@ import {
 import { getContentAreaPx, mmToPx, PAGE_DIMENSIONS } from '@/lib/constants/page-dimensions';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed';
+type ViewerResumeRecord = Awaited<ReturnType<typeof fetchResume>>;
+
+function readPrompt2RecommendedTitle(
+  artifact: Record<string, unknown> | null | undefined
+): string | null {
+  if (!artifact || typeof artifact !== 'object') return null;
+  const recommendedTitle = artifact.recommended_title;
+  return typeof recommendedTitle === 'string' && recommendedTitle.trim()
+    ? recommendedTitle.trim()
+    : null;
+}
+
+function buildViewerResumeTitle(data: ViewerResumeRecord): string | null {
+  const storedTitle = data.title?.trim() || '';
+  const filename =
+    data.filename
+      ?.trim()
+      .replace(/\.[^.]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim() || '';
+  const prompt2RecommendedTitle = readPrompt2RecommendedTitle(data.generation_artifacts?.prompt2);
+
+  if (storedTitle.includes(' - ')) {
+    return storedTitle;
+  }
+
+  if (storedTitle && prompt2RecommendedTitle) {
+    return `${storedTitle} - ${prompt2RecommendedTitle}`;
+  }
+
+  if (storedTitle) {
+    return storedTitle;
+  }
+
+  if (prompt2RecommendedTitle) {
+    return prompt2RecommendedTitle;
+  }
+
+  if (filename) {
+    return filename;
+  }
+
+  return null;
+}
+
+function buildPromptSetupFooterText(generationFeedback: GenerationFeedback | null): string | null {
+  const promptSetup = generationFeedback?.prompt_setup;
+  if (!promptSetup) return null;
+
+  const parts: string[] = [];
+  if (promptSetup.prompt_profile_id?.trim()) {
+    parts.push(`P ${promptSetup.prompt_profile_id.trim()}`);
+  }
+  if (promptSetup.prompt1_version_id?.trim()) {
+    parts.push(`1 ${promptSetup.prompt1_version_id.trim().slice(0, 8)}`);
+  }
+  if (promptSetup.prompt2_version_id?.trim()) {
+    parts.push(`2 ${promptSetup.prompt2_version_id.trim().slice(0, 8)}`);
+  }
+  if (promptSetup.prompt3_version_id?.trim()) {
+    parts.push(`3 ${promptSetup.prompt3_version_id.trim().slice(0, 8)}`);
+  }
+  if (promptSetup.system_prompt_version_id?.trim()) {
+    parts.push(`S ${promptSetup.system_prompt_version_id.trim().slice(0, 8)}`);
+  }
+
+  return parts.length > 0 ? parts.join(' | ') : null;
+}
 
 export default function ResumeViewerPage() {
   const { status: authStatus } = useSession();
@@ -289,7 +357,7 @@ export default function ResumeViewerPage() {
         setProcessingStatus(status);
 
         // Capture title for editable display (always set to clear stale state)
-        setResumeTitle(data.title ?? null);
+        setResumeTitle(buildViewerResumeTitle(data));
         setGenerationFeedback(data.generation_feedback ?? null);
 
         // Prioritize processed_resume if available (structured JSON)
@@ -520,30 +588,17 @@ export default function ResumeViewerPage() {
   const displayFeedbackSummary = useMemo(() => {
     const rawSummary = generationFeedback?.summary?.trim();
     if (!rawSummary) return null;
-    return rawSummary.replace(/^[A-Z0-9][A-Z0-9 _-]{2,}:\s+/, '');
+    const withoutProvider = rawSummary.replace(/^[A-Z0-9][A-Z0-9 _-]{2,}:\s+/, '');
+    const withoutPromptSetup = withoutProvider.replace(/\n?Prompt setup:[^\n]*$/i, '').trim();
+    return withoutPromptSetup || null;
   }, [generationFeedback?.summary]);
 
-  const displayPromptSetupSummary = useMemo(() => {
-    const promptSetup = generationFeedback?.prompt_setup;
-    if (!promptSetup) return null;
-
-    const parts: string[] = [];
-    if (promptSetup.prompt_profile_id?.trim()) {
-      parts.push(`Profile ${promptSetup.prompt_profile_id.trim()}`);
-    }
-    if (promptSetup.prompt3_version_id?.trim()) {
-      parts.push(`Prompt 3 ${promptSetup.prompt3_version_id.trim().slice(0, 12)}`);
-    }
-    if (promptSetup.system_prompt_version_id?.trim()) {
-      parts.push(`System ${promptSetup.system_prompt_version_id.trim().slice(0, 12)}`);
-    }
-
-    return parts.length > 0 ? parts.join(' | ') : null;
-  }, [generationFeedback?.prompt_setup]);
-
-  const hasGenerationFeedback = Boolean(
-    displayFeedbackSummary || displayPromptSetupSummary || feedbackRows.length > 0
+  const displayPromptSetupFooter = useMemo(
+    () => buildPromptSetupFooterText(generationFeedback),
+    [generationFeedback]
   );
+
+  const hasGenerationFeedback = Boolean(displayFeedbackSummary || feedbackRows.length > 0);
 
   if (loading) {
     return (
@@ -700,16 +755,6 @@ export default function ResumeViewerPage() {
                   <p className="text-sm leading-6 text-foreground">{displayFeedbackSummary}</p>
                 </div>
               )}
-              {displayPromptSetupSummary && (
-                <div className="mb-3 grid gap-1.5 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
-                  <p className="pt-0.5 text-xs font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    {t('resumeViewer.feedback.promptSetupLabel')}
-                  </p>
-                  <p className="text-xs font-mono leading-5 text-muted-foreground">
-                    {displayPromptSetupSummary}
-                  </p>
-                </div>
-              )}
               <div className="space-y-2 text-sm leading-5 text-foreground">
                 {feedbackRows.map((row) => (
                   <div
@@ -835,6 +880,14 @@ export default function ResumeViewerPage() {
               ))}
           </div>
         </div>
+
+        {displayPromptSetupFooter && (
+          <div className="mt-3 flex justify-center no-print">
+            <p className="w-full max-w-[250mm] px-1 text-right font-mono text-[11px] leading-5 text-muted-foreground">
+              {displayPromptSetupFooter}
+            </p>
+          </div>
+        )}
 
         <div className="flex justify-end pt-4 no-print">
           <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>

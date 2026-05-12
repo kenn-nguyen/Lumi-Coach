@@ -505,6 +505,7 @@ def _build_resume_fetch_response(
         request_id=request_id or str(uuid4()),
         data=ResumeFetchData(
             resume_id=resume["resume_id"],
+            filename=resume.get("filename"),
             raw_resume=raw_resume,
             processed_resume=processed_resume,
             generation_feedback=generation_feedback,
@@ -846,7 +847,7 @@ async def upload_resume(
                 wrapped_payload = ResumeUpdateRequest.model_validate(parsed_json)
                 resume_payload = wrapped_payload.resume_data.model_dump()
                 generation_feedback = (
-                    wrapped_payload.generation_feedback.model_dump()
+                    wrapped_payload.generation_feedback.model_dump(exclude_none=True)
                     if wrapped_payload.generation_feedback
                     else None
                 )
@@ -1716,7 +1717,7 @@ async def update_resume_endpoint(
         resume_data = parsed_payload.resume_data
         if "generation_feedback" in payload:
             generation_feedback_update = (
-                parsed_payload.generation_feedback.model_dump()
+                parsed_payload.generation_feedback.model_dump(exclude_none=True)
                 if parsed_payload.generation_feedback
                 else None
             )
