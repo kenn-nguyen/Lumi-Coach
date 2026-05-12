@@ -74,6 +74,11 @@ export interface GenerationFeedback {
   pros?: string[];
   cons?: string[];
   caveats?: string[];
+  prompt_setup?: {
+    prompt_profile_id?: string | null;
+    prompt3_version_id?: string | null;
+    system_prompt_version_id?: string | null;
+  } | null;
 }
 
 export interface GenerationArtifacts {

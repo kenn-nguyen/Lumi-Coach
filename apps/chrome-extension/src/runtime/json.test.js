@@ -140,13 +140,31 @@ describe("extractJsonFromText", () => {
     const parsed = extractPrompt3PayloadFromText(
       JSON.stringify({
         resume_data: { personalInfo: {}, summary: "" },
-        generation_feedback: null,
+        generation_feedback: {
+          summary: "Ready.",
+          prompt_setup: {
+            prompt_profile_id: "profile2",
+            prompt3_version_id: "prompt3-version-abcdef123456",
+            system_prompt_version_id: "system-version-fedcba654321",
+          },
+        },
         flex_notes: "reserved handoff note",
       }),
     );
 
     expect(parsed.flexNotes).toBe("reserved handoff note");
     expect(parsed.usedLegacyShape).toBe(false);
+    expect(parsed.generationFeedback).toEqual({
+      summary: "Ready.",
+      pros: [],
+      cons: [],
+      caveats: [],
+      prompt_setup: {
+        prompt_profile_id: "profile2",
+        prompt3_version_id: "prompt3-version-abcdef123456",
+        system_prompt_version_id: "system-version-fedcba654321",
+      },
+    });
   });
 
   it("extracts Prompt 4 resume_data without prompt-level flex_notes", () => {

@@ -489,7 +489,11 @@ class TestExtensionPromptSync:
         mock_artifacts.return_value = {
             "prompt1.template": "PROMPT 1",
             "prompt1.output_contract": "CONTRACT 1",
+            "system.template": "SYSTEM BODY",
             "system.guardrails": "SYSTEM",
+            "profile1.prompt1.template": "PROFILE 1 PROMPT 1",
+            "profile2.prompt1.template": "PROFILE 2 PROMPT 1",
+            "profile3.prompt1.template": "PROFILE 3 PROMPT 1",
         }
 
         async with client:
@@ -508,13 +512,21 @@ class TestExtensionPromptSync:
         assert data["changed"] == {
             "prompt1.template": "PROMPT 1",
             "prompt1.output_contract": "CONTRACT 1",
+            "system.template": "SYSTEM BODY",
             "system.guardrails": "SYSTEM",
+            "profile1.prompt1.template": "PROFILE 1 PROMPT 1",
+            "profile2.prompt1.template": "PROFILE 2 PROMPT 1",
+            "profile3.prompt1.template": "PROFILE 3 PROMPT 1",
         }
         assert data["removed"] == ["removed.key"]
         assert set(data["manifest"].keys()) == {
             "prompt1.template",
             "prompt1.output_contract",
+            "system.template",
             "system.guardrails",
+            "profile1.prompt1.template",
+            "profile2.prompt1.template",
+            "profile3.prompt1.template",
         }
 
     @patch("app.routers.config._get_extension_prompt_artifacts")

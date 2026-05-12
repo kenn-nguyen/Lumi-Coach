@@ -396,6 +396,7 @@ class GenerationFeedback(BaseModel):
     pros: list[str] = Field(default_factory=list)
     cons: list[str] = Field(default_factory=list)
     caveats: list[str] = Field(default_factory=list)
+    prompt_setup: "PromptSetup | None" = None
 
     @field_validator("summary", mode="before")
     @classmethod
@@ -414,6 +415,24 @@ class GenerationFeedback(BaseModel):
             normalized_items = [_coerce_text(item) for item in value]
             return [item for item in normalized_items if item]
         return []
+
+
+class PromptSetup(BaseModel):
+    """Prompt provenance attached by runtime after generation."""
+
+    prompt_profile_id: str | None = None
+    prompt3_version_id: str | None = None
+    system_prompt_version_id: str | None = None
+
+    @field_validator(
+        "prompt_profile_id",
+        "prompt3_version_id",
+        "system_prompt_version_id",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_optional_text(cls, value: Any) -> str | None:
+        return _coerce_optional_text(value)
 
 
 class GenerationArtifacts(BaseModel):

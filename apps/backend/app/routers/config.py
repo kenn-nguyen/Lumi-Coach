@@ -155,9 +155,33 @@ def _read_extension_prompt_file(relative_path: str) -> str:
     return (_get_extension_prompts_root() / relative_path).read_text()
 
 
+def _get_extension_prompt_profile_paths() -> dict[str, dict[str, str]]:
+    """Return backend-owned prompt-body defaults for each extension prompt profile."""
+    return {
+        "profile1": {
+            "prompt1": "prompt1.txt",
+            "prompt2": "prompt2.txt",
+            "prompt3": "prompt3.txt",
+            "systemPrompt": "system-prompt.txt",
+        },
+        "profile2": {
+            "prompt1": "profiles/profile2/prompt1.txt",
+            "prompt2": "profiles/profile2/prompt2.txt",
+            "prompt3": "prompt3.txt",
+            "systemPrompt": "system-prompt.txt",
+        },
+        "profile3": {
+            "prompt1": "prompt1.txt",
+            "prompt2": "prompt2.txt",
+            "prompt3": "prompt3.txt",
+            "systemPrompt": "system-prompt.txt",
+        },
+    }
+
+
 def _get_extension_prompt_artifacts() -> dict[str, str]:
     """Build the full extension prompt artifact map."""
-    return {
+    artifacts = {
         "prompt1.template": _read_extension_prompt_file("prompt1.txt"),
         "prompt1.output_contract": _read_extension_prompt_file(
             "patches/prompt1.output-contract.txt"
@@ -174,10 +198,17 @@ def _get_extension_prompt_artifacts() -> dict[str, str]:
         "prompt4.output_contract": _read_extension_prompt_file(
             "patches/prompt4.output-contract.txt"
         ),
+        "system.template": _read_extension_prompt_file("system-prompt.txt"),
         "system.guardrails": _read_extension_prompt_file(
             "patches/system.guardrails.txt"
         ),
     }
+    for profile_id, template_paths in _get_extension_prompt_profile_paths().items():
+        for template_name, relative_path in template_paths.items():
+            artifacts[f"{profile_id}.{template_name}.template"] = (
+                _read_extension_prompt_file(relative_path)
+            )
+    return artifacts
 
 
 def _hash_prompt_artifact(content: str) -> str:

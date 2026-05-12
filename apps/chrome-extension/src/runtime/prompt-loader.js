@@ -1,5 +1,6 @@
 import { getUserAssets, getServerPromptDefaults } from "./storage.js";
 import {
+  getDefaultPromptTemplateArtifactKey,
   getPromptArtifactDefinition,
   getPackagedPromptArtifactText,
   getPromptOutputContractArtifactKey,
@@ -132,6 +133,12 @@ async function buildPromptVersionId(templateName, artifacts) {
 }
 
 async function loadSharedAppendBlockWithMetadata(templateName) {
+  if (templateName === "systemPrompt") {
+    return {
+      text: "",
+      metadata: null,
+    };
+  }
   const loaded = await loadDefaultArtifactWithMetadata(
     getPromptOutputContractArtifactKey(templateName),
   );
@@ -174,8 +181,13 @@ async function loadDefaultArtifactWithMetadata(artifactKey) {
   };
 }
 
-async function loadDefaultArtifactText(artifactKey) {
-  return (await loadDefaultArtifactWithMetadata(artifactKey)).text;
+async function loadProfileDefaultTemplateWithMetadata(
+  templateName,
+  promptProfileId,
+) {
+  return loadDefaultArtifactWithMetadata(
+    getDefaultPromptTemplateArtifactKey(templateName, promptProfileId),
+  );
 }
 
 export async function loadPromptTemplateWithMetadata(templateName, profile) {
@@ -193,7 +205,7 @@ export async function loadPromptTemplateWithMetadata(templateName, profile) {
     ? parsePromptFrontmatter(overrideAsset.content)
     : null;
   const templatePart = overrideAsset?.content?.trim()
-    ? {
+      ? {
         text: parsedOverride.body,
         metadata: await buildArtifactMetadata({
           artifactKey: templateArtifactKey,
@@ -204,7 +216,10 @@ export async function loadPromptTemplateWithMetadata(templateName, profile) {
           frontmatter: parsedOverride.frontmatter,
         }),
       }
-    : await loadDefaultArtifactWithMetadata(templateArtifactKey);
+    : await loadProfileDefaultTemplateWithMetadata(
+        templateName,
+        assets?.activePromptProfileId,
+      );
   const sharedAppendPart =
     await loadSharedAppendBlockWithMetadata(templateName);
   const mergedParts = [templatePart.text.trim(), sharedAppendPart.text].filter(
@@ -254,6 +269,34 @@ export async function loadSystemPromptGuardrailsWithMetadata() {
 
 export async function loadSystemPromptGuardrails() {
   return (await loadSystemPromptGuardrailsWithMetadata()).text;
+}
+
+export async function renderSystemPromptWithMetadata(input, profile) {
+  const [guardrails, body] = await Promise.all([
+    loadSystemPromptGuardrailsWithMetadata(),
+    loadPromptTemplateWithMetadata("systemPrompt", profile),
+  ]);
+  const bodyText = body.text
+    ? renderTemplate(body.text, buildPromptReplacements(input))
+    : "";
+  const text = [guardrails.text, bodyText].filter(Boolean).join("\n\n");
+  const artifacts = [
+    ...(guardrails.metadata ? guardrails.metadata.artifacts : []),
+    ...(body.metadata?.artifacts ?? []),
+  ];
+
+  return {
+    text,
+    metadata: {
+      templateName: "systemPrompt",
+      activePromptProfileId:
+        body.metadata?.activePromptProfileId ?? input?.activePromptProfileId ?? null,
+      versionId: await buildPromptVersionId("systemPrompt", artifacts),
+      artifacts,
+      renderedHash: await hashPromptText(text),
+      renderedAt: new Date().toISOString(),
+    },
+  };
 }
 
 function normalizeText(value) {
@@ -387,6 +430,7 @@ export async function renderPrompt4(input, profile) {
 
 export async function buildPromptRunMetadata({
   profile,
+  promptProfileId = null,
   prompts = {},
   systemPrompt = null,
 }) {
@@ -415,6 +459,7 @@ export async function buildPromptRunMetadata({
       apiBaseUrl: profile?.apiBaseUrl ?? null,
       targetUrl: profile?.targetUrl ?? null,
     },
+    promptProfileId,
     systemPrompt,
     prompts: Object.fromEntries(promptEntries),
   };

@@ -101,6 +101,16 @@ function buildSafeSummary(entry) {
   const summary = {};
   addSummaryField(
     summary,
+    "prompt_profile_id",
+    textOrNull(entry?.promptProfileId, 64),
+  );
+  addSummaryField(
+    summary,
+    "prompt_profile_label",
+    textOrNull(entry?.promptProfileLabel, 128),
+  );
+  addSummaryField(
+    summary,
     "job_key",
     textOrNull(entry?.jobKey, TEXT_LIMITS.source_url),
   );

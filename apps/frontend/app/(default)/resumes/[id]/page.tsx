@@ -523,7 +523,27 @@ export default function ResumeViewerPage() {
     return rawSummary.replace(/^[A-Z0-9][A-Z0-9 _-]{2,}:\s+/, '');
   }, [generationFeedback?.summary]);
 
-  const hasGenerationFeedback = Boolean(displayFeedbackSummary || feedbackRows.length > 0);
+  const displayPromptSetupSummary = useMemo(() => {
+    const promptSetup = generationFeedback?.prompt_setup;
+    if (!promptSetup) return null;
+
+    const parts: string[] = [];
+    if (promptSetup.prompt_profile_id?.trim()) {
+      parts.push(`Profile ${promptSetup.prompt_profile_id.trim()}`);
+    }
+    if (promptSetup.prompt3_version_id?.trim()) {
+      parts.push(`Prompt 3 ${promptSetup.prompt3_version_id.trim().slice(0, 12)}`);
+    }
+    if (promptSetup.system_prompt_version_id?.trim()) {
+      parts.push(`System ${promptSetup.system_prompt_version_id.trim().slice(0, 12)}`);
+    }
+
+    return parts.length > 0 ? parts.join(' | ') : null;
+  }, [generationFeedback?.prompt_setup]);
+
+  const hasGenerationFeedback = Boolean(
+    displayFeedbackSummary || displayPromptSetupSummary || feedbackRows.length > 0
+  );
 
   if (loading) {
     return (
@@ -678,6 +698,16 @@ export default function ResumeViewerPage() {
                     {t('resumeViewer.feedback.summaryLabel')}
                   </p>
                   <p className="text-sm leading-6 text-foreground">{displayFeedbackSummary}</p>
+                </div>
+              )}
+              {displayPromptSetupSummary && (
+                <div className="mb-3 grid gap-1.5 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
+                  <p className="pt-0.5 text-xs font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    {t('resumeViewer.feedback.promptSetupLabel')}
+                  </p>
+                  <p className="text-xs font-mono leading-5 text-muted-foreground">
+                    {displayPromptSetupSummary}
+                  </p>
                 </div>
               )}
               <div className="space-y-2 text-sm leading-5 text-foreground">

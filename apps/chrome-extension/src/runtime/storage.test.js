@@ -330,16 +330,19 @@ describe("account-scoped extension storage", () => {
     expect((await getUserAssets()).prompt1TemplateAsset).toBeNull();
   });
 
-  it("rejects user overrides for system-managed guardrails", async () => {
+  it("stores profile-scoped system prompt body overrides", async () => {
     await setExtensionAuth(createAuth(userA));
     await activateAccountWorkspace(userA);
 
-    await expect(
-      setPromptTemplateAsset("systemPrompt", {
-        filename: "system.txt",
-        content: "override",
-      }),
-    ).rejects.toThrow("system-managed");
+    await setPromptTemplateAsset("systemPrompt", {
+      filename: "system.txt",
+      content: "override",
+    });
+
+    expect((await getUserAssets()).systemPromptTemplateAsset).toMatchObject({
+      filename: "system.txt",
+      content: "override",
+    });
   });
 
   it("removes deleted server-managed prompt artifacts during sync", async () => {

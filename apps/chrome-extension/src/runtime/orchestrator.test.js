@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getMasterResumeImportProviderIssue,
   getPrompt4ResumeRejectionMessage,
+  prefixGenerationFeedbackSummary,
   preserveGeneratedResumeFacts,
   shouldAcceptLocalSnapshot,
   stripPromptFlexNotesFromServerArtifact,
@@ -271,6 +272,36 @@ describe("stripPromptFlexNotesFromServerArtifact", () => {
       }),
     ).toEqual({
       recommended_title: "Product Manager",
+    });
+  });
+});
+
+describe("prefixGenerationFeedbackSummary", () => {
+  it("adds provider, prompt profile, and prompt version summary details", () => {
+    expect(
+      prefixGenerationFeedbackSummary(
+        { summary: "Tailored toward the role." },
+        { label: "ChatGPT API" },
+        {
+          promptProfileId: "profile2",
+          prompts: {
+            prompt3: {
+              versionId: "prompt3-version-abcdef123456",
+            },
+          },
+          systemPrompt: {
+            versionId: "system-version-fedcba654321",
+          },
+        },
+      ),
+    ).toEqual({
+      summary:
+        "CHATGPT API: Tailored toward the role.\nPrompt setup: Profile profile2 | Prompt 3 prompt3-vers | System system-versi",
+      prompt_setup: {
+        prompt_profile_id: "profile2",
+        prompt3_version_id: "prompt3-version-abcdef123456",
+        system_prompt_version_id: "system-version-fedcba654321",
+      },
     });
   });
 });

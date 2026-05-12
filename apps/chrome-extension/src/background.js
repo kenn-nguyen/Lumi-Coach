@@ -99,6 +99,66 @@ let backendMasterResumeDataCache = {
   promise: null,
   fetchedAt: 0,
 };
+const ACTIVE_SESSION_STATUSES = new Set([
+  SESSION_STATUS.starting,
+  SESSION_STATUS.bootstrapMaster,
+  SESSION_STATUS.scraped,
+  SESSION_STATUS.prompt1Done,
+  SESSION_STATUS.prompt2Done,
+  SESSION_STATUS.prompt3Done,
+  SESSION_STATUS.validated,
+  SESSION_STATUS.canceling,
+]);
+
+function getStaleRunCancelPhase(extensionState) {
+  const status = extensionState?.status;
+  if (status === SESSION_STATUS.bootstrapMaster) {
+    return "base resume setup";
+  }
+  if (status === SESSION_STATUS.scraped) {
+    return "job extraction";
+  }
+  if (status === SESSION_STATUS.prompt1Done) {
+    return "Prompt 1";
+  }
+  if (status === SESSION_STATUS.prompt2Done) {
+    return "Prompt 2";
+  }
+  if (status === SESSION_STATUS.prompt3Done) {
+    return "Prompt 3";
+  }
+  if (status === SESSION_STATUS.validated) {
+    return "resume patch";
+  }
+  if (status === SESSION_STATUS.canceling) {
+    return extensionState?.cancelPhase || "running";
+  }
+  return "running";
+}
+
+async function normalizeOrphanedRunSession(extensionState) {
+  const session = extensionState ?? (await getExtensionState().catch(() => null));
+  const runId =
+    typeof session?.sessionId === "string" && session.sessionId
+      ? session.sessionId
+      : null;
+  if (!runId || !ACTIVE_SESSION_STATUSES.has(session?.status)) {
+    return session;
+  }
+  if (getActiveRun(runId)) {
+    return session;
+  }
+
+  const healed = await setExtensionState({
+    sessionId: runId,
+    status: SESSION_STATUS.canceled,
+    cancelReason: session?.cancelReason || "browser_closed",
+    cancelPhase: getStaleRunCancelPhase(session),
+    previewUrl: null,
+    patchError: null,
+  });
+  return healed;
+}
 
 function getSignedOutWorkspaceMessage() {
   return "Sign in to continue tailoring this job. Each account keeps its own local extension workspace.";
@@ -235,13 +295,14 @@ async function getRuntimeSnapshot({
   refreshBackendMaster = false,
   backendMasterMaxAgeMs = 0,
 } = {}) {
-  const [extensionState, assets, connection, onboardingProgress] =
+  const [rawExtensionState, assets, connection, onboardingProgress] =
     await Promise.all([
       getExtensionState(),
       getUserAssets(),
       getConnectionSnapshot({ trySync }),
       getOnboardingProgress(),
     ]);
+  const extensionState = await normalizeOrphanedRunSession(rawExtensionState);
   const backendMasterResume = await resolveBackendMasterResumeForAccount({
     accountKey: assets.activeAccountKey,
     connected: connection.connected,
@@ -548,14 +609,17 @@ async function syncDefaultPromptArtifacts() {
   }
 }
 
-async function buildDefaultPromptDownload(templateName) {
+async function buildDefaultPromptDownload(templateName, promptProfileId = null) {
   const config = getPromptDownloadConfig(templateName);
   if (!config) {
     throw new Error(`Unknown prompt template "${templateName}".`);
   }
 
   let cache = await getServerPromptDefaults();
-  const artifactKeys = getPromptArtifactKeysForTemplate(templateName);
+  const artifactKeys = getPromptArtifactKeysForTemplate(
+    templateName,
+    promptProfileId,
+  );
   const missingArtifact = artifactKeys.some(
     (artifactKey) => typeof cache.artifacts?.[artifactKey] !== "string",
   );
@@ -667,6 +731,23 @@ async function finalizeCanceledRun(run, options = {}) {
   }
 
   const sourceUrl = getCurrentRunSourceUrl(extensionState);
+  await clearPendingExtensionAction();
+  markRunTerminal(run.runId, "canceled");
+  const cancelMessage = {
+    type: "EXTENSION_RUN_CANCELED",
+    payload: {
+      runId: run.runId,
+      reason: cancelReason,
+      phase: cancelPhase,
+    },
+  };
+  if (run.sourceTabId) {
+    await chrome.tabs.sendMessage(run.sourceTabId, cancelMessage).catch(() => {});
+  } else {
+    await broadcastContentScriptMessage(cancelMessage);
+  }
+  clearActiveRun(run.runId);
+
   if (sourceUrl) {
     const historyEntry = {
       jobKey: sourceUrl,
@@ -710,7 +791,10 @@ async function finalizeCanceledRun(run, options = {}) {
       patchDurationMs: extensionState?.patchDurationMs ?? null,
       totalDurationMs:
         typeof run.cancelRequestedAt === "number"
-          ? Math.max(0, run.cancelRequestedAt - (run.startedAt ?? run.cancelRequestedAt))
+          ? Math.max(
+              0,
+              run.cancelRequestedAt - (run.startedAt ?? run.cancelRequestedAt),
+            )
           : null,
       prompt3ValidationErrorCount:
         Array.isArray(extensionState?.prompt3ValidationErrors)
@@ -732,37 +816,40 @@ async function finalizeCanceledRun(run, options = {}) {
       cancelReason,
       cancelPhase,
     };
-    await syncExtensionRun(historyEntry);
+    void syncExtensionRun(historyEntry).catch((error) => {
+      logWarn("Background", "Failed to sync canceled run.", {
+        runId: run.runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
-  await clearPendingExtensionAction();
-  await captureExtensionEvent("tailor_canceled", {
+  void captureExtensionEvent("tailor_canceled", {
     surface: "run_view",
     run_id: run.runId,
     source_tab_id: run.sourceTabId ?? null,
     cancel_reason: cancelReason,
     cancel_phase: cancelPhase,
   }).catch(() => {});
-  markRunTerminal(run.runId, "canceled");
-  const cancelMessage = {
-    type: "EXTENSION_RUN_CANCELED",
-    payload: {
-      runId: run.runId,
-      reason: cancelReason,
-      phase: cancelPhase,
-    },
-  };
-  if (run.sourceTabId) {
-    await chrome.tabs.sendMessage(run.sourceTabId, cancelMessage).catch(() => {});
-  } else {
-    await broadcastContentScriptMessage(cancelMessage);
-  }
-  clearActiveRun(run.runId);
 }
 
 async function cancelActiveRun(options = {}) {
   const run = getActiveRun();
   if (!run) {
+    const extensionState = await normalizeOrphanedRunSession();
+    if (
+      extensionState?.status === SESSION_STATUS.canceled &&
+      extensionState?.sessionId
+    ) {
+      return {
+        ok: true,
+        canceled: true,
+        immediate: true,
+        runId: extensionState.sessionId,
+        reason: "stale_session",
+        phase: extensionState.cancelPhase || "running",
+      };
+    }
     return { ok: true, canceled: false, reason: "no_active_run" };
   }
 
@@ -1201,7 +1288,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     }
   }
 
-  const extensionState = await getExtensionState().catch(() => null);
+  const extensionState = await normalizeOrphanedRunSession();
   const activeStatus = extensionState?.status;
   const sourceTabId = extensionState?.sourceTabId ?? null;
 
@@ -1280,7 +1367,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return syncDefaultPromptArtifacts();
 
       case "GET_DEFAULT_PROMPT_DOWNLOAD":
-        return buildDefaultPromptDownload(message.payload?.templateName);
+        return buildDefaultPromptDownload(
+          message.payload?.templateName,
+          message.payload?.promptProfileId,
+        );
 
       case "CLEAR_EXTENSION_AUTH":
         await clearExtensionAuth();

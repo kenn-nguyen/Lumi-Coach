@@ -111,12 +111,14 @@ function normalizeGenerationFeedback(value) {
   const pros = normalizeFeedbackItems(value.pros);
   const cons = normalizeFeedbackItems(value.cons);
   const caveats = normalizeFeedbackItems(value.caveats);
+  const promptSetup = normalizePromptSetup(value.prompt_setup);
 
   if (
     !summary &&
     pros.length === 0 &&
     cons.length === 0 &&
-    caveats.length === 0
+    caveats.length === 0 &&
+    !promptSetup
   ) {
     return null;
   }
@@ -126,6 +128,36 @@ function normalizeGenerationFeedback(value) {
     pros,
     cons,
     caveats,
+    ...(promptSetup ? { prompt_setup: promptSetup } : {}),
+  };
+}
+
+function normalizePromptSetup(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const promptProfileId =
+    typeof value.prompt_profile_id === "string"
+      ? value.prompt_profile_id.trim()
+      : "";
+  const prompt3VersionId =
+    typeof value.prompt3_version_id === "string"
+      ? value.prompt3_version_id.trim()
+      : "";
+  const systemPromptVersionId =
+    typeof value.system_prompt_version_id === "string"
+      ? value.system_prompt_version_id.trim()
+      : "";
+
+  if (!promptProfileId && !prompt3VersionId && !systemPromptVersionId) {
+    return null;
+  }
+
+  return {
+    prompt_profile_id: promptProfileId || null,
+    prompt3_version_id: prompt3VersionId || null,
+    system_prompt_version_id: systemPromptVersionId || null,
   };
 }
 

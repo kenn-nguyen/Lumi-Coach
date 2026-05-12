@@ -99,16 +99,18 @@ describe("prompt-loader", () => {
     expect(result).not.toContain("prompt_version");
   });
 
-  it("ignores user system prompt overrides and keeps system guardrails server-managed", async () => {
+  it("keeps system guardrails shared while allowing profile-scoped system prompt bodies", async () => {
     getUserAssets.mockResolvedValue({
       activePromptProfileId: "profile1",
       prompt1TemplateAsset: null,
       systemPromptTemplateAsset: {
+        filename: "system-prompt.txt",
         content: "USER SYSTEM PROMPT",
       },
     });
     getServerPromptDefaults.mockResolvedValue({
       artifacts: {
+        "system.template": "SERVER SYSTEM BODY",
         "system.guardrails": "SERVER SYSTEM PROMPT",
       },
     });
@@ -118,9 +120,23 @@ describe("prompt-loader", () => {
     );
 
     const promptLoader = await import("./prompt-loader.js");
-    const systemPrompt = await promptLoader.loadSystemPromptGuardrails();
+    const systemPrompt = await promptLoader.renderSystemPromptWithMetadata({}, {});
 
-    expect(systemPrompt).toBe("SERVER SYSTEM PROMPT");
+    expect(systemPrompt.text).toContain("SERVER SYSTEM PROMPT");
+    expect(systemPrompt.text).toContain("USER SYSTEM PROMPT");
+    expect(systemPrompt.metadata.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactKey: "system.guardrails",
+          source: "server",
+        }),
+        expect.objectContaining({
+          artifactKey: "systemPrompt.template",
+          source: "user_override",
+          filename: "system-prompt.txt",
+        }),
+      ]),
+    );
   });
 
   it("returns forward-only metadata for the exact prompt artifacts used", async () => {
@@ -136,10 +152,12 @@ describe("prompt-loader", () => {
     getServerPromptDefaults.mockResolvedValue({
       artifacts: {
         "prompt1.output_contract": "SERVER CONTRACT",
+        "profile2.systemPrompt.template": "SERVER SYSTEM BODY",
         "system.guardrails": "SERVER SYSTEM PROMPT",
       },
       manifest: {
         "prompt1.output_contract": "contract-hash",
+        "profile2.systemPrompt.template": "system-body-hash",
         "system.guardrails": "system-hash",
       },
     });
@@ -160,7 +178,7 @@ describe("prompt-loader", () => {
       },
     );
     const systemPrompt =
-      await promptLoader.loadSystemPromptGuardrailsWithMetadata();
+      await promptLoader.renderSystemPromptWithMetadata({}, {});
     const runMetadata = await promptLoader.buildPromptRunMetadata({
       profile: {
         id: "chatgpt:web_automation",
@@ -212,6 +230,10 @@ describe("prompt-loader", () => {
       artifactKey: "system.guardrails",
       hash: "system-hash",
     });
+    expect(runMetadata.systemPrompt.artifacts[1]).toMatchObject({
+      artifactKey: "profile2.systemPrompt.template",
+      hash: "system-body-hash",
+    });
   });
 
   it("strips prompt frontmatter from server artifacts and preserves it in metadata", async () => {
@@ -222,9 +244,9 @@ describe("prompt-loader", () => {
     });
     getServerPromptDefaults.mockResolvedValue({
       artifacts: {
-        "prompt1.template": withFrontmatter(
+        "profile1.prompt1.template": withFrontmatter(
           {
-            prompt_artifact: "prompt1.template",
+            prompt_artifact: "profile1.prompt1.template",
             prompt_version: "v7",
             prompt_label: "jd-analysis-test",
             prompt_notes: "Test prompt metadata.",
@@ -259,8 +281,8 @@ describe("prompt-loader", () => {
     expect(prompt.metadata.artifacts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          artifactKey: "prompt1.template",
-          promptArtifact: "prompt1.template",
+          artifactKey: "profile1.prompt1.template",
+          promptArtifact: "profile1.prompt1.template",
           promptVersion: "v7",
           promptLabel: "jd-analysis-test",
           promptNotes: "Test prompt metadata.",
@@ -272,6 +294,50 @@ describe("prompt-loader", () => {
         expect.objectContaining({
           artifactKey: "prompt1.output_contract",
           promptVersion: "v3",
+        }),
+      ]),
+    );
+  });
+
+  it("uses profile-scoped server defaults for profile 2 prompt bodies", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile2",
+      prompt1TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({
+      artifacts: {
+        "profile2.prompt1.template": withFrontmatter(
+          {
+            prompt_artifact: "profile2.prompt1.template",
+            prompt_version: "v1.0.0",
+            prompt_label: "profile2-jd-analysis",
+          },
+          "PROFILE2 TEMPLATE {{JOB_TITLE}}",
+        ),
+        "prompt1.output_contract": "SERVER CONTRACT",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => createFetchResponse("PACKAGED")),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const prompt = await promptLoader.renderPrompt1WithMetadata(
+      { jobTitle: "Staff Product Manager" },
+      {},
+    );
+
+    expect(prompt.text).toContain("PROFILE2 TEMPLATE Staff Product Manager");
+    expect(prompt.metadata.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactKey: "profile2.prompt1.template",
+          promptLabel: "profile2-jd-analysis",
+        }),
+        expect.objectContaining({
+          artifactKey: "prompt1.output_contract",
         }),
       ]),
     );

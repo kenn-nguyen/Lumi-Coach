@@ -252,6 +252,11 @@ class TestUploadResume:
             "pros": ["Good leadership scope"],
             "cons": ["Could use tighter metrics"],
             "caveats": ["Verify claims before applying"],
+            "prompt_setup": {
+                "prompt_profile_id": "profile2",
+                "prompt3_version_id": "prompt3-v2",
+                "system_prompt_version_id": "system-v1",
+            },
         }
         mock_db.create_resume_atomic_master = AsyncMock(
             return_value={
@@ -343,6 +348,11 @@ class TestUpdateResume:
             "pros": ["Clear ownership", "Good cross-functional scope"],
             "cons": ["Metrics could be tighter"],
             "caveats": ["Verify claims before applying"],
+            "prompt_setup": {
+                "prompt_profile_id": "profile1",
+                "prompt3_version_id": "prompt3-v1",
+                "system_prompt_version_id": "system-v1",
+            },
         }
         updated_record = {
             **mock_resume_record,

@@ -1,0 +1,10 @@
+---
+prompt_artifact: system.template
+prompt_version: v1.0.0
+prompt_label: system-prompt-body-default
+prompt_notes: Default editable API system prompt body applied after shared Lumi guardrails.
+ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
+---
+Tailor the resume honestly and directly toward the target role.
+Prefer the strongest supported evidence from the provided resume and storyboard.
+Keep the writing recruiter-readable, concrete, and grounded in the source material.

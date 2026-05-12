@@ -121,6 +121,7 @@ function getDefaultExtensionState() {
     status: SESSION_STATUS.idle,
     llmProfileId: null,
     llmProfileLabel: null,
+    promptProfileId: null,
     activeRunJob: null,
     jobSnapshot: null,
     jobId: null,
@@ -232,6 +233,9 @@ function sanitizeExtensionStateForStorage(extensionState) {
   }
   if (typeof source.llmProfileLabel === "string" && source.llmProfileLabel) {
     next.llmProfileLabel = source.llmProfileLabel;
+  }
+  if (typeof source.promptProfileId === "string" && source.promptProfileId) {
+    next.promptProfileId = source.promptProfileId;
   }
 
   const activeRunJob = sanitizeActiveRunJobForStorage(source.activeRunJob);
@@ -961,7 +965,12 @@ export async function savePromptTemplateProfileBundle(profileId, uploads) {
   const currentProfile = next.profiles[profileId] ?? {};
   const allowedUploads = Object.fromEntries(
     Object.entries(uploads || {}).filter(([field]) =>
-      ["prompt1TemplateAsset", "prompt2TemplateAsset", "prompt3TemplateAsset"].includes(field),
+      [
+        "prompt1TemplateAsset",
+        "prompt2TemplateAsset",
+        "prompt3TemplateAsset",
+        "systemPromptTemplateAsset",
+      ].includes(field),
     ),
   );
   next.profiles[profileId] = {

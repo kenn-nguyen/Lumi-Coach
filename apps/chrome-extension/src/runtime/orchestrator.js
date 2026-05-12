@@ -9,6 +9,7 @@ import {
 import { evaluateJobDescriptionGuardrail } from "./job-guardrail.js";
 import {
   buildPromptRunMetadata,
+  renderSystemPromptWithMetadata,
   loadSystemPromptGuardrailsWithMetadata,
   renderPrompt1WithMetadata,
   renderPrompt2WithMetadata,
@@ -681,7 +682,7 @@ function buildBasePromptContext({
   currentResume,
   storyboard,
   customInstruction,
-  systemPrompt,
+  systemPrompt = "",
 }) {
   return {
     jobSnapshot,
@@ -700,29 +701,133 @@ function buildBasePromptContext({
   };
 }
 
-function prefixGenerationFeedbackSummary(feedback, profile) {
-  if (!feedback || typeof feedback !== "object") {
-    return feedback;
+function buildPromptSetupFeedback(promptMetadata) {
+  if (!promptMetadata || typeof promptMetadata !== "object") {
+    return null;
   }
 
+  const promptProfileId =
+    typeof promptMetadata.promptProfileId === "string"
+      ? promptMetadata.promptProfileId.trim()
+      : "";
+  const prompt3VersionId =
+    typeof promptMetadata?.prompts?.prompt3?.versionId === "string"
+      ? promptMetadata.prompts.prompt3.versionId.trim()
+      : "";
+  const systemPromptVersionId =
+    typeof promptMetadata?.systemPrompt?.versionId === "string"
+      ? promptMetadata.systemPrompt.versionId.trim()
+      : "";
+
+  if (!promptProfileId && !prompt3VersionId && !systemPromptVersionId) {
+    return null;
+  }
+
+  return {
+    ...(promptProfileId ? { prompt_profile_id: promptProfileId } : {}),
+    ...(prompt3VersionId ? { prompt3_version_id: prompt3VersionId } : {}),
+    ...(systemPromptVersionId
+      ? { system_prompt_version_id: systemPromptVersionId }
+      : {}),
+  };
+}
+
+function buildPromptSetupSummary(promptSetup) {
+  if (!promptSetup || typeof promptSetup !== "object") {
+    return "";
+  }
+
+  const profileId =
+    typeof promptSetup.prompt_profile_id === "string"
+      ? promptSetup.prompt_profile_id.trim()
+      : "";
+  const prompt3Version =
+    typeof promptSetup.prompt3_version_id === "string"
+      ? promptSetup.prompt3_version_id.trim()
+      : "";
+  const systemVersion =
+    typeof promptSetup.system_prompt_version_id === "string"
+      ? promptSetup.system_prompt_version_id.trim()
+      : "";
+
+  const parts = [];
+  if (profileId) {
+    parts.push(`Profile ${profileId}`);
+  }
+  if (prompt3Version) {
+    parts.push(`Prompt 3 ${prompt3Version.slice(0, 12)}`);
+  }
+  if (systemVersion) {
+    parts.push(`System ${systemVersion.slice(0, 12)}`);
+  }
+
+  return parts.length ? `Prompt setup: ${parts.join(" | ")}` : "";
+}
+
+export function prefixGenerationFeedbackSummary(feedback, profile, promptMetadata = null) {
   const providerLabel =
     typeof profile?.label === "string"
       ? profile.label.trim().toUpperCase()
       : "";
-  if (!providerLabel) {
-    return feedback;
+  const promptSetup =
+    feedback?.prompt_setup && typeof feedback.prompt_setup === "object"
+      ? feedback.prompt_setup
+      : buildPromptSetupFeedback(promptMetadata);
+  const setupSummary = buildPromptSetupSummary(promptSetup);
+  if (!feedback || typeof feedback !== "object") {
+    if (!providerLabel && !setupSummary) {
+      return feedback;
+    }
+    const summaryLines = [];
+    if (providerLabel) {
+      summaryLines.push(`${providerLabel}:`);
+    }
+    if (setupSummary) {
+      summaryLines.push(setupSummary);
+    }
+    return {
+      summary: summaryLines.join("\n"),
+      pros: [],
+      cons: [],
+      caveats: [],
+      ...(promptSetup ? { prompt_setup: promptSetup } : {}),
+    };
   }
 
   const summary =
     typeof feedback.summary === "string" ? feedback.summary.trim() : "";
-  const prefix = `${providerLabel}:`;
-  if (summary.startsWith(prefix)) {
+  const prefix = providerLabel ? `${providerLabel}:` : "";
+  const hasProviderPrefix = summary.startsWith(prefix);
+  const hasSetupSummary =
+    setupSummary &&
+    summary.toLowerCase().includes(setupSummary.toLowerCase());
+  if (
+    ((!providerLabel || hasProviderPrefix) &&
+      (!setupSummary || hasSetupSummary)) &&
+    ((!promptSetup && !feedback.prompt_setup) ||
+      JSON.stringify(promptSetup) === JSON.stringify(feedback.prompt_setup))
+  ) {
     return feedback;
+  }
+
+  const summaryLines = [];
+  if (!providerLabel && summary) {
+    summaryLines.push(summary);
+  } else if (hasProviderPrefix) {
+    summaryLines.push(summary);
+  } else if (summary) {
+    summaryLines.push(`${prefix} ${summary}`);
+  } else if (providerLabel) {
+    summaryLines.push(prefix);
+  }
+  if (setupSummary && !hasSetupSummary) {
+    summaryLines.push(setupSummary);
   }
 
   return {
     ...feedback,
-    summary: summary ? `${prefix} ${summary}` : prefix,
+    summary: summaryLines.join("\n"),
+    ...(promptSetup ? { prompt_setup: promptSetup } : {}),
   };
 }
 
@@ -1268,6 +1373,11 @@ export async function generateResumeForLinkedInJob(
   let prompt3DurationMs = null;
   let patchDurationMs = null;
   let promptMetadata = null;
+  let systemPrompt = "";
+  let systemPromptRendered = {
+    text: "",
+    metadata: null,
+  };
   const promptMetadataByName = {};
   logInfo("Orchestrator", "Loading local assets.");
   const {
@@ -1275,19 +1385,18 @@ export async function generateResumeForLinkedInJob(
     storyboardAsset,
     llmSettings,
     apifyFallbackSettings,
+    activePromptProfileId,
   } = await getUserAssets();
   const activeLlmProfile = getActiveLlmProfile(llmSettings);
-  const systemPromptRendered = await loadSystemPromptGuardrailsWithMetadata();
-  const systemPrompt = systemPromptRendered.text;
   const refreshPromptMetadata = async () => {
     promptMetadata = await buildPromptRunMetadata({
       profile: activeLlmProfile,
+      promptProfileId: activePromptProfileId,
       prompts: promptMetadataByName,
       systemPrompt: systemPromptRendered.metadata,
     });
     return promptMetadata;
   };
-  await refreshPromptMetadata();
   const currentExtensionState = await getExtensionState();
   const runId = currentExtensionState?.sessionId ?? null;
   const cancel = createCancelHelpers(runId);
@@ -1469,7 +1578,18 @@ export async function generateResumeForLinkedInJob(
     currentResume,
     storyboard,
     customInstruction: prompt1CustomInstruction,
-    systemPrompt,
+    systemPrompt: "",
+  });
+  systemPromptRendered = await renderSystemPromptWithMetadata(
+    promptContext,
+    activeLlmProfile,
+  );
+  systemPrompt = systemPromptRendered.text;
+  promptContext.systemPrompt = systemPrompt;
+  await refreshPromptMetadata();
+  await setExtensionState({
+    promptProfileId: activePromptProfileId || "profile1",
+    promptMetadata,
   });
 
   logInfo("Orchestrator", "Rendering Prompt 1.");
@@ -1747,6 +1867,7 @@ export async function generateResumeForLinkedInJob(
   const prompt3Feedback = prefixGenerationFeedbackSummary(
     normalizePrompt3Feedback(prompt3Result.generationFeedback),
     activeLlmProfile,
+    promptMetadata,
   );
   const serverPrompt2Artifact =
     stripPromptFlexNotesFromServerArtifact(prompt2Result);
@@ -1813,6 +1934,8 @@ export async function generateResumeForLinkedInJob(
       previewUrl,
       status,
       runId,
+      promptProfileId: activePromptProfileId || "profile1",
+      promptProfileLabel: activePromptProfileId || "profile1",
       providerId: activeLlmProfile.id,
       providerLabel: activeLlmProfile.label,
       providerVendor: activeLlmProfile.vendor ?? null,

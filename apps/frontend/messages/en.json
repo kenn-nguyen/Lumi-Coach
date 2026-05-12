@@ -876,6 +876,7 @@
     },
     "feedback": {
       "summaryLabel": "Summary",
+      "promptSetupLabel": "Prompt setup",
       "prosLabel": "Pros",
       "consLabel": "Cons",
       "caveatsLabel": "Caveats"

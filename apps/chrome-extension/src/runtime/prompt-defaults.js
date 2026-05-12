@@ -1,10 +1,12 @@
 import { STORAGE_KEYS } from "./constants.js";
 
 export const SYSTEM_GUARDRAILS_ARTIFACT_KEY = "system.guardrails";
+export const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
 export const USER_EDITABLE_PROMPT_TEMPLATE_NAMES = [
   "prompt1",
   "prompt2",
   "prompt3",
+  "systemPrompt",
 ];
 
 const PROMPT_DOWNLOAD_CONFIG = {
@@ -24,11 +26,35 @@ const PROMPT_DOWNLOAD_CONFIG = {
     downloadName: "prompt3.default.zip",
   },
   systemPrompt: {
-    promptFileName: "system-prompt.guardrails.txt",
+    promptFileName: "system-prompt.txt",
     contractFileName: null,
-    downloadName: "system-prompt.guardrails.zip",
+    downloadName: "system-prompt.default.zip",
   },
 };
+
+const PROFILE_DEFAULT_PROMPT_PATHS = {
+  profile1: {
+    prompt1: "src/prompts/prompt1.txt",
+    prompt2: "src/prompts/prompt2.txt",
+    prompt3: "src/prompts/prompt3.txt",
+    systemPrompt: "src/prompts/system-prompt.txt",
+  },
+  profile2: {
+    prompt1: "src/prompts/profiles/profile2/prompt1.txt",
+    prompt2: "src/prompts/profiles/profile2/prompt2.txt",
+    prompt3: "src/prompts/prompt3.txt",
+    systemPrompt: "src/prompts/system-prompt.txt",
+  },
+  profile3: {
+    prompt1: "src/prompts/prompt1.txt",
+    prompt2: "src/prompts/prompt2.txt",
+    prompt3: "src/prompts/prompt3.txt",
+    systemPrompt: "src/prompts/system-prompt.txt",
+  },
+};
+
+const PROFILE_TEMPLATE_ARTIFACT_PATTERN =
+  /^(profile[123])\.(prompt1|prompt2|prompt3|systemPrompt)\.template$/;
 
 export const PROMPT_ARTIFACT_DEFINITIONS = {
   "prompt1.template": {
@@ -66,10 +92,14 @@ export const PROMPT_ARTIFACT_DEFINITIONS = {
     path: "src/prompts/patches/prompt4.output-contract.txt",
     fileName: "prompt4.output-contract.txt",
   },
+  "systemPrompt.template": {
+    path: "src/prompts/system-prompt.txt",
+    fileName: "system-prompt.txt",
+    storageKey: "systemPromptTemplateAsset",
+  },
   [SYSTEM_GUARDRAILS_ARTIFACT_KEY]: {
     path: "src/prompts/patches/system.guardrails.txt",
     fileName: "system-prompt.guardrails.txt",
-    storageKey: "systemPromptTemplateAsset",
   },
 };
 
@@ -77,6 +107,27 @@ const packagedArtifactCache = new Map();
 
 export function getPromptTemplateArtifactKey(templateName) {
   return `${templateName}.template`;
+}
+
+export function getProfilePromptTemplateArtifactKey(templateName, profileId) {
+  if (!PROMPT_PROFILE_IDS.includes(profileId)) {
+    return getPromptTemplateArtifactKey(templateName);
+  }
+  return `${profileId}.${templateName}.template`;
+}
+
+export function getDefaultPromptTemplateArtifactKey(
+  templateName,
+  promptProfileId = null,
+) {
+  if (
+    promptProfileId &&
+    PROMPT_PROFILE_IDS.includes(promptProfileId) &&
+    PROFILE_DEFAULT_PROMPT_PATHS[promptProfileId]?.[templateName]
+  ) {
+    return getProfilePromptTemplateArtifactKey(templateName, promptProfileId);
+  }
+  return getPromptTemplateArtifactKey(templateName);
 }
 
 export function getPromptOutputContractArtifactKey(templateName) {
@@ -99,18 +150,37 @@ export function getPromptDownloadConfig(templateName) {
 }
 
 export function getPromptArtifactDefinition(artifactKey) {
+  const profileMatch = PROFILE_TEMPLATE_ARTIFACT_PATTERN.exec(artifactKey);
+  if (profileMatch) {
+    const [, profileId, templateName] = profileMatch;
+    const path = PROFILE_DEFAULT_PROMPT_PATHS[profileId]?.[templateName];
+    if (!path) {
+      return null;
+    }
+    return {
+      path,
+      fileName:
+        templateName === "systemPrompt"
+          ? "system-prompt.txt"
+          : `${templateName}.txt`,
+    };
+  }
   return PROMPT_ARTIFACT_DEFINITIONS[artifactKey] ?? null;
 }
 
-export function getPromptArtifactKeysForTemplate(templateName) {
+export function getPromptArtifactKeysForTemplate(
+  templateName,
+  promptProfileId = null,
+) {
+  const templateArtifactKey = getDefaultPromptTemplateArtifactKey(
+    templateName,
+    promptProfileId,
+  );
   if (templateName === "systemPrompt") {
-    return [SYSTEM_GUARDRAILS_ARTIFACT_KEY];
+    return [templateArtifactKey];
   }
 
-  return [
-    getPromptTemplateArtifactKey(templateName),
-    getPromptOutputContractArtifactKey(templateName),
-  ];
+  return [templateArtifactKey, getPromptOutputContractArtifactKey(templateName)];
 }
 
 function resolveExtensionAssetUrl(path) {
