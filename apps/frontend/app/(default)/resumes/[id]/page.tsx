@@ -569,19 +569,28 @@ export default function ResumeViewerPage() {
 
   const feedbackRows = [
     {
-      key: 'pros',
-      label: t('resumeViewer.feedback.prosLabel'),
-      items: generationFeedback?.pros ?? [],
-    },
-    {
       key: 'cons',
       label: t('resumeViewer.feedback.consLabel'),
       items: generationFeedback?.cons ?? [],
+      rowClassName: 'border border-amber-200 bg-amber-50/70 px-3 py-3',
+      labelClassName: 'text-amber-800',
+      listClassName: 'text-amber-950',
+    },
+    {
+      key: 'pros',
+      label: t('resumeViewer.feedback.prosLabel'),
+      items: generationFeedback?.pros ?? [],
+      rowClassName: '',
+      labelClassName: '',
+      listClassName: '',
     },
     {
       key: 'caveats',
       label: t('resumeViewer.feedback.caveatsLabel'),
       items: generationFeedback?.caveats ?? [],
+      rowClassName: '',
+      labelClassName: '',
+      listClassName: '',
     },
   ].filter((row) => row.items.length > 0);
 
@@ -748,8 +757,8 @@ export default function ResumeViewerPage() {
           <div className="mb-6 flex justify-center no-print">
             <div className="w-full max-w-[250mm] rounded-2xl border border-border bg-white px-5 py-4 shadow-sw-default">
               {displayFeedbackSummary && (
-                <div className="mb-3 grid gap-1.5 md:grid-cols-[88px_minmax(0,1fr)] md:items-start">
-                  <p className="pt-0.5 text-xs font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                <div className="mb-3 grid gap-2 md:grid-cols-[132px_minmax(0,1fr)] md:items-start">
+                  <p className="pt-0.5 text-xs font-mono font-bold uppercase leading-[1.15] tracking-[0.14em] text-muted-foreground">
                     {t('resumeViewer.feedback.summaryLabel')}
                   </p>
                   <p className="text-sm leading-6 text-foreground">{displayFeedbackSummary}</p>
@@ -759,12 +768,14 @@ export default function ResumeViewerPage() {
                 {feedbackRows.map((row) => (
                   <div
                     key={row.key}
-                    className="grid gap-1.5 md:grid-cols-[88px_minmax(0,1fr)] md:items-start"
+                    className={`grid gap-2 md:grid-cols-[132px_minmax(0,1fr)] md:items-start ${row.rowClassName}`}
                   >
-                    <p className="pt-0.5 text-xs font-mono font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    <p
+                      className={`pt-0.5 text-xs font-mono font-bold uppercase leading-[1.15] tracking-[0.14em] text-muted-foreground ${row.labelClassName}`}
+                    >
                       {row.label}
                     </p>
-                    <ul className="list-disc pl-5 space-y-0.5">
+                    <ul className={`list-disc space-y-0.5 pl-5 ${row.listClassName}`}>
                       {row.items.map((item, index) => (
                         <li key={`${row.key}-${index}`}>{item}</li>
                       ))}
