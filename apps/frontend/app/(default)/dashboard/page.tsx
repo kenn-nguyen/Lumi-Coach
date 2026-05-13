@@ -406,372 +406,373 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Configuration Warning Banner */}
-      {shouldShowLlmNotice && (
-        <div className="relative mb-6 border border-amber-300 bg-amber-50 p-4 pr-14 shadow-sw-sm">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-700" />
-              <div className="max-w-3xl space-y-2">
-                <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
-                  {t(
-                    isFreeModeAvailable
-                      ? 'dashboard.freeModeAvailableTitle'
-                      : 'dashboard.llmNotConfiguredTitle'
-                  )}
-                </p>
-                {isFreeModeAvailable ? (
-                  <>
-                    <p className="max-w-2xl text-sm leading-6 text-amber-950">
-                      {t('dashboard.freeModeAvailableBody')}
-                    </p>
-                    <p className="max-w-2xl text-sm leading-6 text-amber-700">
-                      {t('dashboard.freeModeAvailableBodySecondaryPrefix')}
-                      <Link href="/settings" className="font-semibold underline underline-offset-2">
-                        {t('dashboard.llmNotConfiguredSettingsLink')}
-                      </Link>
-                      {t('dashboard.freeModeAvailableBodySecondarySuffix')}
-                    </p>
-                  </>
-                ) : (
-                  <p className="max-w-2xl text-sm leading-6 text-amber-700">
-                    {t('dashboard.llmNotConfiguredMessagePrefix')}{' '}
-                    <Link href="/settings" className="font-semibold underline underline-offset-2">
-                      {t('dashboard.llmNotConfiguredSettingsLink')}
-                    </Link>
-                    {t('dashboard.llmNotConfiguredMessageSuffix')}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 lg:justify-end">
-              {isFreeModeAvailable ? (
-                <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer">
-                  <Button size="sm" className="min-w-[8.5rem]">
-                    {t('dashboard.freeModeAvailableExtensionCta')}
-                  </Button>
-                </a>
-              ) : null}
-              <Link href="/settings">
-                <Button variant="outline" size="sm" className="min-w-[7.5rem]">
-                  <Settings className="mr-2 h-4 w-4" />
-                  {t('nav.settings')}
-                </Button>
-              </Link>
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label="Dismiss notice"
-            onClick={() => setIsLlmNoticeDismissed(true)}
-            className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center border border-amber-300 bg-amber-50 text-amber-700 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
-      <SwissGrid
-        title={t('dashboard.myResumes')}
-        headerActions={
-          <>
-            <div className="relative group" ref={masterMenuRef}>
-              {masterResumeId ? (
-                <div className="flex items-stretch">
-                  <Button
-                    variant="secondary"
-                    onClick={handleOpenMasterResume}
-                    className="h-10 min-w-[15rem] justify-start px-4 text-left"
-                  >
-                    <span
-                      className={cn(
-                        'flex h-5 w-5 items-center justify-center rounded-full border border-border text-[9px] font-bold',
-                        processingStatus === 'failed'
-                          ? 'bg-red-50 text-red-700'
-                          : processingStatus === 'processing' || processingStatus === 'pending'
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'bg-blue-700 text-white'
-                      )}
-                    >
-                      {processingStatus === 'processing' || processingStatus === 'pending' ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : processingStatus === 'failed' ? (
-                        '!'
-                      ) : (
-                        'M'
-                      )}
-                    </span>
-                    <span className="flex min-w-0 flex-col items-start">
-                      <span className="truncate">{masterButtonLabel}</span>
-                      <span
-                        className={cn(
-                          'font-mono text-[9px] uppercase tracking-[0.16em] leading-none',
-                          masterStatusTone
-                        )}
-                      >
-                        {masterStatusText}
-                      </span>
-                    </span>
-                  </Button>
-                  <button
-                    type="button"
-                    aria-label={t('dashboard.masterResumeMenu')}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setIsMasterMenuOpen((open) => !open);
-                    }}
+    <SwissGrid
+      title={t('dashboard.myResumes')}
+      headerActions={
+        <>
+          <div className="relative group" ref={masterMenuRef}>
+            {masterResumeId ? (
+              <div className="flex items-stretch">
+                <Button
+                  variant="secondary"
+                  onClick={handleOpenMasterResume}
+                  className="h-10 min-w-[15rem] justify-start px-4 text-left"
+                >
+                  <span
                     className={cn(
-                      'rounded-r-xl border border-border border-l-0 bg-secondary px-3 text-foreground shadow-xs transition-colors hover:bg-muted',
-                      'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100'
+                      'flex h-5 w-5 items-center justify-center rounded-full border border-border text-[9px] font-bold',
+                      processingStatus === 'failed'
+                        ? 'bg-red-50 text-red-700'
+                        : processingStatus === 'processing' || processingStatus === 'pending'
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'bg-blue-700 text-white'
                     )}
                   >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
-                  {isMasterMenuOpen ? (
-                    <div className="absolute right-0 top-full z-40 mt-2 min-w-[13rem] overflow-hidden rounded-2xl border border-border bg-card shadow-sw-default">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsMasterMenuOpen(false);
-                          handleOpenMasterResume();
-                        }}
-                        className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
-                      >
-                        <span>{t('dashboard.openMasterResume')}</span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!masterResumeId) return;
-                          setIsMasterMenuOpen(false);
-                          handleExportJson(
-                            masterResumeId,
-                            masterResumeItem?.title || t('dashboard.masterResume')
-                          );
-                        }}
-                        className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
-                      >
-                        <span>{t('dashboard.exportJson')}</span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsMasterMenuOpen(false);
-                          setShowTailorPrompt(true);
-                        }}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
-                      >
-                        <span>{t('dashboard.replaceMasterResumeWithExtension')}</span>
-                        <Upload className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="h-10 min-w-[15rem] justify-start px-4"
-                  onClick={() => setShowTailorPrompt(true)}
-                >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/10 bg-primary text-white">
-                    <Plus className="h-3.5 w-3.5" />
+                    {processingStatus === 'processing' || processingStatus === 'pending' ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : processingStatus === 'failed' ? (
+                      '!'
+                    ) : (
+                      'M'
+                    )}
                   </span>
                   <span className="flex min-w-0 flex-col items-start">
                     <span className="truncate">{masterButtonLabel}</span>
-                    <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">
+                    <span
+                      className={cn(
+                        'font-mono text-[9px] uppercase tracking-[0.16em] leading-none',
+                        masterStatusTone
+                      )}
+                    >
                       {masterStatusText}
                     </span>
                   </span>
                 </Button>
-              )}
-            </div>
-            <AccountControl />
-            <Link href="/settings">
-              <Button variant="outline" size="icon" aria-label={t('nav.settings')}>
-                <Settings className="w-4 h-4" />
-              </Button>
-            </Link>
-          </>
-        }
-      >
-        <div className="space-y-6">
-          <div className="skin-card flex min-h-[32rem] flex-col overflow-hidden rounded-[24px]">
-            <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="font-serif text-3xl">{t('dashboard.tailoredResumes')}</h2>
-                  <p className="mt-2 font-mono text-xs uppercase tracking-wide text-gray-500">
-                    {filteredTailoredResumes.length} / {tailoredResumes.length} resumes
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <form
-                    role="search"
-                    autoComplete="off"
-                    onSubmit={(e) => e.preventDefault()}
-                    className="contents"
-                  >
-                    {isSearchFieldReady ? (
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        id="lumi-resume-library-filter"
-                        name={searchFieldName}
-                        value={searchQuery}
-                        onFocus={clearBrowserInjectedSearchValue}
-                        onChange={(e) => {
-                          searchEditedByUserRef.current = true;
-                          setSearchQuery(e.target.value);
-                        }}
-                        placeholder={t('common.search')}
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="none"
-                        spellCheck={false}
-                        inputMode="search"
-                        data-1p-ignore="true"
-                        data-lpignore="true"
-                        className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
-                      />
-                    ) : (
-                      <div
-                        aria-hidden="true"
-                        className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4"
-                      />
-                    )}
-                  </form>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'updated' | 'title')}
-                    className="h-10 min-w-[12rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
-                  >
-                    <option value="updated">{t('dashboard.sortUpdated')}</option>
-                    <option value="title">{t('dashboard.sortTitle')}</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {filteredTailoredResumes.length === 0 ? (
-              <div className="px-6 py-12">
-                <p className="font-serif text-2xl">
-                  {!masterResumeId
-                    ? t('dashboard.noMasterResumeTitle')
-                    : tailoredResumes.length === 0
-                      ? t('dashboard.noResumes')
-                      : t('dashboard.noMatchingResumes')}
-                </p>
-                <p className="mt-2 font-mono text-sm text-gray-500 uppercase tracking-wide">
-                  {!masterResumeId
-                    ? t('dashboard.noMasterResumeDescription')
-                    : tailoredResumes.length === 0
-                      ? t('dashboard.noTailoredResumesDescription')
-                      : t('dashboard.tryDifferentSearch')}
-                </p>
+                <button
+                  type="button"
+                  aria-label={t('dashboard.masterResumeMenu')}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsMasterMenuOpen((open) => !open);
+                  }}
+                  className={cn(
+                    'rounded-r-xl border border-border border-l-0 bg-secondary px-3 text-foreground shadow-xs transition-colors hover:bg-muted',
+                    'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100'
+                  )}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+                {isMasterMenuOpen ? (
+                  <div className="absolute right-0 top-full z-40 mt-2 min-w-[13rem] overflow-hidden rounded-2xl border border-border bg-card shadow-sw-default">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMasterMenuOpen(false);
+                        handleOpenMasterResume();
+                      }}
+                      className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
+                    >
+                      <span>{t('dashboard.openMasterResume')}</span>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!masterResumeId) return;
+                        setIsMasterMenuOpen(false);
+                        handleExportJson(
+                          masterResumeId,
+                          masterResumeItem?.title || t('dashboard.masterResume')
+                        );
+                      }}
+                      className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
+                    >
+                      <span>{t('dashboard.exportJson')}</span>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMasterMenuOpen(false);
+                        setShowTailorPrompt(true);
+                      }}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
+                    >
+                      <span>{t('dashboard.replaceMasterResumeWithExtension')}</span>
+                      <Upload className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto bg-card">
-                {filteredTailoredResumes.map((resume, index) => {
-                  const title = getResumeTitle(resume);
-                  const color = cardPalette[hashTitle(title) % cardPalette.length];
-                  return (
-                    <div
-                      key={resume.resume_id}
-                      onClick={() => router.push(`/resumes/${resume.resume_id}`)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          router.push(`/resumes/${resume.resume_id}`);
-                        }
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      className={cn(
-                        'flex w-full items-center gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                        index > 0 && 'border-t border-border'
-                      )}
-                    >
-                      <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border"
-                        style={{ backgroundColor: color.bg, color: color.fg }}
-                      >
-                        <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
-                      </div>
-                      <div className="min-w-0 flex-1 py-0.5">
-                        <h3 className="truncate font-serif text-[1.2rem] leading-tight">{title}</h3>
-                        <p className="mt-1 whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-gray-500">
-                          {t('dashboard.edited', {
-                            date: formatDate(resume.updated_at || resume.created_at),
-                          })}
-                        </p>
-                      </div>
-                      <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
-                        {resume.job_source_url ? (
-                          <a
-                            href={resume.job_source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => event.stopPropagation()}
-                            className="inline-flex h-8 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-                          >
-                            Open JD
-                          </a>
-                        ) : null}
-                        {renderStatusPill(resume.processing_status)}
-                        <span className="flex h-6 w-6 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
-                          <ChevronRight className="h-3 w-3" />
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <Button
+                variant="outline"
+                className="h-10 min-w-[15rem] justify-start px-4"
+                onClick={() => setShowTailorPrompt(true)}
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/10 bg-primary text-white">
+                  <Plus className="h-3.5 w-3.5" />
+                </span>
+                <span className="flex min-w-0 flex-col items-start">
+                  <span className="truncate">{masterButtonLabel}</span>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">
+                    {masterStatusText}
+                  </span>
+                </span>
+              </Button>
             )}
           </div>
-        </div>
+          <AccountControl />
+          <Link href="/settings">
+            <Button variant="outline" size="icon" aria-label={t('nav.settings')}>
+              <Settings className="w-4 h-4" />
+            </Button>
+          </Link>
+        </>
+      }
+    >
+      <div className="space-y-6">
+        {/* Configuration Warning Banner */}
+        {shouldShowLlmNotice && (
+          <section className="relative border border-amber-300 bg-amber-50 p-4 pr-14 shadow-sw-sm">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-700" />
+                <div className="max-w-3xl space-y-2">
+                  <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
+                    {t(
+                      isFreeModeAvailable
+                        ? 'dashboard.freeModeAvailableTitle'
+                        : 'dashboard.llmNotConfiguredTitle'
+                    )}
+                  </p>
+                  {isFreeModeAvailable ? (
+                    <>
+                      <p className="max-w-2xl text-sm leading-6 text-amber-950">
+                        {t('dashboard.freeModeAvailableBody')}
+                      </p>
+                      <p className="max-w-2xl text-sm leading-6 text-amber-700">
+                        {t('dashboard.freeModeAvailableBodySecondaryPrefix')}
+                        <Link
+                          href="/settings"
+                          className="font-semibold underline underline-offset-2"
+                        >
+                          {t('dashboard.llmNotConfiguredSettingsLink')}
+                        </Link>
+                        {t('dashboard.freeModeAvailableBodySecondarySuffix')}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="max-w-2xl text-sm leading-6 text-amber-700">
+                      {t('dashboard.llmNotConfiguredMessagePrefix')}{' '}
+                      <Link href="/settings" className="font-semibold underline underline-offset-2">
+                        {t('dashboard.llmNotConfiguredSettingsLink')}
+                      </Link>
+                      {t('dashboard.llmNotConfiguredMessageSuffix')}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 lg:justify-end">
+                {isFreeModeAvailable ? (
+                  <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer">
+                    <Button size="sm" className="min-w-[8.5rem]">
+                      {t('dashboard.freeModeAvailableExtensionCta')}
+                    </Button>
+                  </a>
+                ) : null}
+                <Link href="/settings">
+                  <Button variant="outline" size="sm" className="min-w-[7.5rem]">
+                    <Settings className="mr-2 h-4 w-4" />
+                    {t('nav.settings')}
+                  </Button>
+                </Link>
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss notice"
+              onClick={() => setIsLlmNoticeDismissed(true)}
+              className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center border border-amber-300 bg-amber-50 text-amber-700 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </section>
+        )}
 
-        <Dialog open={showTailorPrompt} onOpenChange={setShowTailorPrompt}>
-          <DialogContent className="max-w-[32rem] p-0 gap-0">
-            <DialogHeader className="border-b border-border p-6 pb-4">
-              <DialogTitle className="font-serif text-2xl">
-                {t('dashboard.chromeExtensionPrompt.title')}
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-4 p-6">
-              <p className="text-sm leading-relaxed text-black">
-                {t('dashboard.chromeExtensionPrompt.bodyPrefix')}{' '}
-                <a
-                  href={CHROME_EXTENSION_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-bold text-blue-700 underline underline-offset-4"
+        <div className="skin-card flex min-h-[32rem] flex-col overflow-hidden rounded-[24px]">
+          <div className="sticky top-0 z-10 border-b border-border bg-card px-6 py-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="font-serif text-3xl">{t('dashboard.tailoredResumes')}</h2>
+                <p className="mt-2 font-mono text-xs uppercase tracking-wide text-gray-500">
+                  {filteredTailoredResumes.length} / {tailoredResumes.length} resumes
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <form
+                  role="search"
+                  autoComplete="off"
+                  onSubmit={(e) => e.preventDefault()}
+                  className="contents"
                 >
-                  {t('dashboard.chromeExtensionPrompt.extensionLinkText')}
-                </a>{' '}
-                {t('dashboard.chromeExtensionPrompt.bodySuffix')}
+                  {isSearchFieldReady ? (
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      id="lumi-resume-library-filter"
+                      name={searchFieldName}
+                      value={searchQuery}
+                      onFocus={clearBrowserInjectedSearchValue}
+                      onChange={(e) => {
+                        searchEditedByUserRef.current = true;
+                        setSearchQuery(e.target.value);
+                      }}
+                      placeholder={t('common.search')}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      inputMode="search"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                      className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
+                    />
+                  ) : (
+                    <div
+                      aria-hidden="true"
+                      className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4"
+                    />
+                  )}
+                </form>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as 'updated' | 'title')}
+                  className="h-10 min-w-[12rem] rounded-xl border border-border bg-input px-4 font-mono text-sm uppercase tracking-wide outline-none focus:border-primary"
+                >
+                  <option value="updated">{t('dashboard.sortUpdated')}</option>
+                  <option value="title">{t('dashboard.sortTitle')}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {filteredTailoredResumes.length === 0 ? (
+            <div className="px-6 py-12">
+              <p className="font-serif text-2xl">
+                {!masterResumeId
+                  ? t('dashboard.noMasterResumeTitle')
+                  : tailoredResumes.length === 0
+                    ? t('dashboard.noResumes')
+                    : t('dashboard.noMatchingResumes')}
               </p>
-              <p className="font-mono text-xs leading-relaxed text-gray-600">
-                {t('dashboard.chromeExtensionPrompt.websiteModeNote')}
+              <p className="mt-2 font-mono text-sm text-gray-500 uppercase tracking-wide">
+                {!masterResumeId
+                  ? t('dashboard.noMasterResumeDescription')
+                  : tailoredResumes.length === 0
+                    ? t('dashboard.noTailoredResumesDescription')
+                    : t('dashboard.tryDifferentSearch')}
               </p>
             </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto bg-card">
+              {filteredTailoredResumes.map((resume, index) => {
+                const title = getResumeTitle(resume);
+                const color = cardPalette[hashTitle(title) % cardPalette.length];
+                return (
+                  <div
+                    key={resume.resume_id}
+                    onClick={() => router.push(`/resumes/${resume.resume_id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        router.push(`/resumes/${resume.resume_id}`);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      'flex w-full items-center gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                      index > 0 && 'border-t border-border'
+                    )}
+                  >
+                    <div
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border"
+                      style={{ backgroundColor: color.bg, color: color.fg }}
+                    >
+                      <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
+                    </div>
+                    <div className="min-w-0 flex-1 py-0.5">
+                      <h3 className="truncate font-serif text-[1.2rem] leading-tight">{title}</h3>
+                      <p className="mt-1 whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-gray-500">
+                        {t('dashboard.edited', {
+                          date: formatDate(resume.updated_at || resume.created_at),
+                        })}
+                      </p>
+                    </div>
+                    <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
+                      {resume.job_source_url ? (
+                        <a
+                          href={resume.job_source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          className="inline-flex h-8 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                        >
+                          Open JD
+                        </a>
+                      ) : null}
+                      {renderStatusPill(resume.processing_status)}
+                      <span className="flex h-6 w-6 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
+                        <ChevronRight className="h-3 w-3" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
-            <DialogFooter className="flex-row justify-end gap-3 border-t border-border bg-secondary/60 p-4">
-              <Button variant="outline" onClick={() => setShowTailorPrompt(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button onClick={handleTailorPromptContinue}>
-                {t('dashboard.chromeExtensionPrompt.continueInApp')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </SwissGrid>
-    </div>
+      <Dialog open={showTailorPrompt} onOpenChange={setShowTailorPrompt}>
+        <DialogContent className="max-w-[32rem] p-0 gap-0">
+          <DialogHeader className="border-b border-border p-6 pb-4">
+            <DialogTitle className="font-serif text-2xl">
+              {t('dashboard.chromeExtensionPrompt.title')}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 p-6">
+            <p className="text-sm leading-relaxed text-black">
+              {t('dashboard.chromeExtensionPrompt.bodyPrefix')}{' '}
+              <a
+                href={CHROME_EXTENSION_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-blue-700 underline underline-offset-4"
+              >
+                {t('dashboard.chromeExtensionPrompt.extensionLinkText')}
+              </a>{' '}
+              {t('dashboard.chromeExtensionPrompt.bodySuffix')}
+            </p>
+            <p className="font-mono text-xs leading-relaxed text-gray-600">
+              {t('dashboard.chromeExtensionPrompt.websiteModeNote')}
+            </p>
+          </div>
+
+          <DialogFooter className="flex-row justify-end gap-3 border-t border-border bg-secondary/60 p-4">
+            <Button variant="outline" onClick={() => setShowTailorPrompt(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={handleTailorPromptContinue}>
+              {t('dashboard.chromeExtensionPrompt.continueInApp')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SwissGrid>
   );
 }
