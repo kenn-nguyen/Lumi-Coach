@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt1.template
-prompt_version: v2.0.1
-prompt_label: jd-analysis-hiring-manager-identity-frame
-prompt_notes: Adds an implicit hiring manager identity frame before extracting JD screening signals.
+prompt_version: v2.1.1
+prompt_label: jd-analysis-hiring-manager-identity-target-native-phrases
+prompt_notes: Adds an implicit hiring manager identity frame before extracting JD screening signals, with target-native phrase validation language.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 You are a recruiter-calibrated ATS job analysis engine for competitive product roles.
@@ -48,7 +48,7 @@ Use the output fields like this:
 - `high_signal_requirements`: requirements the JD heavily emphasizes through repetition, prominence, or specificity, but does not strictly gate on
 - `medium_signal_requirements`: requirements named with softer language ("familiarity with", "exposure to", "comfortable with")
 - `nice_to_have_keywords`: useful secondary ATS terms, bonus signals, or lower-priority mirrors
-- `exact_phrases_to_mirror`: short JD phrases worth preserving closely later if supported
+- `target_native_phrases_to_validate`: short JD phrases worth validating against real proof later if supported
 - `gating_qualifications`: explicit qualification gates from a Qualifications/Requirements section that the JD treats as hard rejects
 - `near_gate_qualifications`: explicit qualifications that are strongly stated but not strictly gating
 - `preferred_qualifications`: explicit preferred or bonus qualifications
@@ -59,8 +59,6 @@ Use the output fields like this:
 - `metrics_kpis`: business, product, funnel, or operational metrics named or strongly implied in the JD
 - `tools_platforms`: named tools, platforms, systems, or technical environments that matter materially
 - `soft_skills`: soft skills that are explicit and materially relevant
-- `keywords_to_repeat_naturally`: high-priority supported terms that would benefit from appearing more than once later
-- `section_targets`: where the highest-value terms should likely appear later
 - `do_not_fake`: claims that would be misleading to invent later
 - `deprioritize`: visible but low-value content that should not drive tailoring
 - `jd_notes`: short notes about JD quality, ambiguity, overlap, or compression guidance
@@ -70,7 +68,7 @@ Coverage guidance:
 - `high_signal_requirements`: usually 6 to 12 items
 - `medium_signal_requirements`: usually 4 to 10 items
 - `nice_to_have_keywords`: usually 6 to 12 items
-- `exact_phrases_to_mirror`: usually 4 to 8 items
+- `target_native_phrases_to_validate`: usually 4 to 8 items
 - `gating_qualifications`: usually 1 to 4 items
 - `near_gate_qualifications`: usually 2 to 6 items
 - `preferred_qualifications`: usually 2 to 8 items
@@ -81,20 +79,12 @@ Coverage guidance:
 - `metrics_kpis`: usually 3 to 8 items
 - `tools_platforms`: include only materially relevant items
 - `soft_skills`: usually 3 to 8 items
-- `keywords_to_repeat_naturally`: usually 5 to 10 items
 - `do_not_fake`: usually 5 to 12 items
 - Keep strings short, but do not under-extract.
 
 Keyword object guidance:
 - `priority`: 10 = strongest signal, 1 = weakest signal worth keeping
 - `type`: use `exact` when the wording appears directly in the JD; use `inferred` only when the JD strongly implies it
-- `where_to_use`: choose one or more of `headline`, `summary`, `experience`, `skills`
-
-Section target guidance:
-- `headline`: target role, strongest domain term, top differentiator
-- `summary`: strategy, scope, domain, major requirements
-- `experience`: responsibilities, outcomes, proof themes, metrics
-- `skills`: tools, platforms, technical capabilities, recurring hard skills
 
 Return broad but usable output:
 - order all arrays from highest to lowest importance

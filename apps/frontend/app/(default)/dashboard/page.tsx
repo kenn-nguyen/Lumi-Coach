@@ -534,7 +534,7 @@ export default function DashboardPage() {
       <div className="space-y-6">
         {/* Configuration Warning Banner */}
         {shouldShowLlmNotice && (
-          <section className="relative border border-amber-300 bg-amber-50 p-4 pr-14 shadow-sw-sm">
+          <section className="relative rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 pr-14 shadow-sw-sm">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-700" />
@@ -551,7 +551,7 @@ export default function DashboardPage() {
                       <p className="max-w-2xl text-sm leading-6 text-amber-950">
                         {t('dashboard.freeModeAvailableBody')}
                       </p>
-                      <p className="max-w-2xl text-sm leading-6 text-amber-700">
+                      <p className="max-w-2xl text-sm leading-6 text-amber-700/95">
                         {t('dashboard.freeModeAvailableBodySecondaryPrefix')}
                         <Link
                           href="/settings"
@@ -563,7 +563,7 @@ export default function DashboardPage() {
                       </p>
                     </>
                   ) : (
-                    <p className="max-w-2xl text-sm leading-6 text-amber-700">
+                    <p className="max-w-2xl text-sm leading-6 text-amber-700/95">
                       {t('dashboard.llmNotConfiguredMessagePrefix')}{' '}
                       <Link href="/settings" className="font-semibold underline underline-offset-2">
                         {t('dashboard.llmNotConfiguredSettingsLink')}
@@ -593,7 +593,7 @@ export default function DashboardPage() {
               type="button"
               aria-label="Dismiss notice"
               onClick={() => setIsLlmNoticeDismissed(true)}
-              className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center border border-amber-300 bg-amber-50 text-amber-700 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
             >
               <X className="h-3.5 w-3.5" />
             </button>

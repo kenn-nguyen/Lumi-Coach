@@ -41,12 +41,6 @@ function validateStringArrayField(value, label, errors) {
 }
 
 function validateKeywordObjects(items, label, errors) {
-  const validWhereToUse = new Set([
-    "headline",
-    "summary",
-    "experience",
-    "skills",
-  ]);
   const validTypes = new Set(["exact", "inferred"]);
 
   if (!Array.isArray(items)) {
@@ -63,7 +57,7 @@ function validateKeywordObjects(items, label, errors) {
     validateExactKeys(
       item,
       `${label}[${index}]`,
-      ["keyword", "priority", "type", "where_to_use"],
+      ["keyword", "priority", "type"],
       errors,
     );
 
@@ -79,17 +73,6 @@ function validateKeywordObjects(items, label, errors) {
       errors.push(
         `${label}[${index}].type must be exactly "exact" or "inferred".`,
       );
-    }
-    if (!Array.isArray(item.where_to_use)) {
-      errors.push(`${label}[${index}].where_to_use must be an array.`);
-    } else {
-      item.where_to_use.forEach((where, whereIndex) => {
-        if (!validWhereToUse.has(where)) {
-          errors.push(
-            `${label}[${index}].where_to_use[${whereIndex}] must be one of headline, summary, experience, skills.`,
-          );
-        }
-      });
     }
   });
 }
@@ -787,7 +770,7 @@ export function validatePrompt1Data(data) {
     "high_signal_requirements",
     "medium_signal_requirements",
     "nice_to_have_keywords",
-    "exact_phrases_to_mirror",
+    "target_native_phrases_to_validate",
     "gating_qualifications",
     "near_gate_qualifications",
     "preferred_qualifications",
@@ -798,8 +781,6 @@ export function validatePrompt1Data(data) {
     "metrics_kpis",
     "tools_platforms",
     "soft_skills",
-    "keywords_to_repeat_naturally",
-    "section_targets",
     "do_not_fake",
     "deprioritize",
     "jd_notes",
@@ -846,7 +827,7 @@ export function validatePrompt1Data(data) {
   );
 
   [
-    "exact_phrases_to_mirror",
+    "target_native_phrases_to_validate",
     "gating_qualifications",
     "near_gate_qualifications",
     "preferred_qualifications",
@@ -857,7 +838,6 @@ export function validatePrompt1Data(data) {
     "metrics_kpis",
     "tools_platforms",
     "soft_skills",
-    "keywords_to_repeat_naturally",
     "do_not_fake",
     "deprioritize",
     "jd_notes",
@@ -867,28 +847,6 @@ export function validatePrompt1Data(data) {
 
   if (!isNullableString(data.flex_notes)) {
     errors.push("prompt1.flex_notes must be a string or null.");
-  }
-
-  if (
-    !data.section_targets ||
-    typeof data.section_targets !== "object" ||
-    Array.isArray(data.section_targets)
-  ) {
-    errors.push("prompt1.section_targets must be an object.");
-  } else {
-    validateExactKeys(
-      data.section_targets,
-      "prompt1.section_targets",
-      ["headline", "summary", "experience", "skills"],
-      errors,
-    );
-    ["headline", "summary", "experience", "skills"].forEach((field) => {
-      validateStringArrayField(
-        data.section_targets[field],
-        `prompt1.section_targets.${field}`,
-        errors,
-      );
-    });
   }
 
   return errors;

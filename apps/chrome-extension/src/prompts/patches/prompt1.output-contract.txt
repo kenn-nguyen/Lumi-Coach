@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt1.output_contract
-prompt_version: v2.0.2
-prompt_label: jd-analysis-output-contract-gated-signals-flex-notes
-prompt_notes: Defines the Prompt 1 JSON contract with gated, high-signal, and medium-signal requirement buckets plus a reserved flexible notes string.
+prompt_version: v2.1.1
+prompt_label: jd-analysis-output-contract-target-native-phrases
+prompt_notes: Defines the Prompt 1 JSON contract with gated, high-signal, and medium-signal requirement buckets plus reserved flexible notes, using target-native phrase validation language.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
@@ -26,36 +26,32 @@ Return JSON in this exact shape:
     {
       "keyword": "",
       "priority": 1,
-      "type": "exact",
-      "where_to_use": []
+      "type": "exact"
     }
   ],
   "high_signal_requirements": [
     {
       "keyword": "",
       "priority": 1,
-      "type": "exact",
-      "where_to_use": []
+      "type": "exact"
     }
   ],
   "medium_signal_requirements": [
     {
       "keyword": "",
       "priority": 1,
-      "type": "exact",
-      "where_to_use": []
+      "type": "exact"
     }
   ],
   "nice_to_have_keywords": [
     {
       "keyword": "",
       "priority": 1,
-      "type": "exact",
-      "where_to_use": []
+      "type": "exact"
     }
   ],
 
-  "exact_phrases_to_mirror": [],
+  "target_native_phrases_to_validate": [],
   "gating_qualifications": [],
   "near_gate_qualifications": [],
   "preferred_qualifications": [],
@@ -68,14 +64,6 @@ Return JSON in this exact shape:
   "metrics_kpis": [],
   "tools_platforms": [],
   "soft_skills": [],
-  "keywords_to_repeat_naturally": [],
-
-  "section_targets": {
-    "headline": [],
-    "summary": [],
-    "experience": [],
-    "skills": []
-  },
 
   "do_not_fake": [],
   "deprioritize": [],
@@ -88,7 +76,6 @@ Additional output rules:
 - `gating_requirements`, `high_signal_requirements`, `medium_signal_requirements`, and `nice_to_have_keywords` must contain objects only.
 - `priority` must be an integer from 1 to 10.
 - `type` must be either `exact` or `inferred`.
-- `where_to_use` must be an array containing only: `headline`, `summary`, `experience`, `skills`.
 - All other list fields must contain short strings only.
 - `flex_notes` is optional and must be a string or null; use `""` when unused.
 - Use `flex_notes` only for small non-critical stage notes needed by future prompt variants.
