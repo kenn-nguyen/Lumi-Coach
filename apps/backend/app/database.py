@@ -35,6 +35,7 @@ from app.pii_crypto import (
 
 logger = logging.getLogger(__name__)
 EXTENSION_RUN_PROMPT_ARTIFACT_RETENTION_COUNT = 100
+ADMIN_EXTENSION_RUN_SCAN_LIMIT = 1000
 
 
 def _utcnow() -> datetime:
@@ -352,6 +353,203 @@ class Database:
             "created_at": self._to_iso(run.created_at),
             "updated_at": self._to_iso(run.updated_at),
         }
+
+    def _extract_extension_run_prompt_setup(
+        self,
+        *,
+        summary: dict[str, Any] | None,
+        prompt_artifacts: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        prompt3_feedback = (
+            prompt_artifacts.get("prompt3", {}).get("feedback")
+            if isinstance(prompt_artifacts, dict)
+            else None
+        )
+        if isinstance(prompt3_feedback, dict):
+            prompt_setup = prompt3_feedback.get("prompt_setup")
+            if isinstance(prompt_setup, dict) and prompt_setup:
+                return {
+                    key: value
+                    for key, value in prompt_setup.items()
+                    if isinstance(value, str) and value.strip()
+                } or None
+
+        metadata = (
+            prompt_artifacts.get("metadata") if isinstance(prompt_artifacts, dict) else None
+        )
+        if not isinstance(metadata, dict):
+            return None
+
+        prompts = metadata.get("prompts")
+        system_prompt = metadata.get("systemPrompt")
+        result = {}
+        prompt_profile_id = metadata.get("promptProfileId")
+        if isinstance(prompt_profile_id, str) and prompt_profile_id.strip():
+            result["prompt_profile_id"] = prompt_profile_id.strip()
+
+        if isinstance(prompts, dict):
+            for prompt_name in ("prompt1", "prompt2", "prompt3"):
+                metadata_value = prompts.get(prompt_name)
+                version_id = (
+                    metadata_value.get("versionId")
+                    if isinstance(metadata_value, dict)
+                    else None
+                )
+                if isinstance(version_id, str) and version_id.strip():
+                    result[f"{prompt_name}_version_id"] = version_id.strip()
+
+        system_prompt_version_id = (
+            system_prompt.get("versionId") if isinstance(system_prompt, dict) else None
+        )
+        if (
+            isinstance(system_prompt_version_id, str)
+            and system_prompt_version_id.strip()
+        ):
+            result["system_prompt_version_id"] = system_prompt_version_id.strip()
+
+        return result or None
+
+    def _serialize_admin_extension_run(
+        self,
+        run: ExtensionRunModel,
+        *,
+        user_email: str | None,
+        include_prompt_artifacts: bool = False,
+    ) -> dict[str, Any]:
+        serialized = self._serialize_extension_run(run)
+        prompt_artifacts = serialized.get("prompt_artifacts")
+        prompt_setup = self._extract_extension_run_prompt_setup(
+            summary=serialized.get("summary"),
+            prompt_artifacts=prompt_artifacts if isinstance(prompt_artifacts, dict) else None,
+        )
+        serialized["user_email"] = user_email
+        serialized["prompt_setup"] = prompt_setup
+        if not include_prompt_artifacts:
+            serialized.pop("prompt_artifacts", None)
+        return serialized
+
+    def list_extension_runs_for_admin(
+        self,
+        *,
+        status: str | None = None,
+        prompt_profile_id: str | None = None,
+        search: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        include_prompt_artifacts: bool = False,
+        scan_limit: int = ADMIN_EXTENSION_RUN_SCAN_LIMIT,
+    ) -> dict[str, Any]:
+        normalized_status = (status or "").strip().lower()
+        normalized_profile = (prompt_profile_id or "").strip().lower()
+        normalized_search = (search or "").strip().lower()
+        bounded_limit = max(1, min(limit, 500))
+        bounded_offset = max(0, offset)
+        bounded_scan_limit = max(bounded_limit + bounded_offset, min(scan_limit, 5000))
+
+        with self._session() as session:
+            query = (
+                session.query(ExtensionRunModel, UserModel)
+                .outerjoin(UserModel, UserModel.user_id == ExtensionRunModel.user_id)
+                .order_by(
+                    ExtensionRunModel.generated_at.desc().nullslast(),
+                    ExtensionRunModel.updated_at.desc(),
+                    ExtensionRunModel.created_at.desc(),
+                )
+            )
+            if normalized_status and normalized_status != "all":
+                query = query.filter(ExtensionRunModel.status == normalized_status)
+
+            candidates = query.limit(bounded_scan_limit).all()
+
+        filtered: list[dict[str, Any]] = []
+        for run, user in candidates:
+            serialized = self._serialize_admin_extension_run(
+                run,
+                user_email=decrypt_text(user.email) if user else None,
+                include_prompt_artifacts=include_prompt_artifacts,
+            )
+            event_timestamp = (
+                serialized.get("generated_at")
+                or serialized.get("updated_at")
+                or serialized.get("created_at")
+            )
+            event_datetime = None
+            if isinstance(event_timestamp, str) and event_timestamp:
+                try:
+                    event_datetime = datetime.fromisoformat(
+                        event_timestamp.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    event_datetime = None
+            if date_from and event_datetime and event_datetime < date_from:
+                continue
+            if date_to and event_datetime and event_datetime >= date_to:
+                continue
+
+            prompt_setup = serialized.get("prompt_setup")
+            prompt_setup_profile_id = (
+                prompt_setup.get("prompt_profile_id")
+                if isinstance(prompt_setup, dict)
+                else None
+            )
+            summary_profile_id = (
+                serialized.get("summary", {}).get("prompt_profile_id")
+                if isinstance(serialized.get("summary"), dict)
+                else None
+            )
+            effective_profile_id = (
+                prompt_setup_profile_id or summary_profile_id or ""
+            ).strip().lower()
+            if normalized_profile and normalized_profile != "all":
+                if effective_profile_id != normalized_profile:
+                    continue
+
+            if normalized_search:
+                haystacks = [
+                    serialized.get("user_email"),
+                    serialized.get("company"),
+                    serialized.get("title"),
+                    serialized.get("location"),
+                    serialized.get("source_url"),
+                ]
+                if not any(
+                    isinstance(value, str) and normalized_search in value.lower()
+                    for value in haystacks
+                ):
+                    continue
+
+            filtered.append(serialized)
+
+        total = len(filtered)
+        items = filtered[bounded_offset : bounded_offset + bounded_limit]
+        return {"items": items, "total": total}
+
+    def get_extension_run_for_admin(
+        self,
+        *,
+        user_id: str,
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        with self._session() as session:
+            row = (
+                session.query(ExtensionRunModel, UserModel)
+                .outerjoin(UserModel, UserModel.user_id == ExtensionRunModel.user_id)
+                .filter(
+                    ExtensionRunModel.user_id == user_id,
+                    ExtensionRunModel.run_id == run_id,
+                )
+                .first()
+            )
+            if row is None:
+                return None
+            run, user = row
+            return self._serialize_admin_extension_run(
+                run,
+                user_email=decrypt_text(user.email) if user else None,
+                include_prompt_artifacts=True,
+            )
 
     def upsert_user(
         self,

@@ -660,6 +660,38 @@ class ExtensionRunUpsertResponse(BaseModel):
     status: str
 
 
+class ExtensionRunAdminItem(BaseModel):
+    """Admin-facing extension run record."""
+
+    user_id: str
+    user_email: str | None = None
+    run_id: str
+    status: str
+    title: str | None = None
+    company: str | None = None
+    location: str | None = None
+    source_url: str | None = None
+    job_source: str | None = None
+    resume_id: str | None = None
+    preview_url: str | None = None
+    provider_id: str | None = None
+    provider_label: str | None = None
+    generated_at: str | None = None
+    total_duration_ms: int | None = None
+    summary: dict[str, Any] = Field(default_factory=dict)
+    prompt_setup: PromptSetup | None = None
+    prompt_artifacts: dict[str, Any] | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ExtensionRunAdminListResponse(BaseModel):
+    """Paginated admin response for extension runs."""
+
+    items: list[ExtensionRunAdminItem] = Field(default_factory=list)
+    total: int = 0
+
+
 # Improvement Models
 class ImproveResumeRequest(BaseModel):
     """Request to improve/tailor a resume."""

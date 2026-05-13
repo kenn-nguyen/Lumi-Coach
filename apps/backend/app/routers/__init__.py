@@ -1,5 +1,6 @@
 """API routers."""
 
+from app.routers.admin import router as admin_router
 from app.routers.config import router as config_router
 from app.routers.enrichment import router as enrichment_router
 from app.routers.extension import router as extension_router
@@ -9,6 +10,7 @@ from app.routers.resumes import router as resumes_router
 
 __all__ = [
     "resumes_router",
+    "admin_router",
     "jobs_router",
     "config_router",
     "extension_router",

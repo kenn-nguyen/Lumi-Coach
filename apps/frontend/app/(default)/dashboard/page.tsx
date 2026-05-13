@@ -409,53 +409,62 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Configuration Warning Banner */}
       {shouldShowLlmNotice && (
-        <div className="relative mb-6 flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 pr-12 shadow-sw-sm">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-warning" />
-            <div>
-              <p className="font-mono text-sm font-bold uppercase tracking-wider text-amber-800">
-                {t(
-                  isFreeModeAvailable
-                    ? 'dashboard.freeModeAvailableTitle'
-                    : 'dashboard.llmNotConfiguredTitle'
-                )}
-              </p>
-              <p className="font-mono text-xs text-amber-700 mt-0.5">
+        <div className="relative mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 pr-12 shadow-sw-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+              <div className="space-y-1.5">
+                <p className="font-mono text-sm font-bold uppercase tracking-wider text-amber-800">
+                  {t(
+                    isFreeModeAvailable
+                      ? 'dashboard.freeModeAvailableTitle'
+                      : 'dashboard.llmNotConfiguredTitle'
+                  )}
+                </p>
                 {isFreeModeAvailable ? (
                   <>
-                    {t('dashboard.freeModeAvailableMessagePrefix')}{' '}
-                    <a
-                      href={CHROME_EXTENSION_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-bold text-blue-700 underline underline-offset-2"
-                    >
-                      {t('dashboard.freeModeAvailableExtensionLink')}
-                    </a>
-                    {t('dashboard.freeModeAvailableMessageMiddle')}{' '}
-                    <Link href="/settings" className="font-bold underline underline-offset-2">
-                      {t('dashboard.llmNotConfiguredSettingsLink')}
-                    </Link>
-                    {t('dashboard.freeModeAvailableMessageSuffix')}
+                    <p className="max-w-3xl text-sm leading-6 text-amber-800">
+                      {t('dashboard.freeModeAvailableBody')}
+                    </p>
+                    <p className="max-w-3xl text-sm leading-6 text-amber-700">
+                      {t('dashboard.freeModeAvailableBodySecondaryPrefix')}
+                      <Link href="/settings" className="font-semibold underline underline-offset-2">
+                        {t('dashboard.llmNotConfiguredSettingsLink')}
+                      </Link>
+                      {t('dashboard.freeModeAvailableBodySecondarySuffix')}
+                    </p>
                   </>
                 ) : (
-                  <>
+                  <p className="text-sm leading-6 text-amber-700">
                     {t('dashboard.llmNotConfiguredMessagePrefix')}{' '}
-                    <Link href="/settings" className="font-bold underline underline-offset-2">
+                    <Link href="/settings" className="font-semibold underline underline-offset-2">
                       {t('dashboard.llmNotConfiguredSettingsLink')}
                     </Link>
                     {t('dashboard.llmNotConfiguredMessageSuffix')}
-                  </>
+                  </p>
                 )}
-              </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 md:pl-4">
+              {isFreeModeAvailable ? (
+                <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-warning text-amber-700 hover:bg-amber-100"
+                  >
+                    {t('dashboard.freeModeAvailableExtensionCta')}
+                  </Button>
+                </a>
+              ) : null}
+              <Link href="/settings">
+                <Button variant="outline" size="sm" className="border-warning text-amber-700">
+                  <Settings className="mr-2 h-4 w-4" />
+                  {t('nav.settings')}
+                </Button>
+              </Link>
             </div>
           </div>
-          <Link href="/settings">
-            <Button variant="outline" size="sm" className="border-warning text-amber-700">
-              <Settings className="w-4 h-4 mr-2" />
-              {t('nav.settings')}
-            </Button>
-          </Link>
           <button
             type="button"
             aria-label="Dismiss notice"
