@@ -46,7 +46,7 @@ export interface ExtensionRunAdminFilters {
   offset?: number;
 }
 
-function buildQuery(filters: ExtensionRunAdminFilters): string {
+function buildQuery(filters: Record<string, string | number | null | undefined>): string {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return;
