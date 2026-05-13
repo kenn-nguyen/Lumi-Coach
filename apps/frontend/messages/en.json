@@ -875,11 +875,11 @@
       "failedToDelete": "Failed to delete resume. Please try again."
     },
     "feedback": {
-      "summaryLabel": "Summary",
+      "summaryLabel": "Story diagnosis",
       "promptSetupLabel": "Prompt setup",
-      "prosLabel": "Pros",
-      "consLabel": "Cons",
-      "caveatsLabel": "Caveats"
+      "prosLabel": "Strong proof",
+      "consLabel": "Missing stories",
+      "caveatsLabel": "Claim guardrails"
     },
     "titlePlaceholder": "Enter resume title..."
   },

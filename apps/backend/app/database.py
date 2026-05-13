@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
+import json
 import logging
 import shutil
 from datetime import datetime, timezone
@@ -14,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     create_engine,
@@ -33,8 +36,10 @@ from sqlalchemy.orm import (
 
 from app.config import settings
 from app.pii_crypto import (
+    decrypt_bytes,
     decrypt_json,
     decrypt_text,
+    encrypt_bytes,
     encrypt_json,
     encrypt_text,
     hash_lookup,
@@ -171,6 +176,7 @@ class ExtensionRunModel(Base):
     system_prompt_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     prompt_artifacts: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    prompt_artifacts_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -258,6 +264,11 @@ class Database:
                     )
                 )
                 logger.info("Added extension_runs.prompt_artifacts column")
+            if "prompt_artifacts_blob" not in columns:
+                connection.execute(
+                    text("ALTER TABLE extension_runs ADD COLUMN prompt_artifacts_blob BYTEA")
+                )
+                logger.info("Added extension_runs.prompt_artifacts_blob column")
             if "prompt_profile_id" not in columns:
                 connection.execute(
                     text("ALTER TABLE extension_runs ADD COLUMN prompt_profile_id VARCHAR(64)")
@@ -422,8 +433,44 @@ class Database:
         if include_summary:
             serialized["summary"] = decrypt_json(run.summary)
         if include_prompt_artifacts:
-            serialized["prompt_artifacts"] = decrypt_json(run.prompt_artifacts)
+            serialized["prompt_artifacts"] = self._load_extension_run_prompt_artifacts(run)
         return serialized
+
+    @staticmethod
+    def _encode_prompt_artifacts_blob(
+        prompt_artifacts: dict[str, Any] | None,
+    ) -> bytes | None:
+        if not isinstance(prompt_artifacts, dict) or not prompt_artifacts:
+            return None
+        serialized = json.dumps(
+            prompt_artifacts,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return encrypt_bytes(gzip.compress(serialized))
+
+    @staticmethod
+    def _decode_prompt_artifacts_blob(
+        prompt_artifacts_blob: bytes | bytearray | memoryview | None,
+    ) -> dict[str, Any] | None:
+        if prompt_artifacts_blob is None:
+            return None
+        decrypted = decrypt_bytes(prompt_artifacts_blob)
+        if not decrypted:
+            return None
+        parsed = json.loads(gzip.decompress(decrypted).decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else None
+
+    def _load_extension_run_prompt_artifacts(
+        self,
+        run: ExtensionRunModel,
+    ) -> dict[str, Any]:
+        decoded_blob = self._decode_prompt_artifacts_blob(run.prompt_artifacts_blob)
+        if isinstance(decoded_blob, dict):
+            return decoded_blob
+        legacy_prompt_artifacts = decrypt_json(run.prompt_artifacts)
+        return legacy_prompt_artifacts if isinstance(legacy_prompt_artifacts, dict) else {}
 
     @staticmethod
     def _build_prompt_setup_from_columns(run: ExtensionRunModel) -> dict[str, Any] | None:
@@ -555,35 +602,43 @@ class Database:
         bounded_limit = max(1, min(limit, 500))
         bounded_offset = max(0, offset)
         bounded_scan_limit = max(bounded_limit + bounded_offset, min(scan_limit, 5000))
+        extension_run_columns: list[Any] = [
+            ExtensionRunModel.user_id,
+            ExtensionRunModel.run_id,
+            ExtensionRunModel.status,
+            ExtensionRunModel.title,
+            ExtensionRunModel.company,
+            ExtensionRunModel.location,
+            ExtensionRunModel.source_url,
+            ExtensionRunModel.job_source,
+            ExtensionRunModel.resume_id,
+            ExtensionRunModel.preview_url,
+            ExtensionRunModel.provider_id,
+            ExtensionRunModel.provider_label,
+            ExtensionRunModel.generated_at,
+            ExtensionRunModel.total_duration_ms,
+            ExtensionRunModel.prompt_profile_id,
+            ExtensionRunModel.prompt1_version_id,
+            ExtensionRunModel.prompt2_version_id,
+            ExtensionRunModel.prompt3_version_id,
+            ExtensionRunModel.system_prompt_version_id,
+            ExtensionRunModel.created_at,
+            ExtensionRunModel.updated_at,
+        ]
+        if include_prompt_artifacts:
+            extension_run_columns.extend(
+                [
+                    ExtensionRunModel.prompt_artifacts,
+                    ExtensionRunModel.prompt_artifacts_blob,
+                ]
+            )
 
         with self._session() as session:
             query = (
                 session.query(ExtensionRunModel, UserModel)
                 .outerjoin(UserModel, UserModel.user_id == ExtensionRunModel.user_id)
                 .options(
-                    load_only(
-                        ExtensionRunModel.user_id,
-                        ExtensionRunModel.run_id,
-                        ExtensionRunModel.status,
-                        ExtensionRunModel.title,
-                        ExtensionRunModel.company,
-                        ExtensionRunModel.location,
-                        ExtensionRunModel.source_url,
-                        ExtensionRunModel.job_source,
-                        ExtensionRunModel.resume_id,
-                        ExtensionRunModel.preview_url,
-                        ExtensionRunModel.provider_id,
-                        ExtensionRunModel.provider_label,
-                        ExtensionRunModel.generated_at,
-                        ExtensionRunModel.total_duration_ms,
-                        ExtensionRunModel.prompt_profile_id,
-                        ExtensionRunModel.prompt1_version_id,
-                        ExtensionRunModel.prompt2_version_id,
-                        ExtensionRunModel.prompt3_version_id,
-                        ExtensionRunModel.system_prompt_version_id,
-                        ExtensionRunModel.created_at,
-                        ExtensionRunModel.updated_at,
-                    ),
+                    load_only(*extension_run_columns),
                     load_only(UserModel.email),
                 )
                 .order_by(
@@ -1033,9 +1088,10 @@ class Database:
         )
 
         for run in runs[retain_count:]:
-            if run.prompt_artifacts in ({}, None):
+            if run.prompt_artifacts in ({}, None) and run.prompt_artifacts_blob is None:
                 continue
             run.prompt_artifacts = encrypt_json({})
+            run.prompt_artifacts_blob = None
 
     def set_master_resume(self, resume_id: str, user_id: str | None = None) -> bool:
         resolved_user_id = self._resolve_user_scope(user_id)
@@ -1194,7 +1250,8 @@ class Database:
             run.prompt3_version_id = prompt_setup.get("prompt3_version_id")
             run.system_prompt_version_id = prompt_setup.get("system_prompt_version_id")
             run.summary = encrypt_json(summary or {})
-            run.prompt_artifacts = encrypt_json(prompt_artifacts or {})
+            run.prompt_artifacts = encrypt_json({})
+            run.prompt_artifacts_blob = self._encode_prompt_artifacts_blob(prompt_artifacts)
             run.updated_at = _utcnow()
             self._prune_extension_run_prompt_artifacts(
                 session,

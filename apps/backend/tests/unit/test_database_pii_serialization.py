@@ -124,8 +124,14 @@ def test_serialize_job_and_extension_run_decrypt_sensitive_fields() -> None:
         provider_label="ChatGPT API",
         generated_at=None,
         total_duration_ms=1200,
+        prompt_profile_id=None,
+        prompt1_version_id=None,
+        prompt2_version_id=None,
+        prompt3_version_id=None,
+        system_prompt_version_id=None,
         summary=encrypt_json({"jd": "private jd"}),
         prompt_artifacts=encrypt_json({"prompt1Input": "private input"}),
+        prompt_artifacts_blob=None,
         created_at=None,
         updated_at=None,
     )
@@ -136,6 +142,56 @@ def test_serialize_job_and_extension_run_decrypt_sensitive_fields() -> None:
     assert serialized_run["company"] == "Acme"
     assert serialized_run["summary"] == {"jd": "private jd"}
     assert serialized_run["prompt_artifacts"] == {"prompt1Input": "private input"}
+
+
+def test_prompt_artifacts_blob_roundtrip_and_legacy_fallback() -> None:
+    db = _database_without_engine()
+    prompt_artifacts = {
+        "prompt1": {"input": "Prompt 1 input"},
+        "prompt3": {"parsed": {"summary": "Tailored summary"}},
+    }
+    encoded_blob = db._encode_prompt_artifacts_blob(prompt_artifacts)
+
+    assert encoded_blob is not None
+    assert db._decode_prompt_artifacts_blob(encoded_blob) == prompt_artifacts
+
+    blob_run = SimpleNamespace(
+        user_id="user-1",
+        run_id="run-blob",
+        status="generated",
+        title=encrypt_text("Blob-backed run"),
+        company=None,
+        location=None,
+        source_url=None,
+        job_source=None,
+        resume_id=None,
+        preview_url=None,
+        provider_id=None,
+        provider_label=None,
+        generated_at=None,
+        total_duration_ms=None,
+        prompt_profile_id=None,
+        prompt1_version_id=None,
+        prompt2_version_id=None,
+        prompt3_version_id=None,
+        system_prompt_version_id=None,
+        summary={},
+        prompt_artifacts=encrypt_json({}),
+        prompt_artifacts_blob=encoded_blob,
+        created_at=None,
+        updated_at=None,
+    )
+    legacy_run = SimpleNamespace(
+        **{
+            **blob_run.__dict__,
+            "run_id": "run-legacy",
+            "prompt_artifacts": encrypt_json(prompt_artifacts),
+            "prompt_artifacts_blob": None,
+        }
+    )
+
+    assert db._serialize_extension_run(blob_run)["prompt_artifacts"] == prompt_artifacts
+    assert db._serialize_extension_run(legacy_run)["prompt_artifacts"] == prompt_artifacts
 
 
 class _FakeExtensionRunQuery:
@@ -168,18 +224,23 @@ def test_prune_extension_run_prompt_artifacts_keeps_recent_runs_per_user() -> No
             run_id="run-3",
             title=encrypt_text("Newest"),
             prompt_artifacts=encrypt_json({"prompt1": "keep-newest"}),
+            prompt_artifacts_blob=None,
         ),
         SimpleNamespace(
             user_id="user-1",
             run_id="run-2",
             title=encrypt_text("Middle"),
             prompt_artifacts=encrypt_json({"prompt1": "keep-middle"}),
+            prompt_artifacts_blob=None,
         ),
         SimpleNamespace(
             user_id="user-1",
             run_id="run-1",
             title=encrypt_text("Oldest"),
-            prompt_artifacts=encrypt_json({"prompt1": "prune-oldest"}),
+            prompt_artifacts=encrypt_json({}),
+            prompt_artifacts_blob=db._encode_prompt_artifacts_blob(
+                {"prompt1": "prune-oldest"}
+            ),
         ),
     ]
 
@@ -192,6 +253,7 @@ def test_prune_extension_run_prompt_artifacts_keeps_recent_runs_per_user() -> No
     assert decrypt_json(runs[0].prompt_artifacts) == {"prompt1": "keep-newest"}
     assert decrypt_json(runs[1].prompt_artifacts) == {"prompt1": "keep-middle"}
     assert runs[2].prompt_artifacts == {}
+    assert runs[2].prompt_artifacts_blob is None
     assert db._serialize_extension_run(
         SimpleNamespace(
             user_id="user-1",
@@ -208,8 +270,14 @@ def test_prune_extension_run_prompt_artifacts_keeps_recent_runs_per_user() -> No
             provider_label=None,
             generated_at=None,
             total_duration_ms=None,
+            prompt_profile_id=None,
+            prompt1_version_id=None,
+            prompt2_version_id=None,
+            prompt3_version_id=None,
+            system_prompt_version_id=None,
             summary={},
             prompt_artifacts=runs[2].prompt_artifacts,
+            prompt_artifacts_blob=runs[2].prompt_artifacts_blob,
             created_at=None,
             updated_at=None,
         )

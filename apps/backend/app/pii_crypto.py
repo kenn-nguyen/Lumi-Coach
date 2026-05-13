@@ -76,6 +76,16 @@ def encrypt_text(value: str | None) -> str | None:
     return f"{TEXT_PREFIX}{token}"
 
 
+def encrypt_bytes(value: bytes | bytearray | memoryview | None) -> bytes | None:
+    """Encrypt raw bytes for database storage."""
+    if value is None:
+        return None
+    raw = bytes(value)
+    if raw == b"":
+        return b""
+    return _get_fernet().encrypt(raw)
+
+
 def decrypt_text(value: str | None) -> str | None:
     """Decrypt marked strings while leaving legacy plaintext untouched."""
     if value is None:
@@ -88,6 +98,19 @@ def decrypt_text(value: str | None) -> str | None:
         return _get_fernet().decrypt(token.encode("utf-8")).decode("utf-8")
     except InvalidToken as exc:
         raise PIIEncryptionError("Stored PII value could not be decrypted") from exc
+
+
+def decrypt_bytes(value: bytes | bytearray | memoryview | None) -> bytes | None:
+    """Decrypt raw bytes stored by this app."""
+    if value is None:
+        return None
+    raw = bytes(value)
+    if raw == b"":
+        return b""
+    try:
+        return _get_fernet().decrypt(raw)
+    except InvalidToken as exc:
+        raise PIIEncryptionError("Stored PII bytes could not be decrypted") from exc
 
 
 def encrypt_json(value: Any) -> Any:
