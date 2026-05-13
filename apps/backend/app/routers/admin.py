@@ -60,7 +60,7 @@ async def list_extension_runs(
     search: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=5, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> ExtensionRunAdminListResponse:
@@ -74,7 +74,7 @@ async def list_extension_runs(
         limit=limit,
         offset=offset,
         include_prompt_artifacts=False,
-        scan_limit=max(1000, limit + offset),
+        scan_limit=max(5, limit + offset),
     )
     return ExtensionRunAdminListResponse(
         items=[ExtensionRunAdminItem.model_validate(item) for item in result["items"]],

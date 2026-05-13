@@ -997,11 +997,12 @@ async def clone_resume_endpoint(resume_id: str) -> ResumeFetchResponse:
 @router.get("/list", response_model=ResumeListResponse)
 async def list_resumes(
     include_master: bool = Query(False),
+    limit: int | None = Query(default=None, ge=1, le=100),
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> ResumeListResponse:
     """List resumes, optionally including the master resume."""
     user_id = _resolve_current_user_id(current_user)
-    resumes = db.list_resumes(user_id=user_id)
+    resumes = db.list_resumes(user_id=user_id, limit=limit)
     if not include_master:
         resumes = [resume for resume in resumes if not resume.get("is_master", False)]
 

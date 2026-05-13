@@ -41,6 +41,7 @@ type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading
 
 const CHROME_EXTENSION_URL =
   'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
+const DASHBOARD_RESUME_LIST_LIMIT = 10;
 
 function looksLikeCredentialAutofill(value: string): boolean {
   const normalized = value.trim().toLowerCase();
@@ -163,7 +164,7 @@ export default function DashboardPage() {
 
   const loadTailoredResumes = useCallback(async () => {
     try {
-      const data = await fetchResumeList(true);
+      const data = await fetchResumeList(true, DASHBOARD_RESUME_LIST_LIMIT);
       const masterFromList = data.find((r) => r.is_master);
       const resolvedMasterId = masterFromList?.resume_id || null;
 

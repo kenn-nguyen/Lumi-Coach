@@ -248,8 +248,17 @@ export async function fetchResume(resumeId: string): Promise<ResumeResponse['dat
   return payload.data;
 }
 
-export async function fetchResumeList(includeMaster = false): Promise<ResumeListItem[]> {
-  const res = await apiFetch(`/resumes/list?include_master=${includeMaster ? 'true' : 'false'}`);
+export async function fetchResumeList(
+  includeMaster = false,
+  limit?: number
+): Promise<ResumeListItem[]> {
+  const params = new URLSearchParams({
+    include_master: includeMaster ? 'true' : 'false',
+  });
+  if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+    params.set('limit', String(limit));
+  }
+  const res = await apiFetch(`/resumes/list?${params.toString()}`);
   if (!res.ok) {
     throw new Error(`Failed to load resumes list (status ${res.status}).`);
   }

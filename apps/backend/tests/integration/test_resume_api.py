@@ -130,6 +130,17 @@ class TestListResumes:
         assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/123/"
         assert data[1]["job_source_url"] is None
 
+    @patch("app.routers.resumes.db")
+    async def test_list_forwards_limit_to_database(self, mock_db, client):
+        mock_db.list_resumes.return_value = []
+        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {}
+
+        async with client:
+            resp = await client.get("/api/v1/resumes/list", params={"include_master": True, "limit": 10})
+
+        assert resp.status_code == 200
+        mock_db.list_resumes.assert_called_once_with(user_id="user-123", limit=10)
+
 
 class TestDownloadResumePdf:
     """GET /api/v1/resumes/{resume_id}/pdf"""

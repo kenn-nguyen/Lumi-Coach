@@ -38,6 +38,8 @@ function buildDefaultDateTo(): string {
   return toInputDateValue(new Date());
 }
 
+const ADMIN_RUN_LIST_LIMIT = 5;
+
 function formatTimestamp(value?: string | null): string {
   if (!value) return '-';
   const parsed = Date.parse(value);
@@ -133,7 +135,7 @@ export default function AdminExtensionRunsPage() {
           search: searchQuery || undefined,
           date_from: dateFrom || undefined,
           date_to: dateTo || undefined,
-          limit: 100,
+          limit: ADMIN_RUN_LIST_LIMIT,
           offset: 0,
         });
         if (!cancelled) {
@@ -160,8 +162,8 @@ export default function AdminExtensionRunsPage() {
   const rows = runsResponse.items;
   const subtitle = useMemo(
     () =>
-      `Recent extension runs and JSON exports. Showing ${runsResponse.total} result${runsResponse.total === 1 ? '' : 's'}.`,
-    [runsResponse.total]
+      `Recent extension runs and JSON exports. Showing the latest ${rows.length} of ${runsResponse.total} result${runsResponse.total === 1 ? '' : 's'}.`,
+    [rows.length, runsResponse.total]
   );
 
   async function handleDownloadFilteredJson(): Promise<void> {

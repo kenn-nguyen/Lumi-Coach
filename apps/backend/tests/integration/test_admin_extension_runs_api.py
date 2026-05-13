@@ -58,7 +58,6 @@ async def test_list_extension_runs_returns_normalized_items(mock_db, client):
                 "status": "generated",
                 "company": "GBG Plc",
                 "title": "Senior Product Manager",
-                "summary": {"prompt_profile_id": "profile2"},
                 "prompt_setup": {
                     "prompt_profile_id": "profile2",
                     "prompt1_version_id": "aaaa1111",
@@ -84,7 +83,19 @@ async def test_list_extension_runs_returns_normalized_items(mock_db, client):
     assert payload["total"] == 1
     assert payload["items"][0]["run_id"] == "run-123"
     assert payload["items"][0]["prompt_setup"]["prompt_profile_id"] == "profile2"
-    mock_db.list_extension_runs_for_admin.assert_called_once()
+    assert payload["items"][0]["summary"] == {}
+    assert payload["items"][0]["prompt_artifacts"] is None
+    mock_db.list_extension_runs_for_admin.assert_called_once_with(
+        status="generated",
+        prompt_profile_id="profile2",
+        search=None,
+        date_from=None,
+        date_to=None,
+        limit=5,
+        offset=0,
+        include_prompt_artifacts=False,
+        scan_limit=5,
+    )
 
 
 @patch("app.routers.admin.db")

@@ -22,7 +22,14 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    Session,
+    load_only,
+    mapped_column,
+    sessionmaker,
+)
 
 from app.config import settings
 from app.pii_crypto import (
@@ -157,6 +164,11 @@ class ExtensionRunModel(Base):
     provider_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prompt_profile_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    prompt1_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    prompt2_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    prompt3_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    system_prompt_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     prompt_artifacts: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -236,17 +248,50 @@ class Database:
             return
 
         columns = {column["name"] for column in inspector.get_columns("extension_runs")}
-        if "prompt_artifacts" in columns:
-            return
 
         with self._engine.begin() as connection:
+            if "prompt_artifacts" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE extension_runs "
+                        "ADD COLUMN prompt_artifacts JSONB DEFAULT '{}'::jsonb"
+                    )
+                )
+                logger.info("Added extension_runs.prompt_artifacts column")
+            if "prompt_profile_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE extension_runs ADD COLUMN prompt_profile_id VARCHAR(64)")
+                )
+                logger.info("Added extension_runs.prompt_profile_id column")
+            if "prompt1_version_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE extension_runs ADD COLUMN prompt1_version_id VARCHAR(128)")
+                )
+                logger.info("Added extension_runs.prompt1_version_id column")
+            if "prompt2_version_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE extension_runs ADD COLUMN prompt2_version_id VARCHAR(128)")
+                )
+                logger.info("Added extension_runs.prompt2_version_id column")
+            if "prompt3_version_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE extension_runs ADD COLUMN prompt3_version_id VARCHAR(128)")
+                )
+                logger.info("Added extension_runs.prompt3_version_id column")
+            if "system_prompt_version_id" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE extension_runs "
+                        "ADD COLUMN system_prompt_version_id VARCHAR(128)"
+                    )
+                )
+                logger.info("Added extension_runs.system_prompt_version_id column")
             connection.execute(
                 text(
-                    "ALTER TABLE extension_runs "
-                    "ADD COLUMN prompt_artifacts JSONB DEFAULT '{}'::jsonb"
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_extension_runs_prompt_profile_id ON extension_runs (prompt_profile_id)"
                 )
             )
-        logger.info("Added extension_runs.prompt_artifacts column")
 
     def close(self) -> None:
         self._engine.dispose()
@@ -311,6 +356,18 @@ class Database:
             "updated_at": self._to_iso(resume.updated_at),
         }
 
+    def _serialize_resume_list_item(self, resume: ResumeModel) -> dict[str, Any]:
+        return {
+            "resume_id": resume.resume_id,
+            "filename": decrypt_text(resume.filename),
+            "is_master": resume.is_master,
+            "parent_id": resume.parent_id,
+            "processing_status": resume.processing_status,
+            "title": decrypt_text(resume.title),
+            "created_at": self._to_iso(resume.created_at),
+            "updated_at": self._to_iso(resume.updated_at),
+        }
+
     def _serialize_job(self, job: JobModel) -> dict[str, Any]:
         return {
             "job_id": job.job_id,
@@ -332,8 +389,14 @@ class Database:
             "created_at": self._to_iso(improvement.created_at),
         }
 
-    def _serialize_extension_run(self, run: ExtensionRunModel) -> dict[str, Any]:
-        return {
+    def _serialize_extension_run(
+        self,
+        run: ExtensionRunModel,
+        *,
+        include_summary: bool = True,
+        include_prompt_artifacts: bool = True,
+    ) -> dict[str, Any]:
+        serialized = {
             "user_id": run.user_id,
             "run_id": run.run_id,
             "status": run.status,
@@ -348,18 +411,50 @@ class Database:
             "provider_label": run.provider_label,
             "generated_at": self._to_iso(run.generated_at),
             "total_duration_ms": run.total_duration_ms,
-            "summary": decrypt_json(run.summary),
-            "prompt_artifacts": decrypt_json(run.prompt_artifacts),
+            "prompt_profile_id": run.prompt_profile_id,
+            "prompt1_version_id": run.prompt1_version_id,
+            "prompt2_version_id": run.prompt2_version_id,
+            "prompt3_version_id": run.prompt3_version_id,
+            "system_prompt_version_id": run.system_prompt_version_id,
             "created_at": self._to_iso(run.created_at),
             "updated_at": self._to_iso(run.updated_at),
         }
+        if include_summary:
+            serialized["summary"] = decrypt_json(run.summary)
+        if include_prompt_artifacts:
+            serialized["prompt_artifacts"] = decrypt_json(run.prompt_artifacts)
+        return serialized
+
+    @staticmethod
+    def _build_prompt_setup_from_columns(run: ExtensionRunModel) -> dict[str, Any] | None:
+        result = {}
+        if isinstance(run.prompt_profile_id, str) and run.prompt_profile_id.strip():
+            result["prompt_profile_id"] = run.prompt_profile_id.strip()
+        if isinstance(run.prompt1_version_id, str) and run.prompt1_version_id.strip():
+            result["prompt1_version_id"] = run.prompt1_version_id.strip()
+        if isinstance(run.prompt2_version_id, str) and run.prompt2_version_id.strip():
+            result["prompt2_version_id"] = run.prompt2_version_id.strip()
+        if isinstance(run.prompt3_version_id, str) and run.prompt3_version_id.strip():
+            result["prompt3_version_id"] = run.prompt3_version_id.strip()
+        if (
+            isinstance(run.system_prompt_version_id, str)
+            and run.system_prompt_version_id.strip()
+        ):
+            result["system_prompt_version_id"] = run.system_prompt_version_id.strip()
+        return result or None
 
     def _extract_extension_run_prompt_setup(
         self,
         *,
+        run: ExtensionRunModel | None = None,
         summary: dict[str, Any] | None,
         prompt_artifacts: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
+        if run is not None:
+            from_columns = self._build_prompt_setup_from_columns(run)
+            if from_columns:
+                return from_columns
+
         prompt3_feedback = (
             prompt_artifacts.get("prompt3", {}).get("feedback")
             if isinstance(prompt_artifacts, dict)
@@ -414,18 +509,31 @@ class Database:
         run: ExtensionRunModel,
         *,
         user_email: str | None,
+        include_summary: bool = False,
         include_prompt_artifacts: bool = False,
     ) -> dict[str, Any]:
-        serialized = self._serialize_extension_run(run)
+        serialized = self._serialize_extension_run(
+            run,
+            include_summary=include_summary,
+            include_prompt_artifacts=include_prompt_artifacts,
+        )
         prompt_artifacts = serialized.get("prompt_artifacts")
         prompt_setup = self._extract_extension_run_prompt_setup(
+            run=run,
             summary=serialized.get("summary"),
             prompt_artifacts=prompt_artifacts if isinstance(prompt_artifacts, dict) else None,
         )
         serialized["user_email"] = user_email
         serialized["prompt_setup"] = prompt_setup
+        if not include_summary:
+            serialized.pop("summary", None)
         if not include_prompt_artifacts:
             serialized.pop("prompt_artifacts", None)
+        serialized.pop("prompt_profile_id", None)
+        serialized.pop("prompt1_version_id", None)
+        serialized.pop("prompt2_version_id", None)
+        serialized.pop("prompt3_version_id", None)
+        serialized.pop("system_prompt_version_id", None)
         return serialized
 
     def list_extension_runs_for_admin(
@@ -452,6 +560,32 @@ class Database:
             query = (
                 session.query(ExtensionRunModel, UserModel)
                 .outerjoin(UserModel, UserModel.user_id == ExtensionRunModel.user_id)
+                .options(
+                    load_only(
+                        ExtensionRunModel.user_id,
+                        ExtensionRunModel.run_id,
+                        ExtensionRunModel.status,
+                        ExtensionRunModel.title,
+                        ExtensionRunModel.company,
+                        ExtensionRunModel.location,
+                        ExtensionRunModel.source_url,
+                        ExtensionRunModel.job_source,
+                        ExtensionRunModel.resume_id,
+                        ExtensionRunModel.preview_url,
+                        ExtensionRunModel.provider_id,
+                        ExtensionRunModel.provider_label,
+                        ExtensionRunModel.generated_at,
+                        ExtensionRunModel.total_duration_ms,
+                        ExtensionRunModel.prompt_profile_id,
+                        ExtensionRunModel.prompt1_version_id,
+                        ExtensionRunModel.prompt2_version_id,
+                        ExtensionRunModel.prompt3_version_id,
+                        ExtensionRunModel.system_prompt_version_id,
+                        ExtensionRunModel.created_at,
+                        ExtensionRunModel.updated_at,
+                    ),
+                    load_only(UserModel.email),
+                )
                 .order_by(
                     ExtensionRunModel.generated_at.desc().nullslast(),
                     ExtensionRunModel.updated_at.desc(),
@@ -468,6 +602,7 @@ class Database:
             serialized = self._serialize_admin_extension_run(
                 run,
                 user_email=decrypt_text(user.email) if user else None,
+                include_summary=False,
                 include_prompt_artifacts=include_prompt_artifacts,
             )
             event_timestamp = (
@@ -548,8 +683,38 @@ class Database:
             return self._serialize_admin_extension_run(
                 run,
                 user_email=decrypt_text(user.email) if user else None,
+                include_summary=True,
                 include_prompt_artifacts=True,
             )
+
+    def _extract_prompt_setup_from_payload(
+        self,
+        *,
+        summary: dict[str, Any] | None,
+        prompt_artifacts: dict[str, Any] | None,
+    ) -> dict[str, str | None]:
+        extracted = self._extract_extension_run_prompt_setup(
+            run=None,
+            summary=summary if isinstance(summary, dict) else None,
+            prompt_artifacts=prompt_artifacts if isinstance(prompt_artifacts, dict) else None,
+        )
+        return {
+            "prompt_profile_id": extracted.get("prompt_profile_id")
+            if isinstance(extracted, dict)
+            else None,
+            "prompt1_version_id": extracted.get("prompt1_version_id")
+            if isinstance(extracted, dict)
+            else None,
+            "prompt2_version_id": extracted.get("prompt2_version_id")
+            if isinstance(extracted, dict)
+            else None,
+            "prompt3_version_id": extracted.get("prompt3_version_id")
+            if isinstance(extracted, dict)
+            else None,
+            "system_prompt_version_id": extracted.get("system_prompt_version_id")
+            if isinstance(extracted, dict)
+            else None,
+        }
 
     def upsert_user(
         self,
@@ -788,14 +953,33 @@ class Database:
             session.commit()
             return True
 
-    def list_resumes(self, user_id: str | None = None) -> list[dict[str, Any]]:
+    def list_resumes(
+        self,
+        user_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         resolved_user_id = self._resolve_user_scope(user_id)
         with self._session() as session:
-            query = session.query(ResumeModel)
+            query = session.query(ResumeModel).options(
+                load_only(
+                    ResumeModel.resume_id,
+                    ResumeModel.filename,
+                    ResumeModel.is_master,
+                    ResumeModel.parent_id,
+                    ResumeModel.processing_status,
+                    ResumeModel.title,
+                    ResumeModel.created_at,
+                    ResumeModel.updated_at,
+                    ResumeModel.user_id,
+                )
+            )
             if resolved_user_id is not None:
                 query = query.filter(ResumeModel.user_id == resolved_user_id)
-            resumes = query.order_by(ResumeModel.updated_at.desc()).all()
-            return [self._serialize_resume(resume) for resume in resumes]
+            query = query.order_by(ResumeModel.updated_at.desc())
+            if limit is not None:
+                query = query.limit(max(1, limit))
+            resumes = query.all()
+            return [self._serialize_resume_list_item(resume) for resume in resumes]
 
     def get_extension_run_source_urls_by_resume_ids(
         self,
@@ -988,6 +1172,10 @@ class Database:
                 )
                 session.add(run)
 
+            prompt_setup = self._extract_prompt_setup_from_payload(
+                summary=summary,
+                prompt_artifacts=prompt_artifacts,
+            )
             run.status = status
             run.title = encrypt_text(title)
             run.company = encrypt_text(company)
@@ -1000,6 +1188,11 @@ class Database:
             run.provider_label = provider_label
             run.generated_at = generated_at
             run.total_duration_ms = total_duration_ms
+            run.prompt_profile_id = prompt_setup.get("prompt_profile_id")
+            run.prompt1_version_id = prompt_setup.get("prompt1_version_id")
+            run.prompt2_version_id = prompt_setup.get("prompt2_version_id")
+            run.prompt3_version_id = prompt_setup.get("prompt3_version_id")
+            run.system_prompt_version_id = prompt_setup.get("system_prompt_version_id")
             run.summary = encrypt_json(summary or {})
             run.prompt_artifacts = encrypt_json(prompt_artifacts or {})
             run.updated_at = _utcnow()
