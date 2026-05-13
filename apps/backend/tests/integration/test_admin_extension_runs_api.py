@@ -20,7 +20,7 @@ def override_auth():
     async def _fake_user():
         return AuthenticatedUser(
             user_id="admin-user",
-            email="kenn.nguyen@aya.yale.com",
+            email="kenn.nguyen@aya.yale.edu",
             name="Admin User",
         )
 
@@ -53,7 +53,7 @@ async def test_list_extension_runs_returns_normalized_items(mock_db, client):
         "items": [
             {
                 "user_id": "user-123",
-                "user_email": "kenn.nguyen@aya.yale.com",
+                "user_email": "kenn.nguyen@aya.yale.edu",
                 "run_id": "run-123",
                 "status": "generated",
                 "company": "GBG Plc",
@@ -91,7 +91,7 @@ async def test_list_extension_runs_returns_normalized_items(mock_db, client):
 async def test_export_and_item_routes_return_json(mock_db, client):
     item = {
         "user_id": "user-123",
-        "user_email": "kenn.nguyen@aya.yale.com",
+        "user_email": "kenn.nguyen@aya.yale.edu",
         "run_id": "run-123",
         "status": "generated",
         "summary": {"prompt_profile_id": "profile1"},

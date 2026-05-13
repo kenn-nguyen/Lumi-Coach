@@ -15,7 +15,7 @@ from app.security import AuthenticatedUser, require_current_user
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
-ALLOWED_ADMIN_EMAILS = {"kenn.nguyen@aya.yale.com"}
+ALLOWED_ADMIN_EMAILS = {"kenn.nguyen@aya.yale.edu"}
 
 
 def _require_admin_user(current_user: AuthenticatedUser) -> None:
