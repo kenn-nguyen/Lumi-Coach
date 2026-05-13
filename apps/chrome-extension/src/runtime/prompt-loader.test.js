@@ -139,6 +139,44 @@ describe("prompt-loader", () => {
     );
   });
 
+  it("injects the hiring manager persona extracted from Prompt 1 flex_notes into Prompt 2 templates", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile2",
+      prompt2TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({
+      artifacts: {
+        "profile2.prompt2.template":
+          "Persona: {{PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES}}\nPrompt1={{PROMPT1_JSON}}",
+        "prompt2.output_contract": "SERVER CONTRACT",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => createFetchResponse("PACKAGED")),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const rendered = await promptLoader.renderPrompt2WithMetadata(
+      {
+        prompt1Json: {
+          target_role: "pm",
+          flex_notes:
+            "hiring_manager_persona: skeptical identity-platform manager who trusts concrete scale and mechanism proof",
+        },
+      },
+      {},
+    );
+
+    expect(rendered.text).toContain(
+      "Persona: skeptical identity-platform manager who trusts concrete scale and mechanism proof",
+    );
+    expect(rendered.text).not.toContain(
+      "{{PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES}}",
+    );
+  });
+
   it("returns forward-only metadata for the exact prompt artifacts used", async () => {
     getUserAssets.mockResolvedValue({
       activePromptProfileId: "profile2",

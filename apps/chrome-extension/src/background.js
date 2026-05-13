@@ -110,6 +110,48 @@ const ACTIVE_SESSION_STATUSES = new Set([
   SESSION_STATUS.canceling,
 ]);
 
+function getRunLockJobLabel(activeRunJob = null) {
+  if (!activeRunJob) return "";
+  const title = String(activeRunJob.title || "").trim();
+  const company = String(activeRunJob.company || "").trim();
+  if (title && company) return `${title} at ${company}`;
+  return title || company || "";
+}
+
+function buildRunLockSnapshot(currentTabId = null) {
+  const activeRunState = getActiveRunConflict(null);
+  if (!activeRunState) {
+    return {
+      active: false,
+      currentTabOwnsRun: false,
+      sourceTabId: null,
+      runId: null,
+      message: "",
+      detail: "",
+      jobLabel: "",
+    };
+  }
+
+  const sourceTabId = activeRunState.sourceTabId ?? null;
+  const currentTabOwnsRun =
+    typeof currentTabId === "number" &&
+    typeof sourceTabId === "number" &&
+    currentTabId === sourceTabId;
+  const jobLabel = getRunLockJobLabel(activeRunState.activeRunJob);
+
+  return {
+    active: true,
+    currentTabOwnsRun,
+    sourceTabId,
+    runId: activeRunState.runId ?? null,
+    message: "Tailoring is running in another tab.",
+    detail: jobLabel
+      ? `Finish or cancel ${jobLabel} there before starting another run.`
+      : "Finish or cancel the current run there before starting another run.",
+    jobLabel,
+  };
+}
+
 function getStaleRunCancelPhase(extensionState) {
   const status = extensionState?.status;
   if (status === SESSION_STATUS.bootstrapMaster) {
@@ -292,6 +334,7 @@ async function getConnectionSnapshot({ trySync = true } = {}) {
 async function getRuntimeSnapshot({
   trySync = true,
   currentUrl = "",
+  currentTabId = null,
   refreshBackendMaster = false,
   backendMasterMaxAgeMs = 0,
 } = {}) {
@@ -325,6 +368,7 @@ async function getRuntimeSnapshot({
     ok: true,
     state: extensionState,
     assets: assetsWithBackendMaster,
+    runLock: buildRunLockSnapshot(currentTabId),
     route: classifyLinkedInJobsRoute(currentUrl),
     ...connection,
     setupState: getExtensionSetupState({
@@ -743,9 +787,8 @@ async function finalizeCanceledRun(run, options = {}) {
   };
   if (run.sourceTabId) {
     await chrome.tabs.sendMessage(run.sourceTabId, cancelMessage).catch(() => {});
-  } else {
-    await broadcastContentScriptMessage(cancelMessage);
   }
+  await broadcastContentScriptMessage(cancelMessage);
   clearActiveRun(run.runId);
 
   if (sourceUrl) {
@@ -1344,6 +1387,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "GET_STATE":
         return getRuntimeSnapshot({
           currentUrl: sender?.tab?.url || sender?.tab?.pendingUrl || "",
+          currentTabId: sender?.tab?.id ?? null,
           refreshBackendMaster:
             message.payload?.refreshBackendMaster === true,
           backendMasterMaxAgeMs:
@@ -1355,6 +1399,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "CHECK_CONNECTION_STATUS":
         return getRuntimeSnapshot({
           currentUrl: sender?.tab?.url || sender?.tab?.pendingUrl || "",
+          currentTabId: sender?.tab?.id ?? null,
           refreshBackendMaster:
             message.payload?.refreshBackendMaster === true,
           backendMasterMaxAgeMs:

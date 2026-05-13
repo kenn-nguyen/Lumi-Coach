@@ -409,12 +409,12 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Configuration Warning Banner */}
       {shouldShowLlmNotice && (
-        <div className="relative mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 pr-12 shadow-sw-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="relative mb-6 border border-amber-300 bg-amber-50 p-4 pr-14 shadow-sw-sm">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
-              <div className="space-y-1.5">
-                <p className="font-mono text-sm font-bold uppercase tracking-wider text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-700" />
+              <div className="max-w-3xl space-y-2">
+                <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
                   {t(
                     isFreeModeAvailable
                       ? 'dashboard.freeModeAvailableTitle'
@@ -423,10 +423,10 @@ export default function DashboardPage() {
                 </p>
                 {isFreeModeAvailable ? (
                   <>
-                    <p className="max-w-3xl text-sm leading-6 text-amber-800">
+                    <p className="max-w-2xl text-sm leading-6 text-amber-950">
                       {t('dashboard.freeModeAvailableBody')}
                     </p>
-                    <p className="max-w-3xl text-sm leading-6 text-amber-700">
+                    <p className="max-w-2xl text-sm leading-6 text-amber-700">
                       {t('dashboard.freeModeAvailableBodySecondaryPrefix')}
                       <Link href="/settings" className="font-semibold underline underline-offset-2">
                         {t('dashboard.llmNotConfiguredSettingsLink')}
@@ -435,7 +435,7 @@ export default function DashboardPage() {
                     </p>
                   </>
                 ) : (
-                  <p className="text-sm leading-6 text-amber-700">
+                  <p className="max-w-2xl text-sm leading-6 text-amber-700">
                     {t('dashboard.llmNotConfiguredMessagePrefix')}{' '}
                     <Link href="/settings" className="font-semibold underline underline-offset-2">
                       {t('dashboard.llmNotConfiguredSettingsLink')}
@@ -445,20 +445,16 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2 md:pl-4">
+            <div className="flex shrink-0 items-center gap-2 lg:justify-end">
               {isFreeModeAvailable ? (
                 <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-warning text-amber-700 hover:bg-amber-100"
-                  >
+                  <Button size="sm" className="min-w-[8.5rem]">
                     {t('dashboard.freeModeAvailableExtensionCta')}
                   </Button>
                 </a>
               ) : null}
               <Link href="/settings">
-                <Button variant="outline" size="sm" className="border-warning text-amber-700">
+                <Button variant="outline" size="sm" className="min-w-[7.5rem]">
                   <Settings className="mr-2 h-4 w-4" />
                   {t('nav.settings')}
                 </Button>
@@ -469,7 +465,7 @@ export default function DashboardPage() {
             type="button"
             aria-label="Dismiss notice"
             onClick={() => setIsLlmNoticeDismissed(true)}
-            className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center border border-amber-300 bg-amber-50 text-amber-700 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           >
             <X className="h-3.5 w-3.5" />
           </button>

@@ -312,6 +312,21 @@ function stringifyJson(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function extractHiringManagerPersonaFromFlexNotes(prompt1Json = null) {
+  const flexNotes =
+    typeof prompt1Json?.flex_notes === "string"
+      ? prompt1Json.flex_notes.trim()
+      : "";
+  if (!flexNotes) {
+    return "";
+  }
+  const match = flexNotes.match(/^hiring_manager_persona:\s*(.+)$/i);
+  if (!match) {
+    return "";
+  }
+  return match[1].trim();
+}
+
 function buildPromptReplacements(input = {}) {
   const jobSnapshot = input.jobSnapshot ?? {};
   const customInstruction = normalizeText(input.customInstruction);
@@ -339,6 +354,8 @@ function buildPromptReplacements(input = {}) {
       ? `Additional instruction:\n${customInstruction}`
       : "",
     PROMPT1_JSON: stringifyJson(input.prompt1Json),
+    PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES:
+      extractHiringManagerPersonaFromFlexNotes(input.prompt1Json),
     PROMPT2_JSON: stringifyJson(input.prompt2Json),
     CURRENT_RESUME: currentResume,
     MASTER_RESUME: currentResume,

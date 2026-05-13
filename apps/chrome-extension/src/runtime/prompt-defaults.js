@@ -42,7 +42,7 @@ const PROFILE_DEFAULT_PROMPT_PATHS = {
   profile2: {
     prompt1: "src/prompts/profiles/profile2/prompt1.txt",
     prompt2: "src/prompts/profiles/profile2/prompt2.txt",
-    prompt3: "src/prompts/prompt3.txt",
+    prompt3: "src/prompts/profiles/profile2/prompt3.txt",
     systemPrompt: "src/prompts/system-prompt.txt",
   },
   profile3: {

@@ -1,7 +1,35 @@
+(() => {
+const CONTENT_SCRIPT_INSTANCE_KEY =
+  "__LUMI_COACH_FLOATING_BOARD_CONTENT_SCRIPT__";
+const previousContentScriptInstance =
+  globalThis[CONTENT_SCRIPT_INSTANCE_KEY] || null;
+if (typeof previousContentScriptInstance?.destroy === "function") {
+  try {
+    previousContentScriptInstance.destroy("reinjected");
+  } catch (error) {
+    console.warn(
+      "[ResumeMatcherExt][FloatingBoard] Failed to destroy previous content script instance.",
+      error,
+    );
+  }
+}
+
+let contentScriptDisposed = false;
+
+function isContentScriptDisposed() {
+  return contentScriptDisposed;
+}
+
+function isExtensionContextInvalidatedError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /extension context invalidated/i.test(message);
+}
+
 const ROOT_ID = "resume-matcher-floating-action";
 const LAUNCHER_ID = "resume-matcher-launcher";
 const LAUNCHER_CLOSE_ID = "resume-matcher-launcher-close";
 const LAUNCHER_ALERT_ID = "resume-matcher-launcher-alert";
+const LAUNCHER_LOCK_NOTICE_ID = "resume-matcher-launcher-lock-notice";
 const BOARD_ID = "resume-matcher-board";
 const BOARD_WEBSITE_ID = "resume-matcher-board-website";
 const BOARD_TITLE_ID = "resume-matcher-board-title-link";
@@ -423,6 +451,7 @@ let suppressNextClick = false;
 let jobLoadTimer = null;
 let selectedJobRefreshTimer = null;
 let runningStatusMessageTimer = null;
+let launcherLockNoticeTimer = null;
 let selectedJobClickListenerAttached = false;
 const secretEditingState = {
   [PROVIDER_API_KEY_INPUT_ID]: false,
@@ -462,6 +491,8 @@ const state = {
   setupState: null,
   history: [],
   extensionState: null,
+  runLock: null,
+  launcherLockNoticeVisible: false,
   routeMode: "hidden",
   connectionState: "signed_out",
   websiteAuthenticated: false,
@@ -589,7 +620,17 @@ function $(id) {
 }
 
 async function sendMessage(type, payload) {
-  return chrome.runtime.sendMessage({ type, payload });
+  if (isContentScriptDisposed()) {
+    throw new Error("Extension context invalidated.");
+  }
+  try {
+    return await chrome.runtime.sendMessage({ type, payload });
+  } catch (error) {
+    if (isExtensionContextInvalidatedError(error)) {
+      destroyContentScriptInstance("extension-context-invalidated");
+    }
+    throw error;
+  }
 }
 
 function trackAnalyticsEvent(event, properties = {}) {
@@ -620,6 +661,28 @@ function truncateDisplayText(value, maxLength = 28) {
   const normalized = String(value || "").trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, Math.max(1, maxLength - 3))}...`;
+}
+
+function truncateFilenameForDisplay(value, maxLength = 40) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  const extensionIndex = normalized.lastIndexOf(".");
+  const hasExtension =
+    extensionIndex > 0 && extensionIndex < normalized.length - 1;
+  const extension = hasExtension ? normalized.slice(extensionIndex) : "";
+
+  const reservedTailLength = extension
+    ? Math.min(Math.max(extension.length, 8), maxLength - 4)
+    : Math.min(8, maxLength - 4);
+  const headLength = Math.max(3, maxLength - 3 - reservedTailLength);
+  const tail = extension
+    ? normalized.slice(-reservedTailLength)
+    : normalized.slice(-Math.max(3, reservedTailLength));
+
+  return `${normalized.slice(0, headLength)}...${tail}`;
 }
 
 function formatMasterResumeImportError(error) {
@@ -1555,6 +1618,40 @@ function injectStyles() {
 
     #${ROOT_ID}[data-alert="true"] #${LAUNCHER_ALERT_ID} {
       display: block;
+    }
+
+    #${LAUNCHER_LOCK_NOTICE_ID} {
+      display: none;
+      width: min(240px, calc(100vw - ${EDGE_GAP_TOTAL}px));
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.76);
+      background:
+        linear-gradient(180deg, rgba(255, 248, 250, 0.94), rgba(252, 241, 246, 0.92)),
+        rgba(255, 247, 250, 0.9);
+      box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
+      backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      color: #4a2232;
+      pointer-events: none;
+    }
+
+    #${ROOT_ID}[data-launcher-lock-visible="true"] #${LAUNCHER_LOCK_NOTICE_ID} {
+      display: block;
+    }
+
+    .resume-matcher-launcher-lock-notice__title {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    .resume-matcher-launcher-lock-notice__detail {
+      margin-top: 3px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(74, 34, 50, 0.78);
     }
 
     #${ROOT_ID}[data-dragging="true"][data-dock-preview="left"] #${BOARD_ID},
@@ -4459,6 +4556,12 @@ function dismissLauncher() {
 }
 
 function openBoard(view = "run", options = {}) {
+  if (isLockedToAnotherTab()) {
+    state.boardOpen = false;
+    state.currentView = "run";
+    showLauncherLockNotice();
+    return false;
+  }
   const requestedView = view;
   const resolvedView = resolveAllowedBoardView(requestedView);
   const previousOpen = state.boardOpen;
@@ -4513,6 +4616,7 @@ function openBoard(view = "run", options = {}) {
     refreshBackendMaster: shouldRefreshBackendMaster,
     backendMasterMaxAgeMs: BACKEND_MASTER_REFRESH_MAX_AGE_MS,
   });
+  return true;
 }
 
 function minimizeBoard() {
@@ -5039,6 +5143,7 @@ function getRunStateFromExtensionSession() {
     session.jobSnapshot || session.activeRunJob || null,
   );
   const runId = session.sessionId || null;
+  const matchesCurrentContext = doesRunJobMatchCurrentContext(activeRunJob);
 
   if (status === "canceling") {
     return {
@@ -5098,6 +5203,9 @@ function getRunStateFromExtensionSession() {
     if (session.cancelReason === "browser_closed") {
       return null;
     }
+    if (!matchesCurrentContext) {
+      return null;
+    }
     return {
       isRunning: false,
       isCanceling: false,
@@ -5136,10 +5244,12 @@ function syncVisibleRunStateFromExtensionSession() {
     state.isCanceling ||
     state.awaitingAuth ||
     state.awaitingStoryboard;
+  const sessionStateStillInFlight =
+    sessionState?.isRunning === true || sessionState?.isCanceling === true;
 
   if (
     hasLocalTransientRunState &&
-    sessionState &&
+    sessionStateStillInFlight &&
     (!state.activeRunId || sessionState.runId === state.activeRunId)
   ) {
     return;
@@ -5192,19 +5302,27 @@ function getJobDisplayLabel(job) {
   return title || company || "another job";
 }
 
-function doesActiveRunMatchCurrentJob() {
-  if (!state.activeRunJob || !state.currentJob) return true;
-  const activeUrl = normalizeJobSourceUrl(state.activeRunJob.sourceUrl);
-  const currentUrl = normalizeJobSourceUrl(state.currentJob.sourceUrl);
+function doesRunJobMatchCurrentContext(runJob = null) {
+  if (!runJob) return true;
+  const activeUrl = normalizeJobSourceUrl(runJob.sourceUrl);
+  const currentUrl = normalizeJobSourceUrl(
+    state.currentJob?.sourceUrl ||
+      (isManualRunMode() ? window.location.href : ""),
+  );
   if (activeUrl && currentUrl) {
     return activeUrl === currentUrl;
   }
+  if (!state.currentJob) return false;
   return (
-    String(state.activeRunJob.title || "").trim() ===
+    String(runJob.title || "").trim() ===
       String(state.currentJob.title || "").trim() &&
-    String(state.activeRunJob.company || "").trim() ===
+    String(runJob.company || "").trim() ===
       String(state.currentJob.company || "").trim()
   );
+}
+
+function doesActiveRunMatchCurrentJob() {
+  return doesRunJobMatchCurrentContext(state.activeRunJob);
 }
 
 function canAttemptRecoveryRun() {
@@ -6146,6 +6264,14 @@ function getCurrentRunPhaseLabel() {
   return "running";
 }
 
+function isCancellationTeardownMessage(message = "") {
+  const normalized = String(message || "").trim();
+  if (!normalized) return false;
+  return /run canceled|request aborted|operation was aborted|aborterror|frame with id \d+ was removed|target closed|tab was closed|window was closed/i.test(
+    normalized,
+  );
+}
+
 function isRunCancelable() {
   if (state.previewHandoffComplete) return false;
   if (state.explicitRunStatus?.kind === "success") return false;
@@ -6745,7 +6871,10 @@ function renderSettings() {
       editable === false ? null : assets?.[`${templateName}TemplateAsset`];
     const hasFile = Boolean(asset?.filename);
     const filename = asset?.filename?.trim() || label;
-    chip.innerHTML = `<span class="resume-matcher-file-chip__text">${escapeHtml(filename)}</span><span class="resume-matcher-file-chip__actions">${renderPromptActionButtons(templateName, hasFile, Boolean(descriptor?.downloadName), label, editable !== false)}</span>`;
+    const displayFilename = hasFile
+      ? truncateFilenameForDisplay(filename, 40)
+      : filename;
+    chip.innerHTML = `<span class="resume-matcher-file-chip__text" title="${escapeHtml(filename)}">${escapeHtml(displayFilename)}</span><span class="resume-matcher-file-chip__actions">${renderPromptActionButtons(templateName, hasFile, Boolean(descriptor?.downloadName), label, editable !== false)}</span>`;
     chip.classList.toggle("is-placeholder", !hasFile);
   });
 
@@ -7202,12 +7331,12 @@ function renderRunView() {
       state.isRunning ||
       state.isCanceling ||
       (manualMode ? !manualReady : !canRun);
-    primaryButton.textContent = state.isRunning
-      ? runningDifferentJob
-        ? "Working on other job"
-        : "Running…"
-      : state.isCanceling
-        ? "Canceling..."
+    primaryButton.textContent = state.isCanceling
+      ? "Canceling..."
+      : state.isRunning
+        ? runningDifferentJob
+          ? "Working on other job"
+          : "Running…"
         : manualMode
           ? getManualPrimaryButtonLabel()
           : "Tailor";
@@ -7307,10 +7436,24 @@ function renderRootFlags() {
   root.dataset.boardOpen = state.boardOpen ? "true" : "false";
   root.dataset.alert = state.launcherAlert ? "true" : "false";
   root.dataset.running = state.isRunning ? "true" : "false";
+  root.dataset.launcherLockVisible = state.launcherLockNoticeVisible
+    ? "true"
+    : "false";
   root.dataset.hidden = state.dismissed && !state.boardOpen ? "true" : "false";
   root.dataset.dockSide = state.dockSide;
   root.dataset.currentView = state.currentView;
   root.dataset.onboardingMode = isOnboardingMode() ? "true" : "false";
+  const lockNotice = $(LAUNCHER_LOCK_NOTICE_ID);
+  if (lockNotice) {
+    const message = state.runLock?.message || "Tailoring is running in another tab.";
+    const detail =
+      state.runLock?.detail ||
+      "Finish or cancel that run before starting another one here.";
+    lockNotice.innerHTML = `
+      <div class="resume-matcher-launcher-lock-notice__title">${escapeHtml(message)}</div>
+      <div class="resume-matcher-launcher-lock-notice__detail">${escapeHtml(detail)}</div>
+    `;
+  }
   if (!pointerDragState) {
     root.dataset.dragging = "false";
     root.dataset.dockPreview = state.dockSide;
@@ -7401,6 +7544,9 @@ function renderViews() {
 }
 
 function render() {
+  if (isContentScriptDisposed()) {
+    return;
+  }
   const root = ensureRoot();
   if (!root) return;
   if (
@@ -7445,6 +7591,9 @@ function syncPromptDefaultsForOpen(view, previousOpen, previousView) {
 }
 
 async function refreshBoardData(options = {}) {
+  if (isContentScriptDisposed()) {
+    return;
+  }
   try {
     const shouldRefreshBackendMaster = options.refreshBackendMaster === true;
     const previousBackendMaster = state.assets?.backendMasterResume ?? null;
@@ -7458,6 +7607,9 @@ async function refreshBoardData(options = {}) {
     });
     if (!response?.ok) {
       throw new Error(response?.error || "Failed to load extension state.");
+    }
+    if (isContentScriptDisposed()) {
+      return;
     }
     const nextAssets = response.assets ?? null;
     const resolvedBackendMaster = resolveBackendMasterResumeForRender({
@@ -7479,6 +7631,7 @@ async function refreshBoardData(options = {}) {
         ? state.setupState
         : nextSetupState;
     state.extensionState = response.state ?? null;
+    state.runLock = response.runLock ?? null;
     setRouteMode(response.route?.mode || "hidden");
     state.connectionState =
       response.connectionState ||
@@ -7490,6 +7643,12 @@ async function refreshBoardData(options = {}) {
     } else {
       state.currentJob = null;
       resetJobLoadingState();
+    }
+    if (isLockedToAnotherTab()) {
+      state.boardOpen = false;
+      state.currentView = "run";
+    } else {
+      hideLauncherLockNotice({ renderNow: false });
     }
     syncVisibleRunStateFromExtensionSession();
     syncFloatingAction({ recheckConnection: false });
@@ -7538,6 +7697,7 @@ async function reconcileConnectionStatus(options = {}) {
           ? state.setupState
           : nextSetupState;
       state.extensionState = response.state ?? state.extensionState;
+      state.runLock = response.runLock ?? state.runLock;
       setRouteMode(response.route?.mode || state.routeMode);
       state.connectionState =
         response.connectionState ||
@@ -7549,6 +7709,12 @@ async function reconcileConnectionStatus(options = {}) {
       } else {
         state.currentJob = null;
         resetJobLoadingState();
+      }
+      if (isLockedToAnotherTab()) {
+        state.boardOpen = false;
+        state.currentView = "run";
+      } else {
+        hideLauncherLockNotice({ renderNow: false });
       }
       syncVisibleRunStateFromExtensionSession();
       syncFloatingAction({ recheckConnection: false });
@@ -7830,6 +7996,7 @@ async function requestCancelActiveRun() {
     return;
   }
 
+  state.isRunning = false;
   state.isCanceling = true;
   setExplicitRunStatus(
     "interrupted",
@@ -7868,6 +8035,12 @@ async function requestCancelActiveRun() {
 async function handleGenerateClick() {
   if (suppressNextClick) {
     suppressNextClick = false;
+    return;
+  }
+  if (isLockedToAnotherTab()) {
+    showLauncherLockNotice();
+    state.boardOpen = false;
+    render();
     return;
   }
   if (state.isRunning) return;
@@ -7927,7 +8100,7 @@ async function handleGenerateClick() {
     );
     return;
   }
-  if (state.isCanceling || state.explicitRunStatus?.kind === "canceled") {
+  if (state.isCanceling) {
     return;
   }
 
@@ -8087,6 +8260,11 @@ async function handleGenerateClick() {
       return;
     }
     if (!response?.ok) {
+      if (state.isCanceling && isCancellationTeardownMessage(response?.error)) {
+        applyCanceledRunState(response.runId || state.activeRunId);
+        await refreshBoardData();
+        return;
+      }
       throw new Error(response?.error || "Failed to generate tailored resume.");
     }
     state.isRunning = false;
@@ -8341,6 +8519,9 @@ async function handleOnboardingAction(actionId, nextStep = "") {
 }
 
 function ensureRoot() {
+  if (isContentScriptDisposed()) {
+    return null;
+  }
   if (!hasVisibleLauncherRoute()) {
     removeRoot();
     return null;
@@ -8359,6 +8540,7 @@ function ensureRoot() {
       <button id="${LAUNCHER_CLOSE_ID}" type="button" aria-label="Hide launcher">×</button>
       <span id="${LAUNCHER_ALERT_ID}">!</span>
     </div>
+    <div id="${LAUNCHER_LOCK_NOTICE_ID}" aria-live="polite"></div>
     <section id="${BOARD_ID}" aria-label="Simplify board">
       <header class="resume-matcher-board__header">
         <div class="resume-matcher-board__brand">
@@ -9071,23 +9253,7 @@ function ensureRoot() {
     }
   });
   if (!selectedJobClickListenerAttached) {
-    document.addEventListener("click", (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest(`#${ROOT_ID}`)) return;
-      const expectedSourceUrl = getSelectedJobClickSourceUrl(target);
-      if (
-        expectedSourceUrl ||
-        target.closest(
-          ".job-card-container, .jobs-search-results__list-item, .scaffold-layout__list-item, [data-job-id]",
-        )
-      ) {
-        scheduleSelectedJobRefresh({
-          expectedSourceUrl,
-          delayMs: 420,
-        });
-      }
-    });
+    document.addEventListener("click", handleSelectedJobClick);
     selectedJobClickListenerAttached = true;
   }
 
@@ -9101,13 +9267,37 @@ function handleGenerateClickOpenBoard(event) {
     return;
   }
   event.preventDefault();
-  openBoard("run", { skipConnectionCheck: true });
+  if (!openBoard("run", { skipConnectionCheck: true })) {
+    return;
+  }
   activateRunInspection();
 }
 
 function removeRoot() {
   pointerDragState = null;
   $(ROOT_ID)?.remove();
+}
+
+function handleSelectedJobClick(event) {
+  if (isContentScriptDisposed()) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest(`#${ROOT_ID}`)) return;
+  if (state.launcherLockNoticeVisible) {
+    hideLauncherLockNotice();
+  }
+  const expectedSourceUrl = getSelectedJobClickSourceUrl(target);
+  if (
+    expectedSourceUrl ||
+    target.closest(
+      ".job-card-container, .jobs-search-results__list-item, .scaffold-layout__list-item, [data-job-id]",
+    )
+  ) {
+    scheduleSelectedJobRefresh({
+      expectedSourceUrl,
+      delayMs: 420,
+    });
+  }
 }
 
 function stopSelectedJobDetailWatcher() {
@@ -9121,9 +9311,50 @@ function stopSelectedJobDetailWatcher() {
 }
 
 function handleViewportChange() {
+  if (isContentScriptDisposed()) return;
   const root = $(ROOT_ID);
   if (!root) return;
   syncDockedPosition(root);
+}
+
+function isLockedToAnotherTab() {
+  return (
+    state.runLock?.active === true &&
+    state.runLock?.currentTabOwnsRun !== true
+  );
+}
+
+function clearLauncherLockNoticeTimer() {
+  if (launcherLockNoticeTimer) {
+    window.clearTimeout(launcherLockNoticeTimer);
+    launcherLockNoticeTimer = null;
+  }
+}
+
+function hideLauncherLockNotice({ renderNow = true } = {}) {
+  clearLauncherLockNoticeTimer();
+  if (!state.launcherLockNoticeVisible) {
+    return;
+  }
+  state.launcherLockNoticeVisible = false;
+  if (renderNow) {
+    renderRootFlags();
+  }
+}
+
+function showLauncherLockNotice() {
+  if (!isLockedToAnotherTab()) {
+    hideLauncherLockNotice();
+    return;
+  }
+  state.launcherLockNoticeVisible = true;
+  renderRootFlags();
+  clearLauncherLockNoticeTimer();
+  launcherLockNoticeTimer = window.setTimeout(() => {
+    launcherLockNoticeTimer = null;
+    state.launcherLockNoticeVisible = false;
+    renderRootFlags();
+  }, 3600);
 }
 
 function activateRunInspection(options = {}) {
@@ -9176,7 +9407,7 @@ function updateStatusFromLog(level, scope, message, data) {
     return;
   }
 
-  if (state.explicitRunStatus?.kind === "canceled" || state.isCanceling) {
+  if (state.isCanceling) {
     return;
   }
 
@@ -9245,6 +9476,10 @@ function updateStatusFromLog(level, scope, message, data) {
 }
 
 function syncFloatingAction(options = {}) {
+  if (isContentScriptDisposed()) {
+    removeRoot();
+    return;
+  }
   const { recheckConnection = true } = options;
   if (!hasVisibleLauncherRoute()) {
     state.jobInspectionRequested = false;
@@ -9358,7 +9593,11 @@ function startSelectedJobDetailWatcher() {
   });
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+function handleRuntimeMessage(message, _sender, sendResponse) {
+  if (isContentScriptDisposed()) {
+    sendResponse({ ok: false, error: "Extension context invalidated." });
+    return false;
+  }
   if (message?.type === "EXTENSION_PING") {
     sendResponse({ ok: true });
     return false;
@@ -9591,6 +9830,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       state.activeRunJob = null;
       void refreshBoardData();
     } else {
+      if (
+        state.isCanceling &&
+        isCancellationTeardownMessage(message.payload?.error)
+      ) {
+        applyCanceledRunState(message.payload?.runId ?? state.activeRunId);
+        void refreshBoardData();
+        sendResponse({ ok: true });
+        return true;
+      }
       if (isScrapeProblemMessage(message.payload?.error)) {
         state.scrapeIssue = getScrapeRequirementStatus().detail;
         clearExplicitRunStatus("scrape-recovery");
@@ -9648,14 +9896,70 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   return false;
-});
+}
+
+function destroyContentScriptInstance(reason = "disposed") {
+  if (contentScriptDisposed) {
+    return;
+  }
+  contentScriptDisposed = true;
+  state.isRunning = false;
+  state.isCanceling = false;
+  state.awaitingAuth = false;
+  state.awaitingStoryboard = false;
+  state.boardOpen = false;
+  state.jobInspectionRequested = false;
+  state.activeRunId = null;
+  state.activeRunJob = null;
+  clearJobLoadTimer();
+  if (selectedJobRefreshTimer) {
+    window.clearTimeout(selectedJobRefreshTimer);
+    selectedJobRefreshTimer = null;
+  }
+  if (routePollTimer) {
+    window.clearInterval(routePollTimer);
+    routePollTimer = null;
+  }
+  stopRunningStatusRotation();
+  stopSelectedJobDetailWatcher();
+  window.removeEventListener("pointermove", handlePointerMove);
+  window.removeEventListener("pointerup", finishPointerDrag);
+  window.removeEventListener("pointercancel", finishPointerDrag);
+  window.removeEventListener("resize", handleViewportChange);
+  if (selectedJobClickListenerAttached) {
+    document.removeEventListener("click", handleSelectedJobClick);
+    selectedJobClickListenerAttached = false;
+  }
+  chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
+  removeRoot();
+  if (
+    globalThis[CONTENT_SCRIPT_INSTANCE_KEY] &&
+    globalThis[CONTENT_SCRIPT_INSTANCE_KEY].destroy === destroyContentScriptInstance
+  ) {
+    delete globalThis[CONTENT_SCRIPT_INSTANCE_KEY];
+  }
+  console.info(`${LOG_PREFIX} Disposed content script instance.`, { reason });
+}
+
+chrome.runtime.onMessage.addListener(handleRuntimeMessage);
 
 void loadRunStatusHelpers().finally(() => {
+  if (isContentScriptDisposed()) {
+    return;
+  }
   void chrome.runtime
     .sendMessage({ type: "REGISTER_LOG_VIEWER" })
-    .catch(() => {});
+    .catch((error) => {
+      if (isExtensionContextInvalidatedError(error)) {
+        destroyContentScriptInstance("register-log-viewer-invalidated");
+      }
+    });
 
   window.addEventListener("resize", handleViewportChange);
   void refreshBoardData({ refreshBackendMaster: true });
   startUrlFallbackPolling();
+  globalThis[CONTENT_SCRIPT_INSTANCE_KEY] = {
+    destroy: destroyContentScriptInstance,
+  };
 });
+})();

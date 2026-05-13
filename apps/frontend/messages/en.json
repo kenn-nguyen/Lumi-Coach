@@ -100,7 +100,7 @@
       "failed": "Processing failed",
       "pending": "Pending"
     },
-    "freeModeAvailableTitle": "[ BROWSER EXTENSION REQUIRED FOR TAILORING ]",
+    "freeModeAvailableTitle": "Extension required for tailoring",
     "freeModeAvailableBody": "Tailoring now runs in the Lumi Coach browser extension on Chrome or Edge.",
     "freeModeAvailableBodySecondaryPrefix": "The website still supports small rewrites with Lumi's free basic Gemini model. Add your own API key in ",
     "freeModeAvailableBodySecondarySuffix": " for more reliable website rewrites.",

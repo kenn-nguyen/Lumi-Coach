@@ -20,7 +20,7 @@ function buildRunTargetUrl(targetUrl) {
 function isPopupClosedError(error) {
   if (!error) return false;
   const message = error instanceof Error ? error.message : String(error);
-  return /no tab with id|no window with id|tab was closed|window was closed|target closed|cannot access a chrome-extension/i.test(
+  return /no tab with id|no window with id|tab was closed|window was closed|target closed|cannot access a chrome-extension|frame with id \d+ was removed/i.test(
     message,
   );
 }
