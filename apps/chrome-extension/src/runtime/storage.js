@@ -14,6 +14,7 @@ import { logWarn } from "./log.js";
 import { isUserEditablePromptTemplateName } from "./prompt-defaults.js";
 
 const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
+const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
 const ONBOARDING_STEPS = ["intro", "sign_in", "provider", "assets", "done"];
 const ACCOUNT_STORAGE_VERSION = 1;
 const STORAGE_LOCAL_QUOTA_BYTES = 10_485_760;
@@ -63,7 +64,7 @@ export function getDefaultApifyFallbackSettings() {
 
 function getDefaultPromptTemplateProfiles() {
   return {
-    activeProfileId: "profile1",
+    activeProfileId: DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
     profiles: Object.fromEntries(
       PROMPT_PROFILE_IDS.map((profileId) => [
         profileId,
@@ -755,7 +756,7 @@ export async function getUserAssets() {
   const activePromptProfileId = promptTemplateProfiles.activeProfileId;
   const activePromptProfile =
     promptTemplateProfiles.profiles[activePromptProfileId] ??
-    getDefaultPromptTemplateProfiles().profiles.profile1;
+    getDefaultPromptTemplateProfiles().profiles[DEFAULT_ACTIVE_PROMPT_PROFILE_ID];
   return {
     activeAccountKey: accountKey,
     masterResumeContextAsset:

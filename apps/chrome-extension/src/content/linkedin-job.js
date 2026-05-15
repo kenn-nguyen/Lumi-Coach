@@ -54,6 +54,9 @@ const RUN_STATUS_ID = "resume-matcher-run-status";
 const RUN_STATUS_ACTIONS_ID = "resume-matcher-run-status-actions";
 const RUN_PROMPT_PROFILE_FIELD_ID = "resume-matcher-run-prompt-profile-field";
 const RUN_PROMPT_PROFILE_TABS_ID = "resume-matcher-run-prompt-profile-tabs";
+const RUN_PROMPT_PROFILE_INFO_ID = "resume-matcher-run-prompt-profile-info";
+const RUN_PROMPT_PROFILE_POPUP_ID = "resume-matcher-run-prompt-profile-popup";
+const RUN_PROMPT_PROFILE_HINT_ID = "resume-matcher-run-prompt-profile-hint";
 const HISTORY_VIEW_ID = "resume-matcher-history-view";
 const HISTORY_LIST_ID = "resume-matcher-history-list";
 const HISTORY_SEARCH_ID = "resume-matcher-history-search";
@@ -142,6 +145,7 @@ const EXTENSION_VERSION = (() => {
   }
 })();
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
+const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
 const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
 const PROVIDER_SAVE_REQUIRED_MESSAGE =
   "Save your AI setup before uploading your Master Resume.";
@@ -337,14 +341,153 @@ const USER_FACING_PROMPT_LABELS = new Map([
   ["JD Guardrail", "Role fit check"],
 ]);
 
+const PROMPT_PROFILE_UI = {
+  profile1: {
+    label: "Safe",
+  },
+  profile2: {
+    label: "Competitive",
+  },
+  profile3: {
+    label: "Bold",
+  },
+};
+
+const TAILORING_STYLE_INFO = [
+  {
+    profileId: "profile1",
+    title: "Safe",
+    lines: [
+      "Closest to your original resume.",
+      "Stretch: Low",
+      "Truth safety: 9-10/10",
+      "Hiring-manager fit: 7-8/10",
+      "Interview risk: Low",
+      "Best for conservative roles or when evidence is thin.",
+    ],
+  },
+  {
+    profileId: "profile2",
+    title: "Competitive",
+    lines: [
+      "Recommended for most applications.",
+      "Stretch: Medium-high",
+      "Truth safety: 8-8.5/10",
+      "Hiring-manager fit: 9-9.5/10",
+      "Interview risk: Medium-low",
+      "Best for competitive PM, tech, startup, and platform roles.",
+    ],
+  },
+  {
+    profileId: "profile3",
+    title: "Bold",
+    lines: [
+      "Pushes positioning to the edge.",
+      "Stretch: Very high",
+      "Truth safety: 5-6.5/10",
+      "Hiring-manager fit: 9.5-10/10",
+      "Interview risk: High",
+      "Best for long-shot or highly competitive roles where you can defend every claim.",
+    ],
+  },
+];
+
+const TAILORING_STYLE_DISCLAIMER =
+  "We never invent employers, dates, degrees, metrics, or unsupported skills. Higher stretch changes positioning language, not facts.";
+
 function getPromptProfileLabel(profileId = "") {
   const normalized = String(profileId || "").trim();
-  if (!normalized) return "Profile";
-  const match = /^profile(\d+)$/i.exec(normalized);
-  if (match) {
-    return `Profile ${match[1]}`;
+  if (!normalized) return "Competitive";
+  if (PROMPT_PROFILE_UI[normalized]?.label) {
+    return PROMPT_PROFILE_UI[normalized].label;
   }
   return normalized;
+}
+
+function getPromptProfileRecord(promptTemplateProfiles, profileId) {
+  return promptTemplateProfiles?.profiles?.[profileId] ?? null;
+}
+
+function profileHasCustomPromptBodies(promptTemplateProfiles, profileId) {
+  const profile = getPromptProfileRecord(promptTemplateProfiles, profileId);
+  if (!profile || typeof profile !== "object") {
+    return false;
+  }
+  return [
+    profile.prompt1TemplateAsset,
+    profile.prompt2TemplateAsset,
+    profile.prompt3TemplateAsset,
+    profile.systemPromptTemplateAsset,
+  ].some(
+    (asset) =>
+      asset &&
+      typeof asset === "object" &&
+      (typeof asset.content === "string" || typeof asset.filename === "string"),
+  );
+}
+
+function isBoldPromptProfileEnabled(promptTemplateProfiles = state.assets?.promptTemplateProfiles) {
+  return profileHasCustomPromptBodies(promptTemplateProfiles, "profile3");
+}
+
+function isPromptProfileSelectableInRunView(
+  profileId,
+  promptTemplateProfiles = state.assets?.promptTemplateProfiles,
+) {
+  if (profileId !== "profile3") {
+    return true;
+  }
+  return isBoldPromptProfileEnabled(promptTemplateProfiles);
+}
+
+function getRunnablePromptProfileId(
+  promptTemplateProfiles = state.assets?.promptTemplateProfiles,
+  selectedProfileId = state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
+) {
+  const normalizedProfileId = String(selectedProfileId || "").trim() || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+  if (isPromptProfileSelectableInRunView(normalizedProfileId, promptTemplateProfiles)) {
+    return normalizedProfileId;
+  }
+  return DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+}
+
+function applyPromptTemplateProfilesState(promptTemplateProfiles) {
+  if (!state.assets) {
+    state.assets = {};
+  }
+  const nextPromptTemplateProfiles =
+    promptTemplateProfiles && typeof promptTemplateProfiles === "object"
+      ? promptTemplateProfiles
+      : state.assets.promptTemplateProfiles || { profiles: {} };
+  const nextActivePromptProfileId =
+    String(nextPromptTemplateProfiles.activeProfileId || "").trim() ||
+    DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+  const activeProfile =
+    nextPromptTemplateProfiles.profiles?.[nextActivePromptProfileId] ?? {};
+  state.assets = {
+    ...state.assets,
+    promptTemplateProfiles: nextPromptTemplateProfiles,
+    activePromptProfileId: nextActivePromptProfileId,
+    prompt1TemplateAsset: activeProfile.prompt1TemplateAsset ?? null,
+    prompt2TemplateAsset: activeProfile.prompt2TemplateAsset ?? null,
+    prompt3TemplateAsset: activeProfile.prompt3TemplateAsset ?? null,
+    systemPromptTemplateAsset: activeProfile.systemPromptTemplateAsset ?? null,
+  };
+}
+
+async function ensureRunnablePromptProfileSelection() {
+  const promptTemplateProfiles = state.assets?.promptTemplateProfiles;
+  const activePromptProfileId =
+    state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+  const nextRunnableProfileId = getRunnablePromptProfileId(
+    promptTemplateProfiles,
+    activePromptProfileId,
+  );
+  if (nextRunnableProfileId === activePromptProfileId) {
+    return false;
+  }
+  await persistPromptProfileSelection(nextRunnableProfileId, { refresh: false });
+  return true;
 }
 
 const ICONS = {
@@ -453,6 +596,7 @@ let selectedJobRefreshTimer = null;
 let runningStatusMessageTimer = null;
 let launcherLockNoticeTimer = null;
 let selectedJobClickListenerAttached = false;
+let promptStyleInfoClickListenerAttached = false;
 const secretEditingState = {
   [PROVIDER_API_KEY_INPUT_ID]: false,
   [ONBOARDING_PROVIDER_API_KEY_INPUT_ID]: false,
@@ -510,6 +654,7 @@ const state = {
   selectedJobRefreshAttempts: 0,
   activeRunJob: null,
   activeRunId: null,
+  ownedRunId: null,
   previewHandoffComplete: false,
   lastProgressHeartbeatAt: 0,
   runningDetailSource: "",
@@ -519,6 +664,7 @@ const state = {
   historyFilterOpen: false,
   historyConnecting: false,
   deletingHistoryRunId: null,
+  promptStyleInfoOpen: false,
   promptSyncPromise: null,
   connectionCheckPromise: null,
   runSourceMode: null,
@@ -1381,7 +1527,8 @@ async function downloadDefaultPrompt(templateName) {
 
   const response = await sendMessage("GET_DEFAULT_PROMPT_DOWNLOAD", {
     templateName,
-    promptProfileId: state.assets?.activePromptProfileId || "profile1",
+    promptProfileId:
+      state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
   });
   if (!response?.ok || !Array.isArray(response.entries) || !response.entries.length) {
     throw new Error(response?.error || `Failed to load default ${descriptor.label}.`);
@@ -1994,9 +2141,130 @@ function injectStyles() {
       color: #fff7fb;
     }
 
+    .resume-matcher-profile-tabs__button.is-disabled {
+      opacity: 0.5;
+    }
+
     .resume-matcher-profile-tabs__button:disabled {
       cursor: not-allowed;
       opacity: 0.5;
+    }
+
+    .resume-matcher-run-style-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 2px;
+    }
+
+    .resume-matcher-run-style-label {
+      color: rgba(88, 28, 52, 0.78);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .resume-matcher-run-style-info-button {
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(208, 160, 176, 0.9);
+      background: rgba(255, 255, 255, 0.86);
+      color: rgba(108, 41, 64, 0.88);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .resume-matcher-run-style-info-button:hover,
+    .resume-matcher-run-style-info-button:focus-visible {
+      border-color: rgba(152, 35, 72, 0.78);
+      color: rgba(152, 35, 72, 0.92);
+      outline: none;
+    }
+
+    #${ROOT_ID} {
+      overflow: visible;
+    }
+
+    .resume-matcher-run-style-popup {
+      position: absolute;
+      top: 0;
+      z-index: 12;
+      width: min(300px, calc(100vw - 48px));
+      max-height: min(68vh, 540px);
+      overflow: auto;
+      pointer-events: auto;
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(208, 160, 176, 0.9);
+      background: rgba(255, 255, 255, 0.94);
+      color: #4c1d2d;
+      box-shadow:
+        0 18px 32px rgba(127, 29, 63, 0.16),
+        0 2px 6px rgba(127, 29, 63, 0.08);
+    }
+
+    .resume-matcher-run-style-popup[data-side="left"] {
+      right: calc(100% + 12px);
+      left: auto;
+    }
+
+    .resume-matcher-run-style-popup[data-side="right"] {
+      left: calc(100% + 12px);
+      right: auto;
+    }
+
+    .resume-matcher-run-style-popup[hidden] {
+      display: none;
+    }
+
+    .resume-matcher-style-info__title {
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.3;
+      color: #4c1d2d;
+    }
+
+    .resume-matcher-style-info__stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .resume-matcher-style-info__section {
+      display: grid;
+      gap: 4px;
+    }
+
+    .resume-matcher-style-info__section-title {
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.25;
+      color: #6f1b38;
+    }
+
+    .resume-matcher-style-info__line,
+    .resume-matcher-style-info__footer,
+    .resume-matcher-run-style-hint {
+      font-size: 11px;
+      line-height: 1.45;
+      color: rgba(88, 28, 52, 0.74);
+    }
+
+    .resume-matcher-style-info__footer,
+    .resume-matcher-run-style-hint {
+      color: rgba(88, 28, 52, 0.62);
     }
 
     .resume-matcher-run-job__title {
@@ -4361,6 +4629,7 @@ function syncDockedPosition(root) {
   const currentTop = Number.parseFloat(root.style.top);
   root.style.top = `${Number.isFinite(currentTop) ? clampTop(currentTop, root) : getDefaultTop(root)}px`;
   applyDockedHorizontalPosition(root, state.dockSide);
+  positionPromptStyleInfoPopup();
 }
 
 async function persistPosition(position) {
@@ -4455,6 +4724,7 @@ async function finishPointerDrag() {
     root.dataset.dockPreview = finalSide;
     root.style.top = `${clampTop(pointerDragState.lastTop ?? pointerDragState.originTop, root)}px`;
     applyDockedHorizontalPosition(root, finalSide);
+    positionPromptStyleInfoPopup();
   }
   if (pointerDragState.dragged && !state.boardOpen) {
     suppressNextClick = true;
@@ -5275,6 +5545,7 @@ function syncVisibleRunStateFromExtensionSession() {
     state.isCanceling = false;
     state.activeRunId = null;
     state.activeRunJob = null;
+    clearOwnedRun();
     return;
   }
 
@@ -5794,19 +6065,28 @@ function renderPromptProfileTabs(
     containerId = "",
     disabled = false,
     compact = false,
+    allowDisabledSelection = true,
+    ariaLabel = "Tailoring style",
   } = {},
 ) {
   const normalizedSelectedProfileId = String(selectedProfileId || "");
   const buttons = Object.keys(promptTemplateProfiles?.profiles || {})
     .map((profileId) => {
-      const isActive = profileId === normalizedSelectedProfileId;
+      const profileSelectable = allowDisabledSelection
+        ? true
+        : isPromptProfileSelectableInRunView(profileId, promptTemplateProfiles);
+      const isActive =
+        profileId === normalizedSelectedProfileId &&
+        (allowDisabledSelection || profileSelectable);
+      const buttonDisabled = disabled || !profileSelectable;
       return `
         <button
           type="button"
-          class="resume-matcher-profile-tabs__button${isActive ? " is-active" : ""}"
+          class="resume-matcher-profile-tabs__button${isActive ? " is-active" : ""}${!profileSelectable ? " is-disabled" : ""}"
           data-prompt-profile-id="${escapeHtml(profileId)}"
+          data-profile-selectable="${profileSelectable ? "true" : "false"}"
           aria-pressed="${isActive ? "true" : "false"}"
-          ${disabled ? "disabled" : ""}
+          ${buttonDisabled ? "disabled" : ""}
         >${escapeHtml(getPromptProfileLabel(profileId))}</button>
       `;
     })
@@ -5816,7 +6096,74 @@ function renderPromptProfileTabs(
     return buttons;
   }
 
-  return `<div id="${escapeHtml(containerId)}" class="resume-matcher-profile-tabs${compact ? " is-compact" : ""}" role="tablist" aria-label="Prompt profile">${buttons}</div>`;
+  return `<div id="${escapeHtml(containerId)}" class="resume-matcher-profile-tabs${compact ? " is-compact" : ""}" role="tablist" aria-label="${escapeHtml(ariaLabel)}">${buttons}</div>`;
+}
+
+function renderTailoringStyleInfoPopup() {
+  return `
+    <div class="resume-matcher-style-info__title">Choose your tailoring style</div>
+    <div class="resume-matcher-style-info__stack">
+      ${TAILORING_STYLE_INFO.map(
+        ({ title, lines }) => `
+          <section class="resume-matcher-style-info__section">
+            <div class="resume-matcher-style-info__section-title">${escapeHtml(title)}</div>
+            ${lines
+              .map(
+                (line) =>
+                  `<div class="resume-matcher-style-info__line">${escapeHtml(line)}</div>`,
+              )
+              .join("")}
+          </section>
+        `,
+      ).join("")}
+    </div>
+    <div class="resume-matcher-style-info__footer">${escapeHtml(TAILORING_STYLE_DISCLAIMER)}</div>
+  `;
+}
+
+function positionPromptStyleInfoPopup() {
+  const popup = $(RUN_PROMPT_PROFILE_POPUP_ID);
+  const root = $(ROOT_ID);
+  const board = $(BOARD_ID);
+  const field = $(RUN_PROMPT_PROFILE_FIELD_ID);
+  if (
+    !(popup instanceof HTMLElement) ||
+    !(root instanceof HTMLElement) ||
+    !(board instanceof HTMLElement) ||
+    !(field instanceof HTMLElement) ||
+    popup.hidden
+  ) {
+    return;
+  }
+
+  const rootRect = root.getBoundingClientRect();
+  const boardRect = board.getBoundingClientRect();
+  const fieldRect = field.getBoundingClientRect();
+  const leftSpace = Math.max(0, boardRect.left - EDGE_PADDING);
+  const rightSpace = Math.max(0, window.innerWidth - boardRect.right - EDGE_PADDING);
+  const preferredSide = state.dockSide === "left" ? "right" : "left";
+  const popupWidth = popup.offsetWidth || 300;
+
+  let side = preferredSide;
+  if (preferredSide === "right" && rightSpace < popupWidth && leftSpace > rightSpace) {
+    side = "left";
+  } else if (
+    preferredSide === "left" &&
+    leftSpace < popupWidth &&
+    rightSpace > leftSpace
+  ) {
+    side = "right";
+  }
+
+  popup.dataset.side = side;
+
+  const rawTop = Math.round(fieldRect.top - rootRect.top);
+  const popupHeight = popup.offsetHeight || 0;
+  const maxTop = Math.max(
+    0,
+    Math.floor(window.innerHeight - EDGE_PADDING - rootRect.top - popupHeight),
+  );
+  popup.style.top = `${Math.min(Math.max(rawTop, 0), maxTop)}px`;
 }
 
 function getOnboardingStepIndex(step) {
@@ -6252,9 +6599,23 @@ function markPreviewHandoffComplete() {
   state.awaitingAuth = false;
   state.awaitingStoryboard = false;
   state.activeRunId = null;
+  state.ownedRunId = null;
   state.lastProgressHeartbeatAt = 0;
   state.runningDetailSource = "";
   stopRunningStatusRotation();
+}
+
+function claimOwnedRun(runId = null) {
+  const nextRunId = String(runId || "").trim();
+  if (!nextRunId) return;
+  state.ownedRunId = nextRunId;
+}
+
+function clearOwnedRun(runId = null) {
+  const scopedRunId = String(runId || "").trim();
+  if (!scopedRunId || !state.ownedRunId || state.ownedRunId === scopedRunId) {
+    state.ownedRunId = null;
+  }
 }
 
 function getCurrentRunPhaseLabel() {
@@ -6348,6 +6709,7 @@ function applyCanceledRunState(runId = null, options = {}) {
   stopRunningStatusRotation();
   state.activeRunId = null;
   state.activeRunJob = null;
+  clearOwnedRun(runId);
 
   setExplicitRunStatus(
     "canceled",
@@ -6741,7 +7103,8 @@ function renderSettings() {
   const providerReady = providerReadiness.ready === true;
   const connected = state.connectionState === "connected";
   const accountControlsDisabled = !connected;
-  const activePromptProfileId = assets?.activePromptProfileId || "profile1";
+  const activePromptProfileId =
+    assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
   const readyToTailor = connected && providerReady && hasMaster;
   const settingsHealth = $(SETTINGS_HEALTH_ID);
   if (settingsHealth) {
@@ -6762,7 +7125,7 @@ function renderSettings() {
     );
   }
   if (promptProfileDetail) {
-    promptProfileDetail.textContent = `You are editing ${getPromptProfileLabel(activePromptProfileId)}. Uploaded prompt bodies below belong only to this profile.`;
+    promptProfileDetail.textContent = `You are editing ${getPromptProfileLabel(activePromptProfileId)}. Uploaded prompt bodies below belong only to this style.`;
   }
 
   const masterLabel = $(MASTER_RESUME_LABEL_ID);
@@ -7079,7 +7442,8 @@ function renderSettings() {
         if (asset?.filename) {
           const response = await sendMessage("DELETE_PROMPT_TEMPLATE", {
             templateName,
-            promptProfileId: state.assets?.activePromptProfileId || "profile1",
+            promptProfileId:
+              state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
           }).catch(() => {});
           if (!response?.ok) {
             throw new Error(response?.error || `Failed to delete ${label}.`);
@@ -7158,6 +7522,9 @@ function autoGrowTextarea(textarea) {
 
 function renderRunView() {
   syncRunSourceModeForRoute();
+  if (!state.boardOpen || state.currentView !== "run") {
+    state.promptStyleInfoOpen = false;
+  }
   const status = getRunStatusCopy();
   const setupRequirement = getSetupRequirementStatus();
   const nonLinkedInManualRoute = isNonLinkedInManualRoute();
@@ -7168,6 +7535,8 @@ function renderRunView() {
   const manualJdInput = $(RUN_MANUAL_JD_ID);
   const promptProfileField = $(RUN_PROMPT_PROFILE_FIELD_ID);
   const promptProfileTabs = $(RUN_PROMPT_PROFILE_TABS_ID);
+  const promptProfilePopup = $(RUN_PROMPT_PROFILE_POPUP_ID);
+  const promptProfileHint = $(RUN_PROMPT_PROFILE_HINT_ID);
   const sourceToggle = $(RUN_SOURCE_TOGGLE_ID);
   const sourceLinkedInButton = $(RUN_SOURCE_LINKEDIN_ID);
   const sourceManualButton = $(RUN_SOURCE_MANUAL_ID);
@@ -7228,17 +7597,56 @@ function renderRunView() {
   if (promptProfileField) {
     promptProfileField.hidden =
       showOnboarding || hardBlocker || waitingForSelection;
+    if (promptProfileField.hidden && state.promptStyleInfoOpen) {
+      state.promptStyleInfoOpen = false;
+    }
+    promptProfileField.classList.toggle(
+      "is-popup-open",
+      !promptProfileField.hidden && state.promptStyleInfoOpen,
+    );
   }
   if (promptProfileTabs instanceof HTMLElement) {
-    const activePromptProfileId = state.assets?.activePromptProfileId || "profile1";
+    const activePromptProfileId =
+      state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+    const runnablePromptProfileId = getRunnablePromptProfileId(
+      state.assets?.promptTemplateProfiles,
+      activePromptProfileId,
+    );
     promptProfileTabs.className = "resume-matcher-profile-tabs";
     promptProfileTabs.innerHTML = renderPromptProfileTabs(
       state.assets?.promptTemplateProfiles,
-      activePromptProfileId,
+      runnablePromptProfileId,
       {
         disabled: state.isRunning || state.isCanceling,
+        allowDisabledSelection: false,
       },
     );
+  }
+  if (promptProfilePopup instanceof HTMLElement) {
+    promptProfilePopup.hidden = !state.promptStyleInfoOpen;
+    promptProfilePopup.innerHTML = state.promptStyleInfoOpen
+      ? renderTailoringStyleInfoPopup()
+      : "";
+    if (state.promptStyleInfoOpen) {
+      positionPromptStyleInfoPopup();
+    }
+  }
+  const promptProfileInfoButton = $(RUN_PROMPT_PROFILE_INFO_ID);
+  if (promptProfileInfoButton instanceof HTMLButtonElement) {
+    promptProfileInfoButton.setAttribute(
+      "aria-expanded",
+      String(state.promptStyleInfoOpen),
+    );
+  }
+  if (promptProfileHint instanceof HTMLElement) {
+    const boldEnabled = isBoldPromptProfileEnabled(
+      state.assets?.promptTemplateProfiles,
+    );
+    promptProfileHint.hidden =
+      state.isRunning || state.isCanceling || boldEnabled;
+    promptProfileHint.textContent = boldEnabled
+      ? ""
+      : "Bold unlocks after you upload custom prompts for it in Settings.";
   }
 
   if (readyPill) {
@@ -7625,6 +8033,7 @@ async function refreshBoardData(options = {}) {
       ...(nextAssets || {}),
       backendMasterResume: resolvedBackendMaster,
     };
+    applyPromptTemplateProfilesState(state.assets.promptTemplateProfiles);
     const nextSetupState = response.setupState ?? state.setupState;
     state.setupState =
       preservedBackendMaster && nextSetupState?.state === "missing_resume"
@@ -7691,6 +8100,7 @@ async function reconcileConnectionStatus(options = {}) {
             backendMasterResume: previousBackendMaster,
           }
         : nextAssets;
+      applyPromptTemplateProfilesState(state.assets?.promptTemplateProfiles);
       const nextSetupState = response.setupState ?? state.setupState;
       state.setupState =
         preservedBackendMaster && nextSetupState?.state === "missing_resume"
@@ -7890,7 +8300,7 @@ async function persistSelectedProviderSettings() {
   return true;
 }
 
-async function persistPromptProfileSelection(profileId) {
+async function persistPromptProfileSelection(profileId, { refresh = true } = {}) {
   const nextProfileId = String(profileId || "").trim();
   if (!nextProfileId) {
     throw new Error("Choose a prompt profile.");
@@ -7901,7 +8311,10 @@ async function persistPromptProfileSelection(profileId) {
   if (!response?.ok) {
     throw new Error(response?.error || "Failed to save prompt profile.");
   }
-  await refreshBoardData();
+  applyPromptTemplateProfilesState(response.promptTemplateProfiles);
+  if (refresh) {
+    await refreshBoardData();
+  }
   return true;
 }
 
@@ -8045,6 +8458,30 @@ async function handleGenerateClick() {
   }
   if (state.isRunning) return;
 
+  const activePromptProfileId =
+    state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+  const runnablePromptProfileId = getRunnablePromptProfileId(
+    state.assets?.promptTemplateProfiles,
+    activePromptProfileId,
+  );
+  if (runnablePromptProfileId !== activePromptProfileId) {
+    try {
+      await persistPromptProfileSelection(runnablePromptProfileId, {
+        refresh: false,
+      });
+    } catch (error) {
+      setExplicitRunStatus(
+        "error",
+        "error",
+        "Save failed",
+        error instanceof Error
+          ? error.message
+          : "Failed to switch prompt profile.",
+      );
+      return;
+    }
+  }
+
   const runId = crypto.randomUUID();
   state.currentView = "run";
   state.awaitingAuth = false;
@@ -8053,6 +8490,7 @@ async function handleGenerateClick() {
   state.isRunning = true;
   state.previewHandoffComplete = false;
   state.activeRunId = runId;
+  claimOwnedRun(runId);
   state.activeRunJob = cloneJobForRun(state.currentJob);
   state.launcherAlert = false;
   clearScrapeRecoveryState();
@@ -8072,6 +8510,7 @@ async function handleGenerateClick() {
     state.awaitingAuth = true;
     state.activeRunId = null;
     state.activeRunJob = null;
+    clearOwnedRun(runId);
     const requirement = getSetupRequirementStatus() || {
       tone: "blocked",
       title: "Connect Lumi Coach",
@@ -8113,6 +8552,7 @@ async function handleGenerateClick() {
     state.awaitingAuth = false;
     state.activeRunId = null;
     state.activeRunJob = null;
+    clearOwnedRun(runId);
     const setupAction = getManualSetupAction(manualSetupRequirement);
     clearExplicitRunStatus("manual-setup-repair", { renderNow: false });
     if (setupAction?.id === "upload_resume") {
@@ -8146,6 +8586,7 @@ async function handleGenerateClick() {
   state.isRunning = true;
   state.previewHandoffComplete = false;
   state.activeRunId = state.activeRunId || runId;
+  claimOwnedRun(state.activeRunId);
   state.activeRunJob = cloneJobForRun(state.currentJob);
   state.launcherAlert = false;
   clearScrapeRecoveryState();
@@ -8179,6 +8620,7 @@ async function handleGenerateClick() {
     }
     if (response?.runId) {
       state.activeRunId = response.runId;
+      claimOwnedRun(response.runId);
     }
     if (response?.awaitingAuth) {
       state.isRunning = false;
@@ -8212,6 +8654,7 @@ async function handleGenerateClick() {
     if (response?.setupState) {
       state.isRunning = false;
       state.activeRunJob = null;
+      clearOwnedRun(state.activeRunId);
       state.setupState = response.setupState;
       const requirement = getSetupRequirementStatus(response.message) || {
         tone: "blocked",
@@ -8249,6 +8692,7 @@ async function handleGenerateClick() {
       state.isRunning = false;
       state.isCanceling = false;
       state.activeRunId = response.runId || null;
+      clearOwnedRun(runId);
       setExplicitRunStatus(
         "interrupted",
         "warning",
@@ -8295,6 +8739,7 @@ async function handleGenerateClick() {
     }
     state.activeRunId = null;
     state.activeRunJob = null;
+    clearOwnedRun(runId);
     setExplicitRunStatus(
       "error",
       "error",
@@ -8434,6 +8879,7 @@ async function handleStatusAction(actionId) {
       );
       if (response?.runId) {
         state.activeRunId = response.runId;
+        claimOwnedRun(response.runId);
       }
       if (response?.canceled) {
         applyCanceledRunState(response.runId || state.activeRunId);
@@ -8450,6 +8896,7 @@ async function handleStatusAction(actionId) {
       state.isCanceling = false;
       state.activeRunId = null;
       state.activeRunJob = null;
+      clearOwnedRun();
       setExplicitRunStatus(
         "error",
         "error",
@@ -8582,13 +9029,20 @@ function ensureRoot() {
                 <label for="${RUN_NOTES_ID}">Helpful context</label>
                 <textarea id="${RUN_NOTES_ID}" rows="2" placeholder="Type ATS keywords, must-haves, recruiter hints, or LinkedIn signals."></textarea>
               </div>
-              <div id="${RUN_PROMPT_PROFILE_FIELD_ID}" class="resume-matcher-field">
-                <label>Prompt profile</label>
+              <div id="${RUN_PROMPT_PROFILE_FIELD_ID}" class="resume-matcher-field resume-matcher-field--style">
+                <div class="resume-matcher-run-style-row">
+                  <div class="resume-matcher-run-style-label">Tailoring style</div>
+                  <button id="${RUN_PROMPT_PROFILE_INFO_ID}" type="button" class="resume-matcher-run-style-info-button" aria-label="About tailoring styles" aria-haspopup="dialog" aria-controls="${RUN_PROMPT_PROFILE_POPUP_ID}" aria-expanded="false" title="About tailoring styles">i</button>
+                </div>
                 ${renderPromptProfileTabs(
                   { profiles: { profile1: {}, profile2: {}, profile3: {} } },
-                  "profile1",
-                  { containerId: RUN_PROMPT_PROFILE_TABS_ID },
+                  DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
+                  {
+                    containerId: RUN_PROMPT_PROFILE_TABS_ID,
+                    allowDisabledSelection: false,
+                  },
                 )}
+                <div id="${RUN_PROMPT_PROFILE_HINT_ID}" class="resume-matcher-run-style-hint" hidden></div>
               </div>
               <div id="${RUN_ACTIONS_ID}" class="resume-matcher-button-row">
                 <button id="${RUN_PRIMARY_ID}" type="button" class="resume-matcher-button is-primary">Tailor</button>
@@ -8703,12 +9157,12 @@ function ensureRoot() {
                     <div id="${PROMPT_PROFILE_DETAIL_ID}" class="resume-matcher-settings-item__detail"></div>
                     <div class="resume-matcher-settings-substack">
                       <div class="resume-matcher-settings-item">
-                        <div class="resume-matcher-settings-item__title">Active profile</div>
-                        <div class="resume-matcher-settings-item__detail">These uploaded prompt bodies apply to the selected profile.</div>
+                        <div class="resume-matcher-settings-item__title">Active style</div>
+                        <div class="resume-matcher-settings-item__detail">These uploaded prompt bodies apply to the selected style.</div>
                         <div class="resume-matcher-field">
                           ${renderPromptProfileTabs(
                             { profiles: { profile1: {}, profile2: {}, profile3: {} } },
-                            "profile1",
+                            DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
                             { containerId: PROMPT_PROFILE_TABS_ID, compact: true },
                           )}
                         </div>
@@ -8758,6 +9212,7 @@ function ensureRoot() {
         </section>
       </div>
     </section>
+    <div id="${RUN_PROMPT_PROFILE_POPUP_ID}" class="resume-matcher-run-style-popup" hidden></div>
   `;
   document.documentElement.appendChild(root);
 
@@ -8803,6 +9258,11 @@ function ensureRoot() {
   $(RUN_READY_ID)?.addEventListener("click", handleManualJobRescrape);
   $(RUN_PRIMARY_ID)?.addEventListener("click", handleGenerateClick);
   $(RUN_CANCEL_ID)?.addEventListener("click", requestCancelActiveRun);
+  $(RUN_PROMPT_PROFILE_INFO_ID)?.addEventListener("click", (event) => {
+    event.preventDefault();
+    state.promptStyleInfoOpen = !state.promptStyleInfoOpen;
+    renderRunView();
+  });
   $(RUN_NOTES_ID)?.addEventListener("input", (event) => {
     state.customMessage = event.target.value || "";
     autoGrowTextarea(event.target);
@@ -8890,7 +9350,8 @@ function ensureRoot() {
         try {
           const response = await sendMessage("SAVE_PROMPT_TEMPLATE", {
             templateName,
-            promptProfileId: state.assets?.activePromptProfileId || "profile1",
+            promptProfileId:
+              state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
             filename: file.name,
             content: await file.text(),
           });
@@ -9256,6 +9717,10 @@ function ensureRoot() {
     document.addEventListener("click", handleSelectedJobClick);
     selectedJobClickListenerAttached = true;
   }
+  if (!promptStyleInfoClickListenerAttached) {
+    document.addEventListener("click", handlePromptStyleInfoOutsideClick);
+    promptStyleInfoClickListenerAttached = true;
+  }
 
   void applyStoredRootState(root);
   return root;
@@ -9300,6 +9765,19 @@ function handleSelectedJobClick(event) {
   }
 }
 
+function handlePromptStyleInfoOutsideClick(event) {
+  if (isContentScriptDisposed() || !state.promptStyleInfoOpen) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (
+    target.closest(`#${RUN_PROMPT_PROFILE_FIELD_ID}`) ||
+    target.closest(`#${RUN_PROMPT_PROFILE_POPUP_ID}`)
+  )
+    return;
+  state.promptStyleInfoOpen = false;
+  renderRunView();
+}
+
 function stopSelectedJobDetailWatcher() {
   if (!selectedJobDetailObserver) {
     selectedJobDetailObservedRoot = null;
@@ -9317,11 +9795,31 @@ function handleViewportChange() {
   syncDockedPosition(root);
 }
 
+function doesLocallyOwnLockedRun() {
+  const lockedRunId =
+    String(
+      state.runLock?.runId ||
+        state.activeRunId ||
+        state.extensionState?.sessionId ||
+        "",
+    ).trim() || null;
+  if (!lockedRunId || !state.ownedRunId) {
+    return false;
+  }
+  return state.ownedRunId === lockedRunId;
+}
+
 function isLockedToAnotherTab() {
-  return (
-    state.runLock?.active === true &&
-    state.runLock?.currentTabOwnsRun !== true
-  );
+  if (state.runLock?.active !== true) {
+    return false;
+  }
+  if (state.runLock?.currentTabOwnsRun === true) {
+    return false;
+  }
+  if (doesLocallyOwnLockedRun()) {
+    return false;
+  }
+  return true;
 }
 
 function clearLauncherLockNoticeTimer() {
@@ -9420,6 +9918,7 @@ function updateStatusFromLog(level, scope, message, data) {
     state.awaitingAuth = false;
     state.awaitingStoryboard = false;
     state.activeRunId = null;
+    clearOwnedRun(scopedRunId);
     setRunStatus(
       "error",
       "Run failed",
@@ -9663,6 +10162,7 @@ function handleRuntimeMessage(message, _sender, sendResponse) {
       state.awaitingStoryboard = false;
       state.activeRunId = null;
       state.activeRunJob = null;
+      clearOwnedRun();
       state.currentView = "run";
       openBoard("run", { skipConnectionCheck: true });
       setExplicitRunStatus(
@@ -9678,6 +10178,7 @@ function handleRuntimeMessage(message, _sender, sendResponse) {
       state.awaitingAuth = false;
       state.activeRunId = null;
       state.activeRunJob = null;
+      clearOwnedRun();
       state.currentView = "run";
       openBoard("run", { skipConnectionCheck: true });
     }
@@ -9847,6 +10348,7 @@ function handleRuntimeMessage(message, _sender, sendResponse) {
       }
       state.activeRunId = null;
       state.activeRunJob = null;
+      clearOwnedRun(message.payload?.runId ?? null);
       setExplicitRunStatus(
         "error",
         "error",
@@ -9911,6 +10413,7 @@ function destroyContentScriptInstance(reason = "disposed") {
   state.jobInspectionRequested = false;
   state.activeRunId = null;
   state.activeRunJob = null;
+  clearOwnedRun();
   clearJobLoadTimer();
   if (selectedJobRefreshTimer) {
     window.clearTimeout(selectedJobRefreshTimer);
@@ -9929,6 +10432,10 @@ function destroyContentScriptInstance(reason = "disposed") {
   if (selectedJobClickListenerAttached) {
     document.removeEventListener("click", handleSelectedJobClick);
     selectedJobClickListenerAttached = false;
+  }
+  if (promptStyleInfoClickListenerAttached) {
+    document.removeEventListener("click", handlePromptStyleInfoOutsideClick);
+    promptStyleInfoClickListenerAttached = false;
   }
   chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
   removeRoot();
