@@ -13,7 +13,9 @@ export interface ExtensionRunAdminItem {
   user_email?: string | null;
   run_id: string;
   status: string;
+  run_status?: string | null;
   title?: string | null;
+  resume_title?: string | null;
   company?: string | null;
   location?: string | null;
   source_url?: string | null;

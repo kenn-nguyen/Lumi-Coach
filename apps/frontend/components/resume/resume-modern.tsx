@@ -324,9 +324,7 @@ export const ResumeModern: React.FC<ResumeModernProps> = ({
 
           {/* Title - Centered, below name */}
           {personalInfo.title && (
-            <h2
-              className={`${baseStyles['resume-title']} ${baseStyles['resume-meta']} tracking-wide uppercase mt-3 mb-1`}
-            >
+            <h2 className={`${baseStyles['resume-title']} tracking-wide uppercase mt-3 mb-1`}>
               {personalInfo.title}
             </h2>
           )}

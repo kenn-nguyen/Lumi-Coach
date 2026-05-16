@@ -5007,6 +5007,10 @@ function hasUsableJobContext(job) {
 
 function hasEnoughJobContext(job) {
   if (!job) return false;
+  const sourceUrl = normalizeJobSourceUrl(job.sourceUrl);
+  if (sourceUrl && /\/jobs\/view\/\d+\/?$/.test(window.location.href)) {
+    return true;
+  }
   if (job.title && (job.company || job.location || job.highlights?.length)) {
     return true;
   }
