@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildResumeArtifactFilename, sanitizeFilename } from '@/lib/utils/download';
+import {
+  buildAdminExtensionRunFilename,
+  buildResumeArtifactFilename,
+  sanitizeFilename,
+} from '@/lib/utils/download';
 
 describe('sanitizeFilename', () => {
   describe('Basic functionality', () => {
@@ -444,5 +448,19 @@ describe('buildResumeArtifactFilename', () => {
     const result = buildResumeArtifactFilename(null, null, 'resume-id', 'resume', 'pdf');
 
     expect(result).toBe('resume_resume-id.pdf');
+  });
+});
+
+describe('buildAdminExtensionRunFilename', () => {
+  it('starts admin run JSON filenames with company and role', () => {
+    const result = buildAdminExtensionRunFilename('GBG Plc', 'Senior Product Manager', 'run-123');
+
+    expect(result).toBe('GBG_Plc_Senior_Product_Manager_extension_run_run-123.json');
+  });
+
+  it('falls back cleanly when company and role are missing', () => {
+    const result = buildAdminExtensionRunFilename(null, null, 'run-123');
+
+    expect(result).toBe('extension_run_run-123.json');
   });
 });

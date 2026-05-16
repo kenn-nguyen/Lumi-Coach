@@ -16,7 +16,7 @@ import {
   type ExtensionRunAdminItem,
   type ExtensionRunAdminListResponse,
 } from '@/lib/api/admin';
-import { downloadBlobAsFile } from '@/lib/utils/download';
+import { buildAdminExtensionRunFilename, downloadBlobAsFile } from '@/lib/utils/download';
 
 type FilterStatus = 'all' | 'generated' | 'failed' | 'canceled' | 'running';
 type FilterProfile = 'all' | 'profile1' | 'profile2' | 'profile3';
@@ -203,7 +203,7 @@ export default function AdminExtensionRunsPage() {
     try {
       const run = await fetchAdminExtensionRunItem(item.user_id, item.run_id);
       const blob = new Blob([JSON.stringify(run, null, 2)], { type: 'application/json' });
-      downloadBlobAsFile(blob, `extension-run-${item.run_id}.json`);
+      downloadBlobAsFile(blob, buildAdminExtensionRunFilename(run.company, run.title, item.run_id));
     } catch (downloadError) {
       setError(
         downloadError instanceof Error ? downloadError.message : 'Failed to download extension run.'

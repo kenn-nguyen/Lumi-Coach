@@ -94,3 +94,31 @@ export function buildResumeArtifactFilename(
     .replace(/\s+/g, '_')
     .replace(/\.pdf$/i, `.${extension}`);
 }
+
+/**
+ * Build an admin extension-run JSON filename.
+ * Format: "{Company}_{Role}_extension_run_{runId}.json" when company/role exist.
+ */
+export function buildAdminExtensionRunFilename(
+  company: string | null | undefined,
+  title: string | null | undefined,
+  runId: string
+): string {
+  const cleanCompany = company?.trim() || null;
+  const cleanTitle = title?.trim() || null;
+
+  let raw: string | null;
+  if (cleanCompany && cleanTitle) {
+    raw = `${cleanCompany}_${cleanTitle}_extension_run_${runId}`;
+  } else if (cleanCompany) {
+    raw = `${cleanCompany}_extension_run_${runId}`;
+  } else if (cleanTitle) {
+    raw = `${cleanTitle}_extension_run_${runId}`;
+  } else {
+    raw = `extension_run_${runId}`;
+  }
+
+  return sanitizeFilename(raw, runId, 'resume')
+    .replace(/\s+/g, '_')
+    .replace(/\.pdf$/i, '.json');
+}
