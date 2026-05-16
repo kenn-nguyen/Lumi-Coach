@@ -94,7 +94,7 @@ async def test_list_extension_runs_returns_normalized_items(mock_db, client):
         limit=5,
         offset=0,
         include_prompt_artifacts=False,
-        scan_limit=5,
+        scan_limit=100,
     )
 
 

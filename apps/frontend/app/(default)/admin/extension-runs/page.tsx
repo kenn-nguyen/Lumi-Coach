@@ -104,10 +104,12 @@ export default function AdminExtensionRunsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFrom, setDateFrom] = useState(buildDefaultDateFrom);
   const [dateTo, setDateTo] = useState(buildDefaultDateTo);
+  const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [downloadingRunId, setDownloadingRunId] = useState<string | null>(null);
+  const offset = (page - 1) * ADMIN_RUN_LIST_LIMIT;
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -123,6 +125,10 @@ export default function AdminExtensionRunsPage() {
   }, [authStatus, router]);
 
   useEffect(() => {
+    setPage(1);
+  }, [statusFilter, profileFilter, searchQuery, dateFrom, dateTo]);
+
+  useEffect(() => {
     if (authStatus !== 'authenticated') return;
     let cancelled = false;
     const load = async () => {
@@ -136,7 +142,7 @@ export default function AdminExtensionRunsPage() {
           date_from: dateFrom || undefined,
           date_to: dateTo || undefined,
           limit: ADMIN_RUN_LIST_LIMIT,
-          offset: 0,
+          offset,
         });
         if (!cancelled) {
           setRunsResponse(next);
@@ -157,13 +163,17 @@ export default function AdminExtensionRunsPage() {
     return () => {
       cancelled = true;
     };
-  }, [authStatus, statusFilter, profileFilter, searchQuery, dateFrom, dateTo]);
+  }, [authStatus, statusFilter, profileFilter, searchQuery, dateFrom, dateTo, offset]);
 
   const rows = runsResponse.items;
+  const rangeStart = runsResponse.total === 0 ? 0 : offset + 1;
+  const rangeEnd = runsResponse.total === 0 ? 0 : offset + rows.length;
+  const canGoPrevious = page > 1 && !isLoading;
+  const canGoNext = !isLoading && offset + rows.length < runsResponse.total;
   const subtitle = useMemo(
     () =>
-      `Recent extension runs and JSON exports. Showing the latest ${rows.length} of ${runsResponse.total} result${runsResponse.total === 1 ? '' : 's'}.`,
-    [rows.length, runsResponse.total]
+      `Recent extension runs and JSON exports. Showing ${rangeStart}-${rangeEnd} of ${runsResponse.total} result${runsResponse.total === 1 ? '' : 's'}.`,
+    [rangeEnd, rangeStart, runsResponse.total]
   );
 
   async function handleDownloadFilteredJson(): Promise<void> {
@@ -355,6 +365,29 @@ export default function AdminExtensionRunsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-border px-4 py-3">
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              Page {page}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={!canGoPrevious}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((current) => current + 1)}
+                disabled={!canGoNext}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </section>
       </div>

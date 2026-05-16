@@ -74,7 +74,7 @@ async def list_extension_runs(
         limit=limit,
         offset=offset,
         include_prompt_artifacts=False,
-        scan_limit=max(5, limit + offset),
+        scan_limit=max(100, (limit + offset) * 4),
     )
     return ExtensionRunAdminListResponse(
         items=[ExtensionRunAdminItem.model_validate(item) for item in result["items"]],
