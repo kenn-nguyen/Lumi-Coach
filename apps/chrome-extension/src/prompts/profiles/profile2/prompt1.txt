@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt1.template
-prompt_version: v1.4.0
-prompt_label: jd-scanner-persona-only-no-title-hint-storybank-feedback-v4
-prompt_notes: Scans the JD for screening signals, target-native phrases to validate, and a hiring-manager persona only, without title-hinting or downstream resume strategy.
+prompt_version: v2.0.0
+prompt_label: jd-scanner-persona-only-no-title-hint-storybank-feedback-v11
+prompt_notes: Extracts screening signals, role-winning phrases, and a defensible hiring-manager persona into flex_notes while preserving the shared JD signal contract and no-title-hint boundary.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 # Prompt 1 - JD Scanner + Hiring Manager Persona
