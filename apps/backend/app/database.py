@@ -556,7 +556,6 @@ class Database:
         run: ExtensionRunModel,
         *,
         user_email: str | None,
-        resume_title: str | None = None,
         include_summary: bool = False,
         include_prompt_artifacts: bool = False,
     ) -> dict[str, Any]:
@@ -572,8 +571,6 @@ class Database:
             prompt_artifacts=prompt_artifacts if isinstance(prompt_artifacts, dict) else None,
         )
         serialized["user_email"] = user_email
-        serialized["run_status"] = serialized.get("status")
-        serialized["resume_title"] = resume_title
         serialized["prompt_setup"] = prompt_setup
         if not include_summary:
             serialized.pop("summary", None)
@@ -585,39 +582,6 @@ class Database:
         serialized.pop("prompt3_version_id", None)
         serialized.pop("system_prompt_version_id", None)
         return serialized
-
-    @staticmethod
-    def _resolve_resume_display_title(resume: ResumeModel | None) -> str | None:
-        if resume is None:
-            return None
-        title = decrypt_text(resume.title)
-        if isinstance(title, str) and title.strip():
-            return title.strip()
-        filename = decrypt_text(resume.filename)
-        if isinstance(filename, str) and filename.strip():
-            return filename.strip()
-        return None
-
-    def _load_resume_title_map(
-        self,
-        session: Session,
-        *,
-        resume_ids: set[str],
-    ) -> dict[str, str]:
-        if not resume_ids:
-            return {}
-        resumes = (
-            session.query(ResumeModel)
-            .options(load_only(ResumeModel.resume_id, ResumeModel.title, ResumeModel.filename))
-            .filter(ResumeModel.resume_id.in_(sorted(resume_ids)))
-            .all()
-        )
-        title_map: dict[str, str] = {}
-        for resume in resumes:
-            resolved_title = self._resolve_resume_display_title(resume)
-            if resolved_title:
-                title_map[resume.resume_id] = resolved_title
-        return title_map
 
     def list_extension_runs_for_admin(
         self,
@@ -687,25 +651,12 @@ class Database:
                 query = query.filter(ExtensionRunModel.status == normalized_status)
 
             candidates = query.limit(bounded_scan_limit).all()
-            resume_title_map = (
-                self._load_resume_title_map(
-                    session,
-                    resume_ids={
-                        run.resume_id
-                        for run, _user in candidates
-                        if isinstance(run.resume_id, str) and run.resume_id.strip()
-                    },
-                )
-                if include_prompt_artifacts
-                else {}
-            )
 
         filtered: list[dict[str, Any]] = []
         for run, user in candidates:
             serialized = self._serialize_admin_extension_run(
                 run,
                 user_email=decrypt_text(user.email) if user else None,
-                resume_title=resume_title_map.get(run.resume_id or ""),
                 include_summary=False,
                 include_prompt_artifacts=include_prompt_artifacts,
             )
@@ -784,19 +735,9 @@ class Database:
             if row is None:
                 return None
             run, user = row
-            resume_title = None
-            if isinstance(run.resume_id, str) and run.resume_id.strip():
-                resume = (
-                    session.query(ResumeModel)
-                    .options(load_only(ResumeModel.resume_id, ResumeModel.title, ResumeModel.filename))
-                    .filter(ResumeModel.resume_id == run.resume_id)
-                    .first()
-                )
-                resume_title = self._resolve_resume_display_title(resume)
             return self._serialize_admin_extension_run(
                 run,
                 user_email=decrypt_text(user.email) if user else None,
-                resume_title=resume_title,
                 include_summary=True,
                 include_prompt_artifacts=True,
             )

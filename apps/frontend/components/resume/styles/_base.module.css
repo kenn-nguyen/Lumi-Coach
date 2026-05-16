@@ -7,7 +7,6 @@
   --line-height: 1.35;
   --font-size-base: 14px;
   --header-scale: 2;
-  --title-scale: 1.35;
   --section-header-scale: 1.2;
   --header-font: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   --body-font: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
@@ -40,9 +39,8 @@
 }
 
 .resume-title {
-  font-size: calc(var(--font-size-base) * var(--title-scale));
+  font-size: calc(var(--font-size-base) * 1.15);
   font-weight: 700;
-  line-height: 1.2;
   color: var(--resume-text-body);
 }
 

@@ -667,9 +667,7 @@ class ExtensionRunAdminItem(BaseModel):
     user_email: str | None = None
     run_id: str
     status: str
-    run_status: str | None = None
     title: str | None = None
-    resume_title: str | None = None
     company: str | None = None
     location: str | None = None
     source_url: str | None = None

@@ -56,10 +56,8 @@ async def test_list_extension_runs_returns_normalized_items(mock_db, client):
                 "user_email": "kenn.nguyen@aya.yale.edu",
                 "run_id": "run-123",
                 "status": "generated",
-                "run_status": "generated",
                 "company": "GBG Plc",
                 "title": "Senior Product Manager",
-                "resume_title": "Uber - Lead Product Manager - Identity",
                 "prompt_setup": {
                     "prompt_profile_id": "profile2",
                     "prompt1_version_id": "aaaa1111",
@@ -84,8 +82,6 @@ async def test_list_extension_runs_returns_normalized_items(mock_db, client):
     payload = response.json()
     assert payload["total"] == 1
     assert payload["items"][0]["run_id"] == "run-123"
-    assert payload["items"][0]["run_status"] == "generated"
-    assert payload["items"][0]["resume_title"] == "Uber - Lead Product Manager - Identity"
     assert payload["items"][0]["prompt_setup"]["prompt_profile_id"] == "profile2"
     assert payload["items"][0]["summary"] == {}
     assert payload["items"][0]["prompt_artifacts"] is None
@@ -109,8 +105,6 @@ async def test_export_and_item_routes_return_json(mock_db, client):
         "user_email": "kenn.nguyen@aya.yale.edu",
         "run_id": "run-123",
         "status": "generated",
-        "run_status": "generated",
-        "resume_title": "Uber - Lead Product Manager - Identity",
         "summary": {"prompt_profile_id": "profile1"},
         "prompt_setup": {"prompt_profile_id": "profile1"},
         "prompt_artifacts": {"prompt1": {"input": "Prompt 1 input"}},
@@ -132,12 +126,8 @@ async def test_export_and_item_routes_return_json(mock_db, client):
 
     assert item_response.status_code == 200
     assert item_response.json()["prompt_artifacts"]["prompt1"]["input"] == "Prompt 1 input"
-    assert item_response.json()["resume_title"] == "Uber - Lead Product Manager - Identity"
-    assert item_response.json()["run_status"] == "generated"
     assert export_response.status_code == 200
     assert export_response.headers["content-type"].startswith("application/json")
-    assert export_response.json()[0]["resume_title"] == "Uber - Lead Product Manager - Identity"
-    assert export_response.json()[0]["run_status"] == "generated"
     assert "attachment; filename=\"extension-runs-export.json\"" in export_response.headers[
         "content-disposition"
     ]

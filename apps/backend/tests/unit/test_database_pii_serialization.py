@@ -194,48 +194,6 @@ def test_prompt_artifacts_blob_roundtrip_and_legacy_fallback() -> None:
     assert db._serialize_extension_run(legacy_run)["prompt_artifacts"] == prompt_artifacts
 
 
-def test_serialize_admin_extension_run_includes_resume_title_and_run_status() -> None:
-    db = _database_without_engine()
-    run = SimpleNamespace(
-        user_id="user-1",
-        run_id="run-admin",
-        status="generated",
-        title=encrypt_text("Senior PM"),
-        company=encrypt_text("Acme"),
-        location=None,
-        source_url=None,
-        job_source=None,
-        resume_id="resume-1",
-        preview_url=None,
-        provider_id=None,
-        provider_label=None,
-        generated_at=None,
-        total_duration_ms=None,
-        prompt_profile_id="profile2",
-        prompt1_version_id="p1v",
-        prompt2_version_id="p2v",
-        prompt3_version_id="p3v",
-        system_prompt_version_id="spv",
-        summary=encrypt_json({}),
-        prompt_artifacts=encrypt_json({}),
-        prompt_artifacts_blob=None,
-        created_at=None,
-        updated_at=None,
-    )
-
-    serialized = db._serialize_admin_extension_run(
-        run,
-        user_email="kenn.nguyen@aya.yale.edu",
-        resume_title="Uber - Lead Product Manager - Identity",
-        include_summary=True,
-        include_prompt_artifacts=True,
-    )
-
-    assert serialized["status"] == "generated"
-    assert serialized["run_status"] == "generated"
-    assert serialized["resume_title"] == "Uber - Lead Product Manager - Identity"
-
-
 class _FakeExtensionRunQuery:
     def __init__(self, runs: list[SimpleNamespace]) -> None:
         self._runs = runs
