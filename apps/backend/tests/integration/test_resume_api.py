@@ -99,7 +99,6 @@ class TestListResumes:
     @patch("app.routers.resumes.db")
     async def test_list_excludes_master_by_default(self, mock_db, client):
         mock_db.list_resumes.return_value = [
-            {"resume_id": "master", "is_master": True, "created_at": "2026-01-01", "updated_at": "2026-01-01"},
             {"resume_id": "tailored-1", "is_master": False, "created_at": "2026-01-02", "updated_at": "2026-01-02"},
         ]
         mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {
@@ -112,6 +111,11 @@ class TestListResumes:
         assert len(data) == 1
         assert data[0]["resume_id"] == "tailored-1"
         assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/123/"
+        mock_db.list_resumes.assert_called_once_with(
+            user_id="user-123",
+            limit=None,
+            include_master=False,
+        )
 
     @patch("app.routers.resumes.db")
     async def test_list_includes_master_when_requested(self, mock_db, client):
@@ -139,7 +143,11 @@ class TestListResumes:
             resp = await client.get("/api/v1/resumes/list", params={"include_master": True, "limit": 10})
 
         assert resp.status_code == 200
-        mock_db.list_resumes.assert_called_once_with(user_id="user-123", limit=10)
+        mock_db.list_resumes.assert_called_once_with(
+            user_id="user-123",
+            limit=10,
+            include_master=True,
+        )
 
 
 class TestDownloadResumePdf:

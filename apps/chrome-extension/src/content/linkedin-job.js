@@ -131,7 +131,7 @@ const DELETE_ICON_PATH = "src/assets/delete.png";
 const LOG_PREFIX = "[ResumeMatcherExt][FloatingBoard]";
 const EDGE_PADDING = 8;
 const VIEWPORT_PADDING = 20;
-const RUN_BOARD_WIDTH = 300;
+const RUN_BOARD_WIDTH = 390;
 const WIDE_BOARD_WIDTH = 390;
 const JOB_LOAD_RETRY_MS = 300;
 const JOB_LOAD_TIMEOUT_MS = 7000;
@@ -2115,6 +2115,11 @@ function injectStyles() {
       padding: 2px;
     }
 
+    .resume-matcher-profile-tabs.is-run-wide {
+      display: flex;
+      width: 100%;
+    }
+
     .resume-matcher-profile-tabs__button {
       display: inline-flex;
       align-items: center;
@@ -2148,6 +2153,12 @@ function injectStyles() {
     .resume-matcher-profile-tabs__button:disabled {
       cursor: not-allowed;
       opacity: 0.5;
+    }
+
+    .resume-matcher-profile-tabs.is-run-wide .resume-matcher-profile-tabs__button {
+      flex: 1 1 0;
+      min-width: 88px;
+      padding: 0 12px;
     }
 
     .resume-matcher-run-style-row {
@@ -2200,8 +2211,8 @@ function injectStyles() {
       position: absolute;
       top: 0;
       z-index: 12;
-      width: min(300px, calc(100vw - 48px));
-      max-height: min(68vh, 540px);
+      width: min(420px, calc(100vw - 40px));
+      max-height: min(78vh, 640px);
       overflow: auto;
       pointer-events: auto;
       display: grid;
@@ -6069,6 +6080,7 @@ function renderPromptProfileTabs(
     containerId = "",
     disabled = false,
     compact = false,
+    extraClassName = "",
     allowDisabledSelection = true,
     ariaLabel = "Tailoring style",
   } = {},
@@ -6100,7 +6112,13 @@ function renderPromptProfileTabs(
     return buttons;
   }
 
-  return `<div id="${escapeHtml(containerId)}" class="resume-matcher-profile-tabs${compact ? " is-compact" : ""}" role="tablist" aria-label="${escapeHtml(ariaLabel)}">${buttons}</div>`;
+  const extraClasses = String(extraClassName || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+  const className = `resume-matcher-profile-tabs${compact ? " is-compact" : ""}${extraClasses ? ` ${extraClasses}` : ""}`;
+  return `<div id="${escapeHtml(containerId)}" class="${escapeHtml(className)}" role="tablist" aria-label="${escapeHtml(ariaLabel)}">${buttons}</div>`;
 }
 
 function renderTailoringStyleInfoPopup() {
@@ -7616,12 +7634,14 @@ function renderRunView() {
       state.assets?.promptTemplateProfiles,
       activePromptProfileId,
     );
-    promptProfileTabs.className = "resume-matcher-profile-tabs";
+    promptProfileTabs.className =
+      "resume-matcher-profile-tabs is-compact is-run-wide";
     promptProfileTabs.innerHTML = renderPromptProfileTabs(
       state.assets?.promptTemplateProfiles,
       runnablePromptProfileId,
       {
         disabled: state.isRunning || state.isCanceling,
+        compact: true,
         allowDisabledSelection: false,
       },
     );
@@ -9043,6 +9063,8 @@ function ensureRoot() {
                   DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
                   {
                     containerId: RUN_PROMPT_PROFILE_TABS_ID,
+                    compact: true,
+                    extraClassName: "is-run-wide",
                     allowDisabledSelection: false,
                   },
                 )}

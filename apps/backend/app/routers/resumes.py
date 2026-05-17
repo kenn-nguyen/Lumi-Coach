@@ -1002,9 +1002,7 @@ async def list_resumes(
 ) -> ResumeListResponse:
     """List resumes, optionally including the master resume."""
     user_id = _resolve_current_user_id(current_user)
-    resumes = db.list_resumes(user_id=user_id, limit=limit)
-    if not include_master:
-        resumes = [resume for resume in resumes if not resume.get("is_master", False)]
+    resumes = db.list_resumes(user_id=user_id, limit=limit, include_master=include_master)
 
     resumes.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
     source_urls_by_resume_id = db.get_extension_run_source_urls_by_resume_ids(

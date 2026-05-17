@@ -216,6 +216,124 @@ class _FakeSession:
         return _FakeExtensionRunQuery(self._runs)
 
 
+class _FakeResumeQuery:
+    def __init__(self, resumes: list[SimpleNamespace]) -> None:
+        self._resumes = list(resumes)
+
+    def options(self, *_args: object, **_kwargs: object) -> "_FakeResumeQuery":
+        return self
+
+    def filter(self, criterion: Any) -> "_FakeResumeQuery":
+        left_name = getattr(getattr(criterion, "left", None), "name", None)
+        if left_name == "user_id":
+            expected_user_id = getattr(getattr(criterion, "right", None), "value", None)
+            self._resumes = [resume for resume in self._resumes if resume.user_id == expected_user_id]
+        elif left_name == "is_master":
+            should_match_master = "is true" in str(criterion).lower()
+            self._resumes = [
+                resume for resume in self._resumes if resume.is_master is should_match_master
+            ]
+        return self
+
+    def order_by(self, *clauses: Any) -> "_FakeResumeQuery":
+        for clause in reversed(clauses):
+            field_name = getattr(getattr(clause, "element", None), "name", None)
+            if field_name is None:
+                continue
+            self._resumes.sort(
+                key=lambda resume: getattr(resume, field_name) or datetime.min.replace(tzinfo=timezone.utc),
+                reverse=True,
+            )
+        return self
+
+    def limit(self, count: int) -> "_FakeResumeQuery":
+        self._resumes = self._resumes[:count]
+        return self
+
+    def all(self) -> list[SimpleNamespace]:
+        return list(self._resumes)
+
+    def first(self) -> SimpleNamespace | None:
+        return self._resumes[0] if self._resumes else None
+
+
+class _FakeResumeSession:
+    def __init__(self, resumes: list[SimpleNamespace]) -> None:
+        self._resumes = resumes
+
+    def query(self, _model: object) -> _FakeResumeQuery:
+        return _FakeResumeQuery(self._resumes)
+
+
+class _FakeSessionScope:
+    def __init__(self, session: object) -> None:
+        self._session = session
+
+    def __enter__(self) -> object:
+        return self._session
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        return False
+
+
+def test_list_resumes_limit_applies_to_non_master_rows_and_keeps_master_when_requested() -> None:
+    db = _database_without_engine()
+    resumes = [
+        SimpleNamespace(
+            resume_id="master",
+            user_id="user-1",
+            filename=encrypt_text("master.md"),
+            is_master=True,
+            parent_id=None,
+            processing_status="ready",
+            title=encrypt_text("Master resume"),
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ),
+        SimpleNamespace(
+            resume_id="tailored-new",
+            user_id="user-1",
+            filename=encrypt_text("tailored-new.md"),
+            is_master=False,
+            parent_id="master",
+            processing_status="ready",
+            title=encrypt_text("New tailored"),
+            created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+        ),
+        SimpleNamespace(
+            resume_id="tailored-old",
+            user_id="user-1",
+            filename=encrypt_text("tailored-old.md"),
+            is_master=False,
+            parent_id="master",
+            processing_status="ready",
+            title=encrypt_text("Old tailored"),
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        ),
+        SimpleNamespace(
+            resume_id="other-user",
+            user_id="user-2",
+            filename=encrypt_text("other-user.md"),
+            is_master=False,
+            parent_id=None,
+            processing_status="ready",
+            title=encrypt_text("Other user resume"),
+            created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+        ),
+    ]
+    db._session = lambda: _FakeSessionScope(_FakeResumeSession(resumes))
+
+    without_master = db.list_resumes(user_id="user-1", limit=1, include_master=False)
+    with_master = db.list_resumes(user_id="user-1", limit=1, include_master=True)
+
+    assert [resume["resume_id"] for resume in without_master] == ["tailored-new"]
+    assert [resume["resume_id"] for resume in with_master] == ["master", "tailored-new"]
+    assert all(resume["resume_id"] != "other-user" for resume in with_master)
+
+
 def test_prune_extension_run_prompt_artifacts_keeps_recent_runs_per_user() -> None:
     db = _database_without_engine()
     runs = [

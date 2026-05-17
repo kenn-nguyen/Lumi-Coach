@@ -1012,29 +1012,50 @@ class Database:
         self,
         user_id: str | None = None,
         limit: int | None = None,
+        include_master: bool = False,
     ) -> list[dict[str, Any]]:
         resolved_user_id = self._resolve_user_scope(user_id)
         with self._session() as session:
-            query = session.query(ResumeModel).options(
-                load_only(
-                    ResumeModel.resume_id,
-                    ResumeModel.filename,
-                    ResumeModel.is_master,
-                    ResumeModel.parent_id,
-                    ResumeModel.processing_status,
-                    ResumeModel.title,
-                    ResumeModel.created_at,
-                    ResumeModel.updated_at,
-                    ResumeModel.user_id,
-                )
+            list_item_columns = load_only(
+                ResumeModel.resume_id,
+                ResumeModel.filename,
+                ResumeModel.is_master,
+                ResumeModel.parent_id,
+                ResumeModel.processing_status,
+                ResumeModel.title,
+                ResumeModel.created_at,
+                ResumeModel.updated_at,
+                ResumeModel.user_id,
             )
-            if resolved_user_id is not None:
-                query = query.filter(ResumeModel.user_id == resolved_user_id)
-            query = query.order_by(ResumeModel.updated_at.desc())
+
+            def _scoped_resume_query() -> Any:
+                query = session.query(ResumeModel).options(list_item_columns)
+                if resolved_user_id is not None:
+                    query = query.filter(ResumeModel.user_id == resolved_user_id)
+                return query
+
+            non_master_query = _scoped_resume_query().filter(ResumeModel.is_master.is_(False))
+            non_master_query = non_master_query.order_by(ResumeModel.updated_at.desc())
             if limit is not None:
-                query = query.limit(max(1, limit))
-            resumes = query.all()
-            return [self._serialize_resume_list_item(resume) for resume in resumes]
+                non_master_query = non_master_query.limit(max(1, limit))
+            non_master_resumes = non_master_query.all()
+            serialized_resumes = [
+                self._serialize_resume_list_item(resume) for resume in non_master_resumes
+            ]
+
+            if not include_master:
+                return serialized_resumes
+
+            master_resume = (
+                _scoped_resume_query()
+                .filter(ResumeModel.is_master.is_(True))
+                .order_by(ResumeModel.updated_at.desc(), ResumeModel.created_at.desc())
+                .first()
+            )
+            if master_resume is None:
+                return serialized_resumes
+
+            return [self._serialize_resume_list_item(master_resume), *serialized_resumes]
 
     def get_extension_run_source_urls_by_resume_ids(
         self,
