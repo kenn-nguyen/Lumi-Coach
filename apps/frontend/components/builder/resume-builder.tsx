@@ -12,6 +12,7 @@ import { OutreachEditor } from './outreach-editor';
 import { CoverLetterPreview } from './cover-letter-preview';
 import { OutreachPreview } from './outreach-preview';
 import { GeneratePrompt } from './generate-prompt';
+import { ImportContextCard } from '@/components/resume/import-context-card';
 import { Button } from '@/components/ui/button';
 import { RetroTabs } from '@/components/ui/retro-tabs';
 import { ConfirmDialog, type ConfirmDialogProps } from '@/components/ui/confirm-dialog';
@@ -36,6 +37,7 @@ import {
   getCoverLetterPdfUrl,
   fetchResume,
   type GenerationArtifacts,
+  type ResumeImportContext,
   updateResume,
   updateResumeTemplateSettings,
   updateCoverLetter,
@@ -218,6 +220,8 @@ const ResumeBuilderContent = () => {
   const [resumeTitle, setResumeTitle] = useState<string | null>(null);
   const [masterResumeData, setMasterResumeData] = useState<ResumeData | null>(null);
   const [generationArtifacts, setGenerationArtifacts] = useState<GenerationArtifacts | null>(null);
+  const [importContext, setImportContext] = useState<ResumeImportContext | null>(null);
+  const [linkedMasterResumeId, setLinkedMasterResumeId] = useState<string | null>(null);
 
   // On-demand generation state
   const [isTailoredResume, setIsTailoredResume] = useState(false);
@@ -430,6 +434,8 @@ const ResumeBuilderContent = () => {
           // Store resume title for downloads
           setResumeTitle(data.title ?? null);
           setGenerationArtifacts(data.generation_artifacts ?? null);
+          setImportContext(data.import_context ?? null);
+          setLinkedMasterResumeId(data.linked_master_resume_id ?? null);
           // Load cover letter and outreach message if available
           if (data.cover_letter) {
             setCoverLetter(data.cover_letter);
@@ -1053,6 +1059,18 @@ const ResumeBuilderContent = () => {
                   </div>
                 )}
               </div>
+
+              {importContext && (
+                <ImportContextCard
+                  context={importContext}
+                  linkedMasterResumeId={linkedMasterResumeId}
+                  onOpenMaster={
+                    linkedMasterResumeId
+                      ? () => router.push(`/resumes/${linkedMasterResumeId}`)
+                      : null
+                  }
+                />
+              )}
 
               {/* Resume Editor */}
               {activeTab === 'resume' && (

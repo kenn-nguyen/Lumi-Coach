@@ -379,6 +379,16 @@ class ResumeUploadResponse(BaseModel):
     is_master: bool = False
 
 
+class ResumeImportContext(BaseModel):
+    """Optional provenance captured when importing a resume JSON artifact."""
+
+    mode: Literal["json_child_import", "imported_tailored_json"] = (
+        "imported_tailored_json"
+    )
+    jd_url: str | None = None
+    jd_text: str | None = None
+
+
 class RawResume(BaseModel):
     """Raw resume data from database."""
 
@@ -565,6 +575,8 @@ class ResumeFetchData(BaseModel):
     cover_letter: str | None = None
     outreach_message: str | None = None
     parent_id: str | None = None  # For determining if resume is tailored
+    linked_master_resume_id: str | None = None
+    import_context: ResumeImportContext | None = None
     title: str | None = None
     template_settings: dict[str, Any] | None = None
 

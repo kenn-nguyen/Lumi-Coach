@@ -66,6 +66,14 @@ def test_serialize_resume_decrypts_sensitive_resume_fields() -> None:
         filename=encrypt_text("Jane_Doe_resume.pdf"),
         is_master=True,
         parent_id=None,
+        linked_master_resume_id="master-123",
+        import_context=encrypt_json(
+            {
+                "mode": "imported_tailored_json",
+                "jd_url": "https://www.linkedin.com/jobs/view/123/",
+                "jd_text": "Lead PM role",
+            }
+        ),
         processed_data=encrypt_json(processed_data),
         processing_status="ready",
         cover_letter=encrypt_text("Dear hiring team"),
@@ -97,6 +105,12 @@ def test_serialize_resume_decrypts_sensitive_resume_fields() -> None:
     assert serialized["processed_data"] == processed_data
     assert serialized["generation_artifacts"] == {"prompt": "private prompt"}
     assert serialized["template_settings"] == {"pageSize": "A4"}
+    assert serialized["linked_master_resume_id"] == "master-123"
+    assert serialized["import_context"] == {
+        "mode": "imported_tailored_json",
+        "jd_url": "https://www.linkedin.com/jobs/view/123/",
+        "jd_text": "Lead PM role",
+    }
 
 
 def test_serialize_job_and_extension_run_decrypt_sensitive_fields() -> None:

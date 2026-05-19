@@ -78,6 +78,21 @@
     "replaceMasterResumeWithExtension": "Replace Master Resume with Extension",
     "masterResumeExtensionRequired": "Use Extension",
     "exportJson": "Export JSON",
+    "importResumeJson": {
+      "button": "Import Tailored Resume JSON",
+      "subtext": "Link to Master + JD",
+      "title": "Import Tailored Resume JSON",
+      "fileLabel": "Resume JSON",
+      "fileEmpty": "No file selected",
+      "fileRequired": "Choose a ResumeData JSON file to continue.",
+      "jdUrlLabel": "JD URL",
+      "jdUrlPlaceholder": "https://www.linkedin.com/jobs/view/...",
+      "jdTextLabel": "JD Text",
+      "jdTextPlaceholder": "Paste the job description text this tailored resume was based on.",
+      "jdTextRequired": "Paste the job description text to continue.",
+      "submit": "Import Tailored Resume",
+      "failed": "Failed to import resume JSON."
+    },
     "tailoredResume": "Tailored Resume",
     "initializeMasterResume": "Initialize Master Resume",
     "initializeSequence": "Initialize Sequence",
@@ -882,6 +897,13 @@
       "caveatsLabel": "Claim guardrails"
     },
     "titlePlaceholder": "Enter resume title..."
+  },
+  "resumeImportContext": {
+    "label": "Source Context",
+    "description": "Imported as a tailored resume and linked to your current master resume.",
+    "openMaster": "Open Master Resume",
+    "jdUrlLabel": "JD URL",
+    "jdTextLabel": "JD Text"
   },
   "preview": {
     "margins": "Margins",

@@ -10,6 +10,7 @@ import { PageContainer } from '@/components/preview/page-container';
 import { QuickLayoutControls } from '@/components/preview/quick-layout-controls';
 import { ResumePrintContent } from '@/components/preview/resume-print-content';
 import { usePagination } from '@/components/preview/use-pagination';
+import { ImportContextCard } from '@/components/resume/import-context-card';
 import {
   fetchResume,
   downloadResumePdf,
@@ -19,6 +20,7 @@ import {
   renameResume,
   updateResumeTemplateSettings,
   type GenerationFeedback,
+  type ResumeImportContext,
 } from '@/lib/api/resume';
 import { fetchOutputConfig } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
@@ -140,6 +142,8 @@ export default function ResumeViewerPage() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState('');
   const [generationFeedback, setGenerationFeedback] = useState<GenerationFeedback | null>(null);
+  const [importContext, setImportContext] = useState<ResumeImportContext | null>(null);
+  const [linkedMasterResumeId, setLinkedMasterResumeId] = useState<string | null>(null);
   const [templateSettings, setTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
   const baseMeasurementRef = useRef<HTMLDivElement>(null);
@@ -359,6 +363,8 @@ export default function ResumeViewerPage() {
         // Capture title for editable display (always set to clear stale state)
         setResumeTitle(buildViewerResumeTitle(data));
         setGenerationFeedback(data.generation_feedback ?? null);
+        setImportContext(data.import_context ?? null);
+        setLinkedMasterResumeId(data.linked_master_resume_id ?? null);
 
         // Prioritize processed_resume if available (structured JSON)
         if (data.processed_resume) {
@@ -750,6 +756,18 @@ export default function ResumeViewerPage() {
                 />
               </button>
             )}
+          </div>
+        )}
+
+        {!isMasterResume && (
+          <div className="mb-6 no-print">
+            <ImportContextCard
+              context={importContext}
+              linkedMasterResumeId={linkedMasterResumeId}
+              onOpenMaster={
+                linkedMasterResumeId ? () => router.push(`/resumes/${linkedMasterResumeId}`) : null
+              }
+            />
           </div>
         )}
 

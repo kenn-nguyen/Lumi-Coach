@@ -42,6 +42,8 @@ def mock_resume_record(sample_resume):
         "filename": "resume.pdf",
         "is_master": True,
         "parent_id": None,
+        "linked_master_resume_id": None,
+        "import_context": None,
         "processed_data": sample_resume,
         "processing_status": "ready",
         "generation_feedback": None,
@@ -169,6 +171,29 @@ class TestListResumes:
             include_master=False,
             search="product manager",
         )
+
+    @patch("app.routers.resumes.db")
+    async def test_list_uses_import_context_jd_url_when_no_run_link(self, mock_db, client):
+        mock_db.list_resumes.return_value = [
+            {
+                "resume_id": "imported-1",
+                "is_master": False,
+                "created_at": "2026-01-02",
+                "updated_at": "2026-01-02",
+                "import_context": {
+                    "mode": "imported_tailored_json",
+                    "jd_url": "https://www.linkedin.com/jobs/view/456/",
+                },
+            }
+        ]
+        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {}
+
+        async with client:
+            resp = await client.get("/api/v1/resumes/list")
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/456/"
 
 
 class TestDownloadResumePdf:
@@ -378,6 +403,135 @@ class TestUpdateResume:
         expected_data["sectionMeta"] = updates["processed_data"]["sectionMeta"]
         assert updates["processed_data"] == expected_data
         assert updates["generation_feedback"] is None
+
+
+class TestImportTailoredJsonResume:
+    """POST /api/v1/resumes/import-tailored-json"""
+
+    @patch("app.routers.resumes.db")
+    async def test_import_tailored_json_creates_linked_tailored_resume(
+        self, mock_db, client, sample_resume
+    ):
+        mock_db.get_master_resume.return_value = {"resume_id": "master-123", "is_master": True}
+        mock_db.create_resume.return_value = {
+            "resume_id": "child-456",
+            "is_master": False,
+        }
+        mock_db.create_job.return_value = {"job_id": "job-789"}
+        mock_db.create_improvement.return_value = {"request_id": "imp-000"}
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/import-tailored-json",
+                files={
+                    "file": (
+                        "applied-resume.json",
+                        json.dumps(sample_resume),
+                        "application/json",
+                    )
+                },
+                data={
+                    "jd_url": "https://www.linkedin.com/jobs/view/123/",
+                    "jd_text": "Lead product manager role focused on identity and platform systems.",
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["resume_id"] == "child-456"
+        assert body["processing_status"] == "ready"
+        mock_db.get_master_resume.assert_called_once_with("user-123")
+        mock_db.create_resume.assert_called_once()
+        kwargs = mock_db.create_resume.call_args.kwargs
+        assert kwargs["content_type"] == "json"
+        assert kwargs["is_master"] is False
+        assert kwargs["parent_id"] == "master-123"
+        assert kwargs["linked_master_resume_id"] == "master-123"
+        assert kwargs["processing_status"] == "ready"
+        assert kwargs["user_id"] == "user-123"
+        assert kwargs["processed_data"] == ResumeData.model_validate(sample_resume).model_dump()
+        assert kwargs["import_context"] == {
+            "mode": "imported_tailored_json",
+            "jd_url": "https://www.linkedin.com/jobs/view/123/",
+            "jd_text": "Lead product manager role focused on identity and platform systems.",
+        }
+        mock_db.create_job.assert_called_once_with(
+            content="Lead product manager role focused on identity and platform systems.",
+            resume_id="child-456",
+            user_id="user-123",
+        )
+        mock_db.create_improvement.assert_called_once_with(
+            original_resume_id="master-123",
+            tailored_resume_id="child-456",
+            job_id="job-789",
+            improvements=[],
+            user_id="user-123",
+        )
+
+    @patch("app.routers.resumes.db")
+    async def test_import_tailored_json_requires_existing_master(
+        self, mock_db, client, sample_resume
+    ):
+        mock_db.get_master_resume.return_value = None
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/import-tailored-json",
+                files={
+                    "file": (
+                        "resume.json",
+                        json.dumps(sample_resume),
+                        "application/json",
+                    )
+                },
+            )
+
+        assert resp.status_code == 400
+        mock_db.create_resume.assert_not_called()
+
+    @patch("app.routers.resumes.db")
+    async def test_import_tailored_json_requires_jd_text(
+        self, mock_db, client, sample_resume
+    ):
+        mock_db.get_master_resume.return_value = {"resume_id": "master-123", "is_master": True}
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/import-tailored-json",
+                files={
+                    "file": (
+                        "resume.json",
+                        json.dumps(sample_resume),
+                        "application/json",
+                    )
+                },
+            )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Job description text is required when importing a tailored resume."
+        mock_db.create_resume.assert_not_called()
+        mock_db.create_job.assert_not_called()
+        mock_db.create_improvement.assert_not_called()
+
+    @patch("app.routers.resumes.db")
+    async def test_import_tailored_json_rejects_invalid_resume_json(self, mock_db, client):
+        mock_db.get_master_resume.return_value = {"resume_id": "master-123", "is_master": True}
+
+        async with client:
+            resp = await client.post(
+                "/api/v1/resumes/import-tailored-json",
+                files={
+                    "file": (
+                        "resume.json",
+                        json.dumps({"not_resume_data": True}),
+                        "application/json",
+                    )
+                },
+                data={"jd_text": "Some pasted job description"},
+            )
+
+        assert resp.status_code == 422
+        mock_db.create_resume.assert_not_called()
 
     @patch("app.routers.resumes.db")
     async def test_update_resume_accepts_generation_feedback_wrapper(

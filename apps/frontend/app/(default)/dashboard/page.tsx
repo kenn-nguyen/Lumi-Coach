@@ -43,6 +43,7 @@ import {
   fetchJobDescription,
   type ResumeListItem,
 } from '@/lib/api/resume';
+import { ResumeJsonImportDialog } from '@/components/dashboard/resume-json-import-dialog';
 import { useStatusCache } from '@/lib/context/status-cache';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
@@ -444,6 +445,13 @@ export default function DashboardPage() {
     router.push(`/resumes/${masterResumeId}`);
   };
 
+  const handleImportJsonComplete = useCallback(
+    ({ resumeId }: { resumeId: string }) => {
+      router.push(`/resumes/${resumeId}`);
+    },
+    [router]
+  );
+
   return (
     <SwissGrid
       title={t('dashboard.myResumes')}
@@ -561,6 +569,24 @@ export default function DashboardPage() {
               </Button>
             )}
           </div>
+          {masterResumeId ? (
+            <ResumeJsonImportDialog
+              onImportComplete={handleImportJsonComplete}
+              trigger={
+                <Button variant="outline" className="h-10 min-w-[12rem] justify-start px-4">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-secondary text-foreground">
+                    <Upload className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="flex min-w-0 flex-col items-start">
+                    <span className="truncate">{t('dashboard.importResumeJson.button')}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">
+                      {t('dashboard.importResumeJson.subtext')}
+                    </span>
+                  </span>
+                </Button>
+              }
+            />
+          ) : null}
           <AccountControl />
           <Link href="/settings">
             <Button variant="outline" size="icon" aria-label={t('nav.settings')}>

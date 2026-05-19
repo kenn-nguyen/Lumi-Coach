@@ -88,6 +88,12 @@ export interface GenerationArtifacts {
   prompt2?: Record<string, unknown> | null;
 }
 
+export interface ResumeImportContext {
+  mode: 'json_child_import' | 'imported_tailored_json';
+  jd_url?: string | null;
+  jd_text?: string | null;
+}
+
 interface ResumeResponse {
   request_id: string;
   data: {
@@ -106,6 +112,8 @@ interface ResumeResponse {
     cover_letter?: string | null;
     outreach_message?: string | null;
     parent_id?: string | null; // For determining if resume is tailored
+    linked_master_resume_id?: string | null;
+    import_context?: ResumeImportContext | null;
     title?: string | null;
     template_settings?: ResumeTemplateSettings | null;
   };
@@ -268,6 +276,34 @@ export async function fetchResumeList(
   }
   const payload = (await res.json()) as { data: ResumeListItem[] };
   return payload.data;
+}
+
+export async function importTailoredResumeJson(
+  file: File,
+  jdUrl?: string,
+  jdText?: string
+): Promise<ResumeUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (typeof jdUrl === 'string' && jdUrl.trim()) {
+    formData.append('jd_url', jdUrl.trim());
+  }
+  if (typeof jdText === 'string' && jdText.trim()) {
+    formData.append('jd_text', jdText.trim());
+  }
+
+  const res = await apiFetch('/resumes/import-tailored-json', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to import resume JSON (status ${res.status}).`)
+    );
+  }
+
+  return (await res.json()) as ResumeUploadResponse;
 }
 
 export async function updateResume(

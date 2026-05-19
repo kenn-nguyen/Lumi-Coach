@@ -13,7 +13,7 @@ from typing import Any, NoReturn
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 
@@ -46,6 +46,7 @@ from app.schemas import (
     ResumeData,
     ResumeFetchData,
     ResumeFetchResponse,
+    ResumeImportContext,
     ResumeListResponse,
     ResumeTemplateSettings,
     ResumeTemplateSettingsResponse,
@@ -500,6 +501,12 @@ def _build_resume_fetch_response(
         if raw_template_settings
         else None
     )
+    raw_import_context = resume.get("import_context")
+    import_context = (
+        ResumeImportContext.model_validate(raw_import_context)
+        if raw_import_context
+        else None
+    )
 
     return ResumeFetchResponse(
         request_id=request_id or str(uuid4()),
@@ -513,6 +520,8 @@ def _build_resume_fetch_response(
             cover_letter=resume.get("cover_letter"),
             outreach_message=resume.get("outreach_message"),
             parent_id=resume.get("parent_id"),
+            linked_master_resume_id=resume.get("linked_master_resume_id"),
+            import_context=import_context,
             title=resume.get("title"),
             template_settings=template_settings,
         ),
@@ -796,6 +805,98 @@ RESUME_DATA_JSON_KEYS = {
 }
 
 
+def _parse_resume_json_payload(
+    content: bytes,
+) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any] | None]:
+    """Parse and validate an uploaded ResumeData JSON payload."""
+    try:
+        json_content = content.decode("utf-8")
+    except UnicodeDecodeError as e:
+        logger.error("JSON resume decoding failed: %s", e)
+        raise HTTPException(
+            status_code=422,
+            detail="Failed to decode JSON file. Please ensure it is valid UTF-8 JSON.",
+        ) from e
+
+    try:
+        parsed_json = json.loads(json_content)
+        generation_feedback = None
+        generation_artifacts = None
+        resume_payload = parsed_json
+        if isinstance(parsed_json, dict) and "resume_data" in parsed_json:
+            wrapped_payload = ResumeUpdateRequest.model_validate(parsed_json)
+            resume_payload = wrapped_payload.resume_data.model_dump()
+            generation_feedback = (
+                wrapped_payload.generation_feedback.model_dump(exclude_none=True)
+                if wrapped_payload.generation_feedback
+                else None
+            )
+            generation_artifacts = (
+                wrapped_payload.generation_artifacts.model_dump(exclude_none=True)
+                if wrapped_payload.generation_artifacts
+                else None
+            )
+        if not isinstance(resume_payload, dict) or not (
+            RESUME_DATA_JSON_KEYS & set(resume_payload.keys())
+        ):
+            raise ValueError("JSON payload is not resume-shaped")
+        processed_data = ResumeData.model_validate(resume_payload).model_dump()
+        return processed_data, generation_feedback, generation_artifacts
+    except json.JSONDecodeError as e:
+        logger.error("JSON resume parsing failed: %s", e)
+        raise HTTPException(
+            status_code=422,
+            detail="Failed to parse JSON file. Please ensure it is valid ResumeData JSON.",
+        ) from e
+    except ValidationError as e:
+        logger.error("JSON resume validation failed: %s", e)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Uploaded JSON does not match ResumeData schema: {e}",
+        ) from e
+    except ValueError as e:
+        logger.error("JSON resume validation failed: %s", e)
+        raise HTTPException(
+            status_code=422,
+            detail="Uploaded JSON does not match ResumeData schema.",
+        ) from e
+
+
+def _build_resume_import_context(
+    *,
+    jd_url: str | None,
+    jd_text: str | None,
+) -> dict[str, Any]:
+    """Normalize optional JD provenance captured during tailored JSON import."""
+    context: dict[str, Any] = {"mode": "imported_tailored_json"}
+    normalized_url = jd_url.strip() if isinstance(jd_url, str) else ""
+    normalized_text = jd_text.strip() if isinstance(jd_text, str) else ""
+    if normalized_url:
+        context["jd_url"] = normalized_url
+    if normalized_text:
+        context["jd_text"] = normalized_text
+    return context
+
+
+def _derive_imported_resume_title(
+    *,
+    file_name: str,
+    processed_data: dict[str, Any],
+) -> str | None:
+    """Pick a stable title for imported JSON child resumes."""
+    file_stem = Path(file_name).stem.strip()
+    if file_stem:
+        return file_stem
+
+    personal_info = processed_data.get("personalInfo")
+    if isinstance(personal_info, dict):
+        title = personal_info.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+
+    return None
+
+
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
     file: UploadFile = File(...),
@@ -829,56 +930,9 @@ async def upload_resume(
         raise HTTPException(status_code=400, detail="Empty file")
 
     if is_json_upload:
-        try:
-            json_content = content.decode("utf-8")
-        except UnicodeDecodeError as e:
-            logger.error("JSON resume decoding failed: %s", e)
-            raise HTTPException(
-                status_code=422,
-                detail="Failed to decode JSON file. Please ensure it is valid UTF-8 JSON.",
-            )
-
-        try:
-            parsed_json = json.loads(json_content)
-            generation_feedback = None
-            generation_artifacts = None
-            resume_payload = parsed_json
-            if isinstance(parsed_json, dict) and "resume_data" in parsed_json:
-                wrapped_payload = ResumeUpdateRequest.model_validate(parsed_json)
-                resume_payload = wrapped_payload.resume_data.model_dump()
-                generation_feedback = (
-                    wrapped_payload.generation_feedback.model_dump(exclude_none=True)
-                    if wrapped_payload.generation_feedback
-                    else None
-                )
-                generation_artifacts = (
-                    wrapped_payload.generation_artifacts.model_dump(exclude_none=True)
-                    if wrapped_payload.generation_artifacts
-                    else None
-                )
-            if not isinstance(resume_payload, dict) or not (
-                RESUME_DATA_JSON_KEYS & set(resume_payload.keys())
-            ):
-                raise ValueError("JSON payload is not resume-shaped")
-            processed_data = ResumeData.model_validate(resume_payload).model_dump()
-        except json.JSONDecodeError as e:
-            logger.error("JSON resume parsing failed: %s", e)
-            raise HTTPException(
-                status_code=422,
-                detail="Failed to parse JSON file. Please ensure it is valid ResumeData JSON.",
-            )
-        except ValidationError as e:
-            logger.error("JSON resume validation failed: %s", e)
-            raise HTTPException(
-                status_code=422,
-                detail=f"Uploaded JSON does not match ResumeData schema: {e}",
-            )
-        except ValueError as e:
-            logger.error("JSON resume validation failed: %s", e)
-            raise HTTPException(
-                status_code=422,
-                detail="Uploaded JSON does not match ResumeData schema.",
-            )
+        processed_data, generation_feedback, generation_artifacts = _parse_resume_json_payload(
+            content
+        )
 
         resume = await db.create_resume_atomic_master(
             content=json.dumps(processed_data, indent=2),
@@ -897,6 +951,88 @@ async def upload_resume(
             processing_status="ready",
             is_master=resume.get("is_master", False),
         )
+
+
+@router.post("/import-tailored-json", response_model=ResumeUploadResponse)
+async def import_tailored_json_resume(
+    file: UploadFile = File(...),
+    jd_url: str | None = Form(default=None),
+    jd_text: str | None = Form(default=None),
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> ResumeUploadResponse:
+    """Import a ResumeData JSON file as a tailored child linked to the current master."""
+    file_name = file.filename or "resume.json"
+    file_suffix = Path(file_name).suffix.lower()
+    is_json_upload = file_suffix == ".json" or file.content_type in {"application/json", "text/json"}
+
+    if not is_json_upload:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Please upload a ResumeData JSON file.",
+        )
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
+        )
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    user_id = _resolve_current_user_id(current_user)
+    master_resume = db.get_master_resume(user_id)
+    if not master_resume:
+        raise HTTPException(
+            status_code=400,
+            detail="No master resume was found in Lumi Coach. Upload a master resume first.",
+        )
+
+    normalized_jd_text = jd_text.strip() if isinstance(jd_text, str) else ""
+    if not normalized_jd_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Job description text is required when importing a tailored resume.",
+        )
+
+    processed_data, _generation_feedback, _generation_artifacts = _parse_resume_json_payload(
+        content
+    )
+
+    imported_resume = db.create_resume(
+        content=json.dumps(processed_data, indent=2),
+        content_type="json",
+        filename=file_name,
+        is_master=False,
+        parent_id=master_resume["resume_id"],
+        linked_master_resume_id=master_resume["resume_id"],
+        import_context=_build_resume_import_context(jd_url=jd_url, jd_text=normalized_jd_text),
+        processed_data=processed_data,
+        processing_status="ready",
+        title=_derive_imported_resume_title(file_name=file_name, processed_data=processed_data),
+        user_id=user_id,
+    )
+
+    imported_job = db.create_job(
+        content=normalized_jd_text,
+        resume_id=imported_resume["resume_id"],
+        user_id=user_id,
+    )
+    db.create_improvement(
+        original_resume_id=master_resume["resume_id"],
+        tailored_resume_id=imported_resume["resume_id"],
+        job_id=imported_job["job_id"],
+        improvements=[],
+        user_id=user_id,
+    )
+
+    return ResumeUploadResponse(
+        message=f"File {file_name} imported successfully",
+        request_id=str(uuid4()),
+        resume_id=imported_resume["resume_id"],
+        processing_status="ready",
+        is_master=False,
+    )
 
     # Convert to markdown
     try:
@@ -1026,7 +1162,12 @@ async def list_resumes(
             created_at=resume.get("created_at", ""),
             updated_at=resume.get("updated_at", ""),
             title=resume.get("title"),
-            job_source_url=source_urls_by_resume_id.get(resume["resume_id"]),
+            job_source_url=source_urls_by_resume_id.get(resume["resume_id"])
+            or (
+                resume.get("import_context", {}).get("jd_url")
+                if isinstance(resume.get("import_context"), dict)
+                else None
+            ),
         )
         for resume in resumes
     ]

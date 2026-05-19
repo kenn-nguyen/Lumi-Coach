@@ -104,6 +104,10 @@ class ResumeModel(Base):
     filename: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_master: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    linked_master_resume_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
+    import_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     processed_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     processing_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
     cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -248,9 +252,23 @@ class Database:
             if "template_settings" not in columns:
                 connection.execute(text("ALTER TABLE resumes ADD COLUMN template_settings JSONB"))
                 logger.info("Added resumes.template_settings column")
+            if "linked_master_resume_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE resumes ADD COLUMN linked_master_resume_id VARCHAR(36)")
+                )
+                logger.info("Added resumes.linked_master_resume_id column")
+            if "import_context" not in columns:
+                connection.execute(text("ALTER TABLE resumes ADD COLUMN import_context JSONB"))
+                logger.info("Added resumes.import_context column")
             if "title_search" not in columns:
                 connection.execute(text("ALTER TABLE resumes ADD COLUMN title_search TEXT"))
                 logger.info("Added resumes.title_search column")
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_resumes_linked_master_resume_id ON resumes (linked_master_resume_id)"
+                )
+            )
             connection.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS "
@@ -396,6 +414,8 @@ class Database:
             "filename": decrypt_text(resume.filename),
             "is_master": resume.is_master,
             "parent_id": resume.parent_id,
+            "linked_master_resume_id": getattr(resume, "linked_master_resume_id", None),
+            "import_context": decrypt_json(getattr(resume, "import_context", None)),
             "processed_data": decrypt_json(resume.processed_data),
             "processing_status": resume.processing_status,
             "cover_letter": decrypt_text(resume.cover_letter),
@@ -415,6 +435,8 @@ class Database:
             "filename": decrypt_text(resume.filename),
             "is_master": resume.is_master,
             "parent_id": resume.parent_id,
+            "linked_master_resume_id": getattr(resume, "linked_master_resume_id", None),
+            "import_context": decrypt_json(getattr(resume, "import_context", None)),
             "processing_status": resume.processing_status,
             "title": decrypt_text(resume.title),
             "created_at": self._to_iso(resume.created_at),
@@ -907,6 +929,8 @@ class Database:
         filename: str | None = None,
         is_master: bool = False,
         parent_id: str | None = None,
+        linked_master_resume_id: str | None = None,
+        import_context: dict[str, Any] | None = None,
         processed_data: dict[str, Any] | None = None,
         processing_status: str = "pending",
         cover_letter: str | None = None,
@@ -928,6 +952,8 @@ class Database:
                 filename=encrypt_text(filename),
                 is_master=is_master,
                 parent_id=parent_id,
+                linked_master_resume_id=linked_master_resume_id,
+                import_context=encrypt_json(import_context),
                 processed_data=encrypt_json(processed_data),
                 processing_status=processing_status,
                 cover_letter=encrypt_text(cover_letter),
@@ -1030,6 +1056,7 @@ class Database:
                     }:
                         value = encrypt_text(value)
                     elif key in {
+                        "import_context",
                         "processed_data",
                         "generation_feedback",
                         "generation_artifacts",
@@ -1068,6 +1095,8 @@ class Database:
                 ResumeModel.filename,
                 ResumeModel.is_master,
                 ResumeModel.parent_id,
+                ResumeModel.linked_master_resume_id,
+                ResumeModel.import_context,
                 ResumeModel.processing_status,
                 ResumeModel.title,
                 ResumeModel.created_at,
