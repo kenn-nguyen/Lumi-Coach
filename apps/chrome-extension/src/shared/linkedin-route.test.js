@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalizeLinkedInJobUrl,
   classifyLinkedInJobsRoute,
+  extractLinkedInJobIdFromUrl,
   isLinkedInJobsShellUrl,
   LINKEDIN_ROUTE_MODE,
 } from "./linkedin-route.js";
@@ -65,6 +67,17 @@ describe("classifyLinkedInJobsRoute", () => {
     expect(route.selectedJobId).toBe("4394207970");
   });
 
+  it("classifies slugged view URLs as active", () => {
+    const route = classifyLinkedInJobsRoute(
+      "https://www.linkedin.com/jobs/view/product-manager-commerce-systems-at-stripe-4413483608/?trk=public_jobs_topcard-title",
+    );
+    expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.active);
+    expect(route.selectedJobId).toBe("4413483608");
+    expect(route.canonicalJobUrl).toBe(
+      "https://www.linkedin.com/jobs/view/4413483608/",
+    );
+  });
+
   it("classifies non-jobs LinkedIn pages as manual", () => {
     const route = classifyLinkedInJobsRoute(
       "https://www.linkedin.com/feed/",
@@ -77,5 +90,23 @@ describe("classifyLinkedInJobsRoute", () => {
     const route = classifyLinkedInJobsRoute("https://example.com/careers");
     expect(route.mode).toBe(LINKEDIN_ROUTE_MODE.manual);
     expect(route.isJobsShell).toBe(false);
+  });
+});
+
+describe("LinkedIn job URL helpers", () => {
+  it("extracts a job id from slugged LinkedIn view URLs", () => {
+    expect(
+      extractLinkedInJobIdFromUrl(
+        "https://www.linkedin.com/jobs/view/product-manager-commerce-systems-at-stripe-4413483608/?trk=public_jobs_topcard-title",
+      ),
+    ).toBe("4413483608");
+  });
+
+  it("canonicalizes slugged LinkedIn view URLs", () => {
+    expect(
+      canonicalizeLinkedInJobUrl(
+        "https://www.linkedin.com/jobs/view/product-manager-commerce-systems-at-stripe-4413483608/?trk=public_jobs_topcard-title",
+      ),
+    ).toBe("https://www.linkedin.com/jobs/view/4413483608/");
   });
 });

@@ -1,12 +1,10 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v2.0.0
-prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v11-adaptive-technical-language
-prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with adaptive technical-language calibration, stronger storyline-to-bullet mapping, and tighter proof guardrails.
+prompt_version: v2.1.0
+prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-resume-actionable-questions
+prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with resume-actionable gap questions limited to the highest-impact 3-4 story-bank upgrades.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
-# Prompt 2 - Hiring-Manager-First Hard-Stretch Positioning Brief
-
 Resolved hiring manager persona from Prompt 1:
 {{PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES}}
 
@@ -614,19 +612,47 @@ Technical skills calibration:
 - For less technical roles, use plain-language skills first and move technical terms lower or omit them when they do not improve fit.
 
 Story-bank expansion signal discipline:
-- Do not create a separate coaching section or new output fields.
-- Keep Prompt 2 focused on positioning and rewrite strategy.
-- However, write `gaps`, `cannot_claim`, `signals_to_avoid`, `selected_storylines.guardrail`, and `bullet_rewrite_instructions[].instruction.do_not_include` with enough specificity that Prompt 3 can convert them into useful story-bank expansion feedback.
-- Prioritize only the 3-5 missing-proof themes that would materially improve the next resume iteration.
-- Phrase missing evidence as concrete proof gaps, not generic weakness labels.
-- Good gap pattern: `Missing proof of [JD-native capability/workflow] through a candidate-owned story showing [surface], [decision/mechanism], [user/customer], and [metric/outcome].`
-- Good cannot-claim pattern: `Do not claim [exact unsupported system/tool/ownership] unless the story bank contains candidate-owned proof of [specific evidence needed].`
+- Do not create story-bank questions merely because a JD gap exists.
+- Create gap questions only when a strong answer could materially improve the next resume through one of:
+  1. `strengthen_existing_bullet`
+  2. `summary_title_or_skill_unlock`
+  3. `replace_existing_bullet`
+  4. `new_bullet_candidate`
+  5. `interview_prep_only`
+- Prefer `strengthen_existing_bullet` over `new_bullet_candidate` when an existing high-priority bullet is directionally right but lacks a sharper metric, mechanism, customer/user detail, technical term, or product decision.
+- Do not ask a `new_bullet_candidate` question unless the answer could plausibly become one of the top 4-6 bullets in the most relevant role or replace a weaker current bullet.
+- If the most relevant role already has 6 strong bullets, any new-bullet question must name the current proof category it could replace.
+- If the answer would only help interview defense and would not change resume text, tag it as `interview_prep_only` or omit it from top feedback.
 - Do not let story-bank feedback needs weaken `recommended_title`, `summary_lead`, selected storylines, or bullet instructions.
 
-Gap severity tagging:
-- Do not add new output fields for gap classification.
-- When writing the 3-5 most important `gaps`, prefix each important gap with a compact severity tag:
-  `[gap_type=<hard_gate|near_gate|differentiator|interview_prep> | impact=<high|medium|low> | action=<must_add_if_true|safer_positioning|optional_storybank_add|interview_prep_only>]`
+Bullet-worthiness test:
+- A resume-actionable question must be able to produce or improve XYZ:
+  - X: outcome, launch, improvement, risk reduction, adoption, decision, or product result;
+  - Y: metric, scale, timeframe, user/customer, risk, revenue, conversion, reliability, latency, or operational proof;
+  - Z: product decision, mechanism, tradeoff, sequencing choice, workflow change, platform choice, policy/rule change, or operating model.
+- If likely answers would lack Y or Z, do not ask the question as a resume-expansion item.
+- If the missing proof would only help defend existing wording in interviews, classify it as `interview_prep_only`.
+
+Question-slot prioritization:
+- Provide at most 3-4 top gap questions.
+- Rank by expected impact on the final resume:
+  1. strengthens an existing first-screen or most-relevant-role bullet;
+  2. unlocks stronger title, summary, or top skill wording;
+  3. could replace the weakest current bullet with stronger JD-native proof;
+  4. could become a new bullet only if a slot exists or it clearly beats an existing bullet;
+  5. interview-prep-only.
+- Use only the top questions that can change the next resume. Omit low-impact or purely interesting questions.
+- For each top gap question, include the intended resume action inside the existing `gaps` string:
+  `[gap_type=<hard_gate|near_gate|differentiator|interview_prep> | impact=<high|medium|low> | action=<must_add_if_true|safer_positioning|optional_storybank_add|interview_prep_only> | resume_action=<strengthen_existing_bullet|summary_title_or_skill_unlock|replace_existing_bullet|new_bullet_candidate|interview_prep_only> | target=<role_or_bullet_theme>]`
+- After the tag, phrase the gap as a concrete question the user can answer with a STAR story or a detail update to an existing STAR story.
+- Good question pattern for strengthening a bullet:
+  `Would strengthen the existing [bullet theme] bullet: can you provide [missing metric/mechanism/customer/technical detail] so the bullet can show [X/Y/Z improvement]?`
+- Good question pattern for a replacement/new bullet:
+  `Could replace [current lower-priority proof category] only if strong: do you have a STAR story where you [capability], for [user/customer], by [decision/mechanism], resulting in [metric/outcome]?`
+- Good question pattern for title/summary/skill unlock:
+  `Would unlock stronger [title/summary/skill] wording: do you have proof of [capability] with [scope/mechanism/metric]?`
+
+Gap severity calibration:
 - Use `hard_gate` only when the JD explicitly requires the capability, the role cannot credibly be performed without it, and the candidate lacks a functional substitute.
 - Use `near_gate` when the capability is central to hiring-manager confidence but adjacent proof may still earn an interview.
 - Use `differentiator` when the evidence would materially improve competitiveness but is not required for recruiter or hiring-manager pass-through.
@@ -635,19 +661,14 @@ Gap severity tagging:
 - Use `safer_positioning` when missing proof should cap the title, summary, scope bullet, or skills away from the most niche JD-native claim.
 - Use `optional_storybank_add` when the story would strengthen the resume but should not block applying.
 - Use `interview_prep_only` when the story should be prepared for interviews but not added to the resume.
-- If a gap is `hard_gate` with `impact=high`, make sure the resume-facing strategy reflects that through safer positioning, not just a note in `gaps`.
 - Do not overuse `hard_gate`; most useful feedback questions are `near_gate` or `differentiator`.
-
-Gap severity calibration:
 - Do not mark a broad JD-native phrase as `hard_gate` merely because some exact sub-surfaces are missing.
-- If the candidate has a defensible functional substitute, mark the missing exact sub-surface as `near_gate`, `differentiator`, or `interview_prep`, not `hard_gate`.
-- Missing exact tools, protocols, implementation authority, or narrow admin/system surfaces should be `hard_gate` only when the JD explicitly centers those exact surfaces and no functional substitute exists.
-- If competitive-stretch acceptance supports the broader phrase, use `gaps` to identify interview-defense or story-bank expansion needs rather than forcing safer resume positioning.
+- If competitive-stretch acceptance supports the broader phrase, use `gaps` to identify bullet-strengthening, replacement, or interview-defense needs rather than forcing safer resume positioning.
 
 Examples of tagged gaps:
-- `[gap_type=near_gate | impact=high | action=must_add_if_true] Missing proof of [JD-native capability/workflow] through a candidate-owned story showing [surface], [decision/mechanism], [user/customer], and [metric/outcome].`
-- `[gap_type=differentiator | impact=medium | action=optional_storybank_add] Missing proof of [differentiating capability] that would strengthen the resume but should not block applying.`
-- `[gap_type=interview_prep | impact=low | action=interview_prep_only] Prepare an interview explanation of [boundary/unsupported surface] without forcing it into the resume.`
+- `[gap_type=near_gate | impact=high | action=must_add_if_true | resume_action=strengthen_existing_bullet | target=payment-authentication success bullet] Would strengthen the existing bullet: can you provide the 1-2 product decisions, threshold/rule changes, or workflow controls that most directly caused the metric improvement?`
+- `[gap_type=differentiator | impact=medium | action=optional_storybank_add | resume_action=replace_existing_bullet | target=weakest lower-priority bullet] Could replace a weaker bullet only if strong: do you have a candidate-owned story showing [capability], [decision/mechanism], [customer/user], and [metric/outcome]?`
+- `[gap_type=interview_prep | impact=low | action=interview_prep_only | resume_action=interview_prep_only | target=interview defense] Prepare an interview explanation of [boundary/unsupported surface] without forcing it into the resume.`
 
 Final context-leak audit:
 - Remove any company-wide metric from proof_points, summary_lead, excitement_anchor, and bullet instructions unless it appears in candidate-owned bullet/project evidence.
@@ -680,9 +701,10 @@ Final audit before output:
 - Emerging-risk or market-shift stories are elevated when they map to the hiring manager's domain and contain a candidate-owned product decision.
 - Bullet mechanisms name decisions, sequencing choices, policies, tradeoffs, packaging, workflow changes, or operating-model changes instead of artifact lists.
 - No resume-facing field contains hedge/defense words.
-- The most important `gaps` include compact severity tags when helpful, using only existing `gaps` strings and no new schema fields.
-- `hard_gate` tags are used sparingly and only when the JD truly requires the missing capability and no functional substitute exists.
-- High-impact missing proof changes resume strategy through safer positioning when needed, not only through feedback text.
+- `gaps` include only the top 3-4 resume-actionable questions ranked by expected impact on the final resume.
+- Each top gap question states its intended `resume_action` and target bullet/theme.
+- New-bullet questions are included only when they can plausibly enter the top 4-6 bullets or replace a weaker current proof category.
+- Questions that only help interview defense are tagged `interview_prep_only` or omitted unless high-risk.
 - Resume-facing fields have passed the target-native translation pass: source-native labels are proof/mechanisms, while hiring-manager-native labels lead title, summary, first scope bullet, and top skills when defensible.
 - Broad JD terms are scope-limited when only part of the broad system/lifecycle/platform is supported.
 - Bullet instructions are compressed enough that Prompt 3 can synthesize clean bullets instead of concatenating instruction fragments.
@@ -693,7 +715,7 @@ Final audit before output:
 - Company/team-specific labels are converted into market-natural equivalents for `recommended_title` unless the exact label is externally recognizable and natural.
 - First scope bullet does not overpack team size, direct reports, product scope, scale, architecture, and revenue.
 - Top skills are market-natural and proof-specific, not internal-team labels or generic category labels.
-- Gap and guardrail fields are specific enough for Prompt 3 to turn into story-bank expansion feedback, without adding new fields or distracting from the resume strategy.
+- Gap and guardrail fields are specific enough for Prompt 3 to ask only resume-changing questions, without adding new fields or distracting from the resume strategy.
 - No mixed-support JD phrase remains bundled without subclaim-level clarity.
 - Every blocked high-value phrase has a positive substitute when one exists.
 - The title and summary use the strongest safe JD-native domain language.

@@ -250,13 +250,17 @@ export async function fetchResume(resumeId: string): Promise<ResumeResponse['dat
 
 export async function fetchResumeList(
   includeMaster = false,
-  limit?: number
+  limit?: number,
+  search?: string
 ): Promise<ResumeListItem[]> {
   const params = new URLSearchParams({
     include_master: includeMaster ? 'true' : 'false',
   });
   if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
     params.set('limit', String(limit));
+  }
+  if (typeof search === 'string' && search.trim()) {
+    params.set('search', search.trim());
   }
   const res = await apiFetch(`/resumes/list?${params.toString()}`);
   if (!res.ok) {

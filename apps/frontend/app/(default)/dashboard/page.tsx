@@ -2,7 +2,15 @@
 
 import { SwissGrid } from '@/components/home/swiss-grid';
 import { AccountControl } from '@/components/auth/account-control';
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  type FormEvent,
+} from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -64,7 +72,8 @@ export default function DashboardPage() {
   const [masterResumeItem, setMasterResumeItem] = useState<ResumeListItem | null>(null);
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>('loading');
   const [tailoredResumes, setTailoredResumes] = useState<ResumeListItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
   const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
   const [showTailorPrompt, setShowTailorPrompt] = useState(false);
@@ -83,7 +92,8 @@ export default function DashboardPage() {
   const masterMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchEditedByUserRef = useRef(false);
-  const searchQueryRef = useRef('');
+  const searchInputValueRef = useRef('');
+  const submittedSearchRef = useRef('');
 
   const hasUserApiKey = Boolean(systemStatus?.has_user_api_key);
   const isFreeModeAvailable = Boolean(systemStatus?.free_llm_available);
@@ -123,21 +133,25 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    searchQueryRef.current = searchQuery;
-  }, [searchQuery]);
+    searchInputValueRef.current = searchInput;
+  }, [searchInput]);
+
+  useEffect(() => {
+    submittedSearchRef.current = submittedSearch;
+  }, [submittedSearch]);
 
   const clearBrowserInjectedSearchValue = useCallback(() => {
     const input = searchInputRef.current;
     if (!input) return;
     const currentValue = input.value;
-    const currentSearchQuery = searchQueryRef.current;
+    const currentSearchInput = searchInputValueRef.current;
     const shouldClear =
-      (!searchEditedByUserRef.current && currentValue && !currentSearchQuery) ||
+      (!searchEditedByUserRef.current && currentValue && !currentSearchInput) ||
       looksLikeCredentialAutofill(currentValue);
     if (!shouldClear) return;
     input.value = '';
-    if (currentSearchQuery) {
-      setSearchQuery('');
+    if (currentSearchInput) {
+      setSearchInput('');
     }
   }, []);
 
@@ -162,67 +176,79 @@ export default function DashboardPage() {
     };
   }, [clearBrowserInjectedSearchValue]);
 
-  const loadTailoredResumes = useCallback(async () => {
-    try {
-      const data = await fetchResumeList(true, DASHBOARD_RESUME_LIST_LIMIT);
-      const masterFromList = data.find((r) => r.is_master);
-      const resolvedMasterId = masterFromList?.resume_id || null;
+  const loadTailoredResumes = useCallback(
+    async (searchTerm: string = submittedSearchRef.current) => {
+      const normalizedSearch = searchTerm.trim();
+      const includeMaster = normalizedSearch.length === 0;
 
-      if (resolvedMasterId) {
-        localStorage.setItem('master_resume_id', resolvedMasterId);
-        setMasterResumeId(resolvedMasterId);
-        setMasterResumeItem(masterFromList ?? null);
-        checkResumeStatus(resolvedMasterId);
-      } else {
-        localStorage.removeItem('master_resume_id');
-        setMasterResumeId(null);
-        setMasterResumeItem(null);
-      }
-
-      const filtered = data.filter((r) => r.resume_id !== resolvedMasterId);
-      setTailoredResumes(filtered);
-
-      // Only fetch job descriptions for resumes that are actually tailored
-      // (identified by having a non-null parent_id). This avoids N+1 calls
-      // for untailored resumes.
-      const tailoredWithParent = filtered.filter((r) => r.parent_id);
-
-      // Guard against concurrent invocations overwriting each other
-      const requestId = ++loadRequestIdRef.current;
-
-      // Fetch job description snippets for tailored resumes in parallel and attach to state
-      // Use a small in-memory cache to avoid re-fetching the same snippet repeatedly.
-      const jobSnippets: Record<string, string> = {};
-      await Promise.all(
-        tailoredWithParent.map(async (r) => {
-          // Use cached snippet when available
-          if (jobSnippetCacheRef.current[r.resume_id]) {
-            jobSnippets[r.resume_id] = jobSnippetCacheRef.current[r.resume_id];
-            return;
-          }
-          try {
-            const jd = await fetchJobDescription(r.resume_id);
-            const snippet = (jd?.content || '').slice(0, 80);
-            jobSnippetCacheRef.current[r.resume_id] = snippet;
-            jobSnippets[r.resume_id] = snippet;
-          } catch {
-            // ignore missing job descriptions and cache empty result
-            jobSnippetCacheRef.current[r.resume_id] = '';
-            jobSnippets[r.resume_id] = '';
-          }
-        })
-      );
-
-      // Only apply results if this invocation is the latest (prevents stale overwrite)
-      if (requestId === loadRequestIdRef.current) {
-        setTailoredResumes((prev) =>
-          prev.map((r) => ({ ...r, jobSnippet: jobSnippets[r.resume_id] || '' }))
+      try {
+        const data = await fetchResumeList(
+          includeMaster,
+          DASHBOARD_RESUME_LIST_LIMIT,
+          normalizedSearch
         );
+        if (includeMaster) {
+          const masterFromList = data.find((r) => r.is_master);
+          const resolvedMasterId = masterFromList?.resume_id || null;
+
+          if (resolvedMasterId) {
+            localStorage.setItem('master_resume_id', resolvedMasterId);
+            setMasterResumeId(resolvedMasterId);
+            setMasterResumeItem(masterFromList ?? null);
+            checkResumeStatus(resolvedMasterId);
+          } else {
+            localStorage.removeItem('master_resume_id');
+            setMasterResumeId(null);
+            setMasterResumeItem(null);
+          }
+        }
+
+        const filtered = data.filter((r) => !r.is_master);
+        setTailoredResumes(filtered);
+
+        // Only fetch job descriptions for resumes that are actually tailored
+        // (identified by having a non-null parent_id). This avoids N+1 calls
+        // for untailored resumes.
+        const tailoredWithParent = filtered.filter((r) => r.parent_id);
+
+        // Guard against concurrent invocations overwriting each other
+        const requestId = ++loadRequestIdRef.current;
+
+        // Fetch job description snippets for tailored resumes in parallel and attach to state
+        // Use a small in-memory cache to avoid re-fetching the same snippet repeatedly.
+        const jobSnippets: Record<string, string> = {};
+        await Promise.all(
+          tailoredWithParent.map(async (r) => {
+            // Use cached snippet when available
+            if (jobSnippetCacheRef.current[r.resume_id]) {
+              jobSnippets[r.resume_id] = jobSnippetCacheRef.current[r.resume_id];
+              return;
+            }
+            try {
+              const jd = await fetchJobDescription(r.resume_id);
+              const snippet = (jd?.content || '').slice(0, 80);
+              jobSnippetCacheRef.current[r.resume_id] = snippet;
+              jobSnippets[r.resume_id] = snippet;
+            } catch {
+              // ignore missing job descriptions and cache empty result
+              jobSnippetCacheRef.current[r.resume_id] = '';
+              jobSnippets[r.resume_id] = '';
+            }
+          })
+        );
+
+        // Only apply results if this invocation is the latest (prevents stale overwrite)
+        if (requestId === loadRequestIdRef.current) {
+          setTailoredResumes((prev) =>
+            prev.map((r) => ({ ...r, jobSnippet: jobSnippets[r.resume_id] || '' }))
+          );
+        }
+      } catch (err) {
+        console.error('Failed to load tailored resumes:', err);
       }
-    } catch (err) {
-      console.error('Failed to load tailored resumes:', err);
-    }
-  }, [checkResumeStatus]);
+    },
+    [checkResumeStatus]
+  );
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
@@ -318,17 +344,10 @@ export default function DashboardPage() {
     [t]
   );
 
-  const filteredTailoredResumes = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const filtered = tailoredResumes.filter((resume) => {
-      if (!query) return true;
-      return [getResumeTitle(resume), resume.filename || '', resume.jobSnippet || '']
-        .join(' ')
-        .toLowerCase()
-        .includes(query);
-    });
+  const sortedTailoredResumes = useMemo(() => {
+    const nextResumes = [...tailoredResumes];
 
-    filtered.sort((a, b) => {
+    nextResumes.sort((a, b) => {
       if (sortBy === 'title') {
         return getResumeTitle(a).localeCompare(getResumeTitle(b));
       }
@@ -337,8 +356,27 @@ export default function DashboardPage() {
       return bTime - aTime;
     });
 
-    return filtered;
-  }, [getResumeTitle, searchQuery, sortBy, tailoredResumes]);
+    return nextResumes;
+  }, [getResumeTitle, sortBy, tailoredResumes]);
+
+  const hasActiveSearch = submittedSearch.trim().length > 0;
+
+  const handleSearchSubmit = useCallback(
+    (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      const nextSearch = searchInput.trim();
+      setSubmittedSearch(nextSearch);
+      void loadTailoredResumes(nextSearch);
+    },
+    [loadTailoredResumes, searchInput]
+  );
+
+  const handleSearchReset = useCallback(() => {
+    searchEditedByUserRef.current = false;
+    setSearchInput('');
+    setSubmittedSearch('');
+    void loadTailoredResumes('');
+  }, [loadTailoredResumes]);
 
   const handleExportJson = useCallback(async (resumeId: string, fallbackTitle: string) => {
     try {
@@ -607,15 +645,15 @@ export default function DashboardPage() {
               <div>
                 <h2 className="font-serif text-3xl">{t('dashboard.tailoredResumes')}</h2>
                 <p className="mt-2 font-mono text-xs uppercase tracking-wide text-gray-500">
-                  {filteredTailoredResumes.length} / {tailoredResumes.length} resumes
+                  {sortedTailoredResumes.length} resumes
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <form
                   role="search"
                   autoComplete="off"
-                  onSubmit={(e) => e.preventDefault()}
-                  className="contents"
+                  onSubmit={handleSearchSubmit}
+                  className="flex flex-col gap-3 sm:flex-row sm:items-center"
                 >
                   {isSearchFieldReady ? (
                     <input
@@ -623,11 +661,11 @@ export default function DashboardPage() {
                       type="text"
                       id="lumi-resume-library-filter"
                       name={searchFieldName}
-                      value={searchQuery}
+                      value={searchInput}
                       onFocus={clearBrowserInjectedSearchValue}
                       onChange={(e) => {
                         searchEditedByUserRef.current = true;
-                        setSearchQuery(e.target.value);
+                        setSearchInput(e.target.value);
                       }}
                       placeholder={t('common.search')}
                       autoComplete="off"
@@ -645,6 +683,19 @@ export default function DashboardPage() {
                       className="h-10 min-w-[16rem] rounded-xl border border-border bg-input px-4"
                     />
                   )}
+                  <Button type="submit" variant="outline" className="h-10 min-w-[7.5rem]">
+                    {t('common.search')}
+                  </Button>
+                  {searchInput || hasActiveSearch ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-10 min-w-[6rem]"
+                      onClick={handleSearchReset}
+                    >
+                      {t('common.reset')}
+                    </Button>
+                  ) : null}
                 </form>
                 <select
                   value={sortBy}
@@ -658,26 +709,26 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {filteredTailoredResumes.length === 0 ? (
+          {sortedTailoredResumes.length === 0 ? (
             <div className="px-6 py-12">
               <p className="font-serif text-2xl">
-                {!masterResumeId
+                {!masterResumeId && !hasActiveSearch
                   ? t('dashboard.noMasterResumeTitle')
-                  : tailoredResumes.length === 0
+                  : !hasActiveSearch
                     ? t('dashboard.noResumes')
                     : t('dashboard.noMatchingResumes')}
               </p>
               <p className="mt-2 font-mono text-sm text-gray-500 uppercase tracking-wide">
-                {!masterResumeId
+                {!masterResumeId && !hasActiveSearch
                   ? t('dashboard.noMasterResumeDescription')
-                  : tailoredResumes.length === 0
+                  : !hasActiveSearch
                     ? t('dashboard.noTailoredResumesDescription')
                     : t('dashboard.tryDifferentSearch')}
               </p>
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto bg-card">
-              {filteredTailoredResumes.map((resume, index) => {
+              {sortedTailoredResumes.map((resume, index) => {
                 const title = getResumeTitle(resume);
                 const color = cardPalette[hashTitle(title) % cardPalette.length];
                 return (

@@ -998,11 +998,17 @@ async def clone_resume_endpoint(resume_id: str) -> ResumeFetchResponse:
 async def list_resumes(
     include_master: bool = Query(False),
     limit: int | None = Query(default=None, ge=1, le=100),
+    search: str | None = Query(default=None),
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> ResumeListResponse:
     """List resumes, optionally including the master resume."""
     user_id = _resolve_current_user_id(current_user)
-    resumes = db.list_resumes(user_id=user_id, limit=limit, include_master=include_master)
+    resumes = db.list_resumes(
+        user_id=user_id,
+        limit=limit,
+        include_master=include_master,
+        search=search,
+    )
 
     resumes.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
     source_urls_by_resume_id = db.get_extension_run_source_urls_by_resume_ids(

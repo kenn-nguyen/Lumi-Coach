@@ -10,6 +10,37 @@ function normalizeNumericId(value) {
   return /^\d+$/.test(trimmed) ? trimmed : "";
 }
 
+function extractJobIdFromViewPath(pathname) {
+  const match = String(pathname || "").match(/^\/jobs\/view\/([^/?#]+)\/?$/);
+  const slugOrId = match?.[1] || "";
+  const trailingIdMatch = slugOrId.match(/(\d+)$/);
+  return normalizeNumericId(trailingIdMatch?.[1]);
+}
+
+export function extractLinkedInJobIdFromUrl(urlValue) {
+  try {
+    const parsed = new URL(urlValue);
+    const currentJobId = normalizeNumericId(
+      parsed.searchParams.get("currentJobId"),
+    );
+    return currentJobId || extractJobIdFromViewPath(parsed.pathname);
+  } catch {
+    return "";
+  }
+}
+
+export function canonicalizeLinkedInJobUrl(urlValue) {
+  try {
+    const parsed = new URL(urlValue);
+    const selectedJobId = extractLinkedInJobIdFromUrl(parsed.href);
+    return selectedJobId
+      ? `${parsed.origin}/jobs/view/${selectedJobId}/`
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 export function isLinkedInJobsShellUrl(urlValue) {
   try {
     const parsed = new URL(urlValue);
@@ -42,14 +73,8 @@ export function classifyLinkedInJobsRoute(urlValue) {
       return fallback;
     }
 
-    const currentJobId = normalizeNumericId(
-      parsed.searchParams.get("currentJobId"),
-    );
-    const viewMatch = parsed.pathname.match(/^\/jobs\/view\/(\d+)\/?$/);
-    const selectedJobId = viewMatch?.[1] || currentJobId;
-    const canonicalJobUrl = selectedJobId
-      ? `${parsed.origin}/jobs/view/${selectedJobId}/`
-      : "";
+    const selectedJobId = extractLinkedInJobIdFromUrl(parsed.href);
+    const canonicalJobUrl = canonicalizeLinkedInJobUrl(parsed.href);
 
     if (selectedJobId) {
       return {

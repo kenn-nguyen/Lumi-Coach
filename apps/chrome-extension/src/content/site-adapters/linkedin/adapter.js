@@ -3,6 +3,9 @@ import {
   evaluateReadiness,
   FIELD_PROVENANCE,
 } from "../../../shared/job-snapshot.js";
+import {
+  canonicalizeLinkedInJobUrl,
+} from "../../../shared/linkedin-route.js";
 import { scoreConfidence } from "../shared/confidence.js";
 import { tryExpandJobDescription } from "../shared/expand-text.js";
 import { extractJobPostingLd } from "../shared/json-ld.js";
@@ -13,24 +16,7 @@ import { extractHeuristic } from "./heuristic.js";
 import { extractFromTestids } from "./dom-testid.js";
 
 function normalizeUrl(href) {
-  try {
-    const parsed = new URL(href);
-    const currentJobId = parsed.searchParams.get("currentJobId")?.trim();
-    if (currentJobId) {
-      return `${parsed.origin}/jobs/view/${currentJobId}/`;
-    }
-  } catch {}
-
-  const canonicalMatch = href.match(/\/jobs\/view\/(\d+)/);
-  if (canonicalMatch) {
-    try {
-      const origin = new URL(href).origin;
-      return `${origin}/jobs/view/${canonicalMatch[1]}/`;
-    } catch {
-      return href;
-    }
-  }
-  return href;
+  return canonicalizeLinkedInJobUrl(href) || href;
 }
 
 function deriveLinkedInJobUrl(doc, href) {

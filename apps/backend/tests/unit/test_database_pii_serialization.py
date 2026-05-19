@@ -233,6 +233,14 @@ class _FakeResumeQuery:
             self._resumes = [
                 resume for resume in self._resumes if resume.is_master is should_match_master
             ]
+        elif left_name == "title_search":
+            pattern = getattr(getattr(criterion, "right", None), "value", "") or ""
+            needle = pattern.strip("%")
+            self._resumes = [
+                resume
+                for resume in self._resumes
+                if isinstance(resume.title_search, str) and needle in resume.title_search
+            ]
         return self
 
     def order_by(self, *clauses: Any) -> "_FakeResumeQuery":
@@ -287,6 +295,7 @@ def test_list_resumes_limit_applies_to_non_master_rows_and_keeps_master_when_req
             parent_id=None,
             processing_status="ready",
             title=encrypt_text("Master resume"),
+            title_search="master resume",
             created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
             updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         ),
@@ -298,6 +307,7 @@ def test_list_resumes_limit_applies_to_non_master_rows_and_keeps_master_when_req
             parent_id="master",
             processing_status="ready",
             title=encrypt_text("New tailored"),
+            title_search="new tailored",
             created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
             updated_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
         ),
@@ -309,6 +319,7 @@ def test_list_resumes_limit_applies_to_non_master_rows_and_keeps_master_when_req
             parent_id="master",
             processing_status="ready",
             title=encrypt_text("Old tailored"),
+            title_search="old tailored",
             created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
             updated_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
         ),
@@ -320,6 +331,7 @@ def test_list_resumes_limit_applies_to_non_master_rows_and_keeps_master_when_req
             parent_id=None,
             processing_status="ready",
             title=encrypt_text("Other user resume"),
+            title_search="other user resume",
             created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
             updated_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
         ),
@@ -332,6 +344,60 @@ def test_list_resumes_limit_applies_to_non_master_rows_and_keeps_master_when_req
     assert [resume["resume_id"] for resume in without_master] == ["tailored-new"]
     assert [resume["resume_id"] for resume in with_master] == ["master", "tailored-new"]
     assert all(resume["resume_id"] != "other-user" for resume in with_master)
+
+
+def test_list_resumes_search_matches_title_search_without_forcing_master() -> None:
+    db = _database_without_engine()
+    resumes = [
+        SimpleNamespace(
+            resume_id="master",
+            user_id="user-1",
+            filename=encrypt_text("master.md"),
+            is_master=True,
+            parent_id=None,
+            processing_status="ready",
+            title=encrypt_text("Master Resume"),
+            title_search="master resume",
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ),
+        SimpleNamespace(
+            resume_id="product-role",
+            user_id="user-1",
+            filename=encrypt_text("product-role.md"),
+            is_master=False,
+            parent_id="master",
+            processing_status="ready",
+            title=encrypt_text("Senior Product Manager"),
+            title_search="senior product manager",
+            created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+        ),
+        SimpleNamespace(
+            resume_id="platform-role",
+            user_id="user-1",
+            filename=encrypt_text("platform-role.md"),
+            is_master=False,
+            parent_id="master",
+            processing_status="ready",
+            title=encrypt_text("Platform Lead"),
+            title_search="platform lead",
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        ),
+    ]
+    db._session = lambda: _FakeSessionScope(_FakeResumeSession(resumes))
+
+    matches = db.list_resumes(user_id="user-1", limit=10, include_master=False, search="product")
+    matches_with_master = db.list_resumes(
+        user_id="user-1",
+        limit=10,
+        include_master=True,
+        search="product",
+    )
+
+    assert [resume["resume_id"] for resume in matches] == ["product-role"]
+    assert [resume["resume_id"] for resume in matches_with_master] == ["product-role"]
 
 
 def test_prune_extension_run_prompt_artifacts_keeps_recent_runs_per_user() -> None:

@@ -1,5 +1,9 @@
 import { APIFY_DEFAULT_LINKEDIN_ACTOR } from './constants.js';
 import { logError, logInfo, logWarn } from './log.js';
+import {
+  canonicalizeLinkedInJobUrl,
+  extractLinkedInJobIdFromUrl,
+} from '../shared/linkedin-route.js';
 
 function toActorPath(actorId = APIFY_DEFAULT_LINKEDIN_ACTOR) {
   return encodeURIComponent(String(actorId).trim().replace('/', '~'));
@@ -15,11 +19,7 @@ function normalizeUrl(value) {
     return '';
   }
 
-  try {
-    return new URL(normalized).toString();
-  } catch {
-    return normalized;
-  }
+  return canonicalizeLinkedInJobUrl(normalized) || normalized;
 }
 
 function toStringArray(value) {
@@ -141,9 +141,7 @@ function buildLabeledApifyJobText(record) {
 }
 
 function extractJobIdFromUrl(jobUrl) {
-  const normalized = normalizeUrl(jobUrl);
-  const match = normalized.match(/\/jobs\/view\/(\d+)/);
-  return match?.[1] ?? '';
+  return extractLinkedInJobIdFromUrl(jobUrl);
 }
 
 function scoreRecordMatch(record, sourceUrl, sourceJobId) {

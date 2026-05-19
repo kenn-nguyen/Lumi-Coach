@@ -721,8 +721,7 @@ function deriveFallbackRouteModeFromLocation() {
     return "manual";
   }
 
-  const canonicalMatch = pathname.match(/^\/jobs\/view\/(\d+)\/?$/);
-  if (canonicalMatch) {
+  if (extractLinkedInViewJobIdFromPathname(pathname)) {
     return "active";
   }
 
@@ -753,7 +752,7 @@ function getCurrentRouteSignature() {
     const parsed = new URL(location.href);
     selectedJobId =
       parsed.searchParams.get("currentJobId")?.trim() ||
-      parsed.pathname.match(/^\/jobs\/view\/(\d+)\/?$/)?.[1] ||
+      extractLinkedInViewJobIdFromPathname(parsed.pathname) ||
       "";
   } catch {
     selectedJobId = "";
@@ -5019,7 +5018,8 @@ function hasUsableJobContext(job) {
 function hasEnoughJobContext(job) {
   if (!job) return false;
   const sourceUrl = normalizeJobSourceUrl(job.sourceUrl);
-  if (sourceUrl && /\/jobs\/view\/\d+\/?$/.test(window.location.href)) {
+  const currentSourceUrl = resolveSelectedJobSourceUrl();
+  if (sourceUrl && currentSourceUrl && sourceUrl === currentSourceUrl) {
     return true;
   }
   if (job.title && (job.company || job.location || job.highlights?.length)) {
@@ -5361,6 +5361,13 @@ function buildManualJobInput() {
   };
 }
 
+function extractLinkedInViewJobIdFromPathname(pathname) {
+  const match = String(pathname || "").match(/^\/jobs\/view\/([^/?#]+)\/?$/);
+  const slugOrId = match?.[1] || "";
+  const trailingIdMatch = slugOrId.match(/(\d+)$/);
+  return /^\d+$/.test(trailingIdMatch?.[1] || "") ? trailingIdMatch[1] : "";
+}
+
 function normalizeJobSourceUrl(url) {
   const normalized = String(url || "").trim();
   if (!normalized) return "";
@@ -5370,9 +5377,9 @@ function normalizeJobSourceUrl(url) {
     if (currentJobId) {
       return `${parsed.origin}/jobs/view/${currentJobId}/`;
     }
-    const directMatch = parsed.pathname.match(/\/jobs\/view\/(\d+)/);
-    if (directMatch) {
-      return `${parsed.origin}/jobs/view/${directMatch[1]}/`;
+    const directJobId = extractLinkedInViewJobIdFromPathname(parsed.pathname);
+    if (directJobId) {
+      return `${parsed.origin}/jobs/view/${directJobId}/`;
     }
     parsed.hash = "";
     parsed.search = "";
@@ -5390,12 +5397,11 @@ function resolveSelectedJobSourceUrl() {
     if (currentJobId) {
       return `${parsed.origin}/jobs/view/${currentJobId}/`;
     }
+    const directJobId = extractLinkedInViewJobIdFromPathname(parsed.pathname);
+    if (directJobId) {
+      return `${parsed.origin}/jobs/view/${directJobId}/`;
+    }
   } catch {}
-
-  const canonicalMatch = href.match(/\/jobs\/view\/(\d+)/);
-  if (canonicalMatch) {
-    return `${window.location.origin}/jobs/view/${canonicalMatch[1]}/`;
-  }
 
   return "";
 }
@@ -5620,7 +5626,7 @@ function canAttemptRecoveryRun() {
     job.sourceUrl ||
     job.title ||
     job.company ||
-    /\/jobs\/view\/\d+/.test(window.location.href),
+    resolveSelectedJobSourceUrl(),
   );
 }
 

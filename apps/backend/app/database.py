@@ -112,6 +112,7 @@ class ResumeModel(Base):
     generation_artifacts: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     template_settings: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title_search: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     original_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -239,13 +240,24 @@ class Database:
     def _ensure_resume_schema(self) -> None:
         """Apply lightweight additive schema updates for local/dev databases."""
         inspector = inspect(self._engine)
-        columns = {column["name"] for column in inspector.get_columns("resumes")}
-        if "template_settings" in columns:
+        if "resumes" not in inspector.get_table_names():
             return
+        columns = {column["name"] for column in inspector.get_columns("resumes")}
 
         with self._engine.begin() as connection:
-            connection.execute(text("ALTER TABLE resumes ADD COLUMN template_settings JSONB"))
-        logger.info("Added resumes.template_settings column")
+            if "template_settings" not in columns:
+                connection.execute(text("ALTER TABLE resumes ADD COLUMN template_settings JSONB"))
+                logger.info("Added resumes.template_settings column")
+            if "title_search" not in columns:
+                connection.execute(text("ALTER TABLE resumes ADD COLUMN title_search TEXT"))
+                logger.info("Added resumes.title_search column")
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_resumes_title_search ON resumes (title_search)"
+                )
+            )
+        self._backfill_resume_title_search()
 
     def _ensure_extension_runs_schema(self) -> None:
         """Apply additive schema updates for extension run telemetry."""
@@ -323,6 +335,36 @@ class Database:
     @staticmethod
     def _to_iso(value: datetime | None) -> str | None:
         return value.isoformat() if value else None
+
+    @staticmethod
+    def _normalize_resume_title_search(title: str | None) -> str | None:
+        if not isinstance(title, str):
+            return None
+        normalized = " ".join(title.strip().lower().split())
+        return normalized or None
+
+    def _backfill_resume_title_search(self) -> None:
+        with self._session() as session:
+            resumes = (
+                session.query(ResumeModel)
+                .options(load_only(ResumeModel.resume_id, ResumeModel.title, ResumeModel.title_search))
+                .filter(ResumeModel.title.is_not(None))
+                .filter(ResumeModel.title_search.is_(None))
+                .all()
+            )
+            if not resumes:
+                return
+
+            updated_count = 0
+            for resume in resumes:
+                normalized_title = self._normalize_resume_title_search(decrypt_text(resume.title))
+                if not normalized_title:
+                    continue
+                resume.title_search = normalized_title
+                updated_count += 1
+            if updated_count:
+                session.commit()
+                logger.info("Backfilled resumes.title_search for %s rows", updated_count)
 
     def _serialize_user(self, user: UserModel) -> dict[str, Any]:
         return {
@@ -894,6 +936,7 @@ class Database:
                 generation_artifacts=encrypt_json(generation_artifacts),
                 template_settings=template_settings,
                 title=encrypt_text(title),
+                title_search=self._normalize_resume_title_search(title),
                 original_markdown=encrypt_text(original_markdown),
             )
             session.add(resume)
@@ -975,6 +1018,8 @@ class Database:
 
             for key, value in updates.items():
                 if hasattr(resume, key):
+                    if key == "title":
+                        resume.title_search = self._normalize_resume_title_search(value)
                     if key in {
                         "content",
                         "filename",
@@ -1013,8 +1058,10 @@ class Database:
         user_id: str | None = None,
         limit: int | None = None,
         include_master: bool = False,
+        search: str | None = None,
     ) -> list[dict[str, Any]]:
         resolved_user_id = self._resolve_user_scope(user_id)
+        normalized_search = self._normalize_resume_title_search(search)
         with self._session() as session:
             list_item_columns = load_only(
                 ResumeModel.resume_id,
@@ -1033,6 +1080,18 @@ class Database:
                 if resolved_user_id is not None:
                     query = query.filter(ResumeModel.user_id == resolved_user_id)
                 return query
+
+            if normalized_search:
+                search_query = _scoped_resume_query().filter(
+                    ResumeModel.title_search.like(f"%{normalized_search}%")
+                )
+                if not include_master:
+                    search_query = search_query.filter(ResumeModel.is_master.is_(False))
+                search_query = search_query.order_by(ResumeModel.updated_at.desc())
+                if limit is not None:
+                    search_query = search_query.limit(max(1, limit))
+                search_resumes = search_query.all()
+                return [self._serialize_resume_list_item(resume) for resume in search_resumes]
 
             non_master_query = _scoped_resume_query().filter(ResumeModel.is_master.is_(False))
             non_master_query = non_master_query.order_by(ResumeModel.updated_at.desc())

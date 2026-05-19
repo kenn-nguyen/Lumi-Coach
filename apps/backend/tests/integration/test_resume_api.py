@@ -115,6 +115,7 @@ class TestListResumes:
             user_id="user-123",
             limit=None,
             include_master=False,
+            search=None,
         )
 
     @patch("app.routers.resumes.db")
@@ -147,6 +148,26 @@ class TestListResumes:
             user_id="user-123",
             limit=10,
             include_master=True,
+            search=None,
+        )
+
+    @patch("app.routers.resumes.db")
+    async def test_list_forwards_search_to_database(self, mock_db, client):
+        mock_db.list_resumes.return_value = []
+        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {}
+
+        async with client:
+            resp = await client.get(
+                "/api/v1/resumes/list",
+                params={"limit": 10, "search": "product manager"},
+            )
+
+        assert resp.status_code == 200
+        mock_db.list_resumes.assert_called_once_with(
+            user_id="user-123",
+            limit=10,
+            include_master=False,
+            search="product manager",
         )
 
 

@@ -54,6 +54,7 @@ import {
   formatApiProviderErrorForUser,
   isApiProviderError,
 } from "./llm/api-errors.js";
+import { extractLinkedInJobIdFromUrl } from "../shared/linkedin-route.js";
 import {
   createRunAbortSignal,
   isRunCanceledError,
@@ -121,11 +122,11 @@ async function buildJobSnapshot(activeTabId, jobInput = null) {
   if (manualRawText) {
     const tab = await chrome.tabs.get(activeTabId).catch(() => null);
     const pageUrl = tab?.url || "";
-    const jobIdMatch = pageUrl.match(/\/jobs\/view\/(\d+)/);
+    const jobId = extractLinkedInJobIdFromUrl(pageUrl);
     const sourceUrl =
       jobInput?.sourceUrl?.trim() ||
-      (jobIdMatch
-        ? `${new URL(pageUrl).origin}/jobs/view/${jobIdMatch[1]}/`
+      (jobId
+        ? `${new URL(pageUrl).origin}/jobs/view/${jobId}/`
         : pageUrl);
 
     return {

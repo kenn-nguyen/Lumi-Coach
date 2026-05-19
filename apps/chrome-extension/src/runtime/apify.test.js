@@ -86,4 +86,23 @@ describe('normalizeApifyJobRecord', () => {
     expect(snapshot.rawText).toContain('Job Description:');
     expect(snapshot.rawText).toContain('Own customer deployments');
   });
+
+  it('canonicalizes slugged LinkedIn view URLs in Apify records', () => {
+    const snapshot = normalizeApifyJobRecord(
+      {
+        title: 'Product Manager, Commerce Systems',
+        companyName: 'Stripe',
+        url: 'https://www.linkedin.com/jobs/view/product-manager-commerce-systems-at-stripe-4413483608/?trk=public_jobs_topcard-title',
+        description: 'Lead commerce systems roadmap.',
+      },
+      'https://www.linkedin.com/jobs/view/4413483608/',
+    );
+
+    expect(snapshot.sourceUrl).toBe(
+      'https://www.linkedin.com/jobs/view/4413483608/',
+    );
+    expect(snapshot.diagnostics.actorRecordUrl).toBe(
+      'https://www.linkedin.com/jobs/view/4413483608/',
+    );
+  });
 });
