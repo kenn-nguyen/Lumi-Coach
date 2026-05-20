@@ -429,6 +429,39 @@ class Database:
             "updated_at": self._to_iso(resume.updated_at),
         }
 
+    @staticmethod
+    def _read_prompt2_recommended_title(
+        generation_artifacts: dict[str, Any] | None,
+    ) -> str | None:
+        """Extract Prompt 2's recommended title when present."""
+        if not isinstance(generation_artifacts, dict):
+            return None
+        prompt2 = generation_artifacts.get("prompt2")
+        if not isinstance(prompt2, dict):
+            return None
+        recommended_title = prompt2.get("recommended_title")
+        if not isinstance(recommended_title, str):
+            return None
+        cleaned = recommended_title.strip()
+        return cleaned or None
+
+    def _build_resume_list_title(self, resume: ResumeModel) -> str | None:
+        """Mirror the viewer title fallback logic for dashboard list rows."""
+        stored_title = (decrypt_text(resume.title) or "").strip()
+        if " - " in stored_title:
+            return stored_title
+
+        prompt2_recommended_title = self._read_prompt2_recommended_title(
+            decrypt_json(getattr(resume, "generation_artifacts", None))
+        )
+        if stored_title and prompt2_recommended_title:
+            return f"{stored_title} - {prompt2_recommended_title}"
+        if stored_title:
+            return stored_title
+        if prompt2_recommended_title:
+            return prompt2_recommended_title
+        return None
+
     def _serialize_resume_list_item(self, resume: ResumeModel) -> dict[str, Any]:
         return {
             "resume_id": resume.resume_id,
@@ -438,7 +471,7 @@ class Database:
             "linked_master_resume_id": getattr(resume, "linked_master_resume_id", None),
             "import_context": decrypt_json(getattr(resume, "import_context", None)),
             "processing_status": resume.processing_status,
-            "title": decrypt_text(resume.title),
+            "title": self._build_resume_list_title(resume),
             "created_at": self._to_iso(resume.created_at),
             "updated_at": self._to_iso(resume.updated_at),
         }
@@ -1099,6 +1132,7 @@ class Database:
                 ResumeModel.import_context,
                 ResumeModel.processing_status,
                 ResumeModel.title,
+                ResumeModel.generation_artifacts,
                 ResumeModel.created_at,
                 ResumeModel.updated_at,
                 ResumeModel.user_id,

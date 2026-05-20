@@ -113,6 +113,29 @@ def test_serialize_resume_decrypts_sensitive_resume_fields() -> None:
     }
 
 
+def test_serialize_resume_list_item_uses_prompt2_recommended_title_suffix() -> None:
+    db = _database_without_engine()
+    resume = SimpleNamespace(
+        resume_id="resume-2",
+        filename=encrypt_text("Datadog.json"),
+        is_master=False,
+        parent_id="master-123",
+        linked_master_resume_id="master-123",
+        import_context=None,
+        processing_status="ready",
+        generation_artifacts=encrypt_json(
+            {"prompt2": {"recommended_title": "Senior Product Manager - AI Security & Risk Platforms"}}
+        ),
+        title=encrypt_text("Datadog"),
+        created_at=_now(),
+        updated_at=_now(),
+    )
+
+    serialized = db._serialize_resume_list_item(resume)
+
+    assert serialized["title"] == "Datadog - Senior Product Manager - AI Security & Risk Platforms"
+
+
 def test_serialize_job_and_extension_run_decrypt_sensitive_fields() -> None:
     db = _database_without_engine()
     job = SimpleNamespace(
