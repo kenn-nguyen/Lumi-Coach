@@ -43,6 +43,9 @@ class LLMConfig(BaseModel):
     model: str
     api_key: str
     api_base: str | None = None
+    vertex_project: str | None = None
+    vertex_location: str | None = None
+    vertex_credentials: str | None = None
     is_user_config: bool = False
 
 
@@ -76,6 +79,15 @@ class UserLlmRequestError(RuntimeError):
 def is_shared_gemini_fallback_config(config: LLMConfig) -> bool:
     """Return whether this request is using Lumi's shared Gemini fallback key."""
     return config.provider == "gemini" and not config.is_user_config
+
+
+def is_llm_config_configured(config: LLMConfig) -> bool:
+    """Return whether the config has enough auth/context to attempt a request."""
+    if config.provider == "ollama":
+        return True
+    if config.provider == "vertex_ai":
+        return bool(config.vertex_project)
+    return bool(config.api_key)
 
 
 def _looks_like_google_limit_error(error: Exception) -> bool:
@@ -164,6 +176,24 @@ def _normalize_api_base(provider: str, api_base: str | None) -> str | None:
                 break
 
     return base or None
+
+
+def _apply_provider_runtime_params(target: dict[str, Any], config: LLMConfig) -> None:
+    """Inject provider-specific LiteLLM runtime parameters into the target dict."""
+    if config.api_key:
+        target["api_key"] = config.api_key
+
+    api_base = _normalize_api_base(config.provider, config.api_base)
+    if api_base:
+        target["api_base"] = api_base
+
+    if config.provider == "vertex_ai":
+        if config.vertex_project:
+            target["vertex_project"] = config.vertex_project
+        if config.vertex_location:
+            target["vertex_location"] = config.vertex_location
+        if config.vertex_credentials:
+            target["vertex_credentials"] = config.vertex_credentials
 
 
 def _extract_text_parts(value: Any, depth: int = 0, max_depth: int = 10) -> list[str]:
@@ -320,12 +350,29 @@ def resolve_api_key(stored: dict, provider: str) -> str:
 
 def get_server_llm_config() -> LLMConfig:
     """Get the shared server fallback LLM configuration."""
+    if settings.llm_provider == "vertex_ai":
+        return LLMConfig(
+            provider=settings.llm_provider,
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+            api_base=settings.llm_api_base,
+            vertex_project=settings.vertexai_project,
+            vertex_location=settings.vertexai_location,
+            vertex_credentials=settings.vertexai_credentials,
+            is_user_config=False,
+        )
+
     if settings.llm_api_key:
         return LLMConfig(
             provider=settings.llm_provider,
             model=settings.llm_model,
             api_key=settings.llm_api_key,
             api_base=settings.llm_api_base,
+            vertex_project=settings.vertexai_project if settings.llm_provider == "vertex_ai" else None,
+            vertex_location=settings.vertexai_location if settings.llm_provider == "vertex_ai" else None,
+            vertex_credentials=(
+                settings.vertexai_credentials if settings.llm_provider == "vertex_ai" else None
+            ),
             is_user_config=False,
         )
 
@@ -338,6 +385,9 @@ def get_server_llm_config() -> LLMConfig:
         model=stored.get("model", settings.llm_model),
         api_key=api_key,
         api_base=stored.get("api_base", settings.llm_api_base),
+        vertex_project=settings.vertexai_project if provider == "vertex_ai" else None,
+        vertex_location=settings.vertexai_location if provider == "vertex_ai" else None,
+        vertex_credentials=settings.vertexai_credentials if provider == "vertex_ai" else None,
         is_user_config=False,
     )
 
@@ -380,6 +430,9 @@ def get_llm_config(user_id: str | None = None) -> LLMConfig:
                 model=str(user_config.get("model") or settings.llm_model),
                 api_key=api_key,
                 api_base=user_config.get("api_base"),
+                vertex_project=settings.vertexai_project,
+                vertex_location=settings.vertexai_location,
+                vertex_credentials=settings.vertexai_credentials,
                 is_user_config=True,
             )
 
@@ -400,6 +453,7 @@ def get_model_name(config: LLMConfig) -> str:
         "gemini": "gemini/",
         "deepseek": "deepseek/",
         "ollama": "ollama_chat/",  # ollama_chat/ routes to /api/chat (supports messages array)
+        "vertex_ai": "vertex_ai/",
     }
 
     prefix = provider_prefixes.get(config.provider, "")
@@ -413,7 +467,7 @@ def get_model_name(config: LLMConfig) -> str:
 
     # For other providers, don't add prefix if model already has a known prefix
     known_prefixes = ["openrouter/", "anthropic/",
-                      "gemini/", "deepseek/", "ollama/", "ollama_chat/"]
+                      "gemini/", "deepseek/", "ollama/", "ollama_chat/", "vertex_ai/"]
     if any(config.model.startswith(p) for p in known_prefixes):
         return config.model
 
@@ -439,7 +493,11 @@ def _config_fingerprint(config: LLMConfig) -> str:
     The raw key is never stored in the fingerprint string.
     """
     key_hash = hash(config.api_key) if config.api_key else 0
-    return f"{config.provider}|{config.model}|{key_hash}|{config.api_base}"
+    vertex_credentials_hash = hash(config.vertex_credentials) if config.vertex_credentials else 0
+    return (
+        f"{config.provider}|{config.model}|{key_hash}|{config.api_base}|"
+        f"{config.vertex_project}|{config.vertex_location}|{vertex_credentials_hash}"
+    )
 
 
 def _build_router(config: LLMConfig) -> Router:
@@ -447,11 +505,7 @@ def _build_router(config: LLMConfig) -> Router:
     model_name = get_model_name(config)
 
     litellm_params: dict[str, Any] = {"model": model_name}
-    if config.api_key:
-        litellm_params["api_key"] = config.api_key
-    api_base = _normalize_api_base(config.provider, config.api_base)
-    if api_base:
-        litellm_params["api_base"] = api_base
+    _apply_provider_runtime_params(litellm_params, config)
 
     return Router(
         model_list=[
@@ -535,12 +589,12 @@ async def check_llm_health(
         config = get_llm_config()
 
     # Check if API key is configured (except for Ollama)
-    if config.provider != "ollama" and not config.api_key:
+    if not is_llm_config_configured(config):
         return {
             "healthy": False,
             "provider": config.provider,
             "model": config.model,
-            "error_code": "api_key_missing",
+            "error_code": "vertex_project_missing" if config.provider == "vertex_ai" else "api_key_missing",
         }
 
     model_name = get_model_name(config)
@@ -554,10 +608,9 @@ async def check_llm_health(
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 16,
-            "api_key": config.api_key,
-            "api_base": _normalize_api_base(config.provider, config.api_base),
             "timeout": LLM_TIMEOUT_HEALTH_CHECK,
         }
+        _apply_provider_runtime_params(kwargs, config)
         reasoning_effort = _get_reasoning_effort(config.provider, model_name)
         if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort

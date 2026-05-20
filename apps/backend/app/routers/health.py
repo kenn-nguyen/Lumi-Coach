@@ -3,7 +3,12 @@
 from fastapi import APIRouter, Depends
 
 from app.database import db
-from app.llm import check_llm_health, get_llm_config, get_server_llm_config
+from app.llm import (
+    check_llm_health,
+    get_llm_config,
+    get_server_llm_config,
+    is_llm_config_configured,
+)
 from app.schemas import HealthResponse, StatusResponse
 from app.security import AuthenticatedUser, require_current_user
 
@@ -42,9 +47,7 @@ async def get_status(
             or user_config.get("encrypted_api_key")
         )
     )
-    free_llm_available = bool(
-        server_config.provider == "gemini" and server_config.api_key
-    )
+    free_llm_available = bool(server_config.provider == "gemini" and server_config.api_key)
     using_free_llm = (
         free_llm_available
         and not has_user_api_key
@@ -56,7 +59,7 @@ async def get_status(
 
     return StatusResponse(
         status="ready" if llm_status["healthy"] and db_stats["has_master_resume"] else "setup_required",
-        llm_configured=bool(config.api_key) or config.provider == "ollama" or free_llm_available,
+        llm_configured=is_llm_config_configured(config),
         llm_healthy=llm_status["healthy"],
         has_user_api_key=has_user_api_key,
         free_llm_available=free_llm_available,

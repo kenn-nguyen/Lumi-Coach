@@ -91,6 +91,9 @@ const normalizeApiBaseForProvider = (provider: LLMProvider, value: string): stri
   return trimmed;
 };
 
+const isKnownProvider = (value: string): value is LLMProvider =>
+  Object.prototype.hasOwnProperty.call(PROVIDER_INFO, value);
+
 const unwrapCodeBlock = (value?: string | null): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
@@ -267,8 +270,8 @@ export default function SettingsPage() {
 
         if (llmConfig) {
           const providerFromBackend = llmConfig.provider || 'openai';
-          const safeProvider = PROVIDERS.includes(providerFromBackend as LLMProvider)
-            ? (providerFromBackend as LLMProvider)
+          const safeProvider = isKnownProvider(providerFromBackend)
+            ? providerFromBackend
             : 'openai';
           setProvider(safeProvider);
           setModel(llmConfig.model || PROVIDER_INFO[safeProvider].defaultModel);
@@ -555,6 +558,7 @@ export default function SettingsPage() {
   };
 
   const requiresApiKey = providerInfo.requiresKey ?? true;
+  const isServerManagedVertexProvider = provider === 'vertex_ai' && !isUserSavedConfig;
 
   return (
     <div className="skin-page-work flex min-h-screen flex-col items-center justify-start overflow-y-auto p-6 md:p-12">
@@ -785,6 +789,12 @@ export default function SettingsPage() {
                     provider: providerInfo.name,
                   })}
                 </p>
+                {isServerManagedVertexProvider && (
+                  <p className="text-xs text-gray-500 font-mono">
+                    Vertex AI is managed by the backend. Choose another provider below if you want
+                    to save your own account-level override.
+                  </p>
+                )}
               </div>
 
               {/* Model Input */}
@@ -861,7 +871,9 @@ export default function SettingsPage() {
               <div className="flex gap-4">
                 <Button
                   onClick={() => requestApiKeyAction('save')}
-                  disabled={status === 'saving' || status === 'loading'}
+                  disabled={
+                    status === 'saving' || status === 'loading' || isServerManagedVertexProvider
+                  }
                   className="flex-1"
                 >
                   {status === 'saving' ? (

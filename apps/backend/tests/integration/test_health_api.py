@@ -198,3 +198,44 @@ class TestStatusEndpoint:
         assert data["using_free_llm"] is True
         assert data["free_llm_provider"] == "gemini"
         assert data["free_llm_model"] == "gemini-2.5-flash-lite"
+
+    @patch("app.routers.health.db")
+    @patch("app.routers.health.check_llm_health", new_callable=AsyncMock)
+    @patch("app.routers.health.get_server_llm_config")
+    @patch("app.routers.health.get_llm_config")
+    async def test_status_treats_shared_vertex_as_configured_not_free(
+        self,
+        mock_config,
+        mock_server_config,
+        mock_health,
+        mock_db,
+        client,
+    ):
+        vertex_config = LLMConfig(
+            provider="vertex_ai",
+            model="gemini-2.5-flash-lite",
+            api_key="",
+            vertex_project="vertex-project-123",
+            vertex_location="us-central1",
+            is_user_config=False,
+        )
+        mock_config.return_value = vertex_config
+        mock_server_config.return_value = vertex_config
+        mock_health.return_value = {"healthy": True}
+        mock_db.get_user_llm_config.return_value = None
+        mock_db.get_stats.return_value = {
+            "total_resumes": 1,
+            "total_jobs": 0,
+            "total_improvements": 0,
+            "has_master_resume": True,
+        }
+
+        async with client:
+            resp = await client.get("/api/v1/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["llm_configured"] is True
+        assert data["has_user_api_key"] is False
+        assert data["free_llm_available"] is False
+        assert data["using_free_llm"] is False

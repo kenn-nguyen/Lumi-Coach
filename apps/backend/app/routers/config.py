@@ -298,6 +298,14 @@ async def update_llm_config(
     resolved_model = request.model or (
         str(existing["model"]) if existing else fallback.model
     )
+    if resolved_provider == "vertex_ai":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Vertex AI is configured on the backend for shared use and cannot "
+                "be saved as a per-user provider yet."
+            ),
+        )
     provider_changed = bool(request.provider and request.provider != existing_provider)
     if request.api_base is not None:
         resolved_api_base = request.api_base

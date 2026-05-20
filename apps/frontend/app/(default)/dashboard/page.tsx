@@ -99,7 +99,11 @@ export default function DashboardPage() {
   const hasUserApiKey = Boolean(systemStatus?.has_user_api_key);
   const isFreeModeAvailable = Boolean(systemStatus?.free_llm_available);
   const shouldShowLlmNotice =
-    Boolean(masterResumeId) && !statusLoading && !hasUserApiKey && !isLlmNoticeDismissed;
+    Boolean(masterResumeId) &&
+    !statusLoading &&
+    !isLlmNoticeDismissed &&
+    (isFreeModeAvailable || !systemStatus?.llm_configured) &&
+    !hasUserApiKey;
 
   const formatDate = (value: string) => {
     if (!value) return t('common.unknown');

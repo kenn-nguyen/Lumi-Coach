@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -122,11 +122,23 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     llm_provider: Literal[
-        "openai", "anthropic", "openrouter", "gemini", "deepseek", "ollama"
+        "openai", "anthropic", "openrouter", "gemini", "deepseek", "ollama", "vertex_ai"
     ] = "gemini"
     llm_model: str = "gemini-2.5-flash-lite"
     llm_api_key: str = ""
     llm_api_base: str | None = None  # For Ollama or custom endpoints
+    vertexai_project: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("VERTEXAI_PROJECT", "VERTEX_PROJECT"),
+    )
+    vertexai_location: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("VERTEXAI_LOCATION", "VERTEX_LOCATION"),
+    )
+    vertexai_credentials: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("VERTEXAI_CREDENTIALS", "VERTEX_CREDENTIALS"),
+    )
     llm_config_encryption_key: str = Field(
         default="",
         alias="LLM_CONFIG_ENCRYPTION_KEY",

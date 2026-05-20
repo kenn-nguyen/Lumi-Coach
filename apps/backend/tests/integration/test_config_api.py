@@ -208,6 +208,33 @@ class TestLlmConfig:
         assert resp.status_code == 500
         mock_db.upsert_user_llm_config.assert_not_called()
 
+    @patch("app.routers.config.get_llm_config")
+    @patch("app.routers.config.db")
+    async def test_put_llm_config_rejects_vertex_ai_user_save(
+        self,
+        mock_db,
+        mock_get_config,
+        client,
+    ):
+        mock_db.get_user_llm_config.return_value = None
+        mock_get_config.return_value = LLMConfig(
+            provider="vertex_ai",
+            model="gemini-2.5-flash-lite",
+            api_key="",
+            vertex_project="vertex-project-123",
+            vertex_location="us-central1",
+            is_user_config=False,
+        )
+
+        async with client:
+            resp = await client.put(
+                "/api/v1/config/llm-api-key",
+                json={"provider": "vertex_ai", "model": "gemini-2.5-flash-lite"},
+            )
+
+        assert resp.status_code == 400
+        mock_db.upsert_user_llm_config.assert_not_called()
+
 
 @pytest.fixture(autouse=True)
 def override_auth():

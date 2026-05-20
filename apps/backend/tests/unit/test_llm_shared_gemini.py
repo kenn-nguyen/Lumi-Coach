@@ -9,6 +9,7 @@ from app.llm import (
     SharedGeminiFallbackLimitError,
     get_server_llm_config,
     get_llm_config,
+    is_llm_config_configured,
     raise_if_shared_gemini_fallback_limit,
 )
 
@@ -97,3 +98,38 @@ def test_server_env_key_overrides_legacy_config_file() -> None:
     assert config.model == "gemini-2.5-flash-lite"
     assert config.api_key == "server-key"
     assert config.is_user_config is False
+
+
+def test_vertex_server_env_overrides_legacy_config_without_api_key() -> None:
+    with (
+        patch("app.llm._load_stored_config", return_value={"provider": "openai", "api_key": "legacy"}),
+        patch("app.llm.settings.llm_provider", "vertex_ai"),
+        patch("app.llm.settings.llm_model", "gemini-2.5-flash-lite"),
+        patch("app.llm.settings.llm_api_key", ""),
+        patch("app.llm.settings.llm_api_base", None),
+        patch("app.llm.settings.vertexai_project", "vertex-project-123"),
+        patch("app.llm.settings.vertexai_location", "us-central1"),
+        patch("app.llm.settings.vertexai_credentials", '{"type":"service_account"}'),
+    ):
+        config = get_server_llm_config()
+
+    assert config.provider == "vertex_ai"
+    assert config.model == "gemini-2.5-flash-lite"
+    assert config.api_key == ""
+    assert config.vertex_project == "vertex-project-123"
+    assert config.vertex_location == "us-central1"
+    assert config.vertex_credentials == '{"type":"service_account"}'
+    assert config.is_user_config is False
+
+
+def test_vertex_config_is_considered_configured_without_api_key() -> None:
+    config = LLMConfig(
+        provider="vertex_ai",
+        model="gemini-2.5-flash-lite",
+        api_key="",
+        vertex_project="vertex-project-123",
+        vertex_location="us-central1",
+        is_user_config=False,
+    )
+
+    assert is_llm_config_configured(config) is True

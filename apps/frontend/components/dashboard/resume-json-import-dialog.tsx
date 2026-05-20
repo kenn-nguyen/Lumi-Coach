@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ export function ResumeJsonImportDialog({
   onImportComplete,
 }: ResumeJsonImportDialogProps) {
   const { t } = useTranslations();
+  const fileInputId = useId();
   const [open, setOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [jdUrl, setJdUrl] = useState('');
@@ -102,27 +103,35 @@ export function ResumeJsonImportDialog({
         <form className="space-y-5 bg-[#faf7ef] p-6" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label
-              htmlFor="resume-json-file"
+              htmlFor={fileInputId}
               className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-gray-700"
             >
               {t('dashboard.importResumeJson.fileLabel')}
             </label>
-            <div className="rounded-2xl border border-border bg-white p-4 shadow-xs">
+            <label
+              htmlFor={fileInputId}
+              className="block cursor-pointer rounded-2xl border border-border bg-white p-4 shadow-xs transition-colors hover:border-primary focus-within:border-primary"
+            >
               <input
-                id="resume-json-file"
+                id={fileInputId}
                 type="file"
                 accept=".json,application/json,text/json"
                 onChange={(event) => {
                   setError(null);
                   setSelectedFile(event.target.files?.[0] ?? null);
                 }}
-                className="block w-full font-mono text-sm"
+                className="sr-only"
               />
-              <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
-                <FileJson className="h-4 w-4" />
-                <span>{fileLabel}</span>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-2 text-sm text-gray-600">
+                  <FileJson className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{fileLabel}</span>
+                </div>
+                <span className="shrink-0 rounded-xl border border-border px-3 py-2 font-mono text-xs font-bold uppercase tracking-[0.12em] text-gray-700">
+                  Choose file
+                </span>
               </div>
-            </div>
+            </label>
           </div>
 
           <div className="space-y-2">

@@ -6,7 +6,14 @@ import type {
 } from '@/lib/types/template-settings';
 
 // Supported LLM providers
-export type LLMProvider = 'openai' | 'anthropic' | 'openrouter' | 'gemini' | 'deepseek' | 'ollama';
+export type LLMProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'openrouter'
+  | 'gemini'
+  | 'deepseek'
+  | 'ollama'
+  | 'vertex_ai';
 
 export interface LLMConfig {
   provider: LLMProvider;
@@ -145,6 +152,11 @@ export const PROVIDER_INFO: Record<
     requiresKey: true,
   },
   gemini: { name: 'Google Gemini', defaultModel: 'gemini-2.5-flash-lite', requiresKey: true },
+  vertex_ai: {
+    name: 'Google Vertex AI',
+    defaultModel: 'gemini-2.5-flash-lite',
+    requiresKey: false,
+  },
   deepseek: { name: 'DeepSeek', defaultModel: 'deepseek-chat', requiresKey: true },
   ollama: { name: 'Ollama (Local)', defaultModel: 'gemma3:4b', requiresKey: false },
 };
