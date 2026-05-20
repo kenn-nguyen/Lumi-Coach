@@ -786,30 +786,37 @@ export default function DashboardPage() {
                       <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
                     </div>
                     <div className="min-w-0 flex-1 py-0.5">
-                      <h3 className="truncate font-serif text-[1.2rem] leading-tight">{title}</h3>
-                      <p className="mt-1 whitespace-nowrap font-mono text-[10px] uppercase tracking-wide text-gray-500">
-                        {t('dashboard.edited', {
-                          date: formatDate(resume.updated_at || resume.created_at),
-                        })}
-                      </p>
-                    </div>
-                    <div className="ml-4 flex shrink-0 items-center gap-2 self-center">
-                      {resume.job_source_url ? (
-                        <a
-                          href={resume.job_source_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          className="inline-flex h-8 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                      <div className="flex min-w-0 items-start gap-3">
+                        <h3
+                          className="min-w-0 flex-1 truncate font-serif text-[1.2rem] leading-tight"
+                          title={title}
                         >
-                          Open JD
-                        </a>
-                      ) : null}
-                      {renderStatusPill(resume.processing_status)}
-                      <span className="flex h-6 w-6 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
-                        <ChevronRight className="h-3 w-3" />
-                      </span>
+                          {title}
+                        </h3>
+                        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
+                          <ChevronRight className="h-3 w-3" />
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-gray-500">
+                          {t('dashboard.edited', {
+                            date: formatDate(resume.updated_at || resume.created_at),
+                          })}
+                        </p>
+                        {resume.job_source_url ? (
+                          <a
+                            href={resume.job_source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            className="inline-flex h-8 shrink-0 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                          >
+                            Open JD
+                          </a>
+                        ) : null}
+                        <div className="shrink-0">{renderStatusPill(resume.processing_status)}</div>
+                      </div>
                     </div>
                   </div>
                 );
