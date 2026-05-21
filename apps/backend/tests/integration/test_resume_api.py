@@ -101,10 +101,21 @@ class TestListResumes:
     @patch("app.routers.resumes.db")
     async def test_list_excludes_master_by_default(self, mock_db, client):
         mock_db.list_resumes.return_value = [
-            {"resume_id": "tailored-1", "is_master": False, "created_at": "2026-01-02", "updated_at": "2026-01-02"},
+            {
+                "resume_id": "tailored-1",
+                "is_master": False,
+                "created_at": "2026-01-02",
+                "updated_at": "2026-01-02",
+                "title": "SoFi - Senior Product Manager - Authentication & Fraud Safety",
+            },
         ]
-        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {
-            "tailored-1": "https://www.linkedin.com/jobs/view/123/"
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {
+            "tailored-1": {
+                "source_url": "https://www.linkedin.com/jobs/view/123/",
+                "job_source": "linkedin",
+                "title": "Senior Product Manager, Member Account Safety",
+                "company": "SoFi",
+            }
         }
         async with client:
             resp = await client.get("/api/v1/resumes/list")
@@ -113,6 +124,7 @@ class TestListResumes:
         assert len(data) == 1
         assert data[0]["resume_id"] == "tailored-1"
         assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/123/"
+        assert data[0]["title"] == "SoFi - Senior Product Manager, Member Account Safety"
         mock_db.list_resumes.assert_called_once_with(
             user_id="user-123",
             limit=None,
@@ -126,8 +138,13 @@ class TestListResumes:
             {"resume_id": "master", "is_master": True, "created_at": "2026-01-01", "updated_at": "2026-01-01"},
             {"resume_id": "tailored-1", "is_master": False, "created_at": "2026-01-02", "updated_at": "2026-01-02"},
         ]
-        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {
-            "tailored-1": "https://www.linkedin.com/jobs/view/123/"
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {
+            "tailored-1": {
+                "source_url": "https://www.linkedin.com/jobs/view/123/",
+                "job_source": "linkedin",
+                "title": "Senior Product Manager, Member Account Safety",
+                "company": "SoFi",
+            }
         }
         async with client:
             resp = await client.get("/api/v1/resumes/list", params={"include_master": True})
@@ -140,7 +157,7 @@ class TestListResumes:
     @patch("app.routers.resumes.db")
     async def test_list_forwards_limit_to_database(self, mock_db, client):
         mock_db.list_resumes.return_value = []
-        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {}
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {}
 
         async with client:
             resp = await client.get("/api/v1/resumes/list", params={"include_master": True, "limit": 10})
@@ -156,7 +173,7 @@ class TestListResumes:
     @patch("app.routers.resumes.db")
     async def test_list_forwards_search_to_database(self, mock_db, client):
         mock_db.list_resumes.return_value = []
-        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {}
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {}
 
         async with client:
             resp = await client.get(
@@ -186,7 +203,7 @@ class TestListResumes:
                 },
             }
         ]
-        mock_db.get_extension_run_source_urls_by_resume_ids.return_value = {}
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {}
 
         async with client:
             resp = await client.get("/api/v1/resumes/list")
@@ -194,6 +211,33 @@ class TestListResumes:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/456/"
+
+    @patch("app.routers.resumes.db")
+    async def test_list_keeps_manual_titles_for_paste_jd_runs(self, mock_db, client):
+        mock_db.list_resumes.return_value = [
+            {
+                "resume_id": "tailored-manual-1",
+                "is_master": False,
+                "created_at": "2026-01-02",
+                "updated_at": "2026-01-02",
+                "title": "SoFi - Senior Product Manager - Authentication & Fraud Safety",
+            }
+        ]
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {
+            "tailored-manual-1": {
+                "source_url": "https://lumi.ceo/manual-jd",
+                "job_source": "manual_text",
+                "title": "",
+                "company": "SoFi",
+            }
+        }
+
+        async with client:
+            resp = await client.get("/api/v1/resumes/list")
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data[0]["title"] == "SoFi - Senior Product Manager - Authentication & Fraud Safety"
 
 
 class TestDownloadResumePdf:

@@ -1184,6 +1184,21 @@ class Database:
         resume_ids: list[str],
         user_id: str | None = None,
     ) -> dict[str, str]:
+        metadata = self.get_extension_run_metadata_by_resume_ids(
+            resume_ids, user_id=user_id
+        )
+        source_urls: dict[str, str] = {}
+        for resume_id, item in metadata.items():
+            source_url = item.get("source_url")
+            if isinstance(source_url, str) and source_url:
+                source_urls[resume_id] = source_url
+        return source_urls
+
+    def get_extension_run_metadata_by_resume_ids(
+        self,
+        resume_ids: list[str],
+        user_id: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
         resolved_user_id = self._resolve_user_scope(user_id)
         normalized_resume_ids = [resume_id for resume_id in resume_ids if resume_id]
         if not normalized_resume_ids:
@@ -1200,14 +1215,17 @@ class Database:
                 ExtensionRunModel.updated_at.desc(),
             ).all()
 
-            source_urls: dict[str, str] = {}
+            metadata_by_resume_id: dict[str, dict[str, Any]] = {}
             for run in runs:
-                if not run.resume_id or run.resume_id in source_urls:
+                if not run.resume_id or run.resume_id in metadata_by_resume_id:
                     continue
-                source_url = decrypt_text(run.source_url)
-                if source_url:
-                    source_urls[run.resume_id] = source_url
-            return source_urls
+                metadata_by_resume_id[run.resume_id] = {
+                    "source_url": decrypt_text(run.source_url),
+                    "job_source": run.job_source,
+                    "title": decrypt_text(run.title),
+                    "company": decrypt_text(run.company),
+                }
+            return metadata_by_resume_id
 
     def _prune_extension_run_prompt_artifacts(
         self,

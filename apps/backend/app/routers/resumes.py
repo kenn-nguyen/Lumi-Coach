@@ -897,6 +897,38 @@ def _derive_imported_resume_title(
     return None
 
 
+def _compose_tracking_resume_title(
+    company: str | None, role_title: str | None
+) -> str | None:
+    normalized_company = company.strip() if isinstance(company, str) else ""
+    normalized_role_title = role_title.strip() if isinstance(role_title, str) else ""
+    if normalized_company and normalized_role_title:
+        return f"{normalized_company} - {normalized_role_title}"
+    return normalized_company or normalized_role_title or None
+
+
+def _build_resume_summary_title(
+    resume: dict[str, Any], extension_run: dict[str, Any] | None
+) -> str | None:
+    current_title = (
+        resume.get("title").strip()
+        if isinstance(resume.get("title"), str)
+        else None
+    )
+    if not isinstance(extension_run, dict):
+        return current_title
+
+    job_source = extension_run.get("job_source")
+    if job_source in {"linkedin", "apify_backend"}:
+        tracking_title = _compose_tracking_resume_title(
+            extension_run.get("company"),
+            extension_run.get("title"),
+        )
+        return tracking_title or current_title
+
+    return current_title
+
+
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
     file: UploadFile = File(...),
@@ -1147,7 +1179,7 @@ async def list_resumes(
     )
 
     resumes.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
-    source_urls_by_resume_id = db.get_extension_run_source_urls_by_resume_ids(
+    extension_run_by_resume_id = db.get_extension_run_metadata_by_resume_ids(
         [resume["resume_id"] for resume in resumes if not resume.get("is_master", False)],
         user_id=user_id,
     )
@@ -1161,8 +1193,12 @@ async def list_resumes(
             processing_status=resume.get("processing_status", "pending"),
             created_at=resume.get("created_at", ""),
             updated_at=resume.get("updated_at", ""),
-            title=resume.get("title"),
-            job_source_url=source_urls_by_resume_id.get(resume["resume_id"])
+            title=_build_resume_summary_title(
+                resume, extension_run_by_resume_id.get(resume["resume_id"])
+            ),
+            job_source_url=(
+                extension_run_by_resume_id.get(resume["resume_id"], {}).get("source_url")
+            )
             or (
                 resume.get("import_context", {}).get("jd_url")
                 if isinstance(resume.get("import_context"), dict)
