@@ -239,6 +239,38 @@ class TestListResumes:
         data = resp.json()["data"]
         assert data[0]["title"] == "SoFi - Senior Product Manager - Authentication & Fraud Safety"
 
+    @patch("app.routers.resumes.db")
+    async def test_list_falls_back_to_stored_title_when_linkedin_run_title_is_missing(
+        self, mock_db, client
+    ):
+        mock_db.list_resumes.return_value = [
+            {
+                "resume_id": "tailored-linkedin-1",
+                "is_master": False,
+                "created_at": "2026-01-02",
+                "updated_at": "2026-01-02",
+                "title": "Amazon - Senior Product Manager - Technical, AI-Powered Workflow Automation & Platform Integrations",
+            }
+        ]
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {
+            "tailored-linkedin-1": {
+                "source_url": "https://www.linkedin.com/jobs/view/123/",
+                "job_source": "linkedin",
+                "title": "",
+                "company": "Amazon",
+            }
+        }
+
+        async with client:
+            resp = await client.get("/api/v1/resumes/list")
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert (
+            data[0]["title"]
+            == "Amazon - Senior Product Manager - Technical, AI-Powered Workflow Automation & Platform Integrations"
+        )
+
 
 class TestDownloadResumePdf:
     """GET /api/v1/resumes/{resume_id}/pdf"""

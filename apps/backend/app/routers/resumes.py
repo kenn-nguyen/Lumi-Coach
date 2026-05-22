@@ -902,9 +902,11 @@ def _compose_tracking_resume_title(
 ) -> str | None:
     normalized_company = company.strip() if isinstance(company, str) else ""
     normalized_role_title = role_title.strip() if isinstance(role_title, str) else ""
-    if normalized_company and normalized_role_title:
+    if not normalized_role_title:
+        return None
+    if normalized_company:
         return f"{normalized_company} - {normalized_role_title}"
-    return normalized_company or normalized_role_title or None
+    return normalized_role_title
 
 
 def _build_resume_summary_title(
