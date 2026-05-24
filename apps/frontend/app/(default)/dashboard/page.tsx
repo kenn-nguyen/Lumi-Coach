@@ -14,6 +14,7 @@ import {
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -35,9 +36,11 @@ import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
 import Upload from 'lucide-react/dist/esm/icons/upload';
 import MoreHorizontal from 'lucide-react/dist/esm/icons/more-horizontal';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import X from 'lucide-react/dist/esm/icons/x';
 
 import {
+  deleteResume,
   fetchResume,
   fetchResumeList,
   fetchJobDescription,
@@ -79,12 +82,15 @@ export default function DashboardPage() {
   const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
   const [showTailorPrompt, setShowTailorPrompt] = useState(false);
   const [isLlmNoticeDismissed, setIsLlmNoticeDismissed] = useState(false);
+  const [resumePendingDelete, setResumePendingDelete] = useState<ResumeListItem | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletingResume, setIsDeletingResume] = useState(false);
   const [searchFieldName, setSearchFieldName] = useState('lumi-resume-filter-field');
   const [isSearchFieldReady, setIsSearchFieldReady] = useState(false);
   const router = useRouter();
 
   // Status cache for optimistic counter updates and LLM status check
-  const { status: systemStatus, isLoading: statusLoading } = useStatusCache();
+  const { status: systemStatus, isLoading: statusLoading, decrementResumes } = useStatusCache();
 
   // Request id guard for concurrent loadTailoredResumes invocations
   const loadRequestIdRef = useRef(0);
@@ -412,7 +418,10 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const renderStatusPill = (status: ResumeListItem['processing_status'] | ProcessingStatus) => {
+  const renderStatusPill = (
+    status: ResumeListItem['processing_status'] | ProcessingStatus,
+    resumeId?: string
+  ) => {
     const baseClass =
       'inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em]';
     switch (status) {
@@ -421,6 +430,25 @@ export default function DashboardPage() {
       case 'processing':
       case 'pending':
         return <span className={cn(baseClass, 'bg-blue-50 text-blue-700')}>{status}</span>;
+      case 'ready':
+        return (
+          <button
+            type="button"
+            className={cn(
+              baseClass,
+              'bg-secondary text-foreground transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35'
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (resumeId) {
+                router.push(`/resumes/${resumeId}`);
+              }
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            {status}
+          </button>
+        );
       default:
         return (
           <span className={cn(baseClass, 'bg-secondary text-muted-foreground')}>{status}</span>
@@ -455,6 +483,26 @@ export default function DashboardPage() {
     },
     [router]
   );
+
+  const handleDeleteResumeFromDashboard = useCallback(async () => {
+    if (!resumePendingDelete || isDeletingResume) return;
+
+    try {
+      setIsDeletingResume(true);
+      setDeleteError(null);
+      await deleteResume(resumePendingDelete.resume_id);
+      setTailoredResumes((current) =>
+        current.filter((resume) => resume.resume_id !== resumePendingDelete.resume_id)
+      );
+      decrementResumes();
+      setResumePendingDelete(null);
+    } catch (error) {
+      console.error('Failed to delete resume from dashboard:', error);
+      setDeleteError(t('resumeViewer.errors.failedToDelete'));
+    } finally {
+      setIsDeletingResume(false);
+    }
+  }, [decrementResumes, isDeletingResume, resumePendingDelete, t]);
 
   return (
     <SwissGrid
@@ -793,9 +841,6 @@ export default function DashboardPage() {
                         >
                           {title}
                         </h3>
-                        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary text-foreground">
-                          <ChevronRight className="h-3 w-3" />
-                        </span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-gray-500">
@@ -815,7 +860,24 @@ export default function DashboardPage() {
                             Open JD
                           </a>
                         ) : null}
-                        <div className="shrink-0">{renderStatusPill(resume.processing_status)}</div>
+                        <div className="shrink-0">
+                          {renderStatusPill(resume.processing_status, resume.resume_id)}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t('dashboard.deleteResume')}
+                          className="h-8 w-8 shrink-0 rounded-xl border border-transparent text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:border-red-200 focus-visible:bg-red-50 focus-visible:text-red-700"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleteError(null);
+                            setResumePendingDelete(resume);
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -862,6 +924,25 @@ export default function DashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!resumePendingDelete}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingResume) {
+            setResumePendingDelete(null);
+            setDeleteError(null);
+          }
+        }}
+        title={t('dashboard.deleteResume')}
+        description={t('confirmations.deleteResumeFromSystemDescription')}
+        errorMessage={deleteError ?? undefined}
+        confirmLabel={t('confirmations.deleteResumeConfirmLabel')}
+        cancelLabel={t('confirmations.keepResumeCancelLabel')}
+        confirmDisabled={isDeletingResume}
+        closeOnConfirm={false}
+        onConfirm={handleDeleteResumeFromDashboard}
+        variant="danger"
+      />
     </SwissGrid>
   );
 }

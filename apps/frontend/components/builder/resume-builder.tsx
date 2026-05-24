@@ -655,7 +655,6 @@ const ResumeBuilderContent = () => {
         resumePdfRenderLayout ?? undefined
       );
       downloadBlobAsFile(blob, filename);
-      showNotification(t('builder.alerts.downloadSuccess'), 'success');
     } catch (error) {
       console.error('Failed to download resume:', error);
       if (

@@ -135,7 +135,6 @@ export default function ResumeViewerPage() {
   const [isMasterResume, setIsMasterResume] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSuccessDialog, setShowDeleteSuccessDialog] = useState(false);
-  const [showDownloadSuccessDialog, setShowDownloadSuccessDialog] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -562,7 +561,6 @@ export default function ResumeViewerPage() {
         pdfRenderLayout
       );
       downloadBlobAsFile(blob, filename);
-      setShowDownloadSuccessDialog(true);
     } catch (err) {
       console.error('Failed to download resume:', err);
       if (
@@ -623,10 +621,6 @@ export default function ResumeViewerPage() {
   const handleDeleteSuccessConfirm = () => {
     setShowDeleteSuccessDialog(false);
     router.push('/dashboard');
-  };
-
-  const handleDownloadSuccessConfirm = () => {
-    setShowDownloadSuccessDialog(false);
   };
 
   const feedbackRows = [
@@ -1011,17 +1005,6 @@ export default function ResumeViewerPage() {
         }
         confirmLabel={t('resumeViewer.returnToDashboard')}
         onConfirm={handleDeleteSuccessConfirm}
-        variant="success"
-        showCancelButton={false}
-      />
-
-      <ConfirmDialog
-        open={showDownloadSuccessDialog}
-        onOpenChange={setShowDownloadSuccessDialog}
-        title={t('common.success')}
-        description={t('builder.alerts.downloadSuccess')}
-        confirmLabel={t('common.ok')}
-        onConfirm={handleDownloadSuccessConfirm}
         variant="success"
         showCancelButton={false}
       />
