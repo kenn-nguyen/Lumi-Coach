@@ -134,7 +134,7 @@ class TestListResumes:
         assert len(data) == 1
         assert data[0]["resume_id"] == "tailored-1"
         assert data[0]["job_source_url"] == "https://www.linkedin.com/jobs/view/123/"
-        assert data[0]["title"] == "SoFi - Senior Product Manager, Member Account Safety"
+        assert data[0]["title"] == "SoFi - Senior Product Manager - Authentication & Fraud Safety"
         mock_db.list_resumes.assert_called_once_with(
             user_id="user-123",
             limit=None,
@@ -248,6 +248,33 @@ class TestListResumes:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data[0]["title"] == "SoFi - Senior Product Manager - Authentication & Fraud Safety"
+
+    @patch("app.routers.resumes.db")
+    async def test_list_keeps_manual_titles_for_linkedin_runs(self, mock_db, client):
+        mock_db.list_resumes.return_value = [
+            {
+                "resume_id": "tailored-linkedin-1",
+                "is_master": False,
+                "created_at": "2026-01-02",
+                "updated_at": "2026-01-02",
+                "title": "JPMorganChase - Concourse Product Manager - Payments - Vice President",
+            }
+        ]
+        mock_db.get_extension_run_metadata_by_resume_ids.return_value = {
+            "tailored-linkedin-1": {
+                "source_url": "https://www.linkedin.com/jobs/view/789/",
+                "job_source": "linkedin",
+                "title": "Concourse Product Manager - Payments - Vice President",
+                "company": "JPMorganChase",
+            }
+        }
+
+        async with client:
+            resp = await client.get("/api/v1/resumes/list")
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data[0]["title"] == "JPMorganChase - Concourse Product Manager - Payments - Vice President"
 
     @patch("app.routers.resumes.db")
     async def test_list_falls_back_to_stored_title_when_linkedin_run_title_is_missing(

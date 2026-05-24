@@ -5128,7 +5128,12 @@ function readInlineJobDescriptionText() {
 }
 
 function inferJobTitleFromDocumentTitle(company = "") {
-  const raw = (document.title || "").replace(/\s*\|\s*LinkedIn.*$/i, "").trim();
+  const withoutLinkedInSuffix = (document.title || "")
+    .replace(/\s*\|\s*LinkedIn.*$/i, "")
+    .trim();
+  if (!withoutLinkedInSuffix) return "";
+
+  const raw = withoutLinkedInSuffix.split(/\s+\|\s+/)[0]?.trim() || "";
   if (!raw) return "";
 
   const normalizedCompany = company.trim().toLowerCase();

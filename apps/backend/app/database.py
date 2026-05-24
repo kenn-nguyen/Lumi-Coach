@@ -448,16 +448,12 @@ class Database:
     def _build_resume_list_title(self, resume: ResumeModel) -> str | None:
         """Mirror the viewer title fallback logic for dashboard list rows."""
         stored_title = (decrypt_text(resume.title) or "").strip()
-        if " - " in stored_title:
+        if stored_title:
             return stored_title
 
         prompt2_recommended_title = self._read_prompt2_recommended_title(
             decrypt_json(getattr(resume, "generation_artifacts", None))
         )
-        if stored_title and prompt2_recommended_title:
-            return f"{stored_title} - {prompt2_recommended_title}"
-        if stored_title:
-            return stored_title
         if prompt2_recommended_title:
             return prompt2_recommended_title
         return None

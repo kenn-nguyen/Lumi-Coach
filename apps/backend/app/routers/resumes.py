@@ -1256,8 +1256,11 @@ def _build_resume_summary_title(
         if isinstance(resume.get("title"), str)
         else None
     )
-    if not isinstance(extension_run, dict):
+    if current_title:
         return current_title
+
+    if not isinstance(extension_run, dict):
+        return None
 
     job_source = extension_run.get("job_source")
     if job_source in {"linkedin", "apify_backend"}:
@@ -1265,9 +1268,9 @@ def _build_resume_summary_title(
             extension_run.get("company"),
             extension_run.get("title"),
         )
-        return tracking_title or current_title
+        return tracking_title
 
-    return current_title
+    return None
 
 
 @router.post("/upload", response_model=ResumeUploadResponse)
