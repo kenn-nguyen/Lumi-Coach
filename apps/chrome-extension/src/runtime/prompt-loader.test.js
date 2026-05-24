@@ -499,10 +499,10 @@ describe("prompt-loader", () => {
             withFrontmatter(
               {
                 prompt_artifact: "profile3.prompt3.template",
-                prompt_version: "v1.0.0",
+                prompt_version: "v1.0.1",
                 prompt_label: "lean-ats-resume-writer",
               },
-              "Prompt2:\n{{PROMPT2_RESPONSE}}",
+              "Prompt1:\n{{PROMPT1_RESPONSE}}\n\nPrompt2:\n{{PROMPT2_RESPONSE}}",
             ),
           );
         }
@@ -520,6 +520,8 @@ describe("prompt-loader", () => {
     );
     const prompt3 = await promptLoader.renderPrompt3WithMetadata(
       {
+        prompt1Response:
+          "ATS\n- identity verification\n- risk platform\n\nHiring manager\n- trusts concrete scale proof",
         prompt2Response:
           "Page-one focus\n- Lead with platform outcomes\n- Keep current role tight",
         currentResume: { personalInfo: { name: "Test" } },
@@ -529,8 +531,10 @@ describe("prompt-loader", () => {
 
     expect(prompt2.text).toContain("Trusts platform metrics");
     expect(prompt2.text).not.toContain("PROMPT1_RESPONSE");
+    expect(prompt3.text).toContain("identity verification");
     expect(prompt3.text).toContain("Lead with platform outcomes");
     expect(prompt3.text).toContain("PROMPT3 CONTRACT");
+    expect(prompt3.text).not.toContain("PROMPT1_RESPONSE");
     expect(prompt3.text).not.toContain("PROMPT2_RESPONSE");
   });
 

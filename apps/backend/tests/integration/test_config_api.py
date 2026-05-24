@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from app.llm import LLMConfig
 from app.llm_config_crypto import LLMConfigEncryptionError
 from app.main import app
+from app.routers.config import _get_extension_prompt_profile_paths
 from app.security import AuthenticatedUser, require_current_user
 
 
@@ -510,6 +511,16 @@ class TestResetDatabase:
 
 class TestExtensionPromptSync:
     """POST /api/v1/config/extension-prompts/sync"""
+
+    def test_profile3_sync_paths_use_backend_profile3_prompts(self):
+        paths = _get_extension_prompt_profile_paths()
+
+        assert paths["profile3"] == {
+            "prompt1": "profiles/profile3/prompt1.txt",
+            "prompt2": "profiles/profile3/prompt2.txt",
+            "prompt3": "profiles/profile3/prompt3.txt",
+            "systemPrompt": "system-prompt.txt",
+        }
 
     @patch("app.routers.config._get_extension_prompt_artifacts")
     async def test_returns_only_changed_artifacts(self, mock_artifacts, client):
