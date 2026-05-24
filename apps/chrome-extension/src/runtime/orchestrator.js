@@ -325,6 +325,73 @@ async function resolveValidatedJobSnapshot({
   );
 }
 
+function normalizeJobMetadataText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeJobMetadataDate(value) {
+  const normalized = normalizeJobMetadataText(value);
+  return normalized || null;
+}
+
+function pickResolvedJobMetadataText(...values) {
+  for (const value of values) {
+    const normalized = normalizeJobMetadataText(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+function pickResolvedJobMetadataDate(...values) {
+  for (const value of values) {
+    const normalized = normalizeJobMetadataDate(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+export function resolveCanonicalJobSnapshot({
+  jobInput = null,
+  jobSnapshot = null,
+  activeRunJob = null,
+} = {}) {
+  const baseSnapshot =
+    jobSnapshot && typeof jobSnapshot === "object" ? jobSnapshot : {};
+
+  return {
+    ...baseSnapshot,
+    title: pickResolvedJobMetadataText(
+      jobInput?.title,
+      baseSnapshot.title,
+      activeRunJob?.title,
+    ),
+    company: pickResolvedJobMetadataText(
+      jobInput?.company,
+      baseSnapshot.company,
+      activeRunJob?.company,
+    ),
+    location: pickResolvedJobMetadataText(
+      jobInput?.location,
+      baseSnapshot.location,
+      activeRunJob?.location,
+    ),
+    datePosted: pickResolvedJobMetadataDate(
+      jobInput?.datePosted,
+      baseSnapshot.datePosted,
+      activeRunJob?.datePosted,
+    ),
+    sourceUrl: pickResolvedJobMetadataText(
+      jobInput?.sourceUrl,
+      baseSnapshot.sourceUrl,
+      activeRunJob?.sourceUrl,
+    ),
+  };
+}
+
 function toResumeSource(resumePayload) {
   return (
     resumePayload.data.processed_resume ??
@@ -1314,6 +1381,7 @@ export async function generateResumeForLinkedInJob(
   tabId,
   prompt1CustomInstruction = "",
   jobInput = null,
+  activeRunJobHint = null,
 ) {
   logInfo("Orchestrator", "Generate flow started.", { tabId });
   const runStartedMs = Date.now();
@@ -1382,13 +1450,46 @@ export async function generateResumeForLinkedInJob(
     activeTabId,
     manualJobInputUsed,
   });
+  const displayJobFallback =
+    activeRunJobHint && typeof activeRunJobHint === "object"
+      ? activeRunJobHint
+      : currentExtensionState?.activeRunJob ?? null;
   cancel.throwIfCanceled("job extraction");
-  const jobSnapshot = await resolveValidatedJobSnapshot({
+  const rawJobSnapshot = await resolveValidatedJobSnapshot({
     activeTabId,
     jobInput,
     apifyFallbackSettings,
   });
   cancel.throwIfCanceled("job extraction");
+  const jobSnapshot = resolveCanonicalJobSnapshot({
+    jobInput,
+    jobSnapshot: rawJobSnapshot,
+    activeRunJob: displayJobFallback,
+  });
+  if (
+    jobSnapshot.title !== rawJobSnapshot.title ||
+    jobSnapshot.company !== rawJobSnapshot.company ||
+    jobSnapshot.location !== rawJobSnapshot.location ||
+    jobSnapshot.datePosted !== (rawJobSnapshot.datePosted ?? null) ||
+    jobSnapshot.sourceUrl !== rawJobSnapshot.sourceUrl
+  ) {
+    logInfo(
+      "Orchestrator",
+      "Resolved canonical run metadata from strict scrape and UI fallback inputs.",
+      {
+        rawTitle: rawJobSnapshot.title,
+        resolvedTitle: jobSnapshot.title,
+        rawCompany: rawJobSnapshot.company,
+        resolvedCompany: jobSnapshot.company,
+        rawLocation: rawJobSnapshot.location ?? "",
+        resolvedLocation: jobSnapshot.location ?? "",
+        rawDatePosted: rawJobSnapshot.datePosted ?? null,
+        resolvedDatePosted: jobSnapshot.datePosted ?? null,
+        rawSourceUrl: rawJobSnapshot.sourceUrl,
+        resolvedSourceUrl: jobSnapshot.sourceUrl,
+      },
+    );
+  }
   logInfo("Orchestrator", "Job extraction completed.", {
     source: jobSnapshot.source,
     sourceUrl: jobSnapshot.sourceUrl,
@@ -1397,6 +1498,7 @@ export async function generateResumeForLinkedInJob(
     rawTextLength: jobSnapshot.rawText.length,
   });
   logInfo("LinkedInScrape", "LinkedIn scrape output.", {
+    rawJobSnapshot,
     jobSnapshot,
   });
   await captureExtensionEvent("scrape_source_selected", {

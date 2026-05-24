@@ -6,6 +6,7 @@ import {
   getPrompt4ResumeRejectionMessage,
   prefixGenerationFeedbackSummary,
   preserveGeneratedResumeFacts,
+  resolveCanonicalJobSnapshot,
   shouldReuseChatGptPopupSession,
   shouldAcceptLocalSnapshot,
   stripPromptFlexNotesFromServerArtifact,
@@ -56,6 +57,104 @@ describe("shouldAcceptLocalSnapshot", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveCanonicalJobSnapshot", () => {
+  it("fills missing strict scrape metadata from the active run fallback", () => {
+    expect(
+      resolveCanonicalJobSnapshot({
+        jobSnapshot: {
+          source: "linkedin",
+          sourceUrl: "https://www.linkedin.com/jobs/view/123/",
+          title: "",
+          company: "Worldpay",
+          location: "",
+          datePosted: null,
+          rawText: "JD text",
+        },
+        activeRunJob: {
+          title: "Senior Product Manager",
+          company: "Worldpay",
+          location: "Cincinnati, OH",
+          datePosted: "2026-05-20",
+          sourceUrl: "https://www.linkedin.com/jobs/view/123/",
+        },
+      }),
+    ).toMatchObject({
+      title: "Senior Product Manager",
+      company: "Worldpay",
+      location: "Cincinnati, OH",
+      datePosted: "2026-05-20",
+      sourceUrl: "https://www.linkedin.com/jobs/view/123/",
+      rawText: "JD text",
+    });
+  });
+
+  it("prefers explicit manual job metadata over strict and fallback values", () => {
+    expect(
+      resolveCanonicalJobSnapshot({
+        jobInput: {
+          title: "Manual Title",
+          company: "Manual Company",
+          location: "Remote",
+          datePosted: "2026-05-01",
+          sourceUrl: "https://example.com/manual-jd",
+        },
+        jobSnapshot: {
+          source: "manual_text",
+          sourceUrl: "https://example.com/strict-jd",
+          title: "Strict Title",
+          company: "Strict Company",
+          location: "New York, NY",
+          datePosted: "2026-05-02",
+          rawText: "Manual JD",
+        },
+        activeRunJob: {
+          title: "Display Title",
+          company: "Display Company",
+          location: "Austin, TX",
+          datePosted: "2026-05-03",
+          sourceUrl: "https://example.com/display-jd",
+        },
+      }),
+    ).toMatchObject({
+      title: "Manual Title",
+      company: "Manual Company",
+      location: "Remote",
+      datePosted: "2026-05-01",
+      sourceUrl: "https://example.com/manual-jd",
+      rawText: "Manual JD",
+    });
+  });
+
+  it("does not overwrite non-empty strict metadata with fallback display values", () => {
+    expect(
+      resolveCanonicalJobSnapshot({
+        jobSnapshot: {
+          source: "linkedin",
+          sourceUrl: "https://www.linkedin.com/jobs/view/456/",
+          title: "Principal Product Manager",
+          company: "Worldpay",
+          location: "Atlanta, GA",
+          datePosted: null,
+          rawText: "JD text",
+        },
+        activeRunJob: {
+          title: "Different DOM Title",
+          company: "Different DOM Company",
+          location: "Remote",
+          datePosted: "2026-05-20",
+          sourceUrl: "https://www.linkedin.com/jobs/view/456/",
+        },
+      }),
+    ).toMatchObject({
+      title: "Principal Product Manager",
+      company: "Worldpay",
+      location: "Atlanta, GA",
+      sourceUrl: "https://www.linkedin.com/jobs/view/456/",
+      rawText: "JD text",
+    });
   });
 });
 

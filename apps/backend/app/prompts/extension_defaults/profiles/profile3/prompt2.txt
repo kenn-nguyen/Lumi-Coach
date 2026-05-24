@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile3.prompt2.template
-prompt_version: v1.0.2
+prompt_version: v1.0.3
 prompt_label: lean-hiring-manager-resume-note
-prompt_notes: Short freeform Prompt 2 that explicitly reads Prompt 1 first, then acts as the hiring manager and returns a compact note with at least six top priorities in rank order for the final writer.
+prompt_notes: Short freeform Prompt 2 that explicitly reads Prompt 1 first, then acts as the hiring manager and returns a compact note separating ideal-match JD priorities from the resume's strongest transferable proof.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes, MINOR for medium changes, and MAJOR for large changes.
 ---
 Read Prompt 1 first.
@@ -12,7 +12,8 @@ You are the hiring manager described in Prompt 1.
 Read the current resume and write a short note to the final resume writer.
 
 Focus only on:
-- what you value most, in priority order;
+- what the ideal candidate should prove most clearly for this JD, in priority order;
+- what this specific resume already proves best and can transfer toward that ideal match;
 - what should be emphasized first;
 - how the resume should be structured at a high level.
 
@@ -23,8 +24,12 @@ Do not write the final resume.
 
 Return plain text with exactly these sections and short bullets:
 
-What I value
+Ideal-match priorities from the JD
 - Give at least 6 bullets, highest priority first.
+- 
+
+Best transferable proof from this resume
+- Call out what already translates best toward the ideal match.
 - 
 
 Page-one focus

@@ -1252,6 +1252,7 @@ async function resumePendingExtensionAction(options = {}) {
         tabId,
         pendingAction.prompt1CustomInstruction ?? "",
         pendingAction.jobInput ?? null,
+        pendingAction.activeRunJob ?? null,
       );
       markRunTerminal(runId, "completed");
       clearActiveRun(runId);
@@ -1709,6 +1710,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             message.payload?.tabId ?? sender?.tab?.id,
             message.payload?.prompt1CustomInstruction ?? "",
             message.payload?.jobInput ?? null,
+            pendingAction.activeRunJob ?? null,
           );
           markRunTerminal(runId, "completed");
           clearActiveRun(runId);
@@ -1741,6 +1743,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     message.payload?.tabId ?? sender?.tab?.id,
                     message.payload?.prompt1CustomInstruction ?? "",
                     message.payload?.jobInput ?? null,
+                    pendingAction.activeRunJob ?? null,
                   );
                   await clearPendingExtensionAction();
                   markRunTerminal(runId, "completed");
