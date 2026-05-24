@@ -20,6 +20,8 @@
     "https://api.openai.com/*",
     "https://gemini.google.com/*",
     "https://generativelanguage.googleapis.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*",
     "https://*.posthog.com/*",
     "https://som-career-coach.onrender.com/*",
     "https://lumi.ceo/*",

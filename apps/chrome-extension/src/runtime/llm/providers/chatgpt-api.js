@@ -1,4 +1,5 @@
 import { logError, logInfo } from '../../log.js';
+import { requiresApiKeyForApiBaseUrl } from '../local-proxy.js';
 import {
   buildApiHttpError,
   buildApiNetworkError,
@@ -46,14 +47,18 @@ async function callChatGptApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, 
   });
 
   let response;
+  const headers = {
+    'content-type': 'application/json',
+  };
+  if (apiKey) {
+    headers.authorization = `Bearer ${apiKey}`;
+  }
+
   try {
     response = await fetch(apiBaseUrl, {
       method: 'POST',
       signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        'content-type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         model,
         ...(systemPrompt ? { instructions: systemPrompt } : {}),
@@ -152,7 +157,7 @@ export async function runChatGptApiPrompt(prompt, options = {}) {
   const systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
   const signal = options.signal;
 
-  if (!apiKey) {
+  if (!apiKey && requiresApiKeyForApiBaseUrl(apiBaseUrl)) {
     return {
       status: 'error',
       message: 'ChatGPT API key is required for the active runner.',

@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt3.template
-prompt_version: v2.1.1
+prompt_version: v2.1.2
 prompt_label: tailored-resume-writer-company-context-summary-brevity-flex-notes
-prompt_notes: Adds explicit workExperience.context handling, enforces concise one-column summary writing, and reserves flex_notes while preserving story-bank firewall rules.
+prompt_notes: Adds explicit workExperience.context handling, enforces concise one-column summary writing, expands bullet targets to 25-42 words, and reserves flex_notes while preserving story-bank firewall rules.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 1. ROLE AND OBJECTIVES
@@ -267,7 +267,7 @@ Avoid:
 - Do not combine team scope, product scope, architecture, revenue, and scale in the same bullet.
 - Avoid "while" clauses that introduce a second major achievement.
 - If Prompt 2 gives an overloaded bullet instruction, simplify it into the strongest single resume bullet rather than preserving every detail.
-- Target 24-32 words per bullet; exceed only when the added detail materially improves recruiter understanding.
+- Target 25-42 words per bullet.
 - You may add a new bullet only when CURRENT_RESUME lacks an important supported proof point and Prompt 2 clearly supports it.
 - Add bullets sparingly: only when they materially improve fit and remain truthful.
 - For the most relevant recent roles, 4-6 bullets are allowed if each bullet adds distinct screening value.

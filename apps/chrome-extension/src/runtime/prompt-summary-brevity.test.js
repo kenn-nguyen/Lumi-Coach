@@ -31,9 +31,10 @@ describe("packaged summary brevity prompt rules", () => {
     const prompt = readPrompt("prompt3.txt");
     const contract = readPrompt("patches/prompt3.output-contract.txt");
 
-    expect(prompt).toContain("prompt_version: v2.1.1");
+    expect(prompt).toContain("prompt_version: v2.1.2");
     expect(prompt).toContain("Target 35-45 words, with a hard maximum of 50 words.");
     expect(prompt).toContain("Do not stack proof lists; move extra proof into role bullets.");
+    expect(prompt).toContain("Target 25-42 words per bullet.");
     expect(contract).toContain("target 35-45 words, and hard maximum 50 words");
   });
 });

@@ -1,4 +1,5 @@
 import { getActiveLlmProfile } from "./llm/profiles.js";
+import { requiresApiKeyForApiBaseUrl } from "./llm/local-proxy.js";
 
 const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
 
@@ -49,20 +50,23 @@ function getProviderRequirement(llmSettings) {
   const hasApiBaseUrl = hasTextContent(profile.apiBaseUrl);
   const hasModel = hasTextContent(profile.model);
   const hasApiKey = hasTextContent(profile.apiKey);
-  const shouldChooseProvider = profile.id === "chatgpt:api" && !hasApiKey;
+  const requiresApiKey = requiresApiKeyForApiBaseUrl(profile.apiBaseUrl);
+  const hasRequiredApiKey = !requiresApiKey || hasApiKey;
+  const shouldChooseProvider =
+    profile.id === "chatgpt:api" && requiresApiKey && !hasApiKey;
 
   return {
-    ready: hasApiBaseUrl && hasModel && hasApiKey,
+    ready: hasApiBaseUrl && hasModel && hasRequiredApiKey,
     label: profile.label,
     detail: shouldChooseProvider
       ? CHOOSE_AI_PROVIDER_MESSAGE
-      : hasApiKey
+      : hasRequiredApiKey
       ? `${profile.label} is ready.`
       : `Add your ${profile.label} API key to continue.`,
     actionLabel: "Choose provider",
     focusTarget: shouldChooseProvider
       ? "provider"
-      : !hasApiKey
+      : !hasRequiredApiKey
       ? "providerApiKey"
       : !hasModel
         ? "providerModel"

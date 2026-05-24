@@ -3,8 +3,19 @@ import { extractJsonFromText } from './json.js';
 import { logError, logInfo } from './log.js';
 import { registerRunCleanup } from './run-control.js';
 
+const chatGptRunSessions = new Map();
+
 function getRuntimeError() {
   return chrome.runtime.lastError?.message;
+}
+
+function getReusableRunId(options = {}) {
+  const reusePopupSession = options?.reusePopupSession === true;
+  const runId =
+    typeof options?.runId === 'string' && options.runId.trim()
+      ? options.runId.trim()
+      : '';
+  return reusePopupSession && runId ? runId : '';
 }
 
 function buildRunTargetUrl(targetUrl) {
@@ -100,6 +111,31 @@ async function waitForChatGptTab(windowId, timeoutMs = 30000) {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error('Timed out waiting for the ChatGPT window.');
+}
+
+async function waitForChatGptTabById(tabId, timeoutMs = 30000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (
+        tab?.id &&
+        tab.status === 'complete' &&
+        (tab.url?.startsWith('https://chatgpt.com') ||
+          tab.url?.startsWith('https://chat.openai.com'))
+      ) {
+        return tab;
+      }
+    } catch {
+      if (Date.now() - startedAt > 500) {
+        throw new Error(
+          'ChatGPT popup was closed before the tab finished loading.',
+        );
+      }
+    }
+    await wait(250);
+  }
+  throw new Error('Timed out waiting for the ChatGPT tab.');
 }
 
 async function closeWindow(windowId) {
@@ -818,6 +854,69 @@ async function openChatGptSession(options = {}) {
   }
 }
 
+export async function getOrOpenChatGptRunSession(runId, options = {}) {
+  const normalizedRunId =
+    typeof runId === 'string' && runId.trim() ? runId.trim() : '';
+  if (!normalizedRunId) {
+    throw new Error('A run id is required to reuse a ChatGPT popup session.');
+  }
+
+  const existing = chatGptRunSessions.get(normalizedRunId);
+  if (existing) {
+    return existing;
+  }
+
+  const session = await openChatGptSession({
+    ...options,
+    runId: normalizedRunId,
+  });
+
+  session.unregisterCleanup?.();
+  session.unregisterCleanup = registerRunCleanup(
+    normalizedRunId,
+    async () => {
+      chatGptRunSessions.delete(normalizedRunId);
+      await closeWindow(session.popupWindowId);
+    },
+  );
+  session.needsReset = false;
+  chatGptRunSessions.set(normalizedRunId, session);
+  return session;
+}
+
+export async function resetChatGptRunSession(runId, options = {}) {
+  const normalizedRunId =
+    typeof runId === 'string' && runId.trim() ? runId.trim() : '';
+  if (!normalizedRunId) {
+    throw new Error('A run id is required to reset a ChatGPT popup session.');
+  }
+
+  const session = await getOrOpenChatGptRunSession(normalizedRunId, options);
+  const requestedTargetUrl = options.targetUrl ?? DEFAULT_CHATGPT_TARGET_URL;
+  const targetUrl = buildRunTargetUrl(requestedTargetUrl);
+  const warmupDelayMs = options.warmupDelayMs ?? 1500;
+
+  logInfo('ChatGptAutomation', 'Resetting reusable ChatGPT popup.', {
+    promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
+    runId: normalizedRunId,
+    tabId: session.tabId,
+    targetUrl,
+    warmupDelayMs,
+  });
+
+  const updatedTab = await chrome.tabs.update(session.tabId, { url: targetUrl });
+  const nextTabId = updatedTab?.id ?? session.tabId;
+  await waitForChatGptTabById(nextTabId);
+  if (warmupDelayMs > 0) {
+    await wait(warmupDelayMs);
+  }
+
+  session.tabId = nextTabId;
+  session.targetUrl = targetUrl;
+  session.needsReset = false;
+  return session;
+}
+
 async function executeChatGptPromptInSession(session, prompt, options = {}) {
   const promptLabel = options.promptLabel ?? session.promptLabel ?? 'Prompt';
   const promptLength = prompt.length;
@@ -925,6 +1024,18 @@ async function closeChatGptSession(session) {
   }
 }
 
+export async function closeChatGptRunSession(runId) {
+  const normalizedRunId =
+    typeof runId === 'string' && runId.trim() ? runId.trim() : '';
+  if (!normalizedRunId) return;
+
+  const session = chatGptRunSessions.get(normalizedRunId);
+  if (!session) return;
+
+  chatGptRunSessions.delete(normalizedRunId);
+  await closeChatGptSession(session);
+}
+
 function shouldRetryPromptRun(result) {
   if (result?.status !== 'dom_changed' || typeof result?.message !== 'string') {
     return false;
@@ -1000,75 +1111,145 @@ async function runChatGptPromptWithRetryInSession(prompt, session, options = {})
   return retryResult;
 }
 
+async function runChatGptPromptInExistingSession(prompt, session, options = {}) {
+  let result = await runChatGptPromptWithRetryInSession(prompt, session, options);
+  const validateResponse =
+    typeof options.validateResponse === 'function'
+      ? options.validateResponse
+      : null;
+  const buildRepairPrompt =
+    typeof options.buildRepairPrompt === 'function'
+      ? options.buildRepairPrompt
+      : null;
+  const maxRepairAttempts = Number.isInteger(options.maxRepairAttempts)
+    ? Math.max(0, options.maxRepairAttempts)
+    : 0;
+
+  if (
+    result.status === 'success' &&
+    validateResponse &&
+    buildRepairPrompt &&
+    maxRepairAttempts > 0
+  ) {
+    for (let attempt = 1; attempt <= maxRepairAttempts; attempt += 1) {
+      const validation = validateResponse(result.rawText);
+      if (!validation || validation.valid) {
+        break;
+      }
+
+      const repairPrompt = buildRepairPrompt({
+        attempt,
+        promptLabel: options.promptLabel ?? 'Prompt',
+        validationMessage:
+          validation.message ?? 'The previous response was invalid.',
+        previousRawText: result.rawText,
+      });
+      if (!repairPrompt || !repairPrompt.trim()) {
+        result = {
+          ...result,
+          validationError:
+            validation.message ?? 'The previous response was invalid.',
+        };
+        break;
+      }
+
+      logInfo(
+        'ChatGptAutomation',
+        'Attempting in-thread repair for invalid response.',
+        {
+          promptLabel: options.promptLabel ?? 'Prompt',
+          attempt,
+          validationMessage:
+            validation.message ?? 'The previous response was invalid.',
+          conversationUrl: result.conversationUrl ?? null,
+        },
+      );
+
+      result = await runChatGptPromptWithRetryInSession(repairPrompt, session, {
+        ...options,
+        disableRetry: false,
+        composeReadyTimeoutMs: Math.min(
+          30000,
+          Math.max(options.composeReadyTimeoutMs ?? 0, 12000),
+        ),
+        sendReadyTimeoutMs: Math.min(
+          30000,
+          Math.max(options.sendReadyTimeoutMs ?? 0, 12000),
+        ),
+        responseTimeoutMs: Math.min(
+          600000,
+          Math.max(options.responseTimeoutMs ?? 0, 300000),
+        ),
+        responseIdleTimeoutMs: Math.min(
+          420000,
+          Math.max(options.responseIdleTimeoutMs ?? 0, 180000),
+        ),
+        responseFirstTokenTimeoutMs: Math.min(
+          420000,
+          Math.max(options.responseFirstTokenTimeoutMs ?? 0, 180000),
+        ),
+      });
+      if (result.status !== 'success') {
+        return result;
+      }
+    }
+
+    if (result.status === 'success') {
+      const finalValidation = validateResponse(result.rawText);
+      if (finalValidation && !finalValidation.valid) {
+        result = {
+          ...result,
+          validationError:
+            finalValidation.message ?? 'The previous response was invalid.',
+        };
+      }
+    }
+  }
+
+  return result;
+}
+
 export async function runChatGptPrompt(prompt, options = {}) {
+  const reusableRunId = getReusableRunId(options);
+  if (reusableRunId) {
+    const session = await getOrOpenChatGptRunSession(reusableRunId, {
+      ...options,
+      promptLength: prompt.length,
+    });
+    if (session.needsReset) {
+      await resetChatGptRunSession(reusableRunId, {
+        ...options,
+        promptLength: prompt.length,
+      });
+    }
+
+    try {
+      const result = await runChatGptPromptInExistingSession(
+        prompt,
+        session,
+        options,
+      );
+      session.needsReset =
+        result.status === 'success' && !result.validationError;
+      return result;
+    } catch (error) {
+      session.needsReset = false;
+      throw error;
+    }
+  }
+
   const session = await openChatGptSession({
     ...options,
     promptLength: prompt.length,
   });
 
   try {
-    let result = await runChatGptPromptWithRetryInSession(prompt, session, options);
-    const validateResponse = typeof options.validateResponse === 'function' ? options.validateResponse : null;
-    const buildRepairPrompt = typeof options.buildRepairPrompt === 'function' ? options.buildRepairPrompt : null;
-    const maxRepairAttempts = Number.isInteger(options.maxRepairAttempts)
-      ? Math.max(0, options.maxRepairAttempts)
-      : 0;
-
-    if (result.status === 'success' && validateResponse && buildRepairPrompt && maxRepairAttempts > 0) {
-      for (let attempt = 1; attempt <= maxRepairAttempts; attempt += 1) {
-        const validation = validateResponse(result.rawText);
-        if (!validation || validation.valid) {
-          break;
-        }
-
-        const repairPrompt = buildRepairPrompt({
-          attempt,
-          promptLabel: options.promptLabel ?? 'Prompt',
-          validationMessage: validation.message ?? 'The previous response was invalid.',
-          previousRawText: result.rawText,
-        });
-        if (!repairPrompt || !repairPrompt.trim()) {
-          result = {
-            ...result,
-            validationError: validation.message ?? 'The previous response was invalid.',
-          };
-          break;
-        }
-
-        logInfo('ChatGptAutomation', 'Attempting in-thread repair for invalid response.', {
-          promptLabel: options.promptLabel ?? 'Prompt',
-          attempt,
-          validationMessage: validation.message ?? 'The previous response was invalid.',
-          conversationUrl: result.conversationUrl ?? null,
-        });
-
-        result = await runChatGptPromptWithRetryInSession(repairPrompt, session, {
-          ...options,
-          disableRetry: false,
-          composeReadyTimeoutMs: Math.min(30000, Math.max(options.composeReadyTimeoutMs ?? 0, 12000)),
-          sendReadyTimeoutMs: Math.min(30000, Math.max(options.sendReadyTimeoutMs ?? 0, 12000)),
-          responseTimeoutMs: Math.min(600000, Math.max(options.responseTimeoutMs ?? 0, 300000)),
-          responseIdleTimeoutMs: Math.min(420000, Math.max(options.responseIdleTimeoutMs ?? 0, 180000)),
-          responseFirstTokenTimeoutMs: Math.min(420000, Math.max(options.responseFirstTokenTimeoutMs ?? 0, 180000)),
-        });
-        if (result.status !== 'success') {
-          return result;
-        }
-      }
-
-      if (result.status === 'success') {
-        const finalValidation = validateResponse(result.rawText);
-        if (finalValidation && !finalValidation.valid) {
-          result = {
-            ...result,
-            validationError: finalValidation.message ?? 'The previous response was invalid.',
-          };
-        }
-      }
-    }
-
-    return result;
+    return await runChatGptPromptInExistingSession(prompt, session, options);
   } finally {
     await closeChatGptSession(session);
   }
+}
+
+export function clearChatGptRunSessionsForTests() {
+  chatGptRunSessions.clear();
 }

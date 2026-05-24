@@ -25,6 +25,22 @@ function isExtensionContextInvalidatedError(error) {
   return /extension context invalidated/i.test(message);
 }
 
+function isLoopbackApiBaseUrl(apiBaseUrl) {
+  if (typeof apiBaseUrl !== "string" || !apiBaseUrl.trim()) return false;
+  try {
+    const parsed = new URL(apiBaseUrl.trim());
+    return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(
+      parsed.hostname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function requiresApiKeyForApiBaseUrl(apiBaseUrl) {
+  return !isLoopbackApiBaseUrl(apiBaseUrl);
+}
+
 const ROOT_ID = "resume-matcher-floating-action";
 const LAUNCHER_ID = "resume-matcher-launcher";
 const LAUNCHER_CLOSE_ID = "resume-matcher-launcher-close";
@@ -338,7 +354,6 @@ const USER_FACING_PROMPT_LABELS = new Map([
   ["Prompt 2", "Positioning plan"],
   ["Prompt 3", "Resume draft"],
   ["Prompt 4", "Base resume setup"],
-  ["JD Guardrail", "Role fit check"],
 ]);
 
 const PROMPT_PROFILE_UI = {
@@ -1170,11 +1185,14 @@ function getOnboardingProviderDraftState() {
   }
 
   if (selectedProfile.mode === "api") {
+    const requiresApiKey = requiresApiKeyForApiBaseUrl(
+      providerDraft.apiBaseUrl,
+    );
     return {
       ready: Boolean(
         providerDraft.apiBaseUrl.trim() &&
         providerDraft.model.trim() &&
-        normalizeSecretValue(providerDraft.apiKey),
+        (!requiresApiKey || normalizeSecretValue(providerDraft.apiKey)),
       ),
       selectedProfile,
       message: PROVIDER_SAVE_REQUIRED_MESSAGE,
@@ -1209,7 +1227,12 @@ function getProviderDraftMissingFields(draft = syncProviderDraftState()) {
     const missing = [];
     if (!String(draft.apiBaseUrl || "").trim()) missing.push("apiBaseUrl");
     if (!String(draft.model || "").trim()) missing.push("model");
-    if (!normalizeSecretValue(draft.apiKey)) missing.push("apiKey");
+    if (
+      requiresApiKeyForApiBaseUrl(draft.apiBaseUrl) &&
+      !normalizeSecretValue(draft.apiKey)
+    ) {
+      missing.push("apiKey");
+    }
     return missing;
   }
   return ["provider"];
@@ -6718,7 +6741,6 @@ function isRunStatusRelevantScope(scope = "") {
     "ClaudeApi",
     "GeminiApi",
     "WebAutomation",
-    "JobGuardrail",
   ]).has(String(scope || "").trim());
 }
 

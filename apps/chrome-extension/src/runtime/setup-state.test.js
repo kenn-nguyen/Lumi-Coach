@@ -284,6 +284,41 @@ describe("getExtensionSetupState onboarding", () => {
     });
   });
 
+  it("accepts a localhost ChatGPT proxy without an API key", () => {
+    const settings = getDefaultLlmSettings();
+    const state = getExtensionSetupState({
+      assets: {
+        llmSettings: {
+          ...settings,
+          profiles: {
+            ...settings.profiles,
+            "chatgpt:api": {
+              ...settings.profiles["chatgpt:api"],
+              apiBaseUrl: "http://127.0.0.1:8317/v1/responses",
+              model: "gpt-5-mini",
+              apiKey: "",
+            },
+          },
+        },
+        backendMasterResume: null,
+      },
+      extensionConnected: true,
+      websiteAuthenticated: true,
+      onboardingProgress: {
+        hasCompletedOnboarding: false,
+        onboardingStep: "provider",
+      },
+    });
+
+    expect(state).toMatchObject({
+      state: "onboarding_assets",
+      step: "assets",
+      provider: {
+        ready: true,
+      },
+    });
+  });
+
   it("moves stale Master Resume onboarding state back to provider when provider is not ready", () => {
     const state = getExtensionSetupState({
       assets: {

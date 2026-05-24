@@ -145,9 +145,29 @@ function normalizeResultForLogging(result) {
   return normalized;
 }
 
-function injectedProviderPromptEntry(prompt, config, options = {}) {
+function buildWatchdogStateLog(state) {
+  if (!state || typeof state !== 'object') {
+    return null;
+  }
+
+  return {
+    phase: state.phase ?? null,
+    resultStatus: state.resultStatus ?? null,
+    busy: state.busy === true,
+    rawTextLength:
+      typeof state.rawText === 'string' ? state.rawText.length : 0,
+    latestTextLength:
+      typeof state.latestTextLength === 'number' ? state.latestTextLength : null,
+    updatedAt: typeof state.updatedAt === 'number' ? state.updatedAt : null,
+    conversationUrl: state.conversationUrl ?? null,
+  };
+}
+
+export function injectedProviderPromptEntry(prompt, config, options = {}) {
+  const WATCHDOG_STATE_KEY = '__resumeMatcherWebAutomationState';
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? config.responseIdleTimeoutMs ?? 25000;
   const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? config.responseFirstTokenTimeoutMs ?? 60000;
+  const responseSettleDelayMs = options.responseSettleDelayMs ?? config.responseSettleDelayMs ?? 900;
   const composerWaitTimeoutMs = 45000;
   const responseTimeoutMs = options.responseTimeoutMs ?? 120000;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? 15000;
@@ -155,11 +175,28 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
   const INPUT_SELECTORS = config.inputSelectors ?? [];
   const SEND_BUTTON_SELECTORS = config.sendButtonSelectors ?? [];
   const STOP_BUTTON_SELECTORS = config.stopButtonSelectors ?? [];
+  const RESPONSE_BUSY_SELECTORS = config.responseBusySelectors ?? [];
   const PRIMARY_ASSISTANT_TEXT_SELECTORS = config.primaryAssistantTextSelectors ?? [];
   const ASSISTANT_TEXT_SELECTORS = config.assistantTextSelectors ?? [];
   const LOGIN_SELECTORS = config.loginSelectors ?? [];
   const providerLabel = config.providerLabel ?? 'LLM';
   const authRequiredMessage = config.authRequiredMessage ?? `Please log into ${providerLabel} in a normal browser tab first.`;
+
+  function publishWatchdogState(partial) {
+    const previous =
+      window[WATCHDOG_STATE_KEY] &&
+      typeof window[WATCHDOG_STATE_KEY] === 'object'
+        ? window[WATCHDOG_STATE_KEY]
+        : {};
+    const next = {
+      ...previous,
+      providerLabel,
+      updatedAt: Date.now(),
+      ...partial,
+    };
+    window[WATCHDOG_STATE_KEY] = next;
+    return next;
+  }
 
   function currentConversationUrl() {
     if (config.urlMatchers.some((matcher) => window.location.href.startsWith(matcher))) {
@@ -335,6 +372,36 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
         testId.includes('stop')
       );
     });
+  }
+
+  function hasResponseBusyIndicator() {
+    for (const selector of RESPONSE_BUSY_SELECTORS) {
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (!isVisible(node)) continue;
+        if (!(node instanceof Element)) return true;
+
+        const streamingAttr = node.getAttribute('data-is-streaming');
+        if (streamingAttr != null) {
+          const normalized = streamingAttr.trim().toLowerCase();
+          if (normalized === 'false' || normalized === '0' || normalized === 'done') {
+            continue;
+          }
+          return true;
+        }
+
+        const busyAttr = node.getAttribute('aria-busy');
+        if (busyAttr != null) {
+          if (busyAttr.trim().toLowerCase() === 'false') {
+            continue;
+          }
+          return true;
+        }
+
+        return true;
+      }
+    }
+    return false;
   }
 
   function collectAssistantCandidates(selectors) {
@@ -611,6 +678,14 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
   }
 
   async function submitPrompt(composer) {
+    publishWatchdogState({
+      phase: 'submitting',
+      resultStatus: null,
+      busy: true,
+      rawText: '',
+      latestTextLength: 0,
+      conversationUrl: currentConversationUrl(),
+    });
     await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
     const readiness = await waitForSendReady(composer);
     const form = composer instanceof HTMLTextAreaElement ? composer.form : composer.closest('form');
@@ -676,7 +751,15 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
 
   async function waitForAssistantResponse(previousAssistant, timeoutMs) {
     const existingSnapshot = getAssistantSnapshot();
-    if (hasNewAssistantTurn(previousAssistant, existingSnapshot) && !hasStopButton()) {
+    if (hasNewAssistantTurn(previousAssistant, existingSnapshot) && !hasStopButton() && !hasResponseBusyIndicator()) {
+      publishWatchdogState({
+        phase: 'completed',
+        resultStatus: 'success',
+        busy: false,
+        rawText: existingSnapshot.latestText,
+        latestTextLength: existingSnapshot.latestText.length,
+        conversationUrl: currentConversationUrl(),
+      });
       return existingSnapshot.latestText;
     }
 
@@ -685,6 +768,7 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
       let sawNewTurn = hasNewAssistantTurn(previousAssistant, existingSnapshot);
       let lastProgressAt = Date.now();
       let lastSnapshot = existingSnapshot;
+      let lastBusyState = hasStopButton() || hasResponseBusyIndicator();
 
       const cleanup = () => {
         observer.disconnect();
@@ -695,11 +779,20 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
 
       const failForTimeout = () => {
         const latestSnapshot = getAssistantSnapshot();
+        const partialText = latestSnapshot.latestText.trim();
+        publishWatchdogState({
+          phase: 'timed_out',
+          resultStatus: 'timeout',
+          busy: false,
+          rawText: partialText,
+          latestTextLength: latestSnapshot.latestText.length,
+          conversationUrl: currentConversationUrl(),
+        });
         cleanup();
         reject(
           new Error(
-            latestSnapshot.latestText.trim()
-              ? `dom_changed:Timed out waiting for the ${providerLabel} response.|partial=${latestSnapshot.latestText.trim()}`
+            partialText
+              ? `dom_changed:Timed out waiting for the ${providerLabel} response.|partial=${partialText}`
               : `dom_changed:Timed out waiting for the ${providerLabel} response.`
           )
         );
@@ -708,19 +801,34 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
       const maybeResolve = () => {
         const latestSnapshot = getAssistantSnapshot();
         const isNewTurn = hasNewAssistantTurn(previousAssistant, latestSnapshot);
+        const busyState = hasStopButton() || hasResponseBusyIndicator();
         const changed =
           latestSnapshot.count !== lastSnapshot.count ||
           latestSnapshot.latestKey !== lastSnapshot.latestKey ||
           latestSnapshot.latestText !== lastSnapshot.latestText;
+        const busyChanged = busyState !== lastBusyState;
 
         if (changed && isNewTurn) {
           sawNewTurn = true;
           lastProgressAt = Date.now();
         }
 
-        lastSnapshot = latestSnapshot;
+        if (busyChanged) {
+          lastProgressAt = Date.now();
+        }
 
-        if (!isNewTurn || hasStopButton()) {
+        lastSnapshot = latestSnapshot;
+        lastBusyState = busyState;
+        publishWatchdogState({
+          phase: 'waiting_for_response',
+          resultStatus: null,
+          busy: busyState,
+          rawText: '',
+          latestTextLength: latestSnapshot.latestText.length,
+          conversationUrl: currentConversationUrl(),
+        });
+
+        if (!isNewTurn || busyState) {
           if (stableTimer !== null) {
             window.clearTimeout(stableTimer);
             stableTimer = null;
@@ -728,14 +836,27 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
           return;
         }
 
-        if (stableTimer !== null) {
-          window.clearTimeout(stableTimer);
+        if (changed || busyChanged) {
+          if (stableTimer !== null) {
+            window.clearTimeout(stableTimer);
+            stableTimer = null;
+          }
         }
 
-        stableTimer = window.setTimeout(() => {
-          cleanup();
-          resolve(latestSnapshot.latestText);
-        }, 900);
+        if (stableTimer === null) {
+          stableTimer = window.setTimeout(() => {
+            publishWatchdogState({
+              phase: 'completed',
+              resultStatus: 'success',
+              busy: false,
+              rawText: latestSnapshot.latestText,
+              latestTextLength: latestSnapshot.latestText.length,
+              conversationUrl: currentConversationUrl(),
+            });
+            cleanup();
+            resolve(latestSnapshot.latestText);
+          }, responseSettleDelayMs);
+        }
       };
 
       const hardTimeoutId = window.setTimeout(() => failForTimeout(), timeoutMs);
@@ -757,6 +878,15 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
     });
   }
 
+  publishWatchdogState({
+    phase: 'initializing',
+    resultStatus: null,
+    busy: false,
+    rawText: '',
+    latestTextLength: 0,
+    conversationUrl: currentConversationUrl(),
+  });
+
   return waitForComposer(composerWaitTimeoutMs)
     .then(async (composer) => {
       const composerReady = await waitForComposerReady(composer, composeReadyTimeoutMs);
@@ -768,6 +898,14 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
       await submitPrompt(composer);
       const rawText = (await waitForAssistantResponse(baseline, responseTimeoutMs)).trim();
       if (!rawText) {
+        publishWatchdogState({
+          phase: 'empty_response',
+          resultStatus: 'dom_changed',
+          busy: false,
+          rawText: '',
+          latestTextLength: 0,
+          conversationUrl: currentConversationUrl(),
+        });
         return {
           status: 'dom_changed',
           message: `${providerLabel} returned an empty assistant response after prompt submission.`,
@@ -783,6 +921,14 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
     .catch((error) => {
       const message = error instanceof Error ? error.message : `dom_changed:Unknown ${providerLabel} automation error.`;
       if (message === 'auth_required') {
+        publishWatchdogState({
+          phase: 'auth_required',
+          resultStatus: 'auth_required',
+          busy: false,
+          rawText: '',
+          latestTextLength: 0,
+          conversationUrl: currentConversationUrl(),
+        });
         return {
           status: 'auth_required',
           message: authRequiredMessage,
@@ -798,6 +944,14 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
       const cleanBeforePartial = partialIndex >= 0 ? message.slice(0, partialIndex) : message;
       const cleanMessage = debugIndex >= 0 ? cleanBeforePartial.slice(0, debugIndex) : cleanBeforePartial;
       const submitDebug = debugIndex >= 0 ? message.slice(debugIndex + debugMarker.length, partialIndex >= 0 ? partialIndex : undefined) : undefined;
+      publishWatchdogState({
+        phase: 'failed',
+        resultStatus: 'dom_changed',
+        busy: false,
+        rawText: partialRawText ?? '',
+        latestTextLength: typeof partialRawText === 'string' ? partialRawText.length : 0,
+        conversationUrl: currentConversationUrl(),
+      });
       return {
         status: 'dom_changed',
         message: cleanMessage.startsWith('dom_changed:') ? cleanMessage.replace('dom_changed:', '').trim() : cleanMessage,
@@ -806,6 +960,116 @@ function injectedProviderPromptEntry(prompt, config, options = {}) {
         conversationUrl: currentConversationUrl(),
       };
     });
+}
+
+async function readInjectedProviderExecutionState(tabId) {
+  try {
+    const [{ result }] =
+      (await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const state = window.__resumeMatcherWebAutomationState;
+          if (!state || typeof state !== 'object') {
+            return null;
+          }
+          return {
+            phase: typeof state.phase === 'string' ? state.phase : null,
+            resultStatus:
+              typeof state.resultStatus === 'string'
+                ? state.resultStatus
+                : null,
+            busy: state.busy === true,
+            rawText: typeof state.rawText === 'string' ? state.rawText : '',
+            latestTextLength:
+              typeof state.latestTextLength === 'number'
+                ? state.latestTextLength
+                : null,
+            updatedAt:
+              typeof state.updatedAt === 'number' ? state.updatedAt : null,
+            conversationUrl:
+              typeof state.conversationUrl === 'string'
+                ? state.conversationUrl
+                : undefined,
+          };
+        },
+      })) ?? [];
+    return result ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function startWebAutomationCompletionWatchdog(session, config, options = {}) {
+  const promptLabel = options.promptLabel ?? session.promptLabel ?? 'Prompt';
+  const pollIntervalMs = options.watchdogPollIntervalMs ?? 3000;
+  let stopped = false;
+  let timerId = null;
+  let lastCompletedState = null;
+
+  const stop = () => {
+    stopped = true;
+    if (timerId !== null) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+  };
+
+  const promise = new Promise((resolve) => {
+    const schedule = () => {
+      if (stopped) return;
+      timerId = setTimeout(runTick, pollIntervalMs);
+    };
+
+    const runTick = async () => {
+      if (stopped) return;
+      const state = await readInjectedProviderExecutionState(session.tabId);
+      if (!state) {
+        schedule();
+        return;
+      }
+
+      if (
+        state.resultStatus === 'success' &&
+        typeof state.rawText === 'string' &&
+        state.rawText.trim()
+      ) {
+        const normalizedText = state.rawText.trim();
+        const isSameCompletedState =
+          lastCompletedState &&
+          lastCompletedState.updatedAt === state.updatedAt &&
+          lastCompletedState.rawText === normalizedText;
+
+        if (isSameCompletedState) {
+          stop();
+          logInfo(config.scope, 'Completion watchdog recovered a stale popup result.', {
+            promptLabel,
+            tabId: session.tabId,
+            watchdogState: buildWatchdogStateLog(state),
+          });
+          resolve({
+            status: 'success',
+            rawText: normalizedText,
+            conversationUrl: state.conversationUrl,
+            recoveredByWatchdog: true,
+          });
+          return;
+        }
+
+        lastCompletedState = {
+          updatedAt: state.updatedAt ?? null,
+          rawText: normalizedText,
+        };
+      } else {
+        lastCompletedState = null;
+      }
+
+      schedule();
+    };
+
+    schedule();
+  });
+
+  return { promise, stop };
 }
 
 function shouldRetryPromptRun(result, config) {
@@ -843,6 +1107,7 @@ async function openWebAutomationSession(config, options = {}) {
   const promptLength = options.promptLength ?? 0;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? null;
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? null;
+  const responseTimeoutMs = options.responseTimeoutMs ?? config.responseTimeoutMs ?? null;
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? config.responseIdleTimeoutMs ?? null;
   const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? config.responseFirstTokenTimeoutMs ?? null;
   const warmupDelayMs = options.warmupDelayMs ?? 1500;
@@ -854,6 +1119,7 @@ async function openWebAutomationSession(config, options = {}) {
     promptLength,
     composeReadyTimeoutMs,
     sendReadyTimeoutMs,
+    responseTimeoutMs,
     responseIdleTimeoutMs,
     responseFirstTokenTimeoutMs,
     warmupDelayMs,
@@ -889,7 +1155,7 @@ async function executeWebAutomationPromptInSession(session, prompt, config, opti
   const promptLength = prompt.length;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? Math.min(30000, Math.max(15000, Math.ceil(promptLength / 3)));
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? Math.min(30000, Math.max(12000, Math.ceil(promptLength / 3)));
-  const responseTimeoutMs = options.responseTimeoutMs ?? 120000;
+  const responseTimeoutMs = options.responseTimeoutMs ?? config.responseTimeoutMs ?? 120000;
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? config.responseIdleTimeoutMs ?? 25000;
   const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? config.responseFirstTokenTimeoutMs ?? 60000;
 
@@ -909,8 +1175,24 @@ async function executeWebAutomationPromptInSession(session, prompt, config, opti
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedProviderPromptEntry,
-      args: [prompt, config, { responseTimeoutMs, responseIdleTimeoutMs, responseFirstTokenTimeoutMs, composeReadyTimeoutMs, sendReadyTimeoutMs }],
+      args: [
+        prompt,
+        config,
+        {
+          responseTimeoutMs,
+          responseIdleTimeoutMs,
+          responseFirstTokenTimeoutMs,
+          responseSettleDelayMs: options.responseSettleDelayMs ?? config.responseSettleDelayMs,
+          composeReadyTimeoutMs,
+          sendReadyTimeoutMs,
+        },
+      ],
     });
+    const completionWatchdog = startWebAutomationCompletionWatchdog(
+      session,
+      config,
+      options,
+    );
 
     const progressPoll = setInterval(async () => {
       if (settled) return;
@@ -939,9 +1221,23 @@ async function executeWebAutomationPromptInSession(session, prompt, config, opti
     }, 4000);
 
     try {
-      executionResults = await executionPromise;
+      const racedResult = await Promise.race([
+        executionPromise.then((results) => ({
+          kind: 'execution',
+          results,
+        })),
+        completionWatchdog.promise.then((result) => ({
+          kind: 'watchdog',
+          result,
+        })),
+      ]);
+      if (racedResult.kind === 'watchdog') {
+        return racedResult.result;
+      }
+      executionResults = racedResult.results;
     } finally {
       settled = true;
+      completionWatchdog.stop();
       clearInterval(progressPoll);
     }
   } catch (error) {
@@ -1023,9 +1319,9 @@ async function runWebAutomationPromptWithRetryInSession(prompt, session, config,
     disableRetry: true,
     composeReadyTimeoutMs: Math.min(45000, Math.max(options.composeReadyTimeoutMs ?? 0, Math.ceil(prompt.length / 2), 20000)),
     sendReadyTimeoutMs: Math.min(45000, Math.max(options.sendReadyTimeoutMs ?? 0, Math.ceil(prompt.length / 2), 18000)),
-    responseTimeoutMs: Math.min(240000, Math.max(options.responseTimeoutMs ?? 0, 180000)),
-    responseIdleTimeoutMs: Math.min(180000, Math.max(options.responseIdleTimeoutMs ?? 0, config.responseIdleTimeoutMs ?? 0, 90000)),
-    responseFirstTokenTimeoutMs: Math.min(180000, Math.max(options.responseFirstTokenTimeoutMs ?? 0, config.responseFirstTokenTimeoutMs ?? 0, 90000)),
+    responseTimeoutMs: Math.max(options.responseTimeoutMs ?? 0, config.responseTimeoutMs ?? 0, 180000),
+    responseIdleTimeoutMs: Math.max(options.responseIdleTimeoutMs ?? 0, config.responseIdleTimeoutMs ?? 0, 90000),
+    responseFirstTokenTimeoutMs: Math.max(options.responseFirstTokenTimeoutMs ?? 0, config.responseFirstTokenTimeoutMs ?? 0, 90000),
   });
   if (canUsePartialJson(retryResult)) {
     logInfo(config.scope, config.partialRetrySuccessMessage, {
@@ -1090,9 +1386,9 @@ export async function runWebAutomationPrompt(prompt, config, options = {}) {
           disableRetry: false,
           composeReadyTimeoutMs: Math.min(30000, Math.max(options.composeReadyTimeoutMs ?? 0, 12000)),
           sendReadyTimeoutMs: Math.min(30000, Math.max(options.sendReadyTimeoutMs ?? 0, 12000)),
-          responseTimeoutMs: Math.min(180000, Math.max(options.responseTimeoutMs ?? 0, 120000)),
-          responseIdleTimeoutMs: Math.min(120000, Math.max(options.responseIdleTimeoutMs ?? 0, config.responseIdleTimeoutMs ?? 0, 45000)),
-          responseFirstTokenTimeoutMs: Math.min(120000, Math.max(options.responseFirstTokenTimeoutMs ?? 0, config.responseFirstTokenTimeoutMs ?? 0, 45000)),
+          responseTimeoutMs: Math.max(options.responseTimeoutMs ?? 0, config.responseTimeoutMs ?? 0, 120000),
+          responseIdleTimeoutMs: Math.max(options.responseIdleTimeoutMs ?? 0, config.responseIdleTimeoutMs ?? 0, 45000),
+          responseFirstTokenTimeoutMs: Math.max(options.responseFirstTokenTimeoutMs ?? 0, config.responseFirstTokenTimeoutMs ?? 0, 45000),
         });
         if (result.status !== 'success') {
           return result;

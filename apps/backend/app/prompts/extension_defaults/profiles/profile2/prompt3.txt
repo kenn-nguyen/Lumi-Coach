@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt3.template
-prompt_version: v3.1.0
+prompt_version: v3.1.1
 prompt_label: hard-stretch-resume-writer-storybank-feedback-v12-resume-actionable-questions
-prompt_notes: Executes Prompt 2 into final resume JSON and renders only the top 3-4 resume-actionable story-bank questions, prioritizing bullet strengthening, title/summary unlocks, and replacement-worthy new stories.
+prompt_notes: Executes Prompt 2 into final resume JSON, expands bullet targets to 25-42 words, and renders only the top 3-4 resume-actionable story-bank questions, prioritizing bullet strengthening, title/summary unlocks, and replacement-worthy new stories.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 You are a top-tier PM resume writer for competitive product roles.
@@ -251,8 +251,8 @@ For each bullet, synthesize:
 
 Use the metric early, but omit secondary metrics when they make the bullet feel crowded.
 
-Target normal bullets at 24-34 words.
-Allow a compressed current-role bullet up to 42 words only when it must combine launch, result, and mechanism into one bullet.
+Target bullets at 25-42 words.
+Compressed current-role bullets may use the upper end of that range when they must combine launch, result, and mechanism into one bullet.
 If a bullet reads like an instruction turned into a sentence, rewrite it into a sharper resume bullet.
 
 Final bullet clarity gate:

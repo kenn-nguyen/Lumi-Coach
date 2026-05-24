@@ -6,7 +6,6 @@ import {
   extractPrompt4PayloadFromText,
   extractPrompt4ResumeDataFromText,
 } from "./json.js";
-import { evaluateJobDescriptionGuardrail } from "./job-guardrail.js";
 import {
   buildPromptRunMetadata,
   renderSystemPromptWithMetadata,
@@ -40,6 +39,7 @@ import {
 } from "./api.js";
 import { logError, logInfo } from "./log.js";
 import { logWarn } from "./log.js";
+import { closeChatGptRunSession } from "./chatgpt.js";
 import {
   getExtensionState,
   getUserAssets,
@@ -50,6 +50,7 @@ import { alignSectionMetaToSourceResume } from "./resume-structure.js";
 import { captureExtensionEvent } from "./analytics.js";
 import { getActiveLlmProfile } from "./llm/profiles.js";
 import { runPrompt } from "./llm/runners.js";
+import { requiresApiKeyForApiBaseUrl } from "./llm/local-proxy.js";
 import {
   formatApiProviderErrorForUser,
   isApiProviderError,
@@ -86,6 +87,12 @@ function createCancelHelpers(runId) {
       }
     },
   };
+}
+
+export function shouldReuseChatGptPopupSession(profile, runId) {
+  const normalizedRunId =
+    typeof runId === "string" && runId.trim() ? runId.trim() : "";
+  return profile?.id === "chatgpt:web_automation" && Boolean(normalizedRunId);
 }
 
 async function getActiveLinkedInTabId(tabId) {
@@ -164,25 +171,17 @@ function hasBackendApifyFallback(settings) {
 
 export function shouldAcceptLocalSnapshot({
   snapshot,
-  guardrail,
   isManualInput = false,
 }) {
-  if (isManualInput) return Boolean(guardrail?.is_job_description);
-  if (!guardrail?.is_job_description) return false;
-
-  if (snapshot?.readiness === "full_jd_ready") return true;
-
-  const localConfidence = snapshot?.quality?.confidence;
-  if (localConfidence === "high") return true;
-
-  if (localConfidence !== "medium") return false;
-
-  const descriptionLength = snapshot?.quality?.descriptionLength ?? 0;
-  const rawTextLength = snapshot?.rawText?.length ?? 0;
-  const guardrailConfidence = guardrail?.confidence;
-  const minimumLength = guardrailConfidence === "high" ? 900 : 1400;
-
-  return descriptionLength >= minimumLength && rawTextLength >= minimumLength;
+  if (!snapshot) return false;
+  if (isManualInput) return Boolean(snapshot?.rawText?.trim());
+  if (
+    snapshot?.readiness === "full_jd_ready" ||
+    snapshot?.readiness === "manual_jd_ready"
+  ) {
+    return true;
+  }
+  return Boolean(snapshot?.rawText?.trim());
 }
 
 function buildManualEntryRequiredError(reason = "") {
@@ -195,8 +194,6 @@ function buildManualEntryRequiredError(reason = "") {
 async function resolveValidatedJobSnapshot({
   activeTabId,
   jobInput,
-  activeLlmProfile,
-  systemPrompt,
   apifyFallbackSettings,
 }) {
   const isManualInput = Boolean(jobInput?.rawText?.trim());
@@ -236,38 +233,23 @@ async function resolveValidatedJobSnapshot({
     ) {
       resolvedSourceUrlHint = localSnapshot.sourceUrl;
     }
-    const guardrail = await evaluateJobDescriptionGuardrail(
-      localSnapshot,
-      activeLlmProfile,
-      systemPrompt,
-    );
-    localSnapshot.diagnostics = {
-      ...(localSnapshot.diagnostics || {}),
-      guardrail,
-    };
-    if (
-      shouldAcceptLocalSnapshot({
-        snapshot: localSnapshot,
-        guardrail,
-        isManualInput,
-      })
-    ) {
+    if (shouldAcceptLocalSnapshot({ snapshot: localSnapshot, isManualInput })) {
       return localSnapshot;
     }
 
     logInfo(
       "Orchestrator",
-      "Primary extraction did not meet acceptance threshold.",
+      "Primary extraction did not meet local readiness threshold.",
       {
         source: localSnapshot.source,
         localConfidence: localSnapshot?.quality?.confidence || "unknown",
-        confidence: guardrail.confidence,
-        reason: guardrail.reason,
+        readiness: localSnapshot.readiness ?? null,
+        rawTextLength: localSnapshot.rawText?.length ?? 0,
       },
     );
 
     if (isManualInput) {
-      throw buildManualEntryRequiredError(guardrail.reason);
+      throw buildManualEntryRequiredError();
     }
   }
 
@@ -277,29 +259,21 @@ async function resolveValidatedJobSnapshot({
         resolvedSourceUrlHint,
         apifyFallbackSettings,
       );
-      const apifyGuardrail = await evaluateJobDescriptionGuardrail(
-        apifySnapshot,
-        activeLlmProfile,
-        systemPrompt,
-      );
       apifySnapshot.diagnostics = {
         ...(apifySnapshot.diagnostics || {}),
-        guardrail: apifyGuardrail,
         localFailure:
           localFailure?.message ||
-          localSnapshot?.diagnostics?.guardrail?.reason ||
           null,
       };
 
-      if (apifyGuardrail.is_job_description) {
+      if (shouldAcceptLocalSnapshot({ snapshot: apifySnapshot })) {
         return apifySnapshot;
       }
 
-      logInfo("Orchestrator", "Apify fallback failed JD guardrail.", {
-        confidence: apifyGuardrail.confidence,
-        reason: apifyGuardrail.reason,
+      logInfo("Orchestrator", "Apify fallback did not return usable text.", {
+        rawTextLength: apifySnapshot.rawText?.length ?? 0,
       });
-      throw buildManualEntryRequiredError(apifyGuardrail.reason);
+      throw buildManualEntryRequiredError();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logWarn("Orchestrator", "Extension Apify fallback failed.", {
@@ -315,29 +289,21 @@ async function resolveValidatedJobSnapshot({
       const backendApifySnapshot = await fetchBackendApifyLinkedInFallback(
         resolvedSourceUrlHint,
       );
-      const backendApifyGuardrail = await evaluateJobDescriptionGuardrail(
-        backendApifySnapshot,
-        activeLlmProfile,
-        systemPrompt,
-      );
       backendApifySnapshot.diagnostics = {
         ...(backendApifySnapshot.diagnostics || {}),
-        guardrail: backendApifyGuardrail,
         localFailure:
           localFailure?.message ||
-          localSnapshot?.diagnostics?.guardrail?.reason ||
           null,
       };
 
-      if (backendApifyGuardrail.is_job_description) {
+      if (shouldAcceptLocalSnapshot({ snapshot: backendApifySnapshot })) {
         return backendApifySnapshot;
       }
 
-      logInfo("Orchestrator", "Backend Apify fallback failed JD guardrail.", {
-        confidence: backendApifyGuardrail.confidence,
-        reason: backendApifyGuardrail.reason,
+      logInfo("Orchestrator", "Backend Apify fallback did not return usable text.", {
+        rawTextLength: backendApifySnapshot.rawText?.length ?? 0,
       });
-      throw buildManualEntryRequiredError(backendApifyGuardrail.reason);
+      throw buildManualEntryRequiredError();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logWarn("Orchestrator", "Backend Apify fallback failed.", {
@@ -353,7 +319,7 @@ async function resolveValidatedJobSnapshot({
   }
 
   throw buildManualEntryRequiredError(
-    localSnapshot?.diagnostics?.guardrail?.reason || "",
+    "",
   );
 }
 
@@ -451,7 +417,9 @@ export function getMasterResumeImportProviderIssue(profile) {
     const hasModel = typeof profile.model === "string" && profile.model.trim();
     const hasApiKey =
       typeof profile.apiKey === "string" && profile.apiKey.trim();
-    return hasApiBaseUrl && hasModel && hasApiKey
+    const hasRequiredApiKey =
+      !requiresApiKeyForApiBaseUrl(profile.apiBaseUrl) || hasApiKey;
+    return hasApiBaseUrl && hasModel && hasRequiredApiKey
       ? ""
       : MASTER_IMPORT_PROVIDER_SETUP_MESSAGE;
   }
@@ -1336,13 +1304,23 @@ export async function generateResumeForLinkedInJob(
   let prompt4Raw = null;
   let prompt4Result = null;
   let prompt1Input = null;
+  let prompt1Raw = null;
+  let prompt1Result = null;
   let prompt1DurationMs = null;
   let prompt2Input = null;
+  let prompt2Raw = null;
+  let prompt2Result = null;
   let prompt2DurationMs = null;
   let prompt3Input = null;
+  let prompt3Raw = null;
+  let prompt3Parsed = null;
+  let prompt3Feedback = null;
   let prompt3DurationMs = null;
   let patchDurationMs = null;
   let promptMetadata = null;
+  let serverPrompt2Artifact = null;
+  let patchPayload = null;
+  let validationErrors = [];
   let systemPrompt = "";
   let systemPromptRendered = {
     text: "",
@@ -1370,6 +1348,10 @@ export async function generateResumeForLinkedInJob(
   const currentExtensionState = await getExtensionState();
   const runId = currentExtensionState?.sessionId ?? null;
   const cancel = createCancelHelpers(runId);
+  const reuseChatGptPopup = shouldReuseChatGptPopupSession(
+    activeLlmProfile,
+    runId,
+  );
 
   cancel.throwIfCanceled("job tab resolution");
   const activeTabId = manualJobInputUsed
@@ -1383,8 +1365,6 @@ export async function generateResumeForLinkedInJob(
   const jobSnapshot = await resolveValidatedJobSnapshot({
     activeTabId,
     jobInput,
-    activeLlmProfile,
-    systemPrompt,
     apifyFallbackSettings,
   });
   cancel.throwIfCanceled("job extraction");
@@ -1562,334 +1542,343 @@ export async function generateResumeForLinkedInJob(
     promptMetadata,
   });
 
-  logInfo("Orchestrator", "Rendering Prompt 1.");
-  const prompt1Rendered = await renderPrompt1WithMetadata(
-    promptContext,
-    activeLlmProfile,
-  );
-  const prompt1 = prompt1Rendered.text;
-  prompt1Input = prompt1;
-  promptMetadataByName.prompt1 = prompt1Rendered.metadata;
-  await refreshPromptMetadata();
-  await setExtensionState({
-    prompt1Input,
-    promptMetadata,
-  });
-  logPromptDebug("Prompt 1", "input", prompt1);
+  try {
+    logInfo("Orchestrator", "Rendering Prompt 1.");
+    const prompt1Rendered = await renderPrompt1WithMetadata(
+      promptContext,
+      activeLlmProfile,
+    );
+    const prompt1 = prompt1Rendered.text;
+    prompt1Input = prompt1;
+    promptMetadataByName.prompt1 = prompt1Rendered.metadata;
+    await refreshPromptMetadata();
+    await setExtensionState({
+      prompt1Input,
+      promptMetadata,
+    });
+    logPromptDebug("Prompt 1", "input", prompt1);
 
-  logInfo("Orchestrator", "Running Prompt 1.");
-  const prompt1StartedMs = Date.now();
-  cancel.throwIfCanceled("Prompt 1");
-  await captureExtensionEvent("prompt_stage_started", {
-    surface: "run_view",
-    run_id: runId,
-    stage: 1,
-    stage_label: "analyze_jd",
-  });
-  const prompt1Run = await runPrompt(prompt1, {
-    profile: activeLlmProfile,
-    promptLabel: "Prompt 1",
-    systemPrompt,
-    runId,
-    signal: cancel.signal(),
-    validateResponse: validatePrompt1RawOutput,
-    buildRepairPrompt: buildPrompt1RepairPrompt,
-    maxRepairAttempts: 1,
-  });
-  prompt1DurationMs = Date.now() - prompt1StartedMs;
-  cancel.throwIfCanceled("Prompt 1");
-  const prompt1Raw =
-    prompt1Run.status === "success"
-      ? prompt1Run.rawText
-      : (prompt1Run.partialRawText ?? "");
-  await setExtensionState({
-    prompt1Raw,
-    prompt1DurationMs,
-  });
-  if (prompt1Run.status === "canceled") {
-    throwIfRunCanceled(runId, "Prompt 1");
-  }
-  if (prompt1Run.status !== "success") {
-    logError("Orchestrator", "Prompt 1 failed.", prompt1Run);
-    await captureExtensionEvent("prompt_stage_failed", {
+    logInfo("Orchestrator", "Running Prompt 1.");
+    const prompt1StartedMs = Date.now();
+    cancel.throwIfCanceled("Prompt 1");
+    await captureExtensionEvent("prompt_stage_started", {
       surface: "run_view",
       run_id: runId,
       stage: 1,
       stage_label: "analyze_jd",
-      error_message: prompt1Run.message ?? "Prompt 1 failed.",
     });
-    throw new Error(`Prompt 1 failed: ${prompt1Run.message}`);
-  }
-  if (prompt1Run.validationError) {
-    logError("Orchestrator", "Prompt 1 failed validation after repair.", {
-      validationError: prompt1Run.validationError,
-      conversationUrl: prompt1Run.conversationUrl ?? null,
+    const prompt1Run = await runPrompt(prompt1, {
+      profile: activeLlmProfile,
+      promptLabel: "Prompt 1",
+      systemPrompt,
+      runId,
+      signal: cancel.signal(),
+      validateResponse: validatePrompt1RawOutput,
+      buildRepairPrompt: buildPrompt1RepairPrompt,
+      maxRepairAttempts: 1,
+      reusePopupSession: reuseChatGptPopup,
     });
-    await captureExtensionEvent("prompt_stage_failed", {
+    prompt1DurationMs = Date.now() - prompt1StartedMs;
+    cancel.throwIfCanceled("Prompt 1");
+    prompt1Raw =
+      prompt1Run.status === "success"
+        ? prompt1Run.rawText
+        : (prompt1Run.partialRawText ?? "");
+    await setExtensionState({
+      prompt1Raw,
+      prompt1DurationMs,
+    });
+    if (prompt1Run.status === "canceled") {
+      throwIfRunCanceled(runId, "Prompt 1");
+    }
+    if (prompt1Run.status !== "success") {
+      logError("Orchestrator", "Prompt 1 failed.", prompt1Run);
+      await captureExtensionEvent("prompt_stage_failed", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 1,
+        stage_label: "analyze_jd",
+        error_message: prompt1Run.message ?? "Prompt 1 failed.",
+      });
+      throw new Error(`Prompt 1 failed: ${prompt1Run.message}`);
+    }
+    if (prompt1Run.validationError) {
+      logError("Orchestrator", "Prompt 1 failed validation after repair.", {
+        validationError: prompt1Run.validationError,
+        conversationUrl: prompt1Run.conversationUrl ?? null,
+      });
+      await captureExtensionEvent("prompt_stage_failed", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 1,
+        stage_label: "analyze_jd",
+        error_message: prompt1Run.validationError,
+      });
+      throw new Error(`Prompt 1 failed: ${prompt1Run.validationError}`);
+    }
+    logInfo("Orchestrator", "Parsing Prompt 1 output.");
+    logPromptDebug("Prompt 1", "output", prompt1Raw);
+    prompt1Result = extractJsonFromText(prompt1Raw, {
+      validate: (candidate) => validatePrompt1Data(candidate).length === 0,
+    });
+    promptContext.prompt1Json = prompt1Result;
+    await setExtensionState({
+      prompt1Raw,
+      prompt1Result,
+      prompt1DurationMs,
+      promptMetadata,
+      status: SESSION_STATUS.prompt1Done,
+      resumeSource: currentResume,
+    });
+    await captureExtensionEvent("prompt_stage_succeeded", {
       surface: "run_view",
       run_id: runId,
       stage: 1,
       stage_label: "analyze_jd",
-      error_message: prompt1Run.validationError,
     });
-    throw new Error(`Prompt 1 failed: ${prompt1Run.validationError}`);
-  }
-  logInfo("Orchestrator", "Parsing Prompt 1 output.");
-  logPromptDebug("Prompt 1", "output", prompt1Raw);
-  const prompt1Result = extractJsonFromText(prompt1Raw, {
-    validate: (candidate) => validatePrompt1Data(candidate).length === 0,
-  });
-  promptContext.prompt1Json = prompt1Result;
-  await setExtensionState({
-    prompt1Raw,
-    prompt1Result,
-    prompt1DurationMs,
-    promptMetadata,
-    status: SESSION_STATUS.prompt1Done,
-    resumeSource: currentResume,
-  });
-  await captureExtensionEvent("prompt_stage_succeeded", {
-    surface: "run_view",
-    run_id: runId,
-    stage: 1,
-    stage_label: "analyze_jd",
-  });
 
-  logInfo("Orchestrator", "Rendering Prompt 2.");
-  const prompt2Rendered = await renderPrompt2WithMetadata(
-    promptContext,
-    activeLlmProfile,
-  );
-  const prompt2 = prompt2Rendered.text;
-  prompt2Input = prompt2;
-  promptMetadataByName.prompt2 = prompt2Rendered.metadata;
-  await refreshPromptMetadata();
-  await setExtensionState({
-    prompt2Input,
-    promptMetadata,
-  });
-  logPromptDebug("Prompt 2", "input", prompt2);
-  logInfo("Orchestrator", "Running Prompt 2.");
-  const prompt2StartedMs = Date.now();
-  cancel.throwIfCanceled("Prompt 2");
-  await captureExtensionEvent("prompt_stage_started", {
-    surface: "run_view",
-    run_id: runId,
-    stage: 2,
-    stage_label: "strategize_positioning",
-  });
-  const prompt2Run = await runPrompt(prompt2, {
-    profile: activeLlmProfile,
-    promptLabel: "Prompt 2",
-    systemPrompt,
-    runId,
-    signal: cancel.signal(),
-    validateResponse: validatePrompt2RawOutput,
-    buildRepairPrompt: buildPrompt2RepairPrompt,
-    maxRepairAttempts: 1,
-  });
-  prompt2DurationMs = Date.now() - prompt2StartedMs;
-  cancel.throwIfCanceled("Prompt 2");
-  const prompt2Raw =
-    prompt2Run.status === "success"
-      ? prompt2Run.rawText
-      : (prompt2Run.partialRawText ?? "");
-  await setExtensionState({
-    prompt2Raw,
-    prompt2DurationMs,
-  });
-  if (prompt2Run.status === "canceled") {
-    throwIfRunCanceled(runId, "Prompt 2");
-  }
-  if (prompt2Run.status !== "success") {
-    logError("Orchestrator", "Prompt 2 failed.", prompt2Run);
-    await captureExtensionEvent("prompt_stage_failed", {
+    logInfo("Orchestrator", "Rendering Prompt 2.");
+    const prompt2Rendered = await renderPrompt2WithMetadata(
+      promptContext,
+      activeLlmProfile,
+    );
+    const prompt2 = prompt2Rendered.text;
+    prompt2Input = prompt2;
+    promptMetadataByName.prompt2 = prompt2Rendered.metadata;
+    await refreshPromptMetadata();
+    await setExtensionState({
+      prompt2Input,
+      promptMetadata,
+    });
+    logPromptDebug("Prompt 2", "input", prompt2);
+    logInfo("Orchestrator", "Running Prompt 2.");
+    const prompt2StartedMs = Date.now();
+    cancel.throwIfCanceled("Prompt 2");
+    await captureExtensionEvent("prompt_stage_started", {
       surface: "run_view",
       run_id: runId,
       stage: 2,
       stage_label: "strategize_positioning",
-      error_message: prompt2Run.message ?? "Prompt 2 failed.",
     });
-    throw new Error(`Prompt 2 failed: ${prompt2Run.message}`);
-  }
-  if (prompt2Run.validationError) {
-    logError("Orchestrator", "Prompt 2 failed validation after repair.", {
-      validationError: prompt2Run.validationError,
-      conversationUrl: prompt2Run.conversationUrl ?? null,
+    const prompt2Run = await runPrompt(prompt2, {
+      profile: activeLlmProfile,
+      promptLabel: "Prompt 2",
+      systemPrompt,
+      runId,
+      signal: cancel.signal(),
+      validateResponse: validatePrompt2RawOutput,
+      buildRepairPrompt: buildPrompt2RepairPrompt,
+      maxRepairAttempts: 1,
+      reusePopupSession: reuseChatGptPopup,
     });
-    await captureExtensionEvent("prompt_stage_failed", {
+    prompt2DurationMs = Date.now() - prompt2StartedMs;
+    cancel.throwIfCanceled("Prompt 2");
+    prompt2Raw =
+      prompt2Run.status === "success"
+        ? prompt2Run.rawText
+        : (prompt2Run.partialRawText ?? "");
+    await setExtensionState({
+      prompt2Raw,
+      prompt2DurationMs,
+    });
+    if (prompt2Run.status === "canceled") {
+      throwIfRunCanceled(runId, "Prompt 2");
+    }
+    if (prompt2Run.status !== "success") {
+      logError("Orchestrator", "Prompt 2 failed.", prompt2Run);
+      await captureExtensionEvent("prompt_stage_failed", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 2,
+        stage_label: "strategize_positioning",
+        error_message: prompt2Run.message ?? "Prompt 2 failed.",
+      });
+      throw new Error(`Prompt 2 failed: ${prompt2Run.message}`);
+    }
+    if (prompt2Run.validationError) {
+      logError("Orchestrator", "Prompt 2 failed validation after repair.", {
+        validationError: prompt2Run.validationError,
+        conversationUrl: prompt2Run.conversationUrl ?? null,
+      });
+      await captureExtensionEvent("prompt_stage_failed", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 2,
+        stage_label: "strategize_positioning",
+        error_message: prompt2Run.validationError,
+      });
+      throw new Error(`Prompt 2 failed: ${prompt2Run.validationError}`);
+    }
+    logInfo("Orchestrator", "Parsing Prompt 2 output.");
+    logPromptDebug("Prompt 2", "output", prompt2Raw);
+    prompt2Result = extractJsonFromText(prompt2Raw, {
+      validate: (candidate) => validatePrompt2Data(candidate).length === 0,
+    });
+    promptContext.prompt2Json = prompt2Result;
+    await setExtensionState({
+      prompt2Raw,
+      prompt2Result,
+      prompt2DurationMs,
+      promptMetadata,
+      status: SESSION_STATUS.prompt2Done,
+    });
+    await captureExtensionEvent("prompt_stage_succeeded", {
       surface: "run_view",
       run_id: runId,
       stage: 2,
       stage_label: "strategize_positioning",
-      error_message: prompt2Run.validationError,
     });
-    throw new Error(`Prompt 2 failed: ${prompt2Run.validationError}`);
-  }
-  logInfo("Orchestrator", "Parsing Prompt 2 output.");
-  logPromptDebug("Prompt 2", "output", prompt2Raw);
-  const prompt2Result = extractJsonFromText(prompt2Raw, {
-    validate: (candidate) => validatePrompt2Data(candidate).length === 0,
-  });
-  promptContext.prompt2Json = prompt2Result;
-  await setExtensionState({
-    prompt2Raw,
-    prompt2Result,
-    prompt2DurationMs,
-    promptMetadata,
-    status: SESSION_STATUS.prompt2Done,
-  });
-  await captureExtensionEvent("prompt_stage_succeeded", {
-    surface: "run_view",
-    run_id: runId,
-    stage: 2,
-    stage_label: "strategize_positioning",
-  });
 
-  logInfo("Orchestrator", "Rendering Prompt 3.");
-  const prompt3Rendered = await renderPrompt3WithMetadata(
-    promptContext,
-    activeLlmProfile,
-  );
-  const prompt3 = prompt3Rendered.text;
-  prompt3Input = prompt3;
-  promptMetadataByName.prompt3 = prompt3Rendered.metadata;
-  await refreshPromptMetadata();
-  await setExtensionState({
-    prompt3Input,
-    promptMetadata,
-  });
-  logPromptDebug("Prompt 3", "input", prompt3);
-  logInfo("Orchestrator", "Running Prompt 3.");
-  const prompt3StartedMs = Date.now();
-  cancel.throwIfCanceled("Prompt 3");
-  await captureExtensionEvent("prompt_stage_started", {
-    surface: "run_view",
-    run_id: runId,
-    stage: 3,
-    stage_label: "write_tailored_resume",
-  });
-  const prompt3Run = await runPrompt(prompt3, {
-    profile: activeLlmProfile,
-    promptLabel: "Prompt 3",
-    systemPrompt,
-    runId,
-    signal: cancel.signal(),
-    validateResponse: validatePrompt3RawOutput,
-    buildRepairPrompt: buildPrompt3RepairPrompt,
-    maxRepairAttempts: 1,
-  });
-  const prompt3Raw =
-    prompt3Run.status === "success"
-      ? prompt3Run.rawText
-      : (prompt3Run.partialRawText ?? "");
-  prompt3DurationMs = Date.now() - prompt3StartedMs;
-  await setExtensionState({
-    prompt3Raw,
-    prompt3DurationMs,
-    status: SESSION_STATUS.prompt3Done,
-  });
-  cancel.throwIfCanceled("Prompt 3");
-  if (prompt3Run.status === "canceled") {
-    throwIfRunCanceled(runId, "Prompt 3");
-  }
-  if (prompt3Run.status !== "success") {
-    logError("Orchestrator", "Prompt 3 failed.", prompt3Run);
-    await captureExtensionEvent("prompt_stage_failed", {
-      surface: "run_view",
-      run_id: runId,
-      stage: 3,
-      stage_label: "write_tailored_resume",
-      error_message: prompt3Run.message ?? "Prompt 3 failed.",
-    });
-    throw new Error(`Prompt 3 failed: ${prompt3Run.message}`);
-  }
-  if (prompt3Run.validationError) {
-    logError("Orchestrator", "Prompt 3 failed validation after repair.", {
-      validationError: prompt3Run.validationError,
-      conversationUrl: prompt3Run.conversationUrl ?? null,
-    });
-    await captureExtensionEvent("prompt_stage_failed", {
-      surface: "run_view",
-      run_id: runId,
-      stage: 3,
-      stage_label: "write_tailored_resume",
-      error_message: prompt3Run.validationError,
-    });
-    throw new Error(`Prompt 3 failed: ${prompt3Run.validationError}`);
-  }
-
-  logInfo("Orchestrator", "Parsing Prompt 3 output.");
-  logPromptDebug("Prompt 3", "output", prompt3Raw);
-  const prompt3Result = extractPrompt3PayloadFromText(prompt3Raw);
-  const normalizedPrompt3Resume = stripPromptFlexNotesFromResumeData(
-    normalizePrompt3ResumeData(prompt3Result.resumeData),
-  );
-  const prompt3WithPreservedFacts = preserveGeneratedResumeFacts(
-    masterResumeData,
-    normalizedPrompt3Resume,
-    preserveFactsEnabled,
-  );
-  const prompt3Parsed = alignSectionMetaToSourceResume(
-    masterResumeData,
-    prompt3WithPreservedFacts,
-  );
-  const prompt3Feedback = prefixGenerationFeedbackSummary(
-    normalizePrompt3Feedback(prompt3Result.generationFeedback),
-    activeLlmProfile,
-    promptMetadata,
-  );
-  const serverPrompt2Artifact =
-    stripPromptFlexNotesFromServerArtifact(prompt2Result);
-  const patchPayload = {
-    resume_data: prompt3Parsed,
-    generation_feedback: prompt3Feedback,
-    generation_artifacts: {
-      prompt2: serverPrompt2Artifact,
-    },
-  };
-  if (prompt3Result.usedLegacyShape) {
-    logInfo(
-      "Orchestrator",
-      "Prompt 3 returned legacy ResumeData shape; continuing with wrapped patch payload.",
+    logInfo("Orchestrator", "Rendering Prompt 3.");
+    const prompt3Rendered = await renderPrompt3WithMetadata(
+      promptContext,
+      activeLlmProfile,
     );
-  }
-  logInfo("Orchestrator", "Validating Prompt 3 output.");
-  const validationErrors = validateResumeData(prompt3Parsed);
-  await setExtensionState({
-    prompt3Parsed,
-    prompt3Feedback,
-    prompt3ValidationErrors: validationErrors,
-    patchPayload,
-    prompt3DurationMs,
-    promptMetadata,
-    status:
-      validationErrors.length === 0
-        ? SESSION_STATUS.validated
-        : SESSION_STATUS.error,
-  });
-
-  if (validationErrors.length > 0) {
-    logError("Orchestrator", "Prompt 3 validation failed.", {
-      validationErrors,
+    const prompt3 = prompt3Rendered.text;
+    prompt3Input = prompt3;
+    promptMetadataByName.prompt3 = prompt3Rendered.metadata;
+    await refreshPromptMetadata();
+    await setExtensionState({
+      prompt3Input,
+      promptMetadata,
     });
-    await captureExtensionEvent("prompt_stage_failed", {
+    logPromptDebug("Prompt 3", "input", prompt3);
+    logInfo("Orchestrator", "Running Prompt 3.");
+    const prompt3StartedMs = Date.now();
+    cancel.throwIfCanceled("Prompt 3");
+    await captureExtensionEvent("prompt_stage_started", {
       surface: "run_view",
       run_id: runId,
       stage: 3,
       stage_label: "write_tailored_resume",
-      error_message: validationErrors.join(" | "),
     });
-    throw new Error(
-      `Prompt 3 produced invalid ResumeData: ${validationErrors.join(" | ")}`,
+    const prompt3Run = await runPrompt(prompt3, {
+      profile: activeLlmProfile,
+      promptLabel: "Prompt 3",
+      systemPrompt,
+      runId,
+      signal: cancel.signal(),
+      validateResponse: validatePrompt3RawOutput,
+      buildRepairPrompt: buildPrompt3RepairPrompt,
+      maxRepairAttempts: 1,
+      reusePopupSession: reuseChatGptPopup,
+    });
+    prompt3Raw =
+      prompt3Run.status === "success"
+        ? prompt3Run.rawText
+        : (prompt3Run.partialRawText ?? "");
+    prompt3DurationMs = Date.now() - prompt3StartedMs;
+    await setExtensionState({
+      prompt3Raw,
+      prompt3DurationMs,
+      status: SESSION_STATUS.prompt3Done,
+    });
+    cancel.throwIfCanceled("Prompt 3");
+    if (prompt3Run.status === "canceled") {
+      throwIfRunCanceled(runId, "Prompt 3");
+    }
+    if (prompt3Run.status !== "success") {
+      logError("Orchestrator", "Prompt 3 failed.", prompt3Run);
+      await captureExtensionEvent("prompt_stage_failed", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 3,
+        stage_label: "write_tailored_resume",
+        error_message: prompt3Run.message ?? "Prompt 3 failed.",
+      });
+      throw new Error(`Prompt 3 failed: ${prompt3Run.message}`);
+    }
+    if (prompt3Run.validationError) {
+      logError("Orchestrator", "Prompt 3 failed validation after repair.", {
+        validationError: prompt3Run.validationError,
+        conversationUrl: prompt3Run.conversationUrl ?? null,
+      });
+      await captureExtensionEvent("prompt_stage_failed", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 3,
+        stage_label: "write_tailored_resume",
+        error_message: prompt3Run.validationError,
+      });
+      throw new Error(`Prompt 3 failed: ${prompt3Run.validationError}`);
+    }
+
+    logInfo("Orchestrator", "Parsing Prompt 3 output.");
+    logPromptDebug("Prompt 3", "output", prompt3Raw);
+    const prompt3Result = extractPrompt3PayloadFromText(prompt3Raw);
+    const normalizedPrompt3Resume = stripPromptFlexNotesFromResumeData(
+      normalizePrompt3ResumeData(prompt3Result.resumeData),
     );
+    const prompt3WithPreservedFacts = preserveGeneratedResumeFacts(
+      masterResumeData,
+      normalizedPrompt3Resume,
+      preserveFactsEnabled,
+    );
+    prompt3Parsed = alignSectionMetaToSourceResume(
+      masterResumeData,
+      prompt3WithPreservedFacts,
+    );
+    prompt3Feedback = prefixGenerationFeedbackSummary(
+      normalizePrompt3Feedback(prompt3Result.generationFeedback),
+      activeLlmProfile,
+      promptMetadata,
+    );
+    serverPrompt2Artifact =
+      stripPromptFlexNotesFromServerArtifact(prompt2Result);
+    patchPayload = {
+      resume_data: prompt3Parsed,
+      generation_feedback: prompt3Feedback,
+      generation_artifacts: {
+        prompt2: serverPrompt2Artifact,
+      },
+    };
+    if (prompt3Result.usedLegacyShape) {
+      logInfo(
+        "Orchestrator",
+        "Prompt 3 returned legacy ResumeData shape; continuing with wrapped patch payload.",
+      );
+    }
+    logInfo("Orchestrator", "Validating Prompt 3 output.");
+    validationErrors = validateResumeData(prompt3Parsed);
+    await setExtensionState({
+      prompt3Parsed,
+      prompt3Feedback,
+      prompt3ValidationErrors: validationErrors,
+      patchPayload,
+      prompt3DurationMs,
+      promptMetadata,
+      status:
+        validationErrors.length === 0
+          ? SESSION_STATUS.validated
+          : SESSION_STATUS.error,
+    });
+
+    if (validationErrors.length > 0) {
+      logError("Orchestrator", "Prompt 3 validation failed.", {
+        validationErrors,
+      });
+      await captureExtensionEvent("prompt_stage_failed", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 3,
+        stage_label: "write_tailored_resume",
+        error_message: validationErrors.join(" | "),
+      });
+      throw new Error(
+        `Prompt 3 produced invalid ResumeData: ${validationErrors.join(" | ")}`,
+      );
+    }
+    await captureExtensionEvent("prompt_stage_succeeded", {
+      surface: "run_view",
+      run_id: runId,
+      stage: 3,
+      stage_label: "write_tailored_resume",
+    });
+  } finally {
+    if (reuseChatGptPopup) {
+      await closeChatGptRunSession(runId);
+    }
   }
-  await captureExtensionEvent("prompt_stage_succeeded", {
-    surface: "run_view",
-    run_id: runId,
-    stage: 3,
-    stage_label: "write_tailored_resume",
-  });
 
   function createHistoryEntry(status, previewUrl) {
     return {

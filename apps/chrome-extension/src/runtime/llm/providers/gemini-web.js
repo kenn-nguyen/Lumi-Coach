@@ -8,6 +8,9 @@ const GEMINI_WEB_CONFIG = {
   popupHeight: 900,
   popupTop: 40,
   popupLeft: 40,
+  responseTimeoutMs: 600000,
+  responseIdleTimeoutMs: 600000,
+  responseFirstTokenTimeoutMs: 600000,
   urlMatchers: ['https://gemini.google.com/', 'https://bard.google.com/'],
   inputSelectors: [
     'rich-textarea div[contenteditable="true"][role="textbox"]',
