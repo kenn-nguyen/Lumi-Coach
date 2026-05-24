@@ -401,10 +401,13 @@ const TAILORING_STYLE_INFO = [
     title: "Lean",
     lines: [
       "Shorter prompts and lighter handoffs.",
+      "Stretch: High",
       "Token spend: Low",
       "Prompt structure: Freeform for Prompt 1 and Prompt 2",
       "Prompt 3: Still strict JSON",
       "Model freedom: High",
+      "This is the stretch profile.",
+      "Review carefully before submission.",
       "Best when you want faster, cheaper tailoring and can tolerate looser intermediate guidance.",
     ],
   },

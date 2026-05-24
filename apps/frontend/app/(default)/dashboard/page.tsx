@@ -79,6 +79,7 @@ export default function DashboardPage() {
   const [searchInput, setSearchInput] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
+  const [currentPage, setCurrentPage] = useState(1);
   const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
   const [showTailorPrompt, setShowTailorPrompt] = useState(false);
   const [isLlmNoticeDismissed, setIsLlmNoticeDismissed] = useState(false);
@@ -191,13 +192,14 @@ export default function DashboardPage() {
     async (searchTerm: string = submittedSearchRef.current) => {
       const normalizedSearch = searchTerm.trim();
       const includeMaster = normalizedSearch.length === 0;
+      const requestId = ++loadRequestIdRef.current;
 
       try {
-        const data = await fetchResumeList(
-          includeMaster,
-          DASHBOARD_RESUME_LIST_LIMIT,
-          normalizedSearch
-        );
+        const data = await fetchResumeList(includeMaster, undefined, normalizedSearch);
+        if (requestId !== loadRequestIdRef.current) {
+          return;
+        }
+
         if (includeMaster) {
           const masterFromList = data.find((r) => r.is_master);
           const resolvedMasterId = masterFromList?.resume_id || null;
@@ -214,46 +216,13 @@ export default function DashboardPage() {
           }
         }
 
-        const filtered = data.filter((r) => !r.is_master);
+        const filtered = data
+          .filter((r) => !r.is_master)
+          .map((resume) => ({
+            ...resume,
+            jobSnippet: jobSnippetCacheRef.current[resume.resume_id] || resume.jobSnippet || '',
+          }));
         setTailoredResumes(filtered);
-
-        // Only fetch job descriptions for resumes that are actually tailored
-        // (identified by having a non-null parent_id). This avoids N+1 calls
-        // for untailored resumes.
-        const tailoredWithParent = filtered.filter((r) => r.parent_id);
-
-        // Guard against concurrent invocations overwriting each other
-        const requestId = ++loadRequestIdRef.current;
-
-        // Fetch job description snippets for tailored resumes in parallel and attach to state
-        // Use a small in-memory cache to avoid re-fetching the same snippet repeatedly.
-        const jobSnippets: Record<string, string> = {};
-        await Promise.all(
-          tailoredWithParent.map(async (r) => {
-            // Use cached snippet when available
-            if (jobSnippetCacheRef.current[r.resume_id]) {
-              jobSnippets[r.resume_id] = jobSnippetCacheRef.current[r.resume_id];
-              return;
-            }
-            try {
-              const jd = await fetchJobDescription(r.resume_id);
-              const snippet = (jd?.content || '').slice(0, 80);
-              jobSnippetCacheRef.current[r.resume_id] = snippet;
-              jobSnippets[r.resume_id] = snippet;
-            } catch {
-              // ignore missing job descriptions and cache empty result
-              jobSnippetCacheRef.current[r.resume_id] = '';
-              jobSnippets[r.resume_id] = '';
-            }
-          })
-        );
-
-        // Only apply results if this invocation is the latest (prevents stale overwrite)
-        if (requestId === loadRequestIdRef.current) {
-          setTailoredResumes((prev) =>
-            prev.map((r) => ({ ...r, jobSnippet: jobSnippets[r.resume_id] || '' }))
-          );
-        }
       } catch (err) {
         console.error('Failed to load tailored resumes:', err);
       }
@@ -371,11 +340,73 @@ export default function DashboardPage() {
   }, [getResumeTitle, sortBy, tailoredResumes]);
 
   const hasActiveSearch = submittedSearch.trim().length > 0;
+  const totalTailoredResumeCount = sortedTailoredResumes.length;
+  const totalPages = Math.max(1, Math.ceil(totalTailoredResumeCount / DASHBOARD_RESUME_LIST_LIMIT));
+  const paginatedTailoredResumes = useMemo(() => {
+    const start = (currentPage - 1) * DASHBOARD_RESUME_LIST_LIMIT;
+    return sortedTailoredResumes.slice(start, start + DASHBOARD_RESUME_LIST_LIMIT);
+  }, [currentPage, sortedTailoredResumes]);
+  const pageRangeStart = totalTailoredResumeCount
+    ? (currentPage - 1) * DASHBOARD_RESUME_LIST_LIMIT + 1
+    : 0;
+  const pageRangeEnd = totalTailoredResumeCount
+    ? Math.min(currentPage * DASHBOARD_RESUME_LIST_LIMIT, totalTailoredResumeCount)
+    : 0;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sortBy, submittedSearch]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
+  useEffect(() => {
+    const resumesNeedingSnippets = paginatedTailoredResumes.filter(
+      (resume) => resume.parent_id && jobSnippetCacheRef.current[resume.resume_id] === undefined
+    );
+    if (resumesNeedingSnippets.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.all(
+      resumesNeedingSnippets.map(async (resume) => {
+        try {
+          const jd = await fetchJobDescription(resume.resume_id);
+          return [resume.resume_id, (jd?.content || '').slice(0, 80)] as const;
+        } catch {
+          return [resume.resume_id, ''] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+
+      const snippetMap = Object.fromEntries(entries);
+      Object.entries(snippetMap).forEach(([resumeId, snippet]) => {
+        jobSnippetCacheRef.current[resumeId] = snippet;
+      });
+
+      setTailoredResumes((current) =>
+        current.map((resume) =>
+          resume.resume_id in snippetMap
+            ? { ...resume, jobSnippet: snippetMap[resume.resume_id] || '' }
+            : resume
+        )
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paginatedTailoredResumes]);
 
   const handleSearchSubmit = useCallback(
     (event?: FormEvent<HTMLFormElement>) => {
       event?.preventDefault();
       const nextSearch = searchInput.trim();
+      setCurrentPage(1);
       setSubmittedSearch(nextSearch);
       void loadTailoredResumes(nextSearch);
     },
@@ -384,6 +415,7 @@ export default function DashboardPage() {
 
   const handleSearchReset = useCallback(() => {
     searchEditedByUserRef.current = false;
+    setCurrentPage(1);
     setSearchInput('');
     setSubmittedSearch('');
     void loadTailoredResumes('');
@@ -723,7 +755,7 @@ export default function DashboardPage() {
               <div>
                 <h2 className="font-serif text-3xl">{t('dashboard.tailoredResumes')}</h2>
                 <p className="mt-2 font-mono text-xs uppercase tracking-wide text-gray-500">
-                  {sortedTailoredResumes.length} resumes
+                  {totalTailoredResumeCount} resumes
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -787,7 +819,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {sortedTailoredResumes.length === 0 ? (
+          {totalTailoredResumeCount === 0 ? (
             <div className="px-6 py-12">
               <p className="font-serif text-2xl">
                 {!masterResumeId && !hasActiveSearch
@@ -805,85 +837,124 @@ export default function DashboardPage() {
               </p>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto bg-card">
-              {sortedTailoredResumes.map((resume, index) => {
-                const title = getResumeTitle(resume);
-                const color = cardPalette[hashTitle(title) % cardPalette.length];
-                return (
-                  <div
-                    key={resume.resume_id}
-                    onClick={() => router.push(`/resumes/${resume.resume_id}`)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        router.push(`/resumes/${resume.resume_id}`);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    className={cn(
-                      'flex w-full items-center gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      index > 0 && 'border-t border-border'
-                    )}
-                  >
+            <>
+              <div className="flex-1 overflow-y-auto bg-card">
+                {paginatedTailoredResumes.map((resume, index) => {
+                  const title = getResumeTitle(resume);
+                  const color = cardPalette[hashTitle(title) % cardPalette.length];
+                  return (
                     <div
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border"
-                      style={{ backgroundColor: color.bg, color: color.fg }}
+                      key={resume.resume_id}
+                      onClick={() => router.push(`/resumes/${resume.resume_id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          router.push(`/resumes/${resume.resume_id}`);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      className={cn(
+                        'flex w-full items-center gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                        index > 0 && 'border-t border-border'
+                      )}
                     >
-                      <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
-                    </div>
-                    <div className="min-w-0 flex-1 py-0.5">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <h3
-                          className="min-w-0 flex-1 truncate font-serif text-[1.2rem] leading-tight"
-                          title={title}
-                        >
-                          {title}
-                        </h3>
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border"
+                        style={{ backgroundColor: color.bg, color: color.fg }}
+                      >
+                        <span className="font-mono text-xs font-bold">{getMonogram(title)}</span>
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-gray-500">
-                          {t('dashboard.edited', {
-                            date: formatDate(resume.updated_at || resume.created_at),
-                          })}
-                        </p>
-                        {resume.job_source_url ? (
-                          <a
-                            href={resume.job_source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => event.stopPropagation()}
-                            className="inline-flex h-8 shrink-0 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                      <div className="min-w-0 flex-1 py-0.5">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <h3
+                            className="min-w-0 flex-1 truncate font-serif text-[1.2rem] leading-tight"
+                            title={title}
                           >
-                            Open JD
-                          </a>
-                        ) : null}
-                        <div className="shrink-0">
-                          {renderStatusPill(resume.processing_status, resume.resume_id)}
+                            {title}
+                          </h3>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t('dashboard.deleteResume')}
-                          className="h-8 w-8 shrink-0 rounded-xl border border-transparent text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:border-red-200 focus-visible:bg-red-50 focus-visible:text-red-700"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDeleteError(null);
-                            setResumePendingDelete(resume);
-                          }}
-                          onKeyDown={(event) => event.stopPropagation()}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-gray-500">
+                            {t('dashboard.edited', {
+                              date: formatDate(resume.updated_at || resume.created_at),
+                            })}
+                          </p>
+                          {resume.job_source_url ? (
+                            <a
+                              href={resume.job_source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => event.stopPropagation()}
+                              className="inline-flex h-8 shrink-0 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                            >
+                              Open JD
+                            </a>
+                          ) : null}
+                          <div className="shrink-0">
+                            {renderStatusPill(resume.processing_status, resume.resume_id)}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t('dashboard.deleteResume')}
+                            className="h-8 w-8 shrink-0 rounded-xl border border-transparent text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:border-red-200 focus-visible:bg-red-50 focus-visible:text-red-700"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setDeleteError(null);
+                              setResumePendingDelete(resume);
+                            }}
+                            onKeyDown={(event) => event.stopPropagation()}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+              <div className="flex flex-col gap-3 border-t border-border bg-card px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-gray-500">
+                  {t('dashboard.pageRange', {
+                    start: pageRangeStart,
+                    end: pageRangeEnd,
+                    count: totalTailoredResumeCount,
+                  })}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-w-[6.5rem]"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    {t('common.previous')}
+                  </Button>
+                  <div className="min-w-[8rem] px-2 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-gray-500">
+                    {t('dashboard.pageLabel', {
+                      current: currentPage,
+                      total: totalPages,
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-w-[6.5rem]"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage >= totalPages}
+                  >
+                    {t('common.next')}
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
