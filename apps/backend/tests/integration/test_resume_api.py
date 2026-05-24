@@ -8,6 +8,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.routers import resumes as resumes_router
 from app.schemas import ResumeData
 from app.security import AuthenticatedUser, require_current_user
 
@@ -30,6 +31,15 @@ def override_auth():
     app.dependency_overrides[require_current_user] = _fake_user
     yield
     app.dependency_overrides.pop(require_current_user, None)
+
+
+@pytest.fixture(autouse=True)
+def clear_resume_pdf_cache():
+    resumes_router._resume_pdf_cache.clear()
+    resumes_router._resume_pdf_inflight.clear()
+    yield
+    resumes_router._resume_pdf_cache.clear()
+    resumes_router._resume_pdf_inflight.clear()
 
 
 @pytest.fixture
@@ -326,6 +336,77 @@ class TestDownloadResumePdf:
         assert "fitOnePageVerticalScale=1.08" in print_url
         assert mock_render_resume_pdf.call_args.kwargs["fit_one_page"] is False
         assert mock_render_resume_pdf.call_args.kwargs["calibrate_fit_one_page"] is True
+
+    @patch("app.routers.resumes.render_resume_pdf", new_callable=AsyncMock)
+    @patch("app.routers.resumes.db")
+    async def test_reuses_cached_pdf_for_identical_download_requests(
+        self, mock_db, mock_render_resume_pdf, client, mock_resume_record
+    ):
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_render_resume_pdf.return_value = b"%PDF-1.4"
+
+        async with client:
+            first = await client.get("/api/v1/resumes/res-123/pdf")
+            second = await client.get("/api/v1/resumes/res-123/pdf")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert mock_render_resume_pdf.await_count == 1
+
+
+class TestWarmResumePdf:
+    """POST /api/v1/resumes/{resume_id}/pdf/warm"""
+
+    @patch("app.routers.resumes.render_resume_pdf", new_callable=AsyncMock)
+    @patch("app.routers.resumes.db")
+    async def test_warm_endpoint_primes_cache_for_download(
+        self, mock_db, mock_render_resume_pdf, client, mock_resume_record
+    ):
+        mock_db.get_resume.return_value = mock_resume_record
+        mock_render_resume_pdf.return_value = b"%PDF-1.4"
+
+        async with client:
+            warm = await client.post(
+                "/api/v1/resumes/res-123/pdf/warm",
+                json={
+                    "template_settings": {
+                        "template": "swiss-single",
+                        "pageSize": "A4",
+                        "margins": {"top": 10, "right": 10, "bottom": 10, "left": 10},
+                        "spacing": {"section": 2, "item": 2, "lineHeight": 2},
+                        "fontSize": {
+                            "base": 2,
+                            "headerScale": 2,
+                            "headerFont": "serif",
+                            "bodyFont": "sans-serif",
+                        },
+                        "compactMode": False,
+                        "showContactIcons": False,
+                        "accentColor": "blue",
+                        "dateDisplay": "month-year",
+                        "experienceHeaderOrder": "company-first",
+                        "fitOnePage": True,
+                    },
+                    "render_layout": {
+                        "fitMode": "balanced",
+                        "fitOnePageVerticalScale": 1.08,
+                    },
+                    "lang": "en",
+                },
+            )
+            download = await client.get(
+                "/api/v1/resumes/res-123/pdf",
+                params={
+                    "fitMode": "balanced",
+                    "fitOnePageVerticalScale": "1.08",
+                    "lang": "en",
+                },
+            )
+
+        assert warm.status_code == 200
+        assert warm.json()["status"] in {"ready", "warming"}
+        assert download.status_code == 200
+        assert mock_render_resume_pdf.await_count == 1
 
 
 class TestDeleteResume:

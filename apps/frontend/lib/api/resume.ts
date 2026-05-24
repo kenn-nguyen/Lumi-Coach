@@ -69,6 +69,11 @@ export interface ResumePdfRenderLayout {
   fitOnePageVerticalScale?: number;
 }
 
+interface ResumePdfWarmResponse {
+  request_id: string;
+  status: 'ready' | 'warming';
+}
+
 export interface GenerationFeedback {
   summary?: string;
   pros?: string[];
@@ -425,6 +430,29 @@ export async function downloadResumePdf(
     throw new Error(`Failed to download resume (status ${res.status}): ${text}`);
   }
   return await res.blob();
+}
+
+export async function warmResumePdf(
+  resumeId: string,
+  settings?: TemplateSettings,
+  locale?: Locale,
+  renderLayout?: ResumePdfRenderLayout
+): Promise<ResumePdfWarmResponse> {
+  const normalizedId = normalizeResumeId(resumeId);
+  const res = await apiPost(
+    `/resumes/${encodeURIComponent(normalizedId)}/pdf/warm`,
+    {
+      template_settings: settings,
+      render_layout: renderLayout,
+      lang: locale,
+    },
+    30_000
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to warm resume PDF (status ${res.status}): ${text}`);
+  }
+  return res.json();
 }
 
 /** Deletes a resume by ID */

@@ -563,6 +563,28 @@ class ResumeTemplateSettingsResponse(BaseModel):
     data: dict[str, Any]
 
 
+class ResumePdfRenderLayout(BaseModel):
+    """Resolved preview fit layout used for PDF parity."""
+
+    fitMode: Literal["off", "gentle", "balanced", "compact"] | None = None
+    fitOnePageVerticalScale: float | None = Field(default=None, ge=0.5, le=2.0)
+
+
+class ResumePdfWarmRequest(BaseModel):
+    """Request to warm the cached PDF artifact for a resume."""
+
+    template_settings: ResumeTemplateSettings | None = None
+    render_layout: ResumePdfRenderLayout | None = None
+    lang: str | None = Field(default=None, pattern=r"^[a-z]{2}(-[A-Z]{2})?$")
+
+
+class ResumePdfWarmResponse(BaseModel):
+    """Response from the resume PDF warm endpoint."""
+
+    request_id: str
+    status: Literal["ready", "warming"]
+
+
 class ResumeFetchData(BaseModel):
     """Data payload for resume fetch response."""
 

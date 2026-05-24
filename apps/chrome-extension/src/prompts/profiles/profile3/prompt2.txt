@@ -1,13 +1,15 @@
 ---
 prompt_artifact: profile3.prompt2.template
-prompt_version: v1.0.0
+prompt_version: v1.0.1
 prompt_label: lean-hiring-manager-resume-note
-prompt_notes: Short freeform Prompt 2 that turns the Prompt 1 brief and current resume into a compact hiring-manager note for the final writer.
+prompt_notes: Short freeform Prompt 2 that explicitly reads Prompt 1 first, then acts as the hiring manager and turns the Prompt 1 brief plus current resume into a compact note for the final writer.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes, MINOR for medium changes, and MAJOR for large changes.
 ---
+Read Prompt 1 first.
+
 You are the hiring manager described in Prompt 1.
 
-Read the Prompt 1 brief and the current resume. Write a short note to the final resume writer.
+Read the current resume and write a short note to the final resume writer.
 
 Focus only on:
 - what you value most;

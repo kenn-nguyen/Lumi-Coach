@@ -19,6 +19,7 @@ import {
   retryProcessing,
   renameResume,
   updateResumeTemplateSettings,
+  warmResumePdf,
   type GenerationFeedback,
   type ResumeImportContext,
 } from '@/lib/api/resume';
@@ -151,6 +152,7 @@ export default function ResumeViewerPage() {
   const balancedMeasurementRef = useRef<HTMLDivElement>(null);
   const compactMeasurementRef = useRef<HTMLDivElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
+  const lastPdfWarmSignatureRef = useRef<string | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
 
   const resumeId = params?.id as string;
@@ -263,6 +265,24 @@ export default function ResumeViewerPage() {
     }),
     [fitMode, fitOnePageVerticalScale]
   );
+  const pdfWarmSignature = useMemo(() => {
+    if (!resumeId || !previewResumeData || processingStatus !== 'ready') {
+      return null;
+    }
+    return JSON.stringify({
+      resumeId,
+      templateSettings,
+      pdfRenderLayout,
+      uiLanguage,
+    });
+  }, [
+    resumeId,
+    previewResumeData,
+    processingStatus,
+    templateSettings,
+    pdfRenderLayout,
+    uiLanguage,
+  ]);
   const previewPrintSettings: TemplateSettings = useMemo(
     () => ({
       ...effectivePreviewSettings,
@@ -405,6 +425,42 @@ export default function ResumeViewerPage() {
       source,
     });
   }, [authStatus, resumeId, runId, source]);
+
+  useEffect(() => {
+    if (
+      authStatus !== 'authenticated' ||
+      !resumeId ||
+      !previewResumeData ||
+      processingStatus !== 'ready' ||
+      !pdfWarmSignature
+    ) {
+      return;
+    }
+    if (lastPdfWarmSignatureRef.current === pdfWarmSignature) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      lastPdfWarmSignatureRef.current = pdfWarmSignature;
+      void warmResumePdf(resumeId, templateSettings, uiLanguage, pdfRenderLayout).catch((err) => {
+        console.warn('Failed to warm resume PDF:', err);
+        if (lastPdfWarmSignatureRef.current === pdfWarmSignature) {
+          lastPdfWarmSignatureRef.current = null;
+        }
+      });
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    authStatus,
+    resumeId,
+    previewResumeData,
+    processingStatus,
+    pdfWarmSignature,
+    templateSettings,
+    uiLanguage,
+    pdfRenderLayout,
+  ]);
 
   const handleRetryProcessing = async () => {
     if (!resumeId) return;

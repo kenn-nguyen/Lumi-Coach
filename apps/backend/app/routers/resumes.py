@@ -6,10 +6,12 @@ import hashlib
 import json
 import logging
 import unicodedata
+from collections import OrderedDict
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn
+from time import monotonic
+from typing import Any, Callable, NoReturn
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -48,6 +50,8 @@ from app.schemas import (
     ResumeFetchResponse,
     ResumeImportContext,
     ResumeListResponse,
+    ResumePdfWarmRequest,
+    ResumePdfWarmResponse,
     ResumeTemplateSettings,
     ResumeTemplateSettingsResponse,
     ResumeTemplateSettingsUpdate,
@@ -106,8 +110,343 @@ class _PreviewHashEntry:
     updated_at: float
 
 
+@dataclass
+class _ResumePdfCacheEntry:
+    pdf_bytes: bytes
+    created_at: float
+
+
+@dataclass(frozen=True)
+class _ResumePdfRequest:
+    template: str = "swiss-single"
+    page_size: str = "A4"
+    margin_top: int = 10
+    margin_bottom: int = 10
+    margin_left: int = 10
+    margin_right: int = 10
+    section_spacing: int = 2
+    item_spacing: int = 2
+    line_height: int = 2
+    font_size: int = 2
+    header_scale: int = 2
+    header_font: str = "serif"
+    body_font: str = "sans-serif"
+    compact_mode: bool = False
+    show_contact_icons: bool = False
+    accent_color: str = "blue"
+    date_display: str = "month-year"
+    experience_header_order: str = "company-first"
+    fit_one_page: bool = True
+    fit_mode: str | None = None
+    fit_one_page_vertical_scale: float | None = None
+    lang: str | None = None
+
+
 _PREVIEW_HASH_CACHE_TTL_SECONDS = 60 * 30
 _preview_hash_cache: dict[tuple[str, str], _PreviewHashEntry] = {}
+_RESUME_PDF_CACHE_TTL_SECONDS = 60 * 30
+_RESUME_PDF_CACHE_MAX_ENTRIES = 24
+_resume_pdf_cache: OrderedDict[str, _ResumePdfCacheEntry] = OrderedDict()
+_resume_pdf_inflight: dict[str, asyncio.Task[bytes]] = {}
+_resume_pdf_cache_lock = asyncio.Lock()
+
+
+def _resume_pdf_request_to_cache_payload(
+    resume_id: str, resume_updated_at: str | None, request: _ResumePdfRequest
+) -> dict[str, Any]:
+    return {
+        "resume_id": resume_id,
+        "resume_updated_at": resume_updated_at or "",
+        "template": request.template,
+        "page_size": request.page_size,
+        "margins": {
+            "top": request.margin_top,
+            "right": request.margin_right,
+            "bottom": request.margin_bottom,
+            "left": request.margin_left,
+        },
+        "spacing": {
+            "section": request.section_spacing,
+            "item": request.item_spacing,
+            "line_height": request.line_height,
+        },
+        "font_size": request.font_size,
+        "header_scale": request.header_scale,
+        "header_font": request.header_font,
+        "body_font": request.body_font,
+        "compact_mode": request.compact_mode,
+        "show_contact_icons": request.show_contact_icons,
+        "accent_color": request.accent_color,
+        "date_display": request.date_display,
+        "experience_header_order": request.experience_header_order,
+        "fit_one_page": request.fit_one_page,
+        "fit_mode": request.fit_mode,
+        "fit_one_page_vertical_scale": request.fit_one_page_vertical_scale,
+        "lang": request.lang,
+    }
+
+
+def _build_resume_pdf_cache_key(
+    resume_id: str, resume_updated_at: str | None, request: _ResumePdfRequest
+) -> str:
+    serialized = json.dumps(
+        _resume_pdf_request_to_cache_payload(resume_id, resume_updated_at, request),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _prune_resume_pdf_cache_locked(now: float) -> None:
+    expired_keys = [
+        cache_key
+        for cache_key, entry in _resume_pdf_cache.items()
+        if now - entry.created_at > _RESUME_PDF_CACHE_TTL_SECONDS
+    ]
+    for cache_key in expired_keys:
+        _resume_pdf_cache.pop(cache_key, None)
+    while len(_resume_pdf_cache) > _RESUME_PDF_CACHE_MAX_ENTRIES:
+        _resume_pdf_cache.popitem(last=False)
+
+
+def _log_resume_pdf_task_result(task: asyncio.Task[bytes], cache_key: str) -> None:
+    try:
+        error = task.exception()
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        return
+    if error is not None:
+        logger.warning(f"Resume PDF warm task failed for cache key {cache_key}: {error}")
+
+
+async def _render_and_store_resume_pdf(
+    cache_key: str, render_pdf: Awaitable[bytes]
+) -> bytes:
+    current_task = asyncio.current_task()
+    try:
+        pdf_bytes = await render_pdf
+    except Exception:
+        async with _resume_pdf_cache_lock:
+            if _resume_pdf_inflight.get(cache_key) is current_task:
+                _resume_pdf_inflight.pop(cache_key, None)
+        raise
+
+    async with _resume_pdf_cache_lock:
+        if _resume_pdf_inflight.get(cache_key) is current_task:
+            _resume_pdf_inflight.pop(cache_key, None)
+            _resume_pdf_cache[cache_key] = _ResumePdfCacheEntry(
+                pdf_bytes=pdf_bytes,
+                created_at=monotonic(),
+            )
+            _resume_pdf_cache.move_to_end(cache_key)
+            _prune_resume_pdf_cache_locked(monotonic())
+
+    return pdf_bytes
+
+
+async def _get_or_render_resume_pdf(
+    cache_key: str, render_pdf_factory: Callable[[], Awaitable[bytes]]
+) -> bytes:
+    now = monotonic()
+    async with _resume_pdf_cache_lock:
+        _prune_resume_pdf_cache_locked(now)
+        cached_entry = _resume_pdf_cache.get(cache_key)
+        if cached_entry is not None:
+            _resume_pdf_cache.move_to_end(cache_key)
+            return cached_entry.pdf_bytes
+
+        inflight_task = _resume_pdf_inflight.get(cache_key)
+        if inflight_task is None:
+            inflight_task = asyncio.create_task(
+                _render_and_store_resume_pdf(cache_key, render_pdf_factory())
+            )
+            inflight_task.add_done_callback(
+                lambda task, key=cache_key: _log_resume_pdf_task_result(task, key)
+            )
+            _resume_pdf_inflight[cache_key] = inflight_task
+
+    return await inflight_task
+
+
+async def _warm_resume_pdf(
+    cache_key: str, render_pdf_factory: Callable[[], Awaitable[bytes]]
+) -> str:
+    now = monotonic()
+    async with _resume_pdf_cache_lock:
+        _prune_resume_pdf_cache_locked(now)
+        cached_entry = _resume_pdf_cache.get(cache_key)
+        if cached_entry is not None:
+            _resume_pdf_cache.move_to_end(cache_key)
+            return "ready"
+
+        if cache_key in _resume_pdf_inflight:
+            return "warming"
+
+        inflight_task = asyncio.create_task(
+            _render_and_store_resume_pdf(cache_key, render_pdf_factory())
+        )
+        inflight_task.add_done_callback(
+            lambda task, key=cache_key: _log_resume_pdf_task_result(task, key)
+        )
+        _resume_pdf_inflight[cache_key] = inflight_task
+        return "warming"
+
+
+def _build_resume_pdf_request_from_query(
+    *,
+    template: str,
+    page_size: str,
+    margin_top: int,
+    margin_bottom: int,
+    margin_left: int,
+    margin_right: int,
+    section_spacing: int,
+    item_spacing: int,
+    line_height: int,
+    font_size: int,
+    header_scale: int,
+    header_font: str,
+    body_font: str,
+    compact_mode: bool,
+    show_contact_icons: bool,
+    accent_color: str,
+    date_display: str,
+    experience_header_order: str,
+    fit_one_page: bool,
+    fit_mode: str | None,
+    fit_one_page_vertical_scale: float | None,
+    lang: str | None,
+) -> _ResumePdfRequest:
+    return _ResumePdfRequest(
+        template=template,
+        page_size=page_size,
+        margin_top=margin_top,
+        margin_bottom=margin_bottom,
+        margin_left=margin_left,
+        margin_right=margin_right,
+        section_spacing=section_spacing,
+        item_spacing=item_spacing,
+        line_height=line_height,
+        font_size=font_size,
+        header_scale=header_scale,
+        header_font=header_font,
+        body_font=body_font,
+        compact_mode=compact_mode,
+        show_contact_icons=show_contact_icons,
+        accent_color=accent_color,
+        date_display=date_display,
+        experience_header_order=experience_header_order,
+        fit_one_page=fit_one_page,
+        fit_mode=fit_mode,
+        fit_one_page_vertical_scale=fit_one_page_vertical_scale,
+        lang=lang,
+    )
+
+
+def _build_resume_pdf_request_from_warm_payload(
+    payload: ResumePdfWarmRequest,
+) -> _ResumePdfRequest:
+    template_settings = payload.template_settings
+    margins = template_settings.margins if template_settings and template_settings.margins else None
+    spacing = template_settings.spacing if template_settings and template_settings.spacing else None
+    font_size = template_settings.fontSize if template_settings and template_settings.fontSize else None
+    render_layout = payload.render_layout
+    return _ResumePdfRequest(
+        template=template_settings.template if template_settings and template_settings.template else "swiss-single",
+        page_size=template_settings.pageSize if template_settings and template_settings.pageSize else "A4",
+        margin_top=margins.top if margins else 10,
+        margin_bottom=margins.bottom if margins else 10,
+        margin_left=margins.left if margins else 10,
+        margin_right=margins.right if margins else 10,
+        section_spacing=spacing.section if spacing else 2,
+        item_spacing=spacing.item if spacing else 2,
+        line_height=spacing.lineHeight if spacing else 2,
+        font_size=font_size.base if font_size else 2,
+        header_scale=font_size.headerScale if font_size else 2,
+        header_font=font_size.headerFont if font_size else "serif",
+        body_font=font_size.bodyFont if font_size else "sans-serif",
+        compact_mode=template_settings.compactMode if template_settings and template_settings.compactMode is not None else False,
+        show_contact_icons=template_settings.showContactIcons if template_settings and template_settings.showContactIcons is not None else False,
+        accent_color=template_settings.accentColor if template_settings and template_settings.accentColor else "blue",
+        date_display=template_settings.dateDisplay if template_settings and template_settings.dateDisplay else "month-year",
+        experience_header_order=(
+            template_settings.experienceHeaderOrder
+            if template_settings and template_settings.experienceHeaderOrder
+            else "company-first"
+        ),
+        fit_one_page=(
+            template_settings.fitOnePage
+            if template_settings and template_settings.fitOnePage is not None
+            else True
+        ),
+        fit_mode=render_layout.fitMode if render_layout else None,
+        fit_one_page_vertical_scale=(
+            render_layout.fitOnePageVerticalScale if render_layout else None
+        ),
+        lang=payload.lang,
+    )
+
+
+def _build_resume_pdf_render_url(
+    resume_id: str, request: _ResumePdfRequest, auth_token: str
+) -> str:
+    params = (
+        f"template={request.template}"
+        f"&pageSize={request.page_size}"
+        f"&marginTop={request.margin_top}"
+        f"&marginBottom={request.margin_bottom}"
+        f"&marginLeft={request.margin_left}"
+        f"&marginRight={request.margin_right}"
+        f"&sectionSpacing={request.section_spacing}"
+        f"&itemSpacing={request.item_spacing}"
+        f"&lineHeight={request.line_height}"
+        f"&fontSize={request.font_size}"
+        f"&headerScale={request.header_scale}"
+        f"&headerFont={request.header_font}"
+        f"&bodyFont={request.body_font}"
+        f"&compactMode={str(request.compact_mode).lower()}"
+        f"&showContactIcons={str(request.show_contact_icons).lower()}"
+        f"&accentColor={request.accent_color}"
+        f"&dateDisplay={request.date_display}"
+        f"&experienceHeaderOrder={request.experience_header_order}"
+        f"&fitOnePage={str(request.fit_one_page).lower()}"
+    )
+    if request.fit_mode is not None:
+        params = f"{params}&fitMode={request.fit_mode}"
+    if request.fit_one_page_vertical_scale is not None:
+        params = (
+            f"{params}&fitOnePageVerticalScale={request.fit_one_page_vertical_scale}"
+        )
+    params = f"{params}&authToken={quote(auth_token, safe='')}"
+    if request.lang:
+        params = f"{params}&lang={request.lang}"
+    return f"{settings.frontend_base_url}/print/resumes/{resume_id}?{params}"
+
+
+async def _render_resume_pdf_for_request(
+    resume_id: str,
+    request: _ResumePdfRequest,
+    current_user: AuthenticatedUser,
+) -> bytes:
+    auth_token, _ = create_backend_access_token_for_user(current_user)
+    url = _build_resume_pdf_render_url(resume_id, request, auth_token)
+    explicit_fit_layout = (
+        request.fit_mode is not None or request.fit_one_page_vertical_scale is not None
+    )
+    pdf_margins = {
+        "top": request.margin_top,
+        "right": request.margin_right,
+        "bottom": request.margin_bottom,
+        "left": request.margin_left,
+    }
+    return await render_resume_pdf(
+        url,
+        request.page_size,
+        margins=pdf_margins,
+        fit_one_page=request.fit_one_page and not explicit_fit_layout,
+        calibrate_fit_one_page=request.fit_one_page and explicit_fit_layout,
+    )
 
 
 def _sanitize_pdf_download_filename(filename: str | None, fallback: str) -> str:
@@ -2061,56 +2400,44 @@ async def download_resume_pdf(
     resume = db.get_resume(resume_id)
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
-
-    # Build print URL with all settings
-    params = (
-        f"template={template}"
-        f"&pageSize={pageSize}"
-        f"&marginTop={marginTop}"
-        f"&marginBottom={marginBottom}"
-        f"&marginLeft={marginLeft}"
-        f"&marginRight={marginRight}"
-        f"&sectionSpacing={sectionSpacing}"
-        f"&itemSpacing={itemSpacing}"
-        f"&lineHeight={lineHeight}"
-        f"&fontSize={fontSize}"
-        f"&headerScale={headerScale}"
-        f"&headerFont={headerFont}"
-        f"&bodyFont={bodyFont}"
-        f"&compactMode={str(compactMode).lower()}"
-        f"&showContactIcons={str(showContactIcons).lower()}"
-        f"&accentColor={accentColor}"
-        f"&dateDisplay={dateDisplay}"
-        f"&experienceHeaderOrder={experienceHeaderOrder}"
-        f"&fitOnePage={str(fitOnePage).lower()}"
+    pdf_request = _build_resume_pdf_request_from_query(
+        template=template,
+        page_size=pageSize,
+        margin_top=marginTop,
+        margin_bottom=marginBottom,
+        margin_left=marginLeft,
+        margin_right=marginRight,
+        section_spacing=sectionSpacing,
+        item_spacing=itemSpacing,
+        line_height=lineHeight,
+        font_size=fontSize,
+        header_scale=headerScale,
+        header_font=headerFont,
+        body_font=bodyFont,
+        compact_mode=compactMode,
+        show_contact_icons=showContactIcons,
+        accent_color=accentColor,
+        date_display=dateDisplay,
+        experience_header_order=experienceHeaderOrder,
+        fit_one_page=fitOnePage,
+        fit_mode=fitMode,
+        fit_one_page_vertical_scale=fitOnePageVerticalScale,
+        lang=lang,
     )
-    if fitMode is not None:
-        params = f"{params}&fitMode={fitMode}"
-    if fitOnePageVerticalScale is not None:
-        params = f"{params}&fitOnePageVerticalScale={fitOnePageVerticalScale}"
-    auth_token, _ = create_backend_access_token_for_user(current_user)
-    params = f"{params}&authToken={quote(auth_token, safe='')}"
-    if lang:
-        params = f"{params}&lang={lang}"
-    url = f"{settings.frontend_base_url}/print/resumes/{resume_id}?{params}"
+    cache_key = _build_resume_pdf_cache_key(
+        resume_id,
+        resume.get("updated_at"),
+        pdf_request,
+    )
 
-    # Use the exact margins provided; compact mode only affects spacing.
-    pdf_margins = {
-        "top": marginTop,
-        "right": marginRight,
-        "bottom": marginBottom,
-        "left": marginLeft,
-    }
-    explicit_fit_layout = fitMode is not None or fitOnePageVerticalScale is not None
-
-    # Render PDF with margins applied to every page
     try:
-        pdf_bytes = await render_resume_pdf(
-            url,
-            pageSize,
-            margins=pdf_margins,
-            fit_one_page=fitOnePage and not explicit_fit_layout,
-            calibrate_fit_one_page=fitOnePage and explicit_fit_layout,
+        pdf_bytes = await _get_or_render_resume_pdf(
+            cache_key,
+            lambda: _render_resume_pdf_for_request(
+                resume_id,
+                pdf_request,
+                current_user,
+            ),
         )
     except PDFRenderError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -2129,6 +2456,39 @@ async def download_resume_pdf(
         )
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+@router.post("/{resume_id}/pdf/warm", response_model=ResumePdfWarmResponse)
+async def warm_resume_pdf_endpoint(
+    resume_id: str,
+    payload: ResumePdfWarmRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> ResumePdfWarmResponse:
+    """Warm the cached PDF artifact so later downloads return faster."""
+    resume = db.get_resume(resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    pdf_request = _build_resume_pdf_request_from_warm_payload(payload)
+    cache_key = _build_resume_pdf_cache_key(
+        resume_id,
+        resume.get("updated_at"),
+        pdf_request,
+    )
+
+    try:
+        status = await _warm_resume_pdf(
+            cache_key,
+            lambda: _render_resume_pdf_for_request(
+                resume_id,
+                pdf_request,
+                current_user,
+            ),
+        )
+    except PDFRenderError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    return ResumePdfWarmResponse(request_id=str(uuid4()), status=status)
 
 
 @router.delete("/{resume_id}")
