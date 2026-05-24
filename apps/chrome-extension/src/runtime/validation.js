@@ -20,6 +20,171 @@ function hasMeaningfulText(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function normalizeString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeNullableNote(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeKeywordObjectArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      keyword: normalizeString(item.keyword),
+      priority:
+        isInteger(item.priority) && item.priority >= 1 && item.priority <= 10
+          ? item.priority
+          : 5,
+      type: item.type === "inferred" ? "inferred" : "exact",
+    }));
+}
+
+function normalizeSignalMap(value) {
+  const validSupport = new Set(["direct", "adjacent", "unsupported"]);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      signal: normalizeString(item.signal),
+      support: validSupport.has(item.support) ? item.support : "unsupported",
+      evidence: normalizeStringArray(item.evidence),
+      surface_in: normalizeStringArray(item.surface_in),
+    }));
+}
+
+function normalizeSelectedStorylines(value) {
+  const validStrength = new Set(["high", "medium"]);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      label: normalizeString(item.label),
+      strength: validStrength.has(item.strength) ? item.strength : "medium",
+      angles: normalizeStringArray(item.angles),
+      proof_points: normalizeStringArray(item.proof_points),
+      anchor_role: normalizeString(item.anchor_role),
+      anchor_bullet: normalizeString(item.anchor_bullet),
+      guardrail: normalizeString(item.guardrail),
+    }));
+}
+
+function normalizeExperienceEmphasis(value) {
+  const validActions = new Set(["keep", "rewrite_all"]);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      role: normalizeString(item.role),
+      default_action: validActions.has(item.default_action)
+        ? item.default_action
+        : "keep",
+      themes_to_emphasize: normalizeStringArray(item.themes_to_emphasize),
+      proof_points: normalizeStringArray(item.proof_points),
+      deemphasize: normalizeStringArray(item.deemphasize),
+      guardrail: normalizeString(item.guardrail),
+    }));
+}
+
+function normalizeCompanyContextGuidance(value) {
+  const validActions = new Set(["preserve", "add", "revise", "omit"]);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      role: normalizeString(item.role),
+      company: normalizeString(item.company),
+      recommended_context: normalizeString(item.recommended_context),
+      action: validActions.has(item.action) ? item.action : "preserve",
+      evidence: normalizeString(item.evidence),
+      guardrail: normalizeString(item.guardrail),
+    }));
+}
+
+function normalizeBulletRewriteInstructions(value) {
+  const validActions = new Set(["rewrite", "add"]);
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      role: normalizeString(item.role),
+      action: validActions.has(item.action) ? item.action : "rewrite",
+      bullet_anchor: normalizeString(item.bullet_anchor),
+      instruction: {
+        primary_message: normalizeString(item.instruction?.primary_message),
+        primary_metric: normalizeString(item.instruction?.primary_metric),
+        mechanism: normalizeString(item.instruction?.mechanism),
+        optional_context: normalizeString(item.instruction?.optional_context),
+        do_not_include: normalizeStringArray(item.instruction?.do_not_include),
+      },
+    }));
+}
+
+function normalizeEducationNotes(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      institution: normalizeString(item.institution),
+      instruction: normalizeString(item.instruction),
+    }));
+}
+
+function normalizeExcitementAnchor(value) {
+  const validPlacements = new Set([
+    "summary",
+    "first_bullet_of_recent_role",
+    "both",
+  ]);
+
+  return {
+    claim: normalizeString(value?.claim),
+    evidence: normalizeString(value?.evidence),
+    placement: validPlacements.has(value?.placement)
+      ? value.placement
+      : "summary",
+    why_distinctive: normalizeString(value?.why_distinctive),
+  };
+}
+
 function validateExactKeys(value, label, allowedKeys, errors) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     errors.push(`${label} must be an object.`);
@@ -852,6 +1017,78 @@ export function validatePrompt1Data(data) {
   return errors;
 }
 
+export function validatePrompt1MinimalData(data) {
+  const errors = [];
+
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return ["Prompt 1 data must be an object."];
+  }
+
+  ["target_role", "target_seniority", "target_domain"].forEach((field) => {
+    if (!isString(data[field])) {
+      errors.push(`prompt1.${field} must be a string.`);
+    }
+  });
+
+  validateKeywordObjects(
+    data.gating_requirements,
+    "prompt1.gating_requirements",
+    errors,
+  );
+  validateKeywordObjects(
+    data.high_signal_requirements,
+    "prompt1.high_signal_requirements",
+    errors,
+  );
+
+  if ("flex_notes" in data && !isNullableString(data.flex_notes)) {
+    errors.push("prompt1.flex_notes must be a string or null.");
+  }
+
+  return errors;
+}
+
+export function normalizePrompt1Data(data) {
+  return {
+    target_role: normalizeString(data?.target_role),
+    target_seniority: normalizeString(data?.target_seniority),
+    target_domain: normalizeString(data?.target_domain),
+    company_context: normalizeString(data?.company_context),
+    role_archetype: normalizeString(data?.role_archetype),
+    gating_requirements: normalizeKeywordObjectArray(data?.gating_requirements),
+    high_signal_requirements: normalizeKeywordObjectArray(
+      data?.high_signal_requirements,
+    ),
+    medium_signal_requirements: normalizeKeywordObjectArray(
+      data?.medium_signal_requirements,
+    ),
+    nice_to_have_keywords: normalizeKeywordObjectArray(
+      data?.nice_to_have_keywords,
+    ),
+    target_native_phrases_to_validate: normalizeStringArray(
+      data?.target_native_phrases_to_validate,
+    ),
+    gating_qualifications: normalizeStringArray(data?.gating_qualifications),
+    near_gate_qualifications: normalizeStringArray(
+      data?.near_gate_qualifications,
+    ),
+    preferred_qualifications: normalizeStringArray(
+      data?.preferred_qualifications,
+    ),
+    core_responsibilities: normalizeStringArray(data?.core_responsibilities),
+    recruiter_hooks: normalizeStringArray(data?.recruiter_hooks),
+    hiring_manager_proof: normalizeStringArray(data?.hiring_manager_proof),
+    domain_terms: normalizeStringArray(data?.domain_terms),
+    metrics_kpis: normalizeStringArray(data?.metrics_kpis),
+    tools_platforms: normalizeStringArray(data?.tools_platforms),
+    soft_skills: normalizeStringArray(data?.soft_skills),
+    do_not_fake: normalizeStringArray(data?.do_not_fake),
+    deprioritize: normalizeStringArray(data?.deprioritize),
+    jd_notes: normalizeStringArray(data?.jd_notes),
+    flex_notes: normalizeNullableNote(data?.flex_notes),
+  };
+}
+
 export function validatePrompt2Data(data) {
   const errors = [];
   const allowedTopLevelKeys = [
@@ -968,4 +1205,78 @@ export function validatePrompt2Data(data) {
   }
 
   return errors;
+}
+
+export function validatePrompt2MinimalData(data) {
+  const errors = [];
+
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return ["Prompt 2 data must be an object."];
+  }
+
+  [
+    "validated_role",
+    "validated_domain",
+    "positioning_thesis",
+    "recommended_title",
+    "summary_lead",
+  ].forEach((field) => {
+    if (!isString(data[field])) {
+      errors.push(`prompt2.${field} must be a string.`);
+    }
+  });
+
+  ["top_resume_goals", "final_skills_list", "cannot_claim"].forEach((field) => {
+    validateStringArrayField(data[field], `prompt2.${field}`, errors);
+  });
+
+  if (
+    "summary_sentences" in data &&
+    data.summary_sentences != null &&
+    (!isInteger(data.summary_sentences) ||
+      ![1, 2].includes(data.summary_sentences))
+  ) {
+    errors.push("prompt2.summary_sentences must be 1 or 2.");
+  }
+
+  if ("flex_notes" in data && !isNullableString(data.flex_notes)) {
+    errors.push("prompt2.flex_notes must be a string or null.");
+  }
+
+  return errors;
+}
+
+export function normalizePrompt2Data(data) {
+  return {
+    validated_role: normalizeString(data?.validated_role),
+    validated_domain: normalizeString(data?.validated_domain),
+    positioning_thesis: normalizeString(data?.positioning_thesis),
+    top_resume_goals: normalizeStringArray(data?.top_resume_goals),
+    recommended_title: normalizeString(data?.recommended_title),
+    summary_lead: normalizeString(data?.summary_lead),
+    summary_focus: normalizeStringArray(data?.summary_focus),
+    summary_sentences: data?.summary_sentences === 1 ? 1 : 2,
+    voice: normalizeString(data?.voice),
+    adjacent_framing: normalizeString(data?.adjacent_framing),
+    excitement_anchor: normalizeExcitementAnchor(data?.excitement_anchor),
+    signal_map: normalizeSignalMap(data?.signal_map),
+    selected_storylines: normalizeSelectedStorylines(data?.selected_storylines),
+    experience_emphasis: normalizeExperienceEmphasis(
+      data?.experience_emphasis,
+    ),
+    company_context_guidance: normalizeCompanyContextGuidance(
+      data?.company_context_guidance,
+    ),
+    bullet_rewrite_instructions: normalizeBulletRewriteInstructions(
+      data?.bullet_rewrite_instructions,
+    ),
+    education_notes: normalizeEducationNotes(data?.education_notes),
+    final_skills_list: normalizeStringArray(data?.final_skills_list),
+    phrases_to_mirror: normalizeStringArray(data?.phrases_to_mirror),
+    cannot_claim: normalizeStringArray(data?.cannot_claim),
+    skills_to_avoid: normalizeStringArray(data?.skills_to_avoid),
+    signals_to_avoid: normalizeStringArray(data?.signals_to_avoid),
+    gaps: normalizeStringArray(data?.gaps),
+    flex_notes: normalizeNullableNote(data?.flex_notes),
+  };
 }

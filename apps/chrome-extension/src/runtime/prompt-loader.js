@@ -6,6 +6,7 @@ import {
   getPromptOutputContractArtifactKey,
   getPromptOverrideAssetField,
   getPromptTemplateArtifactKey,
+  shouldAppendSharedPromptOutputContract,
   SYSTEM_GUARDRAILS_ARTIFACT_KEY,
 } from "./prompt-defaults.js";
 
@@ -132,8 +133,13 @@ async function buildPromptVersionId(templateName, artifacts) {
   return hashPromptText(versionInput);
 }
 
-async function loadSharedAppendBlockWithMetadata(templateName) {
-  if (templateName === "systemPrompt") {
+async function loadSharedAppendBlockWithMetadata(
+  templateName,
+  promptProfileId = null,
+) {
+  if (
+    !shouldAppendSharedPromptOutputContract(templateName, promptProfileId)
+  ) {
     return {
       text: "",
       metadata: null,
@@ -221,7 +227,10 @@ export async function loadPromptTemplateWithMetadata(templateName, profile) {
         assets?.activePromptProfileId,
       );
   const sharedAppendPart =
-    await loadSharedAppendBlockWithMetadata(templateName);
+    await loadSharedAppendBlockWithMetadata(
+      templateName,
+      assets?.activePromptProfileId,
+    );
   const mergedParts = [templatePart.text.trim(), sharedAppendPart.text].filter(
     Boolean,
   );
@@ -354,9 +363,11 @@ function buildPromptReplacements(input = {}) {
       ? `Additional instruction:\n${customInstruction}`
       : "",
     PROMPT1_JSON: stringifyJson(input.prompt1Json),
+    PROMPT1_RESPONSE: normalizeText(input.prompt1Response),
     PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES:
       extractHiringManagerPersonaFromFlexNotes(input.prompt1Json),
     PROMPT2_JSON: stringifyJson(input.prompt2Json),
+    PROMPT2_RESPONSE: normalizeText(input.prompt2Response),
     CURRENT_RESUME: currentResume,
     MASTER_RESUME: currentResume,
     MASTER_RESUME_MARKDOWN: currentResume,

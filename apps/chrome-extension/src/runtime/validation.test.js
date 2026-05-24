@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizePrompt1Data,
+  normalizePrompt2Data,
   validatePrompt1Data,
+  validatePrompt1MinimalData,
   validatePrompt2Data,
+  validatePrompt2MinimalData,
   validateResumeData,
 } from "./validation.js";
 
@@ -194,6 +198,42 @@ describe("prompt stage validation", () => {
     );
   });
 
+  it("accepts a minimal Prompt 1 handoff and normalizes it into the stable runtime shape", () => {
+    const minimalPrompt1 = {
+      target_role: "Technical Product Manager",
+      target_seniority: "Senior",
+      target_domain: "Infrastructure",
+      gating_requirements: [
+        {
+          keyword: "platform roadmap",
+          priority: 9,
+          type: "exact",
+        },
+      ],
+      high_signal_requirements: [
+        {
+          keyword: "cross-functional delivery",
+          priority: 8,
+          type: "inferred",
+        },
+      ],
+      flex_notes:
+        "hiring_manager_persona: skeptical infrastructure leader who wants concrete execution proof",
+    };
+
+    expect(validatePrompt1MinimalData(minimalPrompt1)).toEqual([]);
+
+    const normalized = normalizePrompt1Data(minimalPrompt1);
+
+    expect(normalized.flex_notes).toBe(
+      "hiring_manager_persona: skeptical infrastructure leader who wants concrete execution proof",
+    );
+    expect(normalized.company_context).toBe("");
+    expect(normalized.medium_signal_requirements).toEqual([]);
+    expect(normalized.jd_notes).toEqual([]);
+    expect(validatePrompt1Data(normalized)).toEqual([]);
+  });
+
   it("rejects a partial Prompt 2 payload shaped like a nested signal object", () => {
     expect(
       validatePrompt2Data({
@@ -232,6 +272,58 @@ describe("prompt stage validation", () => {
     expect(
       validatePrompt2Data({ ...validPrompt2, summary_sentences: 3 }),
     ).toContain("prompt2.summary_sentences must be 1 or 2.");
+  });
+
+  it("accepts a minimal Prompt 2 handoff and normalizes missing strategy detail fields", () => {
+    const minimalPrompt2 = {
+      validated_role: "Technical Product Manager",
+      validated_domain: "Infrastructure",
+      positioning_thesis:
+        "Platform PM with credible infra execution and cross-functional delivery proof",
+      top_resume_goals: [
+        "Lead with infrastructure relevance",
+        "Show execution depth",
+      ],
+      recommended_title: "Technical Product Manager, Infrastructure",
+      summary_lead:
+        "Technical product manager with infrastructure-facing platform execution experience",
+      final_skills_list: ["SQL", "Experimentation"],
+      cannot_claim: ["Direct SRE ownership"],
+      flex_notes: "keep the hiring-manager tone direct",
+    };
+
+    expect(validatePrompt2MinimalData(minimalPrompt2)).toEqual([]);
+
+    const normalized = normalizePrompt2Data(minimalPrompt2);
+
+    expect(normalized.summary_sentences).toBe(2);
+    expect(normalized.signal_map).toEqual([]);
+    expect(normalized.selected_storylines).toEqual([]);
+    expect(normalized.excitement_anchor).toEqual({
+      claim: "",
+      evidence: "",
+      placement: "summary",
+      why_distinctive: "",
+    });
+    expect(normalized.flex_notes).toBe("keep the hiring-manager tone direct");
+  });
+
+  it("keeps Prompt 2 summary_sentences lightweight but typed", () => {
+    const minimalPrompt2 = {
+      validated_role: "Technical Product Manager",
+      validated_domain: "Infrastructure",
+      positioning_thesis: "Position around platform execution depth",
+      top_resume_goals: ["Goal 1"],
+      recommended_title: "Technical Product Manager",
+      summary_lead: "Platform-focused product leader",
+      final_skills_list: ["SQL"],
+      cannot_claim: ["Direct SRE ownership"],
+      summary_sentences: 3,
+    };
+
+    expect(validatePrompt2MinimalData(minimalPrompt2)).toContain(
+      "prompt2.summary_sentences must be 1 or 2.",
+    );
   });
 });
 

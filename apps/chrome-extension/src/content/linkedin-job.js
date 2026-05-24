@@ -121,9 +121,12 @@ const PROVIDER_MODEL_ROW_ID = "resume-matcher-provider-model-row";
 const PROVIDER_MODEL_INPUT_ID = "resume-matcher-provider-model-input";
 const PROVIDER_API_KEY_ROW_ID = "resume-matcher-provider-api-key-row";
 const PROVIDER_API_KEY_INPUT_ID = "resume-matcher-provider-api-key-input";
+const PROVIDER_API_KEY_HINT_ID = "resume-matcher-provider-api-key-hint";
 const PROVIDER_SAVE_ID = "resume-matcher-provider-save";
 const ONBOARDING_PROVIDER_API_KEY_INPUT_ID =
   "resume-matcher-onboarding-provider-api-key-input";
+const ONBOARDING_PROVIDER_API_KEY_HINT_ID =
+  "resume-matcher-onboarding-provider-api-key-hint";
 const APIFY_ENABLED_INPUT_ID = "resume-matcher-apify-enabled";
 const APIFY_TOKEN_ROW_ID = "resume-matcher-apify-token-row";
 const APIFY_TOKEN_INPUT_ID = "resume-matcher-apify-token-input";
@@ -364,7 +367,7 @@ const PROMPT_PROFILE_UI = {
     label: "Competitive",
   },
   profile3: {
-    label: "Bold",
+    label: "Lean",
   },
 };
 
@@ -395,14 +398,14 @@ const TAILORING_STYLE_INFO = [
   },
   {
     profileId: "profile3",
-    title: "Bold",
+    title: "Lean",
     lines: [
-      "Pushes positioning to the edge.",
-      "Stretch: Very high",
-      "Truth safety: 5-6.5/10",
-      "Hiring-manager fit: 9.5-10/10",
-      "Interview risk: High",
-      "Best for long-shot or highly competitive roles where you can defend every claim.",
+      "Shorter prompts and lighter handoffs.",
+      "Token spend: Low",
+      "Prompt structure: Freeform for Prompt 1 and Prompt 2",
+      "Prompt 3: Still strict JSON",
+      "Model freedom: High",
+      "Best when you want faster, cheaper tailoring and can tolerate looser intermediate guidance.",
     ],
   },
 ];
@@ -442,7 +445,7 @@ function profileHasCustomPromptBodies(promptTemplateProfiles, profileId) {
 }
 
 function isBoldPromptProfileEnabled(promptTemplateProfiles = state.assets?.promptTemplateProfiles) {
-  return profileHasCustomPromptBodies(promptTemplateProfiles, "profile3");
+  return true;
 }
 
 function isPromptProfileSelectableInRunView(
@@ -808,13 +811,61 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function maskSecret(value) {
-  const normalized = String(value || "").trim();
-  if (!normalized) return "";
-  if (normalized.length <= 6) {
-    return `${normalized.slice(0, 1)}...${normalized.slice(-1)}`;
+function normalizeSecretValue(value) {
+  return String(value || "").trim();
+}
+
+function shouldEndSecretEdit(draftValue, savedValue) {
+  const normalizedDraft = normalizeSecretValue(draftValue);
+  if (!normalizedDraft) {
+    return true;
   }
-  return `${normalized.slice(0, 3)}...${normalized.slice(-3)}`;
+  return normalizedDraft === normalizeSecretValue(savedValue);
+}
+
+function getProviderSecretInputPresentation({
+  savedValue,
+  draftValue,
+  isEditing,
+}) {
+  if (isEditing) {
+    return {
+      type: "password",
+      readOnly: false,
+      placeholder: "API key",
+      value: draftValue || "",
+    };
+  }
+
+  if (normalizeSecretValue(savedValue)) {
+    return {
+      type: "password",
+      readOnly: true,
+      placeholder: "Saved API key. Focus to replace.",
+      value: "",
+    };
+  }
+
+  return {
+    type: "password",
+    readOnly: false,
+    placeholder: "API key required",
+    value: "",
+  };
+}
+
+function getProviderSecretHint({ savedValue, isEditing }) {
+  if (isEditing) {
+    return "";
+  }
+
+  const normalizedSaved = normalizeSecretValue(savedValue);
+  if (!normalizedSaved) {
+    return "";
+  }
+
+  const tailLength = Math.min(4, normalizedSaved.length);
+  return `Saved API key ending in ${normalizedSaved.slice(-tailLength)}. Focus to replace.`;
 }
 
 function truncateDisplayText(value, maxLength = 28) {
@@ -1025,15 +1076,33 @@ function setApifyDraftState(updates = {}) {
   return apifyDraftState;
 }
 
-function getCurrentSecretValue(inputId) {
+function isProviderSecretInputId(inputId) {
+  return (
+    inputId === PROVIDER_API_KEY_INPUT_ID ||
+    inputId === ONBOARDING_PROVIDER_API_KEY_INPUT_ID
+  );
+}
+
+function getSavedSecretValue(inputId) {
+  if (inputId === APIFY_TOKEN_INPUT_ID) {
+    return state.assets?.apifyFallbackSettings?.apiToken || "";
+  }
+  if (isProviderSecretInputId(inputId)) {
+    const settings = state.assets?.llmSettings;
+    const selectedProfileId = syncProviderDraftState().selectedProfileId;
+    return getSavedProfileById(selectedProfileId, settings)?.apiKey || "";
+  }
+  return "";
+}
+
+function getDraftSecretValue(inputId) {
   if (inputId === APIFY_TOKEN_INPUT_ID) {
     return syncApifyDraftState().apiToken || "";
   }
-  return syncProviderDraftState().apiKey || "";
-}
-
-function normalizeSecretValue(value) {
-  return String(value || "").trim();
+  if (isProviderSecretInputId(inputId)) {
+    return syncProviderDraftState().apiKey || "";
+  }
+  return "";
 }
 
 function getSavedProviderImportReadiness() {
@@ -1073,13 +1142,27 @@ function syncSecretInput(inputId) {
   const input = $(inputId);
   if (!(input instanceof HTMLInputElement)) return;
 
-  const actualValue = getCurrentSecretValue(inputId);
+  const savedValue = getSavedSecretValue(inputId);
+  const draftValue = getDraftSecretValue(inputId);
   const isEditing = secretEditingState[inputId] === true;
   input.dataset.secretInput = "true";
   input.autocomplete = "off";
   input.spellcheck = false;
 
   if (isEditing) {
+    if (isProviderSecretInputId(inputId)) {
+      const presentation = getProviderSecretInputPresentation({
+        savedValue,
+        draftValue: secretDraftState[inputId] || draftValue,
+        isEditing: true,
+      });
+      input.type = presentation.type;
+      input.readOnly = presentation.readOnly;
+      input.placeholder = presentation.placeholder;
+      input.value = presentation.value;
+      return;
+    }
+
     input.type = "password";
     input.readOnly = false;
     input.placeholder = getSecretPlaceholder(inputId);
@@ -1087,17 +1170,22 @@ function syncSecretInput(inputId) {
     return;
   }
 
-  if (actualValue) {
+  if (savedValue) {
     if (inputId === APIFY_TOKEN_INPUT_ID) {
       input.type = secretRevealState[inputId] === true ? "text" : "password";
       input.readOnly = true;
       input.placeholder = "";
-      input.value = actualValue;
+      input.value = savedValue;
     } else {
-      input.type = "text";
-      input.readOnly = true;
-      input.placeholder = "";
-      input.value = maskSecret(actualValue);
+      const presentation = getProviderSecretInputPresentation({
+        savedValue,
+        draftValue,
+        isEditing: false,
+      });
+      input.type = presentation.type;
+      input.readOnly = presentation.readOnly;
+      input.placeholder = presentation.placeholder;
+      input.value = presentation.value;
     }
     return;
   }
@@ -1112,7 +1200,7 @@ function syncSecretRevealToggle(inputId) {
   if (inputId !== APIFY_TOKEN_INPUT_ID) return;
   const button = $(APIFY_TOKEN_TOGGLE_ID);
   if (!(button instanceof HTMLButtonElement)) return;
-  const actualValue = getCurrentSecretValue(inputId);
+  const actualValue = getSavedSecretValue(inputId);
   const isEditing = secretEditingState[inputId] === true;
   const isVisible = secretRevealState[inputId] === true;
   button.hidden = !actualValue || isEditing;
@@ -1125,10 +1213,17 @@ function beginSecretEdit(input) {
   if (!(input instanceof HTMLInputElement) || input.readOnly !== true) return;
   const inputId = input.id;
   secretEditingState[inputId] = true;
-  secretDraftState[inputId] = getCurrentSecretValue(inputId);
+  secretDraftState[inputId] = isProviderSecretInputId(inputId)
+    ? ""
+    : getDraftSecretValue(inputId);
   secretRevealState[inputId] = false;
   syncSecretInput(inputId);
   syncSecretRevealToggle(inputId);
+  if (inputId === PROVIDER_API_KEY_INPUT_ID) {
+    syncProviderSecretHint(inputId, PROVIDER_API_KEY_HINT_ID);
+  } else if (inputId === ONBOARDING_PROVIDER_API_KEY_INPUT_ID) {
+    syncProviderSecretHint(inputId, ONBOARDING_PROVIDER_API_KEY_HINT_ID);
+  }
   const next = $(inputId);
   if (next instanceof HTMLInputElement) {
     next.focus();
@@ -1142,15 +1237,31 @@ function endSecretEdit(inputId) {
   secretRevealState[inputId] = false;
   syncSecretInput(inputId);
   syncSecretRevealToggle(inputId);
+  if (inputId === PROVIDER_API_KEY_INPUT_ID) {
+    syncProviderSecretHint(inputId, PROVIDER_API_KEY_HINT_ID);
+  } else if (inputId === ONBOARDING_PROVIDER_API_KEY_INPUT_ID) {
+    syncProviderSecretHint(inputId, ONBOARDING_PROVIDER_API_KEY_HINT_ID);
+  }
 }
 
 function toggleSecretReveal(inputId) {
   if (inputId !== APIFY_TOKEN_INPUT_ID) return;
   if (secretEditingState[inputId] === true) return;
-  if (!getCurrentSecretValue(inputId)) return;
+  if (!getSavedSecretValue(inputId)) return;
   secretRevealState[inputId] = !secretRevealState[inputId];
   syncSecretInput(inputId);
   syncSecretRevealToggle(inputId);
+}
+
+function syncProviderSecretHint(inputId, hintId) {
+  const hint = $(hintId);
+  if (!(hint instanceof HTMLElement)) return;
+  const message = getProviderSecretHint({
+    savedValue: getSavedSecretValue(inputId),
+    isEditing: secretEditingState[inputId] === true,
+  });
+  hint.hidden = !message;
+  hint.textContent = message;
 }
 
 function getOnboardingProviderDraftState() {
@@ -6386,6 +6497,7 @@ function renderOnboardingStep() {
           </div>
           <div id="resume-matcher-onboarding-provider-key-row" class="resume-matcher-field" data-invalid="${missingFields.has("apiKey") ? "true" : "false"}" data-required-empty="${!missingFields.has("apiKey") && requiredEmptyFields.has("apiKey") ? "true" : "false"}"${isApi ? "" : " hidden"}>
             <input id="${ONBOARDING_PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" value="" />
+            <div id="${ONBOARDING_PROVIDER_API_KEY_HINT_ID}" class="resume-matcher-field__hint" hidden></div>
           </div>
         </div>
         <p class="resume-matcher-onboarding__help resume-matcher-onboarding__help--subtle"><em>Most tested: ChatGPT web automation and Claude API.</em></p>
@@ -7143,6 +7255,7 @@ function renderProviderFields() {
   const modelInput = $(PROVIDER_MODEL_INPUT_ID);
   if (modelInput) modelInput.value = isApi ? providerDraft.model || "" : "";
   syncSecretInput(PROVIDER_API_KEY_INPUT_ID);
+  syncProviderSecretHint(PROVIDER_API_KEY_INPUT_ID, PROVIDER_API_KEY_HINT_ID);
 }
 
 function renderSettings() {
@@ -7629,6 +7742,10 @@ function renderRunView() {
       }
     }
     syncSecretInput(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
+    syncProviderSecretHint(
+      ONBOARDING_PROVIDER_API_KEY_INPUT_ID,
+      ONBOARDING_PROVIDER_API_KEY_HINT_ID,
+    );
     syncOnboardingProviderContinueState();
   }
 
@@ -7698,7 +7815,7 @@ function renderRunView() {
       state.isRunning || state.isCanceling || boldEnabled;
     promptProfileHint.textContent = boldEnabled
       ? ""
-      : "Bold unlocks after you upload custom prompts for it in Settings.";
+      : "Lean is available by default.";
   }
 
   if (readyPill) {
@@ -8349,7 +8466,10 @@ async function persistSelectedProviderSettings() {
   endSecretEdit(ONBOARDING_PROVIDER_API_KEY_INPUT_ID);
   renderSettings();
   renderRunView();
-  return true;
+  return {
+    ok: true,
+    providerValidation: response.providerValidation || { ok: true },
+  };
 }
 
 async function persistPromptProfileSelection(profileId, { refresh = true } = {}) {
@@ -8400,7 +8520,7 @@ async function persistOnboardingProviderSettingsAndContinue() {
   if (!draftState.ready) {
     return;
   }
-  await persistSelectedProviderSettings();
+  const saveResult = await persistSelectedProviderSettings();
   const response = await sendMessage("SET_ONBOARDING_STEP", {
     step: "assets",
   });
@@ -8408,6 +8528,14 @@ async function persistOnboardingProviderSettingsAndContinue() {
     throw new Error(response?.error || "Failed to continue onboarding.");
   }
   await refreshBoardData();
+  if (saveResult?.providerValidation?.ok === false) {
+    setRunStatus(
+      "info",
+      "Provider saved",
+      saveResult.providerValidation.error ||
+        "Saved the provider settings, but the connection check failed.",
+    );
+  }
 }
 
 async function persistApifyFallbackSettings() {
@@ -9148,6 +9276,7 @@ function ensureRoot() {
                         </div>
                         <div id="${PROVIDER_API_KEY_ROW_ID}" class="resume-matcher-field" hidden>
                           <input id="${PROVIDER_API_KEY_INPUT_ID}" type="password" placeholder="API key" />
+                          <div id="${PROVIDER_API_KEY_HINT_ID}" class="resume-matcher-field__hint" hidden></div>
                         </div>
                       </div>
                       <div class="resume-matcher-button-row">
@@ -9486,8 +9615,16 @@ function ensureRoot() {
   });
   $(PROVIDER_SAVE_ID)?.addEventListener("click", async () => {
     try {
-      await persistSelectedProviderSettings();
+      const result = await persistSelectedProviderSettings();
       await refreshBoardData();
+      if (result?.providerValidation?.ok === false) {
+        setRunStatus(
+          "info",
+          "Provider saved",
+          result.providerValidation.error ||
+            "Saved the provider settings, but the connection check failed.",
+        );
+      }
     } catch (error) {
       setRunStatus(
         "error",
@@ -9759,10 +9896,10 @@ function ensureRoot() {
     if (!(target instanceof HTMLInputElement)) return;
     if (!isSecretInputId(target.id)) return;
     const draftValue = normalizeSecretValue(secretDraftState[target.id]);
-    const currentValue = normalizeSecretValue(getCurrentSecretValue(target.id));
+    const savedValue = normalizeSecretValue(getSavedSecretValue(target.id));
     if (
       secretEditingState[target.id] === true &&
-      (!draftValue || draftValue === currentValue)
+      shouldEndSecretEdit(draftValue, savedValue)
     ) {
       endSecretEdit(target.id);
     }

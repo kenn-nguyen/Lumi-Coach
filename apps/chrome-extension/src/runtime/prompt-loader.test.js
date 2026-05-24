@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { normalizePrompt1Data } from "./validation.js";
 
 const getUserAssets = vi.fn();
 const getServerPromptDefaults = vi.fn();
@@ -174,6 +175,45 @@ describe("prompt-loader", () => {
     );
     expect(rendered.text).not.toContain(
       "{{PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES}}",
+    );
+  });
+
+  it("preserves the Prompt 1 hiring-manager persona after Prompt 1 normalization", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile2",
+      prompt2TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({
+      artifacts: {
+        "profile2.prompt2.template":
+          "Persona: {{PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES}}\nPrompt1={{PROMPT1_JSON}}",
+        "prompt2.output_contract": "SERVER CONTRACT",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => createFetchResponse("PACKAGED")),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const rendered = await promptLoader.renderPrompt2WithMetadata(
+      {
+        prompt1Json: normalizePrompt1Data({
+          target_role: "pm",
+          target_seniority: "senior",
+          target_domain: "identity",
+          gating_requirements: [],
+          high_signal_requirements: [],
+          flex_notes:
+            "hiring_manager_persona: skeptical identity-platform manager who trusts concrete scale and mechanism proof",
+        }),
+      },
+      {},
+    );
+
+    expect(rendered.text).toContain(
+      "Persona: skeptical identity-platform manager who trusts concrete scale and mechanism proof",
     );
   });
 
@@ -379,6 +419,119 @@ describe("prompt-loader", () => {
         }),
       ]),
     );
+  });
+
+  it("does not append the shared Prompt 1 output contract for profile 3", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile3",
+      prompt1TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({
+      artifacts: {},
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) => {
+        if (String(url).includes("profiles/profile3/prompt1.txt")) {
+          return createFetchResponse(
+            withFrontmatter(
+              {
+                prompt_artifact: "profile3.prompt1.template",
+                prompt_version: "v1.0.0",
+                prompt_label: "lean-jd-ats-hiring-manager-brief",
+              },
+              "PROFILE3 PROMPT1 {{JOB_TITLE}}",
+            ),
+          );
+        }
+        if (String(url).includes("prompt1.output-contract.txt")) {
+          return createFetchResponse("SHARED CONTRACT SHOULD NOT APPEAR");
+        }
+        return createFetchResponse("PACKAGED");
+      }),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const prompt = await promptLoader.renderPrompt1WithMetadata(
+      { jobTitle: "Platform PM" },
+      {},
+    );
+
+    expect(prompt.text).toContain("PROFILE3 PROMPT1 Platform PM");
+    expect(prompt.text).not.toContain("SHARED CONTRACT SHOULD NOT APPEAR");
+    expect(prompt.metadata.artifacts).toEqual([
+      expect.objectContaining({
+        artifactKey: "profile3.prompt1.template",
+      }),
+    ]);
+  });
+
+  it("renders profile 3 freeform Prompt 2 and Prompt 3 using raw stage responses", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile3",
+      prompt2TemplateAsset: null,
+      prompt3TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({
+      artifacts: {
+        "prompt3.output_contract": "PROMPT3 CONTRACT",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) => {
+        if (String(url).includes("profiles/profile3/prompt2.txt")) {
+          return createFetchResponse(
+            withFrontmatter(
+              {
+                prompt_artifact: "profile3.prompt2.template",
+                prompt_version: "v1.0.0",
+                prompt_label: "lean-hiring-manager-resume-note",
+              },
+              "Prompt1:\n{{PROMPT1_RESPONSE}}",
+            ),
+          );
+        }
+        if (String(url).includes("profiles/profile3/prompt3.txt")) {
+          return createFetchResponse(
+            withFrontmatter(
+              {
+                prompt_artifact: "profile3.prompt3.template",
+                prompt_version: "v1.0.0",
+                prompt_label: "lean-ats-resume-writer",
+              },
+              "Prompt2:\n{{PROMPT2_RESPONSE}}",
+            ),
+          );
+        }
+        return createFetchResponse("PACKAGED");
+      }),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const prompt2 = await promptLoader.renderPrompt2WithMetadata(
+      {
+        prompt1Response:
+          "Hiring manager\n- Trusts platform metrics\n- Rejects vague language",
+      },
+      {},
+    );
+    const prompt3 = await promptLoader.renderPrompt3WithMetadata(
+      {
+        prompt2Response:
+          "Page-one focus\n- Lead with platform outcomes\n- Keep current role tight",
+        currentResume: { personalInfo: { name: "Test" } },
+      },
+      {},
+    );
+
+    expect(prompt2.text).toContain("Trusts platform metrics");
+    expect(prompt2.text).not.toContain("PROMPT1_RESPONSE");
+    expect(prompt3.text).toContain("Lead with platform outcomes");
+    expect(prompt3.text).toContain("PROMPT3 CONTRACT");
+    expect(prompt3.text).not.toContain("PROMPT2_RESPONSE");
   });
 
   it("strips prompt frontmatter from user overrides and records the override version", async () => {

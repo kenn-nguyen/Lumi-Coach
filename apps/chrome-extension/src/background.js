@@ -1526,24 +1526,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           );
           const candidateProfile = getActiveLlmProfile(candidateSettings);
           const validation = await validateApiProfile(candidateProfile);
-          if (!validation.ok) {
-            return {
-              ok: false,
-              error:
-                validation.error ||
-                "AI API error. Check your API provider setup and try again.",
-            };
-          }
+          const llmSettings = await saveLlmSettings(
+            message.payload?.activeProfileId,
+            message.payload?.profileUpdates,
+          );
+          await maybeResumePendingExtensionAction();
+          return {
+            ok: true,
+            llmSettings,
+            providerValidation: validation,
+          };
         }
-        const llmSettings = await saveLlmSettings(
-          message.payload?.activeProfileId,
-          message.payload?.profileUpdates,
-        );
-        await maybeResumePendingExtensionAction();
-        return {
-          ok: true,
-          llmSettings,
-        };
 
       case "SAVE_APIFY_FALLBACK_SETTINGS": {
         const apifyFallbackSettings = await saveApifyFallbackSettings(

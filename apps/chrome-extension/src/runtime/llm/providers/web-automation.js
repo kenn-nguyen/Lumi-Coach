@@ -163,6 +163,283 @@ function buildWatchdogStateLog(state) {
   };
 }
 
+function buildStartupReadinessLog(state) {
+  if (!state || typeof state !== 'object') {
+    return null;
+  }
+
+  return {
+    ready: state.ready === true,
+    authRequired: state.authRequired === true,
+    composerFound: state.composerFound === true,
+    composerInteractive: state.composerInteractive === true,
+    sendButtonFound: state.sendButtonFound === true,
+    sendButtonDisabled:
+      typeof state.sendButtonDisabled === 'boolean'
+        ? state.sendButtonDisabled
+        : null,
+    sendButtonState:
+      state.sendButtonState && typeof state.sendButtonState === 'object'
+        ? state.sendButtonState
+        : null,
+    formFound: state.formFound === true,
+    conversationUrl: state.conversationUrl ?? null,
+  };
+}
+
+function injectedProviderReadinessProbe(config) {
+  const INPUT_SELECTORS = config.inputSelectors ?? [];
+  const SEND_BUTTON_SELECTORS = config.sendButtonSelectors ?? [];
+  const LOGIN_SELECTORS = config.loginSelectors ?? [];
+
+  function currentConversationUrl() {
+    if (config.urlMatchers.some((matcher) => window.location.href.startsWith(matcher))) {
+      return window.location.href;
+    }
+    return undefined;
+  }
+
+  function isVisible(element) {
+    if (!(element instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return (
+      style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  }
+
+  function findVisibleElement(selectors) {
+    for (const selector of selectors) {
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (isVisible(node)) return node;
+      }
+    }
+    return null;
+  }
+
+  function findComposer() {
+    for (const selector of INPUT_SELECTORS) {
+      const candidate = findVisibleElement([selector]);
+      if (!candidate) continue;
+      if (candidate instanceof HTMLTextAreaElement) return candidate;
+      if (
+        candidate instanceof HTMLElement &&
+        (candidate.isContentEditable ||
+          candidate.getAttribute('contenteditable') === 'true')
+      ) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  function isComposerInteractive(composer) {
+    if (!composer) return false;
+    if (composer instanceof HTMLTextAreaElement) {
+      return !composer.disabled && !composer.readOnly;
+    }
+    return (
+      composer.getAttribute('aria-disabled') !== 'true' &&
+      composer.getAttribute('contenteditable') !== 'false'
+    );
+  }
+
+  function hasLoginPrompt() {
+    return Boolean(findVisibleElement(LOGIN_SELECTORS));
+  }
+
+  function findFormSubmitButton(form) {
+    if (!(form instanceof HTMLFormElement)) {
+      return null;
+    }
+
+    const buttons = Array.from(form.querySelectorAll('button')).filter(
+      (node) => node instanceof HTMLButtonElement,
+    );
+    const prioritized = buttons.find((button) => {
+      const aria = (button.getAttribute('aria-label') ?? '').toLowerCase();
+      const testId = (button.getAttribute('data-testid') ?? '').toLowerCase();
+      const text = (button.textContent ?? '').toLowerCase();
+      const looksLoading =
+        aria.includes('loading') ||
+        text.includes('loading') ||
+        aria.includes('stop') ||
+        text.includes('stop');
+      const looksLikeComposerUtility =
+        testId.includes('composer-plus') ||
+        testId.includes('plus-btn') ||
+        aria.includes('attach') ||
+        aria.includes('upload') ||
+        aria.includes('voice') ||
+        aria.includes('microphone') ||
+        text.includes('attach') ||
+        text.includes('upload') ||
+        text.includes('voice');
+      return (
+        !looksLoading &&
+        !looksLikeComposerUtility &&
+        (button.type === 'submit' ||
+          aria.includes('send') ||
+          testId.includes('send'))
+      );
+    });
+    if (prioritized) return prioritized;
+    return (
+      buttons.find((button) => {
+        const aria = (button.getAttribute('aria-label') ?? '').toLowerCase();
+        const testId = (button.getAttribute('data-testid') ?? '').toLowerCase();
+        const text = (button.textContent ?? '').toLowerCase();
+        const looksLoading =
+          aria.includes('loading') ||
+          text.includes('loading') ||
+          aria.includes('stop') ||
+          text.includes('stop');
+        const looksLikeComposerUtility =
+          testId.includes('composer-plus') ||
+          testId.includes('plus-btn') ||
+          aria.includes('attach') ||
+          aria.includes('upload') ||
+          aria.includes('voice') ||
+          aria.includes('microphone') ||
+          text.includes('attach') ||
+          text.includes('upload') ||
+          text.includes('voice');
+        return (
+          !looksLoading &&
+          !looksLikeComposerUtility &&
+          (button.type === 'submit' ||
+            aria.includes('send') ||
+            testId.includes('send'))
+        );
+      }) ?? null
+    );
+  }
+
+  function findSendButton(form) {
+    for (const selector of SEND_BUTTON_SELECTORS) {
+      const node = document.querySelector(selector);
+      if (node instanceof HTMLButtonElement) {
+        const aria = (node.getAttribute('aria-label') ?? '').toLowerCase();
+        const testId = (node.getAttribute('data-testid') ?? '').toLowerCase();
+        const text = (node.textContent ?? '').toLowerCase();
+        const looksLikeComposerUtility =
+          testId.includes('composer-plus') ||
+          testId.includes('plus-btn') ||
+          aria.includes('attach') ||
+          aria.includes('upload') ||
+          aria.includes('voice') ||
+          aria.includes('microphone') ||
+          text.includes('attach') ||
+          text.includes('upload') ||
+          text.includes('voice');
+        if (
+          aria.includes('loading') ||
+          text.includes('loading') ||
+          aria.includes('stop') ||
+          text.includes('stop') ||
+          looksLikeComposerUtility
+        ) {
+          continue;
+        }
+        return node;
+      }
+    }
+    return findFormSubmitButton(form);
+  }
+
+  function getButtonState(button) {
+    if (!(button instanceof HTMLButtonElement)) return null;
+    return {
+      text: button.textContent?.trim().slice(0, 30) ?? '',
+      ariaLabel: button.getAttribute('aria-label'),
+      dataTestId: button.getAttribute('data-testid'),
+      disabled: button.disabled,
+    };
+  }
+
+  const composer = findComposer();
+  const form =
+    composer instanceof HTMLTextAreaElement
+      ? composer.form
+      : composer?.closest?.('form');
+  const sendButton = findSendButton(form);
+
+  return {
+    ready: Boolean(composer && isComposerInteractive(composer)),
+    authRequired: !composer && hasLoginPrompt(),
+    composerFound: Boolean(composer),
+    composerInteractive: Boolean(composer && isComposerInteractive(composer)),
+    sendButtonFound: Boolean(sendButton),
+    sendButtonDisabled:
+      sendButton instanceof HTMLButtonElement ? sendButton.disabled : null,
+    sendButtonState: getButtonState(sendButton),
+    formFound: form instanceof HTMLFormElement,
+    conversationUrl: currentConversationUrl(),
+  };
+}
+
+async function probeWebAutomationStartupReady(tabId, config) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: injectedProviderReadinessProbe,
+    args: [config],
+  });
+  return results?.[0]?.result ?? null;
+}
+
+async function waitForWebAutomationStartupReady(
+  tabId,
+  config,
+  timeoutMs,
+  options = {},
+) {
+  if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) {
+    return { ready: false, skipped: true, state: null, elapsedMs: 0 };
+  }
+
+  const pollIntervalMs = Math.max(
+    50,
+    Math.min(options.pollIntervalMs ?? 150, timeoutMs),
+  );
+  const startedAt = Date.now();
+  let lastState = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      lastState = await probeWebAutomationStartupReady(tabId, config);
+      if (lastState?.ready) {
+        return {
+          ready: true,
+          timedOut: false,
+          state: lastState,
+          elapsedMs: Date.now() - startedAt,
+        };
+      }
+    } catch (error) {
+      if (isPopupClosedError(error)) {
+        throw error;
+      }
+    }
+
+    const remainingMs = timeoutMs - (Date.now() - startedAt);
+    if (remainingMs <= 0) {
+      break;
+    }
+    await wait(Math.min(pollIntervalMs, remainingMs));
+  }
+
+  return {
+    ready: false,
+    timedOut: true,
+    state: lastState,
+    elapsedMs: Date.now() - startedAt,
+  };
+}
+
 export function injectedProviderPromptEntry(prompt, config, options = {}) {
   const WATCHDOG_STATE_KEY = '__resumeMatcherWebAutomationState';
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? config.responseIdleTimeoutMs ?? 25000;
@@ -1140,7 +1417,30 @@ async function openWebAutomationSession(config, options = {}) {
     logInfo(config.scope, config.tabReadyMessage, { promptLabel, popupWindowId, tabId });
     if (warmupDelayMs > 0) {
       logInfo(config.scope, config.waitForHydrationMessage, { promptLabel, tabId, warmupDelayMs });
-      await wait(warmupDelayMs);
+      const readiness = await waitForWebAutomationStartupReady(
+        tabId,
+        config,
+        warmupDelayMs,
+      );
+      if (readiness.ready) {
+        logInfo(config.scope, `${config.providerLabel} startup ready.`, {
+          promptLabel,
+          tabId,
+          elapsedMs: readiness.elapsedMs,
+          readiness: buildStartupReadinessLog(readiness.state),
+        });
+      } else {
+        logInfo(
+          config.scope,
+          `${config.providerLabel} startup readiness wait expired; continuing to prompt runner.`,
+          {
+            promptLabel,
+            tabId,
+            elapsedMs: readiness.elapsedMs,
+            readiness: buildStartupReadinessLog(readiness.state),
+          },
+        );
+      }
     }
     return { popupWindowId, tabId, targetUrl, promptLabel, unregisterCleanup };
   } catch (error) {

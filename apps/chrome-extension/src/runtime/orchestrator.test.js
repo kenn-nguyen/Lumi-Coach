@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getMasterResumeImportProviderIssue,
+  isFreeformPromptProfileId,
   getPrompt4ResumeRejectionMessage,
   prefixGenerationFeedbackSummary,
   preserveGeneratedResumeFacts,
@@ -208,6 +209,14 @@ describe("shouldReuseChatGptPopupSession", () => {
         null,
       ),
     ).toBe(false);
+  });
+});
+
+describe("isFreeformPromptProfileId", () => {
+  it("enables freeform Prompt 1 and Prompt 2 only for profile 3", () => {
+    expect(isFreeformPromptProfileId("profile3")).toBe(true);
+    expect(isFreeformPromptProfileId("profile2")).toBe(false);
+    expect(isFreeformPromptProfileId("")).toBe(false);
   });
 });
 

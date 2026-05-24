@@ -176,6 +176,307 @@ function normalizeResultForLogging(result) {
   return normalized;
 }
 
+function buildStartupReadinessLog(state) {
+  if (!state || typeof state !== 'object') {
+    return null;
+  }
+
+  return {
+    ready: state.ready === true,
+    authRequired: state.authRequired === true,
+    composerFound: state.composerFound === true,
+    composerInteractive: state.composerInteractive === true,
+    sendButtonFound: state.sendButtonFound === true,
+    sendButtonDisabled:
+      typeof state.sendButtonDisabled === 'boolean'
+        ? state.sendButtonDisabled
+        : null,
+    sendButtonState:
+      state.sendButtonState && typeof state.sendButtonState === 'object'
+        ? state.sendButtonState
+        : null,
+    formFound: state.formFound === true,
+    conversationUrl: state.conversationUrl ?? null,
+  };
+}
+
+function injectedChatGptReadinessProbe() {
+  const INPUT_SELECTORS = [
+    'div#prompt-textarea.ProseMirror[contenteditable="true"][role="textbox"]',
+    '[data-composer-surface="true"] div#prompt-textarea[contenteditable="true"]',
+    '.wcDTda_prosemirror-parent div#prompt-textarea[contenteditable="true"]',
+    'textarea#prompt-textarea',
+    'textarea[name="prompt-textarea"]',
+    'textarea[placeholder*="Message"]',
+    'textarea[placeholder*="Ask"]',
+    'textarea[data-testid="prompt-textarea"]',
+    'form textarea',
+    'div#prompt-textarea[contenteditable="true"]',
+    'div[contenteditable="true"][data-testid="composer"]',
+    'div[data-testid*="composer"] [contenteditable="true"]',
+    'div[contenteditable="true"].ProseMirror',
+    'form [contenteditable="true"]',
+    '[contenteditable="true"][role="textbox"]',
+  ];
+  const SEND_BUTTON_SELECTORS = [
+    'button[data-testid="send-button"]',
+    'button[data-testid*="send"]',
+    'button[aria-label*="Send prompt"]',
+    'button[aria-label*="Send message"]',
+    'button[aria-label="Send"]',
+    'button[type="submit"]',
+    'form button[type="submit"]',
+  ];
+  const LOGIN_SELECTORS = [
+    'a[href*="/auth/login"]',
+    'button[data-testid="login-button"]',
+    'button[aria-label*="Log in"]',
+    'button[aria-label*="Sign in"]',
+  ];
+
+  function currentConversationUrl() {
+    return window.location.href.startsWith('https://chatgpt.com/') ||
+      window.location.href.startsWith('https://chat.openai.com/')
+      ? window.location.href
+      : undefined;
+  }
+
+  function isVisible(element) {
+    if (!(element instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return (
+      style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  }
+
+  function findVisibleElement(selectors) {
+    for (const selector of selectors) {
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (isVisible(node)) return node;
+      }
+    }
+    return null;
+  }
+
+  function findComposer() {
+    for (const selector of INPUT_SELECTORS) {
+      const candidate = findVisibleElement([selector]);
+      if (!candidate) continue;
+      if (candidate instanceof HTMLTextAreaElement) return candidate;
+      if (
+        candidate instanceof HTMLElement &&
+        (candidate.isContentEditable ||
+          candidate.getAttribute('contenteditable') === 'true')
+      ) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  function isComposerInteractive(composer) {
+    if (!composer) return false;
+    if (composer instanceof HTMLTextAreaElement) {
+      return !composer.disabled && !composer.readOnly;
+    }
+    return (
+      composer.getAttribute('aria-disabled') !== 'true' &&
+      composer.getAttribute('contenteditable') !== 'false'
+    );
+  }
+
+  function hasLoginPrompt() {
+    return Boolean(findVisibleElement(LOGIN_SELECTORS));
+  }
+
+  function findFormSubmitButton(form) {
+    if (!(form instanceof HTMLFormElement)) return null;
+    const buttons = Array.from(form.querySelectorAll('button')).filter(
+      (node) => node instanceof HTMLButtonElement,
+    );
+    const prioritized = buttons.find((button) => {
+      const aria = (button.getAttribute('aria-label') ?? '').toLowerCase();
+      const testId = (button.getAttribute('data-testid') ?? '').toLowerCase();
+      const text = (button.textContent ?? '').toLowerCase();
+      const looksLoading =
+        aria.includes('loading') ||
+        text.includes('loading') ||
+        aria.includes('stop') ||
+        text.includes('stop');
+      const looksLikeComposerUtility =
+        testId.includes('composer-plus') ||
+        testId.includes('plus-btn') ||
+        aria.includes('attach') ||
+        aria.includes('upload') ||
+        aria.includes('voice') ||
+        aria.includes('microphone') ||
+        text.includes('attach') ||
+        text.includes('upload') ||
+        text.includes('voice');
+      return (
+        !looksLoading &&
+        !looksLikeComposerUtility &&
+        (button.type === 'submit' ||
+          aria.includes('send') ||
+          testId.includes('send'))
+      );
+    });
+    if (prioritized) return prioritized;
+    return (
+      buttons.find((button) => {
+        const aria = (button.getAttribute('aria-label') ?? '').toLowerCase();
+        const testId = (button.getAttribute('data-testid') ?? '').toLowerCase();
+        const text = (button.textContent ?? '').toLowerCase();
+        const looksLoading =
+          aria.includes('loading') ||
+          text.includes('loading') ||
+          aria.includes('stop') ||
+          text.includes('stop');
+        const looksLikeComposerUtility =
+          testId.includes('composer-plus') ||
+          testId.includes('plus-btn') ||
+          aria.includes('attach') ||
+          aria.includes('upload') ||
+          aria.includes('voice') ||
+          aria.includes('microphone') ||
+          text.includes('attach') ||
+          text.includes('upload') ||
+          text.includes('voice');
+        return (
+          !looksLoading &&
+          !looksLikeComposerUtility &&
+          (button.type === 'submit' ||
+            aria.includes('send') ||
+            testId.includes('send'))
+        );
+      }) ?? null
+    );
+  }
+
+  function findSendButton(form) {
+    for (const selector of SEND_BUTTON_SELECTORS) {
+      const node = document.querySelector(selector);
+      if (node instanceof HTMLButtonElement) {
+        const aria = (node.getAttribute('aria-label') ?? '').toLowerCase();
+        const testId = (node.getAttribute('data-testid') ?? '').toLowerCase();
+        const text = (node.textContent ?? '').toLowerCase();
+        const looksLikeComposerUtility =
+          testId.includes('composer-plus') ||
+          testId.includes('plus-btn') ||
+          aria.includes('attach') ||
+          aria.includes('upload') ||
+          aria.includes('voice') ||
+          aria.includes('microphone') ||
+          text.includes('attach') ||
+          text.includes('upload') ||
+          text.includes('voice');
+        if (
+          aria.includes('loading') ||
+          text.includes('loading') ||
+          aria.includes('stop') ||
+          text.includes('stop') ||
+          looksLikeComposerUtility
+        ) {
+          continue;
+        }
+        return node;
+      }
+    }
+    return findFormSubmitButton(form);
+  }
+
+  function getButtonState(button) {
+    if (!(button instanceof HTMLButtonElement)) return null;
+    return {
+      text: button.textContent?.trim().slice(0, 30) ?? '',
+      ariaLabel: button.getAttribute('aria-label'),
+      dataTestId: button.getAttribute('data-testid'),
+      disabled: button.disabled,
+    };
+  }
+
+  const composer = findComposer();
+  const form =
+    composer instanceof HTMLTextAreaElement
+      ? composer.form
+      : composer?.closest?.('form');
+  const sendButton = findSendButton(form);
+
+  return {
+    ready: Boolean(composer && isComposerInteractive(composer)),
+    authRequired: !composer && hasLoginPrompt(),
+    composerFound: Boolean(composer),
+    composerInteractive: Boolean(composer && isComposerInteractive(composer)),
+    sendButtonFound: Boolean(sendButton),
+    sendButtonDisabled:
+      sendButton instanceof HTMLButtonElement ? sendButton.disabled : null,
+    sendButtonState: getButtonState(sendButton),
+    formFound: form instanceof HTMLFormElement,
+    conversationUrl: currentConversationUrl(),
+  };
+}
+
+async function probeChatGptStartupReady(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: injectedChatGptReadinessProbe,
+  });
+  return results?.[0]?.result ?? null;
+}
+
+async function waitForChatGptStartupReady(
+  tabId,
+  timeoutMs,
+  options = {},
+) {
+  if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) {
+    return { ready: false, skipped: true, state: null, elapsedMs: 0 };
+  }
+
+  const pollIntervalMs = Math.max(
+    50,
+    Math.min(options.pollIntervalMs ?? 150, timeoutMs),
+  );
+  const startedAt = Date.now();
+  let lastState = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      lastState = await probeChatGptStartupReady(tabId);
+      if (lastState?.ready) {
+        return {
+          ready: true,
+          timedOut: false,
+          state: lastState,
+          elapsedMs: Date.now() - startedAt,
+        };
+      }
+    } catch (error) {
+      if (isPopupClosedError(error)) {
+        throw error;
+      }
+    }
+
+    const remainingMs = timeoutMs - (Date.now() - startedAt);
+    if (remainingMs <= 0) {
+      break;
+    }
+    await wait(Math.min(pollIntervalMs, remainingMs));
+  }
+
+  return {
+    ready: false,
+    timedOut: true,
+    state: lastState,
+    elapsedMs: Date.now() - startedAt,
+  };
+}
+
 function injectedChatGptPromptEntry(prompt, options = {}) {
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 300000;
   const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 300000;
@@ -839,12 +1140,31 @@ async function openChatGptSession(options = {}) {
     const tabId = await waitForChatGptTab(popupWindowId);
     logInfo('ChatGptAutomation', 'ChatGPT tab ready.', { promptLabel, popupWindowId, tabId });
     if (warmupDelayMs > 0) {
-      logInfo('ChatGptAutomation', 'Waiting for ChatGPT page hydration.', {
+      logInfo('ChatGptAutomation', 'Waiting for ChatGPT startup readiness.', {
         promptLabel,
         tabId,
         warmupDelayMs,
       });
-      await wait(warmupDelayMs);
+      const readiness = await waitForChatGptStartupReady(tabId, warmupDelayMs);
+      if (readiness.ready) {
+        logInfo('ChatGptAutomation', 'ChatGPT startup ready.', {
+          promptLabel,
+          tabId,
+          elapsedMs: readiness.elapsedMs,
+          readiness: buildStartupReadinessLog(readiness.state),
+        });
+      } else {
+        logInfo(
+          'ChatGptAutomation',
+          'ChatGPT startup readiness wait expired; continuing to prompt runner.',
+          {
+            promptLabel,
+            tabId,
+            elapsedMs: readiness.elapsedMs,
+            readiness: buildStartupReadinessLog(readiness.state),
+          },
+        );
+      }
     }
     return { popupWindowId, tabId, targetUrl, promptLabel, unregisterCleanup };
   } catch (error) {
@@ -908,7 +1228,20 @@ export async function resetChatGptRunSession(runId, options = {}) {
   const nextTabId = updatedTab?.id ?? session.tabId;
   await waitForChatGptTabById(nextTabId);
   if (warmupDelayMs > 0) {
-    await wait(warmupDelayMs);
+    const readiness = await waitForChatGptStartupReady(nextTabId, warmupDelayMs);
+    logInfo(
+      'ChatGptAutomation',
+      readiness.ready
+        ? 'ChatGPT startup ready after reset.'
+        : 'ChatGPT startup readiness wait expired after reset; continuing to prompt runner.',
+      {
+        promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
+        runId: normalizedRunId,
+        tabId: nextTabId,
+        elapsedMs: readiness.elapsedMs,
+        readiness: buildStartupReadinessLog(readiness.state),
+      },
+    );
   }
 
   session.tabId = nextTabId;

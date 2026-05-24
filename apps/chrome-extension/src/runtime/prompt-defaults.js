@@ -46,9 +46,9 @@ const PROFILE_DEFAULT_PROMPT_PATHS = {
     systemPrompt: "src/prompts/system-prompt.txt",
   },
   profile3: {
-    prompt1: "src/prompts/prompt1.txt",
-    prompt2: "src/prompts/prompt2.txt",
-    prompt3: "src/prompts/prompt3.txt",
+    prompt1: "src/prompts/profiles/profile3/prompt1.txt",
+    prompt2: "src/prompts/profiles/profile3/prompt2.txt",
+    prompt3: "src/prompts/profiles/profile3/prompt3.txt",
     systemPrompt: "src/prompts/system-prompt.txt",
   },
 };
@@ -176,11 +176,28 @@ export function getPromptArtifactKeysForTemplate(
     templateName,
     promptProfileId,
   );
-  if (templateName === "systemPrompt") {
+  if (
+    templateName === "systemPrompt" ||
+    !shouldAppendSharedPromptOutputContract(templateName, promptProfileId)
+  ) {
     return [templateArtifactKey];
   }
 
   return [templateArtifactKey, getPromptOutputContractArtifactKey(templateName)];
+}
+
+export function shouldAppendSharedPromptOutputContract(
+  templateName,
+  promptProfileId = null,
+) {
+  if (templateName === "systemPrompt") {
+    return false;
+  }
+
+  return !(
+    promptProfileId === "profile3" &&
+    (templateName === "prompt1" || templateName === "prompt2")
+  );
 }
 
 function resolveExtensionAssetUrl(path) {

@@ -17,8 +17,10 @@ import {
 } from "./prompt-loader.js";
 import { scrapeLinkedInJob } from "./linkedin.js";
 import {
-  validatePrompt1Data,
-  validatePrompt2Data,
+  normalizePrompt1Data,
+  normalizePrompt2Data,
+  validatePrompt1MinimalData,
+  validatePrompt2MinimalData,
   validateResumeData,
 } from "./validation.js";
 import {
@@ -665,8 +667,20 @@ function buildBasePromptContext({
     storyboard,
     customInstruction,
     systemPrompt,
+    prompt1Response: "",
     prompt1Json: null,
+    prompt2Response: "",
     prompt2Json: null,
+  };
+}
+
+export function isFreeformPromptProfileId(promptProfileId = "") {
+  return String(promptProfileId || "").trim() === "profile3";
+}
+
+function buildFreeformPromptStageArtifact(rawText) {
+  return {
+    response: typeof rawText === "string" ? rawText.trim() : "",
   };
 }
 
@@ -809,7 +823,10 @@ function formatPreviousInvalidOutput(previousRawText) {
 }
 
 function validatePrompt1RawOutput(rawText) {
-  return buildStructuredPromptValidationResult(rawText, validatePrompt1Data);
+  return buildStructuredPromptValidationResult(
+    rawText,
+    validatePrompt1MinimalData,
+  );
 }
 
 function buildPrompt1RepairPrompt({
@@ -831,7 +848,10 @@ function buildPrompt1RepairPrompt({
 }
 
 function validatePrompt2RawOutput(rawText) {
-  return buildStructuredPromptValidationResult(rawText, validatePrompt2Data);
+  return buildStructuredPromptValidationResult(
+    rawText,
+    validatePrompt2MinimalData,
+  );
 }
 
 function buildPrompt2RepairPrompt({
@@ -1352,6 +1372,7 @@ export async function generateResumeForLinkedInJob(
     activeLlmProfile,
     runId,
   );
+  const freeformPromptProfile = isFreeformPromptProfileId(activePromptProfileId);
 
   cancel.throwIfCanceled("job tab resolution");
   const activeTabId = manualJobInputUsed
@@ -1573,9 +1594,13 @@ export async function generateResumeForLinkedInJob(
       systemPrompt,
       runId,
       signal: cancel.signal(),
-      validateResponse: validatePrompt1RawOutput,
-      buildRepairPrompt: buildPrompt1RepairPrompt,
-      maxRepairAttempts: 1,
+      ...(freeformPromptProfile
+        ? {}
+        : {
+            validateResponse: validatePrompt1RawOutput,
+            buildRepairPrompt: buildPrompt1RepairPrompt,
+            maxRepairAttempts: 1,
+          }),
       reusePopupSession: reuseChatGptPopup,
     });
     prompt1DurationMs = Date.now() - prompt1StartedMs;
@@ -1618,10 +1643,19 @@ export async function generateResumeForLinkedInJob(
     }
     logInfo("Orchestrator", "Parsing Prompt 1 output.");
     logPromptDebug("Prompt 1", "output", prompt1Raw);
-    prompt1Result = extractJsonFromText(prompt1Raw, {
-      validate: (candidate) => validatePrompt1Data(candidate).length === 0,
-    });
-    promptContext.prompt1Json = prompt1Result;
+    promptContext.prompt1Response = prompt1Raw;
+    if (freeformPromptProfile) {
+      prompt1Result = buildFreeformPromptStageArtifact(prompt1Raw);
+      promptContext.prompt1Json = null;
+    } else {
+      prompt1Result = normalizePrompt1Data(
+        extractJsonFromText(prompt1Raw, {
+          validate: (candidate) =>
+            validatePrompt1MinimalData(candidate).length === 0,
+        }),
+      );
+      promptContext.prompt1Json = prompt1Result;
+    }
     await setExtensionState({
       prompt1Raw,
       prompt1Result,
@@ -1666,9 +1700,13 @@ export async function generateResumeForLinkedInJob(
       systemPrompt,
       runId,
       signal: cancel.signal(),
-      validateResponse: validatePrompt2RawOutput,
-      buildRepairPrompt: buildPrompt2RepairPrompt,
-      maxRepairAttempts: 1,
+      ...(freeformPromptProfile
+        ? {}
+        : {
+            validateResponse: validatePrompt2RawOutput,
+            buildRepairPrompt: buildPrompt2RepairPrompt,
+            maxRepairAttempts: 1,
+          }),
       reusePopupSession: reuseChatGptPopup,
     });
     prompt2DurationMs = Date.now() - prompt2StartedMs;
@@ -1711,10 +1749,19 @@ export async function generateResumeForLinkedInJob(
     }
     logInfo("Orchestrator", "Parsing Prompt 2 output.");
     logPromptDebug("Prompt 2", "output", prompt2Raw);
-    prompt2Result = extractJsonFromText(prompt2Raw, {
-      validate: (candidate) => validatePrompt2Data(candidate).length === 0,
-    });
-    promptContext.prompt2Json = prompt2Result;
+    promptContext.prompt2Response = prompt2Raw;
+    if (freeformPromptProfile) {
+      prompt2Result = buildFreeformPromptStageArtifact(prompt2Raw);
+      promptContext.prompt2Json = null;
+    } else {
+      prompt2Result = normalizePrompt2Data(
+        extractJsonFromText(prompt2Raw, {
+          validate: (candidate) =>
+            validatePrompt2MinimalData(candidate).length === 0,
+        }),
+      );
+      promptContext.prompt2Json = prompt2Result;
+    }
     await setExtensionState({
       prompt2Raw,
       prompt2Result,

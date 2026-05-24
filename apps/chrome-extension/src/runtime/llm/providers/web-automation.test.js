@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { injectedProviderPromptEntry } from './web-automation.js';
+import { injectedProviderPromptEntry, runWebAutomationPrompt } from './web-automation.js';
 
 function flushMicrotasks() {
   return Promise.resolve();
@@ -193,5 +193,160 @@ describe('injectedProviderPromptEntry completion detection', () => {
       status: 'success',
       rawText: '{"summary":"done"}',
     });
+  });
+});
+
+function createChromeMock() {
+  let nextWindowId = 1;
+  let nextTabId = 101;
+  const windowsById = new Map();
+  const tabsById = new Map();
+  const readinessResults = [];
+  const executionResults = [];
+
+  function createTab(url, windowId) {
+    const tab = {
+      id: nextTabId++,
+      windowId,
+      url,
+      status: 'complete',
+      title: 'Claude',
+    };
+    tabsById.set(tab.id, tab);
+    windowsById.set(windowId, [tab.id]);
+    return tab;
+  }
+
+  const chrome = {
+    runtime: {
+      lastError: undefined,
+    },
+    windows: {
+      create: vi.fn((options, callback) => {
+        const windowId = nextWindowId++;
+        createTab(options.url, windowId);
+        callback({ id: windowId });
+      }),
+      remove: vi.fn(async (windowId) => {
+        const tabIds = windowsById.get(windowId) ?? [];
+        for (const tabId of tabIds) {
+          tabsById.delete(tabId);
+        }
+        windowsById.delete(windowId);
+      }),
+    },
+    tabs: {
+      query: vi.fn(async (queryInfo = {}) => {
+        if (typeof queryInfo.windowId === 'number') {
+          const tabIds = windowsById.get(queryInfo.windowId) ?? [];
+          return tabIds
+            .map((tabId) => tabsById.get(tabId))
+            .filter(Boolean)
+            .map((tab) => ({ ...tab }));
+        }
+        return Array.from(tabsById.values()).map((tab) => ({ ...tab }));
+      }),
+      get: vi.fn(async (tabId) => {
+        const tab = tabsById.get(tabId);
+        if (!tab) {
+          throw new Error(`No tab with id ${tabId}`);
+        }
+        return { ...tab };
+      }),
+    },
+    scripting: {
+      executeScript: vi.fn(async (request) => {
+        if (request?.func?.name === 'injectedProviderReadinessProbe') {
+          const nextReadiness =
+            readinessResults.shift() ?? {
+              ready: true,
+              composerFound: true,
+              composerInteractive: true,
+              authRequired: false,
+            };
+          return [{ result: nextReadiness, request }];
+        }
+        const nextResult =
+          executionResults.shift() ?? {
+            status: 'success',
+            rawText: '{"ok":true}',
+            conversationUrl: 'https://claude.ai/chats/default',
+          };
+        return [{ result: nextResult, request }];
+      }),
+    },
+  };
+
+  return { chrome, readinessResults, executionResults };
+}
+
+describe('runWebAutomationPrompt startup readiness', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('skips the fixed warmup delay when the provider reports readiness immediately', async () => {
+    vi.useFakeTimers();
+    const chromeMock = createChromeMock();
+    vi.stubGlobal('chrome', chromeMock.chrome);
+    chromeMock.readinessResults.push({
+      ready: true,
+      composerFound: true,
+      composerInteractive: true,
+      authRequired: false,
+    });
+
+    const config = {
+      providerLabel: 'Claude',
+      scope: 'ClaudeAutomation',
+      defaultTargetUrl: 'https://claude.ai/new',
+      urlMatchers: ['https://claude.ai/'],
+      inputSelectors: ['#composer'],
+      sendButtonSelectors: ['#send-button'],
+      stopButtonSelectors: ['button[aria-label*="Stop"]'],
+      responseBusySelectors: [],
+      assistantTextSelectors: ['[data-assistant]'],
+      loginSelectors: [],
+      authRequiredMessage: 'Please log into Claude in a normal browser tab first.',
+      openPopupMessage: 'Opening Claude popup.',
+      popupCreatedMessage: 'Claude popup created.',
+      waitForTabMessage: 'Waiting for Claude tab.',
+      tabReadyMessage: 'Claude tab ready.',
+      waitForHydrationMessage: 'Waiting for Claude startup readiness.',
+      progressMessage: 'Claude prompt runner in progress.',
+      retryMessage: 'Retrying Claude prompt.',
+      partialSuccessMessage: 'Claude partial success.',
+      partialRetrySuccessMessage: 'Claude partial retry success.',
+      responseTimeoutMs: 120000,
+      responseIdleTimeoutMs: 25000,
+      responseFirstTokenTimeoutMs: 60000,
+    };
+
+    let settled = false;
+    let result = null;
+    const runPromise = runWebAutomationPrompt('Return JSON', config, {
+      promptLabel: 'Prompt',
+      warmupDelayMs: 1500,
+    }).then((value) => {
+      settled = true;
+      result = value;
+      return value;
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    expect(result).toMatchObject({
+      status: 'success',
+      rawText: '{"ok":true}',
+    });
+    expect(
+      chromeMock.chrome.scripting.executeScript.mock.calls.some(
+        ([request]) => request?.func?.name === 'injectedProviderReadinessProbe',
+      ),
+    ).toBe(true);
+
+    await runPromise;
   });
 });

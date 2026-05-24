@@ -19,6 +19,7 @@ function createChromeMock() {
   const windowsById = new Map();
   const tabsById = new Map();
   const scriptingResults = [];
+  const readinessResults = [];
 
   function createTab(url, windowId) {
     const tab = {
@@ -83,6 +84,16 @@ function createChromeMock() {
     },
     scripting: {
       executeScript: vi.fn(async (request) => {
+        if (request?.func?.name === 'injectedChatGptReadinessProbe') {
+          const nextReadiness =
+            readinessResults.shift() ?? {
+              ready: true,
+              composerFound: true,
+              composerInteractive: true,
+              authRequired: false,
+            };
+          return [{ result: nextReadiness, request }];
+        }
         const nextResult =
           scriptingResults.shift() ?? {
             status: 'success',
@@ -94,7 +105,7 @@ function createChromeMock() {
     },
   };
 
-  return { chrome, scriptingResults };
+  return { chrome, scriptingResults, readinessResults };
 }
 
 describe('chatgpt run-scoped popup reuse', () => {
@@ -108,6 +119,7 @@ describe('chatgpt run-scoped popup reuse', () => {
   afterEach(() => {
     clearChatGptRunSessionsForTests();
     clearActiveRun();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -169,6 +181,39 @@ describe('chatgpt run-scoped popup reuse', () => {
     const [, updateProperties] = chromeMock.chrome.tabs.update.mock.calls[0];
     expect(updateProperties.url).toContain('temporary-chat=true');
     expect(updateProperties.url).toContain('rm_run=');
+  });
+
+  it('skips the fixed warmup delay when ChatGPT reports startup readiness immediately', async () => {
+    vi.useFakeTimers();
+    ensureActiveRun({ runId: 'run-ready', phase: 'running', inFlight: true });
+    chromeMock.readinessResults.push({
+      ready: true,
+      composerFound: true,
+      composerInteractive: true,
+      authRequired: false,
+    });
+
+    let session = null;
+    let settled = false;
+    const sessionPromise = getOrOpenChatGptRunSession('run-ready', {
+      promptLabel: 'Prompt',
+      warmupDelayMs: 1500,
+    }).then((value) => {
+      session = value;
+      settled = true;
+      return value;
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    expect(session?.tabId).toBeTruthy();
+    expect(
+      chromeMock.chrome.scripting.executeScript.mock.calls.some(
+        ([request]) => request?.func?.name === 'injectedChatGptReadinessProbe',
+      ),
+    ).toBe(true);
+
+    await sessionPromise;
   });
 
   it('keeps repair attempts in the same popup session without resetting', async () => {
