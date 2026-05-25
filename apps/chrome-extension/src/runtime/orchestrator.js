@@ -65,6 +65,7 @@ import {
   throwIfRunCanceled,
 } from "./run-control.js";
 import { syncExtensionRun } from "./extension-runs.js";
+import { cleanFreeformHandoffText } from "./freeform-handoff.js";
 
 export async function saveStoryboardAsset(payload) {
   await setStoryboardAsset({
@@ -745,9 +746,20 @@ export function isFreeformPromptProfileId(promptProfileId = "") {
   return String(promptProfileId || "").trim() === "profile3";
 }
 
-function buildFreeformPromptStageArtifact(rawText) {
+const PROFILE3_PROMPT1_HEADINGS = ["ATS", "Hiring manager persona"];
+const PROFILE3_PROMPT2_HEADINGS = [
+  "Ideal-match priorities from the JD",
+  "Best transferable proof from this resume",
+  "Page-one focus",
+  "Role and bullet structure",
+  "Do not do",
+];
+
+function buildFreeformPromptStageArtifact(rawText, expectedHeadings = []) {
   return {
-    response: typeof rawText === "string" ? rawText.trim() : "",
+    response: cleanFreeformHandoffText(rawText, {
+      expectedHeadings,
+    }),
   };
 }
 
@@ -1745,9 +1757,15 @@ export async function generateResumeForLinkedInJob(
     }
     logInfo("Orchestrator", "Parsing Prompt 1 output.");
     logPromptDebug("Prompt 1", "output", prompt1Raw);
-    promptContext.prompt1Response = prompt1Raw;
+    const prompt1CleanResponse = cleanFreeformHandoffText(prompt1Raw, {
+      expectedHeadings: PROFILE3_PROMPT1_HEADINGS,
+    });
+    promptContext.prompt1Response = prompt1CleanResponse;
     if (freeformPromptProfile) {
-      prompt1Result = buildFreeformPromptStageArtifact(prompt1Raw);
+      prompt1Result = buildFreeformPromptStageArtifact(
+        prompt1Raw,
+        PROFILE3_PROMPT1_HEADINGS,
+      );
       promptContext.prompt1Json = null;
     } else {
       prompt1Result = normalizePrompt1Data(
@@ -1851,9 +1869,15 @@ export async function generateResumeForLinkedInJob(
     }
     logInfo("Orchestrator", "Parsing Prompt 2 output.");
     logPromptDebug("Prompt 2", "output", prompt2Raw);
-    promptContext.prompt2Response = prompt2Raw;
+    const prompt2CleanResponse = cleanFreeformHandoffText(prompt2Raw, {
+      expectedHeadings: PROFILE3_PROMPT2_HEADINGS,
+    });
+    promptContext.prompt2Response = prompt2CleanResponse;
     if (freeformPromptProfile) {
-      prompt2Result = buildFreeformPromptStageArtifact(prompt2Raw);
+      prompt2Result = buildFreeformPromptStageArtifact(
+        prompt2Raw,
+        PROFILE3_PROMPT2_HEADINGS,
+      );
       promptContext.prompt2Json = null;
     } else {
       prompt2Result = normalizePrompt2Data(

@@ -1,13 +1,16 @@
 ---
 prompt_artifact: profile3.prompt2.template
-prompt_version: v1.0.3
+prompt_version: v1.1.0
 prompt_label: lean-hiring-manager-resume-note
-prompt_notes: Short freeform Prompt 2 that explicitly reads Prompt 1 first, then acts as the hiring manager and returns a compact note separating ideal-match JD priorities from the resume's strongest transferable proof.
+prompt_notes: Freeform Prompt 2 that reads the clean Prompt 1 output first, then uses the resume and JD to write a compact hiring-manager note.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes, MINOR for medium changes, and MAJOR for large changes.
 ---
-Read Prompt 1 first.
+Read Prompt 1 output first.
 
-You are the hiring manager described in Prompt 1.
+Prompt 1 output:
+{{PROMPT1_RESPONSE}}
+
+You are the hiring manager for this role.
 
 Read the current resume and write a short note to the final resume writer.
 
@@ -41,8 +44,8 @@ Role and bullet structure
 Do not do
 - 
 
-Prompt 1 brief:
-{{PROMPT1_RESPONSE}}
-
 Current resume:
 {{CURRENT_RESUME}}
+
+Job description:
+{{JOB_DESCRIPTION}}

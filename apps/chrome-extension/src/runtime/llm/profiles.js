@@ -1,6 +1,5 @@
 import { DEFAULT_CHATGPT_TARGET_URL } from "../constants.js";
 
-const DEFAULT_CLAUDE_TARGET_URL = "https://claude.ai/new";
 const DEFAULT_CLAUDE_INCOGNITO_TARGET_URL = "https://claude.ai/new?incognito";
 const DEFAULT_GEMINI_TARGET_URL = "https://gemini.google.com/app";
 
@@ -119,14 +118,6 @@ export function mergeLlmSettings(storedSettings, legacyChatGptTargetUrl = "") {
     merged.profiles["chatgpt:web_automation"] = {
       ...merged.profiles["chatgpt:web_automation"],
       targetUrl: normalizedLegacyUrl,
-    };
-  }
-
-  const claudeProfile = merged.profiles["claude:web_automation"];
-  if (claudeProfile?.targetUrl === DEFAULT_CLAUDE_TARGET_URL) {
-    merged.profiles["claude:web_automation"] = {
-      ...claudeProfile,
-      targetUrl: DEFAULT_CLAUDE_INCOGNITO_TARGET_URL,
     };
   }
 

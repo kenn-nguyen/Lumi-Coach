@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile3.prompt3.template
-prompt_version: v1.0.6
+prompt_version: v1.1.0
 prompt_label: lean-ats-resume-writer
-prompt_notes: Compact Prompt 3 that uses the full freeform Prompt 1 and Prompt 2 responses to write the final strict resume JSON while preserving section and position order, allowing only bullet-order changes, setting a 35-70 word summary budget, and using safer bullet merging.
+prompt_notes: Compact Prompt 3 that uses cleaned Prompt 1 and Prompt 2 outputs plus the JD to write the final strict resume JSON while preserving section and position order.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes, MINOR for medium changes, and MAJOR for large changes.
 ---
 You are an expert ATS resume writer.
@@ -40,11 +40,14 @@ Prompt 3 writing rules:
 
 Return the final resume only. Follow the shared JSON output contract exactly.
 
-Prompt 1 brief:
+Prompt 1 output:
 {{PROMPT1_RESPONSE}}
 
-Hiring-manager note:
+Prompt 2 output:
 {{PROMPT2_RESPONSE}}
+
+Job description:
+{{JOB_DESCRIPTION}}
 
 Current resume:
 {{CURRENT_RESUME}}

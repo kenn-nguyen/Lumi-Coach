@@ -1,18 +1,13 @@
 ---
 prompt_artifact: profile3.prompt1.template
-prompt_version: v1.0.0
-prompt_label: lean-jd-ats-hiring-manager-brief
-prompt_notes: Short freeform Prompt 1 that turns the JD into a compact ATS and hiring-manager brief with no JSON contract.
+prompt_version: v1.1.0
+prompt_label: lean-jd-ats-persona-brief
+prompt_notes: Very short freeform Prompt 1 that returns only ATS signals and hiring-manager persona for downstream tailoring.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes, MINOR for medium changes, and MAJOR for large changes.
 ---
 You are an ATS and hiring-manager analyst.
 
 Read the job description and write a short plain-text brief for downstream resume tailoring.
-
-Your job:
-- identify what ATS will screen for;
-- identify the language and proof themes that matter most;
-- infer the hiring manager persona.
 
 Do not write resume bullets.
 Do not write JSON.
@@ -20,22 +15,15 @@ Do not explain your reasoning.
 
 Return plain text with exactly these sections and short bullets:
 
-JD
-- Target role:
-- Seniority:
-- Domain:
-- Core mission:
-
 ATS
-- Hard filters:
 - Priority keywords:
+- Hard filters:
 - Proof themes:
-- Metrics / tools / domain terms:
 
-Hiring manager
-- Persona:
+Hiring manager persona
 - Trusts:
 - Rejects:
+- Wants first on page one:
 
 Input:
 job_title: {{JOB_TITLE}}

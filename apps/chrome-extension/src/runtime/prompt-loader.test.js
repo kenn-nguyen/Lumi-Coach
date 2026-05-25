@@ -467,9 +467,10 @@ describe("prompt-loader", () => {
     ]);
   });
 
-  it("renders profile 3 freeform Prompt 2 and Prompt 3 using raw stage responses", async () => {
+  it("renders profile 3 freeform prompts with cleaned handoffs and JD context", async () => {
     getUserAssets.mockResolvedValue({
       activePromptProfileId: "profile3",
+      prompt1TemplateAsset: null,
       prompt2TemplateAsset: null,
       prompt3TemplateAsset: null,
       systemPromptTemplateAsset: null,
@@ -482,15 +483,42 @@ describe("prompt-loader", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url) => {
+        if (String(url).includes("profiles/profile3/prompt1.txt")) {
+          return createFetchResponse(
+            withFrontmatter(
+              {
+                prompt_artifact: "profile3.prompt1.template",
+                prompt_version: "v1.1.0",
+                prompt_label: "lean-jd-ats-persona-brief",
+              },
+              [
+                "ATS",
+                "Hiring manager persona",
+                "job={{JOB_TITLE}}",
+              ].join("\n"),
+            ),
+          );
+        }
         if (String(url).includes("profiles/profile3/prompt2.txt")) {
           return createFetchResponse(
             withFrontmatter(
               {
                 prompt_artifact: "profile3.prompt2.template",
-                prompt_version: "v1.0.0",
+                prompt_version: "v1.1.0",
                 prompt_label: "lean-hiring-manager-resume-note",
               },
-              "Prompt1:\n{{PROMPT1_RESPONSE}}",
+              [
+                "Prompt 1 output:",
+                "{{PROMPT1_RESPONSE}}",
+                "",
+                "You are the hiring manager for this role.",
+                "",
+                "Current resume:",
+                "{{CURRENT_RESUME}}",
+                "",
+                "Job description:",
+                "{{JOB_DESCRIPTION}}",
+              ].join("\n"),
             ),
           );
         }
@@ -499,10 +527,22 @@ describe("prompt-loader", () => {
             withFrontmatter(
               {
                 prompt_artifact: "profile3.prompt3.template",
-                prompt_version: "v1.0.1",
+                prompt_version: "v1.1.0",
                 prompt_label: "lean-ats-resume-writer",
               },
-              "Prompt1:\n{{PROMPT1_RESPONSE}}\n\nPrompt2:\n{{PROMPT2_RESPONSE}}",
+              [
+                "Prompt 1 output:",
+                "{{PROMPT1_RESPONSE}}",
+                "",
+                "Prompt 2 output:",
+                "{{PROMPT2_RESPONSE}}",
+                "",
+                "Job description:",
+                "{{JOB_DESCRIPTION}}",
+                "",
+                "Current resume:",
+                "{{CURRENT_RESUME}}",
+              ].join("\n"),
             ),
           );
         }
@@ -511,28 +551,48 @@ describe("prompt-loader", () => {
     );
 
     const promptLoader = await import("./prompt-loader.js");
+    const prompt1 = await promptLoader.renderPrompt1WithMetadata(
+      {
+        jobTitle: "Platform PM",
+      },
+      {},
+    );
     const prompt2 = await promptLoader.renderPrompt2WithMetadata(
       {
         prompt1Response:
-          "Hiring manager\n- Trusts platform metrics\n- Rejects vague language",
+          "ATS\n- identity verification\n\nHiring manager persona\n- Trusts platform metrics",
+        currentResume: { personalInfo: { name: "Test" } },
+        jobDescriptionRawText: "JD body",
       },
       {},
     );
     const prompt3 = await promptLoader.renderPrompt3WithMetadata(
       {
         prompt1Response:
-          "ATS\n- identity verification\n- risk platform\n\nHiring manager\n- trusts concrete scale proof",
+          "ATS\n- identity verification\n- risk platform\n\nHiring manager persona\n- trusts concrete scale proof",
         prompt2Response:
           "Page-one focus\n- Lead with platform outcomes\n- Keep current role tight",
+        jobDescriptionRawText: "JD body",
         currentResume: { personalInfo: { name: "Test" } },
       },
       {},
     );
 
+    expect(prompt1.text).toContain("ATS");
+    expect(prompt1.text).toContain("Hiring manager persona");
     expect(prompt2.text).toContain("Trusts platform metrics");
+    expect(prompt2.text.indexOf("Prompt 1 output:")).toBeLessThan(
+      prompt2.text.indexOf("You are the hiring manager for this role."),
+    );
+    expect(prompt2.text.indexOf("Current resume:")).toBeLessThan(
+      prompt2.text.indexOf("Job description:"),
+    );
+    expect(prompt2.text).toContain("JD body");
     expect(prompt2.text).not.toContain("PROMPT1_RESPONSE");
     expect(prompt3.text).toContain("identity verification");
     expect(prompt3.text).toContain("Lead with platform outcomes");
+    expect(prompt3.text).toContain("Job description:\nJD body");
+    expect(prompt3.text).toContain("Current resume:");
     expect(prompt3.text).toContain("PROMPT3 CONTRACT");
     expect(prompt3.text).not.toContain("PROMPT1_RESPONSE");
     expect(prompt3.text).not.toContain("PROMPT2_RESPONSE");
