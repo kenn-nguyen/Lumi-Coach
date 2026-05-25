@@ -3,6 +3,13 @@ const TRANSCRIPT_NOISE_LINE_PATTERNS = [
   /^Show more$/i,
   /^\d{1,2}:\d{2}\s*(AM|PM)$/i,
 ];
+const TRANSCRIPT_STOP_LINE_PATTERNS = [
+  /^Input:$/i,
+  /^Current resume:$/i,
+  /^Job description:$/i,
+  /^Prompt 1 (brief|output):$/i,
+  /^Prompt 2 output:$/i,
+];
 
 function normalizeLineEndings(text) {
   return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -39,7 +46,11 @@ function findHeadingAnchorIndex(lines, expectedHeadings) {
   const primaryHeading = normalizedHeadings[0];
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const trimmedLine = lines[index].trim();
-    if (trimmedLine === primaryHeading) {
+    if (
+      trimmedLine === primaryHeading ||
+      trimmedLine.startsWith(primaryHeading) ||
+      (trimmedLine.length >= 8 && primaryHeading.startsWith(trimmedLine))
+    ) {
       return index;
     }
   }
@@ -47,11 +58,30 @@ function findHeadingAnchorIndex(lines, expectedHeadings) {
   for (let index = 0; index < lines.length; index += 1) {
     const trimmedLine = lines[index].trim();
     if (!trimmedLine) continue;
-    if (normalizedHeadings.includes(trimmedLine)) {
+    if (
+      normalizedHeadings.some(
+        (heading) =>
+          trimmedLine === heading ||
+          trimmedLine.startsWith(heading) ||
+          (trimmedLine.length >= 8 && heading.startsWith(trimmedLine)),
+      )
+    ) {
       return index;
     }
   }
   return -1;
+}
+
+function trimAtStopMarker(lines) {
+  const stopIndex = lines.findIndex(
+    (line, index) =>
+      index > 0 &&
+      TRANSCRIPT_STOP_LINE_PATTERNS.some((pattern) => pattern.test(line.trim())),
+  );
+  if (stopIndex === -1) {
+    return lines;
+  }
+  return lines.slice(0, stopIndex);
 }
 
 export function cleanFreeformHandoffText(rawText, options = {}) {
@@ -68,6 +98,7 @@ export function cleanFreeformHandoffText(rawText, options = {}) {
     .split("\n")
     .map((line) => line.trimEnd());
 
+  lines = trimAtStopMarker(lines);
   const firstHeadingIndex = findHeadingAnchorIndex(
     lines,
     options.expectedHeadings,

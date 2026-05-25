@@ -746,6 +746,10 @@ export function isFreeformPromptProfileId(promptProfileId = "") {
   return String(promptProfileId || "").trim() === "profile3";
 }
 
+export function isSingleStagePromptProfileId(promptProfileId = "") {
+  return String(promptProfileId || "").trim() === "profile4";
+}
+
 const PROFILE3_PROMPT1_HEADINGS = ["ATS", "Hiring manager persona"];
 const PROFILE3_PROMPT2_HEADINGS = [
   "Ideal-match priorities from the JD",
@@ -1453,6 +1457,9 @@ export async function generateResumeForLinkedInJob(
     runId,
   );
   const freeformPromptProfile = isFreeformPromptProfileId(activePromptProfileId);
+  const singleStagePromptProfile = isSingleStagePromptProfileId(
+    activePromptProfileId,
+  );
 
   cancel.throwIfCanceled("job tab resolution");
   const activeTabId = manualJobInputUsed
@@ -1675,232 +1682,235 @@ export async function generateResumeForLinkedInJob(
   await setExtensionState({
     promptProfileId: activePromptProfileId || "profile1",
     promptMetadata,
+    resumeSource: currentResume,
   });
 
   try {
-    logInfo("Orchestrator", "Rendering Prompt 1.");
-    const prompt1Rendered = await renderPrompt1WithMetadata(
-      promptContext,
-      activeLlmProfile,
-    );
-    const prompt1 = prompt1Rendered.text;
-    prompt1Input = prompt1;
-    promptMetadataByName.prompt1 = prompt1Rendered.metadata;
-    await refreshPromptMetadata();
-    await setExtensionState({
-      prompt1Input,
-      promptMetadata,
-    });
-    logPromptDebug("Prompt 1", "input", prompt1);
+    if (!singleStagePromptProfile) {
+      logInfo("Orchestrator", "Rendering Prompt 1.");
+      const prompt1Rendered = await renderPrompt1WithMetadata(
+        promptContext,
+        activeLlmProfile,
+      );
+      const prompt1 = prompt1Rendered.text;
+      prompt1Input = prompt1;
+      promptMetadataByName.prompt1 = prompt1Rendered.metadata;
+      await refreshPromptMetadata();
+      await setExtensionState({
+        prompt1Input,
+        promptMetadata,
+      });
+      logPromptDebug("Prompt 1", "input", prompt1);
 
-    logInfo("Orchestrator", "Running Prompt 1.");
-    const prompt1StartedMs = Date.now();
-    cancel.throwIfCanceled("Prompt 1");
-    await captureExtensionEvent("prompt_stage_started", {
-      surface: "run_view",
-      run_id: runId,
-      stage: 1,
-      stage_label: "analyze_jd",
-    });
-    const prompt1Run = await runPrompt(prompt1, {
-      profile: activeLlmProfile,
-      promptLabel: "Prompt 1",
-      systemPrompt,
-      runId,
-      signal: cancel.signal(),
-      ...(freeformPromptProfile
-        ? {}
-        : {
-            validateResponse: validatePrompt1RawOutput,
-            buildRepairPrompt: buildPrompt1RepairPrompt,
-            maxRepairAttempts: 1,
-          }),
-      reusePopupSession: reuseChatGptPopup,
-    });
-    prompt1DurationMs = Date.now() - prompt1StartedMs;
-    cancel.throwIfCanceled("Prompt 1");
-    prompt1Raw =
-      prompt1Run.status === "success"
-        ? prompt1Run.rawText
-        : (prompt1Run.partialRawText ?? "");
-    await setExtensionState({
-      prompt1Raw,
-      prompt1DurationMs,
-    });
-    if (prompt1Run.status === "canceled") {
-      throwIfRunCanceled(runId, "Prompt 1");
-    }
-    if (prompt1Run.status !== "success") {
-      logError("Orchestrator", "Prompt 1 failed.", prompt1Run);
-      await captureExtensionEvent("prompt_stage_failed", {
+      logInfo("Orchestrator", "Running Prompt 1.");
+      const prompt1StartedMs = Date.now();
+      cancel.throwIfCanceled("Prompt 1");
+      await captureExtensionEvent("prompt_stage_started", {
         surface: "run_view",
         run_id: runId,
         stage: 1,
         stage_label: "analyze_jd",
-        error_message: prompt1Run.message ?? "Prompt 1 failed.",
       });
-      throw new Error(`Prompt 1 failed: ${prompt1Run.message}`);
-    }
-    if (prompt1Run.validationError) {
-      logError("Orchestrator", "Prompt 1 failed validation after repair.", {
-        validationError: prompt1Run.validationError,
-        conversationUrl: prompt1Run.conversationUrl ?? null,
+      const prompt1Run = await runPrompt(prompt1, {
+        profile: activeLlmProfile,
+        promptLabel: "Prompt 1",
+        systemPrompt,
+        runId,
+        signal: cancel.signal(),
+        ...(freeformPromptProfile
+          ? {}
+          : {
+              validateResponse: validatePrompt1RawOutput,
+              buildRepairPrompt: buildPrompt1RepairPrompt,
+              maxRepairAttempts: 1,
+            }),
+        reusePopupSession: reuseChatGptPopup,
       });
-      await captureExtensionEvent("prompt_stage_failed", {
-        surface: "run_view",
-        run_id: runId,
-        stage: 1,
-        stage_label: "analyze_jd",
-        error_message: prompt1Run.validationError,
-      });
-      throw new Error(`Prompt 1 failed: ${prompt1Run.validationError}`);
-    }
-    logInfo("Orchestrator", "Parsing Prompt 1 output.");
-    logPromptDebug("Prompt 1", "output", prompt1Raw);
-    const prompt1CleanResponse = cleanFreeformHandoffText(prompt1Raw, {
-      expectedHeadings: PROFILE3_PROMPT1_HEADINGS,
-    });
-    promptContext.prompt1Response = prompt1CleanResponse;
-    if (freeformPromptProfile) {
-      prompt1Result = buildFreeformPromptStageArtifact(
+      prompt1DurationMs = Date.now() - prompt1StartedMs;
+      cancel.throwIfCanceled("Prompt 1");
+      prompt1Raw =
+        prompt1Run.status === "success"
+          ? prompt1Run.rawText
+          : (prompt1Run.partialRawText ?? "");
+      await setExtensionState({
         prompt1Raw,
-        PROFILE3_PROMPT1_HEADINGS,
-      );
-      promptContext.prompt1Json = null;
-    } else {
-      prompt1Result = normalizePrompt1Data(
-        extractJsonFromText(prompt1Raw, {
-          validate: (candidate) =>
-            validatePrompt1MinimalData(candidate).length === 0,
-        }),
-      );
-      promptContext.prompt1Json = prompt1Result;
-    }
-    await setExtensionState({
-      prompt1Raw,
-      prompt1Result,
-      prompt1DurationMs,
-      promptMetadata,
-      status: SESSION_STATUS.prompt1Done,
-      resumeSource: currentResume,
-    });
-    await captureExtensionEvent("prompt_stage_succeeded", {
-      surface: "run_view",
-      run_id: runId,
-      stage: 1,
-      stage_label: "analyze_jd",
-    });
-
-    logInfo("Orchestrator", "Rendering Prompt 2.");
-    const prompt2Rendered = await renderPrompt2WithMetadata(
-      promptContext,
-      activeLlmProfile,
-    );
-    const prompt2 = prompt2Rendered.text;
-    prompt2Input = prompt2;
-    promptMetadataByName.prompt2 = prompt2Rendered.metadata;
-    await refreshPromptMetadata();
-    await setExtensionState({
-      prompt2Input,
-      promptMetadata,
-    });
-    logPromptDebug("Prompt 2", "input", prompt2);
-    logInfo("Orchestrator", "Running Prompt 2.");
-    const prompt2StartedMs = Date.now();
-    cancel.throwIfCanceled("Prompt 2");
-    await captureExtensionEvent("prompt_stage_started", {
-      surface: "run_view",
-      run_id: runId,
-      stage: 2,
-      stage_label: "strategize_positioning",
-    });
-    const prompt2Run = await runPrompt(prompt2, {
-      profile: activeLlmProfile,
-      promptLabel: "Prompt 2",
-      systemPrompt,
-      runId,
-      signal: cancel.signal(),
-      ...(freeformPromptProfile
-        ? {}
-        : {
-            validateResponse: validatePrompt2RawOutput,
-            buildRepairPrompt: buildPrompt2RepairPrompt,
-            maxRepairAttempts: 1,
+        prompt1DurationMs,
+      });
+      if (prompt1Run.status === "canceled") {
+        throwIfRunCanceled(runId, "Prompt 1");
+      }
+      if (prompt1Run.status !== "success") {
+        logError("Orchestrator", "Prompt 1 failed.", prompt1Run);
+        await captureExtensionEvent("prompt_stage_failed", {
+          surface: "run_view",
+          run_id: runId,
+          stage: 1,
+          stage_label: "analyze_jd",
+          error_message: prompt1Run.message ?? "Prompt 1 failed.",
+        });
+        throw new Error(`Prompt 1 failed: ${prompt1Run.message}`);
+      }
+      if (prompt1Run.validationError) {
+        logError("Orchestrator", "Prompt 1 failed validation after repair.", {
+          validationError: prompt1Run.validationError,
+          conversationUrl: prompt1Run.conversationUrl ?? null,
+        });
+        await captureExtensionEvent("prompt_stage_failed", {
+          surface: "run_view",
+          run_id: runId,
+          stage: 1,
+          stage_label: "analyze_jd",
+          error_message: prompt1Run.validationError,
+        });
+        throw new Error(`Prompt 1 failed: ${prompt1Run.validationError}`);
+      }
+      logInfo("Orchestrator", "Parsing Prompt 1 output.");
+      logPromptDebug("Prompt 1", "output", prompt1Raw);
+      const prompt1CleanResponse = cleanFreeformHandoffText(prompt1Raw, {
+        expectedHeadings: PROFILE3_PROMPT1_HEADINGS,
+      });
+      promptContext.prompt1Response = prompt1CleanResponse;
+      if (freeformPromptProfile) {
+        prompt1Result = buildFreeformPromptStageArtifact(
+          prompt1Raw,
+          PROFILE3_PROMPT1_HEADINGS,
+        );
+        promptContext.prompt1Json = null;
+      } else {
+        prompt1Result = normalizePrompt1Data(
+          extractJsonFromText(prompt1Raw, {
+            validate: (candidate) =>
+              validatePrompt1MinimalData(candidate).length === 0,
           }),
-      reusePopupSession: reuseChatGptPopup,
-    });
-    prompt2DurationMs = Date.now() - prompt2StartedMs;
-    cancel.throwIfCanceled("Prompt 2");
-    prompt2Raw =
-      prompt2Run.status === "success"
-        ? prompt2Run.rawText
-        : (prompt2Run.partialRawText ?? "");
-    await setExtensionState({
-      prompt2Raw,
-      prompt2DurationMs,
-    });
-    if (prompt2Run.status === "canceled") {
-      throwIfRunCanceled(runId, "Prompt 2");
-    }
-    if (prompt2Run.status !== "success") {
-      logError("Orchestrator", "Prompt 2 failed.", prompt2Run);
-      await captureExtensionEvent("prompt_stage_failed", {
+        );
+        promptContext.prompt1Json = prompt1Result;
+      }
+      await setExtensionState({
+        prompt1Raw,
+        prompt1Result,
+        prompt1DurationMs,
+        promptMetadata,
+        status: SESSION_STATUS.prompt1Done,
+        resumeSource: currentResume,
+      });
+      await captureExtensionEvent("prompt_stage_succeeded", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 1,
+        stage_label: "analyze_jd",
+      });
+
+      logInfo("Orchestrator", "Rendering Prompt 2.");
+      const prompt2Rendered = await renderPrompt2WithMetadata(
+        promptContext,
+        activeLlmProfile,
+      );
+      const prompt2 = prompt2Rendered.text;
+      prompt2Input = prompt2;
+      promptMetadataByName.prompt2 = prompt2Rendered.metadata;
+      await refreshPromptMetadata();
+      await setExtensionState({
+        prompt2Input,
+        promptMetadata,
+      });
+      logPromptDebug("Prompt 2", "input", prompt2);
+      logInfo("Orchestrator", "Running Prompt 2.");
+      const prompt2StartedMs = Date.now();
+      cancel.throwIfCanceled("Prompt 2");
+      await captureExtensionEvent("prompt_stage_started", {
         surface: "run_view",
         run_id: runId,
         stage: 2,
         stage_label: "strategize_positioning",
-        error_message: prompt2Run.message ?? "Prompt 2 failed.",
       });
-      throw new Error(`Prompt 2 failed: ${prompt2Run.message}`);
-    }
-    if (prompt2Run.validationError) {
-      logError("Orchestrator", "Prompt 2 failed validation after repair.", {
-        validationError: prompt2Run.validationError,
-        conversationUrl: prompt2Run.conversationUrl ?? null,
+      const prompt2Run = await runPrompt(prompt2, {
+        profile: activeLlmProfile,
+        promptLabel: "Prompt 2",
+        systemPrompt,
+        runId,
+        signal: cancel.signal(),
+        ...(freeformPromptProfile
+          ? {}
+          : {
+              validateResponse: validatePrompt2RawOutput,
+              buildRepairPrompt: buildPrompt2RepairPrompt,
+              maxRepairAttempts: 1,
+            }),
+        reusePopupSession: reuseChatGptPopup,
       });
-      await captureExtensionEvent("prompt_stage_failed", {
-        surface: "run_view",
-        run_id: runId,
-        stage: 2,
-        stage_label: "strategize_positioning",
-        error_message: prompt2Run.validationError,
-      });
-      throw new Error(`Prompt 2 failed: ${prompt2Run.validationError}`);
-    }
-    logInfo("Orchestrator", "Parsing Prompt 2 output.");
-    logPromptDebug("Prompt 2", "output", prompt2Raw);
-    const prompt2CleanResponse = cleanFreeformHandoffText(prompt2Raw, {
-      expectedHeadings: PROFILE3_PROMPT2_HEADINGS,
-    });
-    promptContext.prompt2Response = prompt2CleanResponse;
-    if (freeformPromptProfile) {
-      prompt2Result = buildFreeformPromptStageArtifact(
+      prompt2DurationMs = Date.now() - prompt2StartedMs;
+      cancel.throwIfCanceled("Prompt 2");
+      prompt2Raw =
+        prompt2Run.status === "success"
+          ? prompt2Run.rawText
+          : (prompt2Run.partialRawText ?? "");
+      await setExtensionState({
         prompt2Raw,
-        PROFILE3_PROMPT2_HEADINGS,
-      );
-      promptContext.prompt2Json = null;
-    } else {
-      prompt2Result = normalizePrompt2Data(
-        extractJsonFromText(prompt2Raw, {
-          validate: (candidate) =>
-            validatePrompt2MinimalData(candidate).length === 0,
-        }),
-      );
-      promptContext.prompt2Json = prompt2Result;
+        prompt2DurationMs,
+      });
+      if (prompt2Run.status === "canceled") {
+        throwIfRunCanceled(runId, "Prompt 2");
+      }
+      if (prompt2Run.status !== "success") {
+        logError("Orchestrator", "Prompt 2 failed.", prompt2Run);
+        await captureExtensionEvent("prompt_stage_failed", {
+          surface: "run_view",
+          run_id: runId,
+          stage: 2,
+          stage_label: "strategize_positioning",
+          error_message: prompt2Run.message ?? "Prompt 2 failed.",
+        });
+        throw new Error(`Prompt 2 failed: ${prompt2Run.message}`);
+      }
+      if (prompt2Run.validationError) {
+        logError("Orchestrator", "Prompt 2 failed validation after repair.", {
+          validationError: prompt2Run.validationError,
+          conversationUrl: prompt2Run.conversationUrl ?? null,
+        });
+        await captureExtensionEvent("prompt_stage_failed", {
+          surface: "run_view",
+          run_id: runId,
+          stage: 2,
+          stage_label: "strategize_positioning",
+          error_message: prompt2Run.validationError,
+        });
+        throw new Error(`Prompt 2 failed: ${prompt2Run.validationError}`);
+      }
+      logInfo("Orchestrator", "Parsing Prompt 2 output.");
+      logPromptDebug("Prompt 2", "output", prompt2Raw);
+      const prompt2CleanResponse = cleanFreeformHandoffText(prompt2Raw, {
+        expectedHeadings: PROFILE3_PROMPT2_HEADINGS,
+      });
+      promptContext.prompt2Response = prompt2CleanResponse;
+      if (freeformPromptProfile) {
+        prompt2Result = buildFreeformPromptStageArtifact(
+          prompt2Raw,
+          PROFILE3_PROMPT2_HEADINGS,
+        );
+        promptContext.prompt2Json = null;
+      } else {
+        prompt2Result = normalizePrompt2Data(
+          extractJsonFromText(prompt2Raw, {
+            validate: (candidate) =>
+              validatePrompt2MinimalData(candidate).length === 0,
+          }),
+        );
+        promptContext.prompt2Json = prompt2Result;
+      }
+      await setExtensionState({
+        prompt2Raw,
+        prompt2Result,
+        prompt2DurationMs,
+        promptMetadata,
+        status: SESSION_STATUS.prompt2Done,
+      });
+      await captureExtensionEvent("prompt_stage_succeeded", {
+        surface: "run_view",
+        run_id: runId,
+        stage: 2,
+        stage_label: "strategize_positioning",
+      });
     }
-    await setExtensionState({
-      prompt2Raw,
-      prompt2Result,
-      prompt2DurationMs,
-      promptMetadata,
-      status: SESSION_STATUS.prompt2Done,
-    });
-    await captureExtensionEvent("prompt_stage_succeeded", {
-      surface: "run_view",
-      run_id: runId,
-      stage: 2,
-      stage_label: "strategize_positioning",
-    });
 
     logInfo("Orchestrator", "Rendering Prompt 3.");
     const prompt3Rendered = await renderPrompt3WithMetadata(

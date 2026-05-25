@@ -43,9 +43,10 @@ export async function hashPromptText(text) {
     .join("");
 }
 
-function getTemplateCacheKey(templateName, promptProfileId) {
+function getTemplateCacheKey(templateName, promptProfileId, promptDefaultsMode) {
   const profileKey = promptProfileId || "profile1";
-  return `${templateName}:${profileKey}`;
+  const defaultsModeKey = promptDefaultsMode || "server";
+  return `${templateName}:${profileKey}:${defaultsModeKey}`;
 }
 
 function parsePromptFrontmatter(rawContent) {
@@ -136,6 +137,7 @@ async function buildPromptVersionId(templateName, artifacts) {
 async function loadSharedAppendBlockWithMetadata(
   templateName,
   promptProfileId = null,
+  promptDefaultsMode = "server",
 ) {
   if (
     !shouldAppendSharedPromptOutputContract(templateName, promptProfileId)
@@ -147,6 +149,7 @@ async function loadSharedAppendBlockWithMetadata(
   }
   const loaded = await loadDefaultArtifactWithMetadata(
     getPromptOutputContractArtifactKey(templateName),
+    { promptDefaultsMode },
   );
   const text = loaded.text.trim();
   return {
@@ -155,10 +158,14 @@ async function loadSharedAppendBlockWithMetadata(
   };
 }
 
-async function loadDefaultArtifactWithMetadata(artifactKey) {
-  const defaults = await getServerPromptDefaults();
-  const cached = defaults?.artifacts?.[artifactKey];
-  if (typeof cached === "string") {
+async function loadDefaultArtifactWithMetadata(
+  artifactKey,
+  { promptDefaultsMode = "server" } = {},
+) {
+  const useServerDefaults = promptDefaultsMode !== "extension";
+  const defaults = useServerDefaults ? await getServerPromptDefaults() : null;
+  const cached = useServerDefaults ? defaults?.artifacts?.[artifactKey] : null;
+  if (useServerDefaults && typeof cached === "string") {
     const parsed = parsePromptFrontmatter(cached);
     return {
       text: parsed.body,
@@ -190,9 +197,11 @@ async function loadDefaultArtifactWithMetadata(artifactKey) {
 async function loadProfileDefaultTemplateWithMetadata(
   templateName,
   promptProfileId,
+  promptDefaultsMode = "server",
 ) {
   return loadDefaultArtifactWithMetadata(
     getDefaultPromptTemplateArtifactKey(templateName, promptProfileId),
+    { promptDefaultsMode },
   );
 }
 
@@ -201,6 +210,7 @@ export async function loadPromptTemplateWithMetadata(templateName, profile) {
   const cacheKey = getTemplateCacheKey(
     templateName,
     assets?.activePromptProfileId,
+    assets?.promptDefaultsMode,
   );
   const cached = templateCache.get(cacheKey);
   if (cached) return cached;
@@ -210,6 +220,7 @@ export async function loadPromptTemplateWithMetadata(templateName, profile) {
   const parsedOverride = overrideAsset?.content?.trim()
     ? parsePromptFrontmatter(overrideAsset.content)
     : null;
+  const promptDefaultsMode = assets?.promptDefaultsMode ?? "server";
   const templatePart = overrideAsset?.content?.trim()
       ? {
         text: parsedOverride.body,
@@ -225,11 +236,13 @@ export async function loadPromptTemplateWithMetadata(templateName, profile) {
     : await loadProfileDefaultTemplateWithMetadata(
         templateName,
         assets?.activePromptProfileId,
+        promptDefaultsMode,
       );
   const sharedAppendPart =
     await loadSharedAppendBlockWithMetadata(
       templateName,
       assets?.activePromptProfileId,
+      promptDefaultsMode,
     );
   const mergedParts = [templatePart.text.trim(), sharedAppendPart.text].filter(
     Boolean,
@@ -258,8 +271,10 @@ export async function loadPromptTemplate(templateName, profile) {
 }
 
 export async function loadSystemPromptGuardrailsWithMetadata() {
+  const assets = await getUserAssets();
   const loaded = await loadDefaultArtifactWithMetadata(
     SYSTEM_GUARDRAILS_ARTIFACT_KEY,
+    { promptDefaultsMode: assets?.promptDefaultsMode ?? "server" },
   );
   const text = loaded.text.trim();
   const artifacts = loaded.metadata ? [loaded.metadata] : [];

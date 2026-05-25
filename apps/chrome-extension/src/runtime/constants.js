@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   prompt2TemplateAsset: "prompt2TemplateAsset",
   prompt3TemplateAsset: "prompt3TemplateAsset",
   promptTemplateProfiles: "promptTemplateProfiles",
+  promptDefaultsMode: "promptDefaultsMode",
   serverPromptArtifacts: "serverPromptArtifacts",
   serverPromptManifest: "serverPromptManifest",
   serverPromptLastSyncedAt: "serverPromptLastSyncedAt",

@@ -13,6 +13,8 @@ import {
   getPendingExtensionAction,
   getServerPromptDefaults,
   getUserAssets,
+  savePromptDefaultsMode,
+  savePromptTemplateProfileSelection,
   setExtensionState,
   setPromptTemplateAsset,
   setExtensionAuth,
@@ -328,6 +330,46 @@ describe("account-scoped extension storage", () => {
       lastSyncedAt: expect.any(String),
     });
     expect((await getUserAssets()).prompt1TemplateAsset).toBeNull();
+  });
+
+  it("defaults prompt source mode to extension for the temporary developer account", async () => {
+    await setExtensionAuth(
+      createAuth({
+        id: "admin-user",
+        email: "kenn.nguyen@aya.yale.edu",
+        name: "Kenn",
+      }),
+    );
+    await activateAccountWorkspace({
+      id: "admin-user",
+      email: "kenn.nguyen@aya.yale.edu",
+      name: "Kenn",
+    });
+
+    expect((await getUserAssets()).promptDefaultsMode).toBe("extension");
+  });
+
+  it("defaults prompt source mode to server for normal accounts and persists explicit changes", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+
+    expect((await getUserAssets()).promptDefaultsMode).toBe("server");
+
+    await savePromptDefaultsMode("extension");
+    expect((await getUserAssets()).promptDefaultsMode).toBe("extension");
+
+    await savePromptDefaultsMode("server");
+    expect((await getUserAssets()).promptDefaultsMode).toBe("server");
+  });
+
+  it("accepts profile4 as a stored prompt profile", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+
+    const profiles = await savePromptTemplateProfileSelection("profile4");
+
+    expect(profiles.activeProfileId).toBe("profile4");
+    expect((await getUserAssets()).activePromptProfileId).toBe("profile4");
   });
 
   it("stores profile-scoped system prompt body overrides", async () => {

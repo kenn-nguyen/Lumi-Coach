@@ -133,6 +133,8 @@ const APIFY_TOKEN_INPUT_ID = "resume-matcher-apify-token-input";
 const APIFY_TOKEN_TOGGLE_ID = "resume-matcher-apify-token-toggle";
 const APIFY_SAVE_ID = "resume-matcher-apify-save";
 const PROMPT_REFRESH_ID = "resume-matcher-prompt-refresh";
+const PROMPT_SOURCE_ROW_ID = "resume-matcher-prompt-source-row";
+const PROMPT_SOURCE_INPUT_ID = "resume-matcher-prompt-source-input";
 const PROMPT_PROFILE_TABS_ID = "resume-matcher-prompt-profile-tabs";
 const PROMPT_PROFILE_DETAIL_ID = "resume-matcher-prompt-profile-detail";
 const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
@@ -165,6 +167,7 @@ const EXTENSION_VERSION = (() => {
 })();
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
 const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
+const TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL = "kenn.nguyen@aya.yale.edu";
 const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
 const PROVIDER_SAVE_REQUIRED_MESSAGE =
   "Save your AI setup before uploading your Master Resume.";
@@ -369,6 +372,9 @@ const PROMPT_PROFILE_UI = {
   profile3: {
     label: "Lean",
   },
+  profile4: {
+    label: "Direct",
+  },
 };
 
 const TAILORING_STYLE_INFO = [
@@ -411,6 +417,19 @@ const TAILORING_STYLE_INFO = [
       "Best when you want faster, cheaper tailoring and can tolerate looser intermediate guidance.",
     ],
   },
+  {
+    profileId: "profile4",
+    title: "Direct",
+    lines: [
+      "Single prompt tailoring.",
+      "Stretch: Medium",
+      "Token spend: Lowest",
+      "Prompt structure: One-shot writer only",
+      "Prompt 3: Still strict JSON",
+      "Model freedom: Highest",
+      "Best when you want the shortest tailoring flow and are comfortable reviewing the final draft closely.",
+    ],
+  },
 ];
 
 const TAILORING_STYLE_DISCLAIMER =
@@ -447,6 +466,21 @@ function profileHasCustomPromptBodies(promptTemplateProfiles, profileId) {
   );
 }
 
+function normalizeAccountEmail(email) {
+  return typeof email === "string" ? email.trim().toLowerCase() : "";
+}
+
+function canUseDeveloperPromptSourceOverride(assets = state.assets) {
+  return (
+    normalizeAccountEmail(assets?.extensionAuth?.user?.email) ===
+    TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL
+  );
+}
+
+function isUsingExtensionPromptDefaultsMode(assets = state.assets) {
+  return (assets?.promptDefaultsMode || "server") === "extension";
+}
+
 function isBoldPromptProfileEnabled(promptTemplateProfiles = state.assets?.promptTemplateProfiles) {
   return true;
 }
@@ -459,6 +493,29 @@ function isPromptProfileSelectableInRunView(
     return true;
   }
   return isBoldPromptProfileEnabled(promptTemplateProfiles);
+}
+
+function getEditablePromptTemplateNamesForProfile(profileId = "") {
+  if (String(profileId || "").trim() === "profile4") {
+    return ["prompt3", "systemPrompt"];
+  }
+
+  return PROMPT_FILE_DESCRIPTORS.filter(
+    ({ editable }) => editable !== false,
+  ).map(({ templateName }) => templateName);
+}
+
+function isPromptTemplateEditableForProfile(templateName, profileId = "") {
+  return getEditablePromptTemplateNamesForProfile(profileId).includes(
+    templateName,
+  );
+}
+
+function isPromptTemplateEditableForActiveProfile(templateName) {
+  return isPromptTemplateEditableForProfile(
+    templateName,
+    state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
+  );
 }
 
 function getRunnablePromptProfileId(
@@ -1542,6 +1599,10 @@ function promptLabelId(templateName) {
   return `resume-matcher-${templateName}-label`;
 }
 
+function promptRowId(templateName) {
+  return `resume-matcher-${templateName}-row`;
+}
+
 function promptActionId(templateName) {
   return `resume-matcher-${templateName}-action`;
 }
@@ -1656,6 +1717,13 @@ function exportHistoryData() {
 }
 
 async function downloadDefaultPrompt(templateName) {
+  if (!isPromptTemplateEditableForActiveProfile(templateName)) {
+    throw new Error(
+      `${templateName} is not available for ${getPromptProfileLabel(
+        state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
+      )}.`,
+    );
+  }
   const descriptor = PROMPT_FILE_DESCRIPTORS.find((item) => item.templateName === templateName);
   if (!descriptor?.downloadName) {
     return;
@@ -1713,6 +1781,15 @@ async function refreshDefaultPromptsManually() {
   }
 
   await refreshBoardData();
+
+  if (response.promptDefaultsMode === "extension") {
+    setRunStatus(
+      "success",
+      "Extension prompts active",
+      "Server prompt sync is off. Lumi Coach is using the packaged extension prompts.",
+    );
+    return;
+  }
 
   if (response.degraded) {
     setRunStatus(
@@ -7269,6 +7346,10 @@ function renderProviderFields() {
 function renderSettings() {
   const assets = state.assets;
   const accountLabel = assets?.extensionAuth?.user?.email?.trim() || "";
+  const canUsePromptSourceOverride =
+    canUseDeveloperPromptSourceOverride(assets);
+  const usingExtensionPromptDefaults =
+    isUsingExtensionPromptDefaultsMode(assets);
   const hasMaster = hasBackendMasterResume();
   const providerReadiness = getSavedProviderImportReadiness();
   const providerReady = providerReadiness.ready === true;
@@ -7276,6 +7357,9 @@ function renderSettings() {
   const accountControlsDisabled = !connected;
   const activePromptProfileId =
     assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+  const editablePromptTemplateNames = new Set(
+    getEditablePromptTemplateNamesForProfile(activePromptProfileId),
+  );
   const readyToTailor = connected && providerReady && hasMaster;
   const settingsHealth = $(SETTINGS_HEALTH_ID);
   if (settingsHealth) {
@@ -7396,6 +7480,10 @@ function renderSettings() {
     `;
   }
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
+    const row = $(promptRowId(templateName));
+    if (row instanceof HTMLElement) {
+      row.hidden = !editablePromptTemplateNames.has(templateName);
+    }
     const chip = $(promptLabelId(templateName));
     if (!chip) return;
     const descriptor = PROMPT_FILE_DESCRIPTORS.find(
@@ -7519,14 +7607,40 @@ function renderSettings() {
   });
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, editable }) => {
     const promptInput = $(promptInputId(templateName));
-    if (promptInput) promptInput.disabled = accountControlsDisabled || editable === false;
+    if (promptInput) {
+      promptInput.disabled =
+        accountControlsDisabled ||
+        editable === false ||
+        !editablePromptTemplateNames.has(templateName);
+    }
     const promptAction = $(promptActionId(templateName));
-    if (promptAction) promptAction.disabled = accountControlsDisabled || editable === false;
+    if (promptAction) {
+      promptAction.disabled =
+        accountControlsDisabled ||
+        editable === false ||
+        !editablePromptTemplateNames.has(templateName);
+    }
+    const promptDownload = $(promptDownloadId(templateName));
+    if (promptDownload) {
+      promptDownload.disabled =
+        accountControlsDisabled || !editablePromptTemplateNames.has(templateName);
+    }
   });
   const promptRefreshButton = $(PROMPT_REFRESH_ID);
   if (promptRefreshButton) {
     promptRefreshButton.disabled =
-      accountControlsDisabled || Boolean(state.promptSyncPromise);
+      accountControlsDisabled ||
+      Boolean(state.promptSyncPromise) ||
+      usingExtensionPromptDefaults;
+  }
+  const promptSourceRow = $(PROMPT_SOURCE_ROW_ID);
+  if (promptSourceRow instanceof HTMLElement) {
+    promptSourceRow.hidden = !canUsePromptSourceOverride;
+  }
+  const promptSourceInput = $(PROMPT_SOURCE_INPUT_ID);
+  if (promptSourceInput instanceof HTMLInputElement) {
+    promptSourceInput.checked = usingExtensionPromptDefaults;
+    promptSourceInput.disabled = accountControlsDisabled;
   }
 
   $(MASTER_RESUME_ACTION_ID)?.addEventListener("click", async () => {
@@ -7607,7 +7721,12 @@ function renderSettings() {
   });
   PROMPT_FILE_DESCRIPTORS.forEach(({ templateName, label, editable }) => {
     $(promptActionId(templateName))?.addEventListener("click", async () => {
-      if (accountControlsDisabled || editable === false) return;
+      if (
+        accountControlsDisabled ||
+        editable === false ||
+        !isPromptTemplateEditableForActiveProfile(templateName)
+      )
+        return;
       try {
         const asset = state.assets?.[`${templateName}TemplateAsset`];
         if (asset?.filename) {
@@ -7632,6 +7751,7 @@ function renderSettings() {
       }
     });
     $(promptDownloadId(templateName))?.addEventListener("click", async () => {
+      if (!isPromptTemplateEditableForActiveProfile(templateName)) return;
       try {
         await downloadDefaultPrompt(templateName);
         void trackAnalyticsEvent("extension_prompt_downloaded", {
@@ -7663,6 +7783,45 @@ function renderSettings() {
         error instanceof Error
           ? error.message
           : "Failed to refresh prompt defaults.",
+        );
+    }
+  });
+  $(PROMPT_SOURCE_INPUT_ID)?.addEventListener("change", async (event) => {
+    if (accountControlsDisabled) return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    try {
+      const response = await persistPromptDefaultsMode(
+        target.checked ? "extension" : "server",
+      );
+      if (response.promptDefaultsMode === "extension") {
+        setRunStatus(
+          "success",
+          "Extension prompts active",
+          "Lumi Coach will use the packaged extension prompts for this account.",
+        );
+      } else if (response.degraded) {
+        setRunStatus(
+          "interrupted",
+          "Using cached prompts",
+          "Prompt sync was unavailable, so Lumi Coach kept the current cached server prompts.",
+        );
+      } else {
+        setRunStatus(
+          "success",
+          "Server prompts active",
+          "Lumi Coach will use the synced server prompts for this account.",
+        );
+      }
+      renderSettings();
+      renderRunView();
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Save failed",
+        error instanceof Error
+          ? error.message
+          : "Failed to save prompt source.",
       );
     }
   });
@@ -8498,6 +8657,25 @@ async function persistPromptProfileSelection(profileId, { refresh = true } = {})
   return true;
 }
 
+async function persistPromptDefaultsMode(mode) {
+  const nextMode = mode === "extension" ? "extension" : "server";
+  const response = await sendMessage("SAVE_PROMPT_DEFAULTS_MODE", {
+    mode: nextMode,
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error || "Failed to save prompt source.");
+  }
+  if (response.assets && typeof response.assets === "object") {
+    state.assets = {
+      ...(state.assets || {}),
+      ...response.assets,
+    };
+    applyPromptTemplateProfilesState(state.assets.promptTemplateProfiles);
+  }
+  await refreshBoardData();
+  return response;
+}
+
 async function ensureProviderReadyForMasterResumeImport() {
   let readiness = getSavedProviderImportReadiness();
   if (readiness.ready) {
@@ -9223,7 +9401,14 @@ function ensureRoot() {
                   <button id="${RUN_PROMPT_PROFILE_INFO_ID}" type="button" class="resume-matcher-run-style-info-button" aria-label="About tailoring styles" aria-haspopup="dialog" aria-controls="${RUN_PROMPT_PROFILE_POPUP_ID}" aria-expanded="false" title="About tailoring styles">i</button>
                 </div>
                 ${renderPromptProfileTabs(
-                  { profiles: { profile1: {}, profile2: {}, profile3: {} } },
+                  {
+                    profiles: {
+                      profile1: {},
+                      profile2: {},
+                      profile3: {},
+                      profile4: {},
+                    },
+                  },
                   DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
                   {
                     containerId: RUN_PROMPT_PROFILE_TABS_ID,
@@ -9347,12 +9532,28 @@ function ensureRoot() {
                     <div class="resume-matcher-settings-item__detail">Upload .txt only. Edit the main prompt wording only. Output contracts and guardrails stay fixed.</div>
                     <div id="${PROMPT_PROFILE_DETAIL_ID}" class="resume-matcher-settings-item__detail"></div>
                     <div class="resume-matcher-settings-substack">
+                      <div id="${PROMPT_SOURCE_ROW_ID}" class="resume-matcher-settings-item" hidden>
+                        <div class="resume-matcher-settings-item__title">Prompt source</div>
+                        <div class="resume-matcher-settings-item__detail">Temporary developer override. When enabled, Lumi Coach uses the packaged extension prompts instead of synced server prompts.</div>
+                        <label class="resume-matcher-inline-action resume-matcher-inline-action--compact" for="${PROMPT_SOURCE_INPUT_ID}">
+                          <span class="resume-matcher-inline-action__label">Use extension prompts</span>
+                          <input id="${PROMPT_SOURCE_INPUT_ID}" class="resume-matcher-checkbox" type="checkbox" />
+                          <span class="resume-matcher-toggle" aria-hidden="true"></span>
+                        </label>
+                      </div>
                       <div class="resume-matcher-settings-item">
                         <div class="resume-matcher-settings-item__title">Active style</div>
                         <div class="resume-matcher-settings-item__detail">These uploaded prompt bodies apply to the selected style.</div>
                         <div class="resume-matcher-field">
                           ${renderPromptProfileTabs(
-                            { profiles: { profile1: {}, profile2: {}, profile3: {} } },
+                            {
+                              profiles: {
+                                profile1: {},
+                                profile2: {},
+                                profile3: {},
+                                profile4: {},
+                              },
+                            },
                             DEFAULT_ACTIVE_PROMPT_PROFILE_ID,
                             { containerId: PROMPT_PROFILE_TABS_ID, compact: true },
                           )}
@@ -9360,7 +9561,7 @@ function ensureRoot() {
                       </div>
                       ${PROMPT_FILE_DESCRIPTORS.map(
                         ({ templateName, label, downloadName, editable }) => `
-                        <div class="resume-matcher-settings-item">
+                        <div id="${promptRowId(templateName)}" class="resume-matcher-settings-item">
                           <div class="resume-matcher-file-row">
                             <div id="${promptLabelId(templateName)}" class="resume-matcher-file-chip is-placeholder">
                               <span class="resume-matcher-file-chip__text">${label}</span>
@@ -9535,7 +9736,11 @@ function ensureRoot() {
     $(promptInputId(templateName))?.addEventListener(
       "change",
       async (event) => {
-        if (editable === false) return;
+        if (
+          editable === false ||
+          !isPromptTemplateEditableForActiveProfile(templateName)
+        )
+          return;
         const file = event.target.files?.[0];
         if (!file) return;
         try {

@@ -53,6 +53,7 @@ import {
   applyServerPromptDefaultsSyncResult,
   saveApifyFallbackSettings,
   saveLlmSettings,
+  savePromptDefaultsMode,
   setApiOrigin,
   setAppOrigin,
   setChatGptTargetUrl,
@@ -624,6 +625,17 @@ async function syncDefaultPromptArtifacts() {
       skipped: true,
     };
   }
+  const assets = await getUserAssets();
+  if (assets?.promptDefaultsMode === "extension") {
+    return {
+      ok: true,
+      changedKeys: [],
+      lastSyncedAt: null,
+      degraded: false,
+      skipped: true,
+      promptDefaultsMode: "extension",
+    };
+  }
   const cache = await getServerPromptDefaults();
   try {
     const syncResult = await syncExtensionPromptDefaults(cache.manifest);
@@ -636,6 +648,7 @@ async function syncDefaultPromptArtifacts() {
       changedKeys: applied.changedKeys,
       lastSyncedAt: applied.lastSyncedAt,
       degraded: false,
+      promptDefaultsMode: "server",
     };
   } catch (error) {
     logWarn("Background", "Prompt defaults sync failed; keeping cached/default prompts.", {
@@ -649,6 +662,7 @@ async function syncDefaultPromptArtifacts() {
       lastSyncedAt: cache.lastSyncedAt ?? null,
       degraded: true,
       usedCachedDefaults: Object.keys(cache.artifacts ?? {}).length > 0,
+      promptDefaultsMode: "server",
     };
   }
 }
@@ -659,7 +673,11 @@ async function buildDefaultPromptDownload(templateName, promptProfileId = null) 
     throw new Error(`Unknown prompt template "${templateName}".`);
   }
 
-  let cache = await getServerPromptDefaults();
+  const assets = await getUserAssets();
+  const useServerDefaults = assets?.promptDefaultsMode !== "extension";
+  let cache = useServerDefaults
+    ? await getServerPromptDefaults()
+    : { artifacts: {}, manifest: {}, lastSyncedAt: null };
   const artifactKeys = getPromptArtifactKeysForTemplate(
     templateName,
     promptProfileId,
@@ -668,7 +686,7 @@ async function buildDefaultPromptDownload(templateName, promptProfileId = null) 
     (artifactKey) => typeof cache.artifacts?.[artifactKey] !== "string",
   );
 
-  if (missingArtifact) {
+  if (useServerDefaults && missingArtifact) {
     try {
       await syncDefaultPromptArtifacts();
       cache = await getServerPromptDefaults();
@@ -687,7 +705,7 @@ async function buildDefaultPromptDownload(templateName, promptProfileId = null) 
       continue;
     }
 
-    let content = cache.artifacts?.[artifactKey];
+    let content = useServerDefaults ? cache.artifacts?.[artifactKey] : null;
     if (typeof content !== "string") {
       content = await getPackagedPromptArtifactText(artifactKey).catch(() => "");
     }
@@ -1411,6 +1429,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case "SYNC_DEFAULT_PROMPTS":
         return syncDefaultPromptArtifacts();
+
+      case "SAVE_PROMPT_DEFAULTS_MODE": {
+        const mode = await savePromptDefaultsMode(message.payload?.mode);
+        clearPromptTemplateCache();
+        const syncResult =
+          mode === "server"
+            ? await syncDefaultPromptArtifacts()
+            : {
+                ok: true,
+                changedKeys: [],
+                lastSyncedAt: null,
+                degraded: false,
+                skipped: true,
+                promptDefaultsMode: "extension",
+              };
+        return {
+          ok: true,
+          promptDefaultsMode: mode,
+          assets: await getUserAssets(),
+          ...syncResult,
+        };
+      }
 
       case "GET_DEFAULT_PROMPT_DOWNLOAD":
         return buildDefaultPromptDownload(

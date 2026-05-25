@@ -176,6 +176,9 @@ def _get_extension_prompt_profile_paths() -> dict[str, dict[str, str]]:
             "prompt3": "profiles/profile3/prompt3.txt",
             "systemPrompt": "system-prompt.txt",
         },
+        "profile4": {
+            "prompt3": "profiles/profile4/prompt3.txt",
+        },
     }
 
 

@@ -522,6 +522,13 @@ class TestExtensionPromptSync:
             "systemPrompt": "system-prompt.txt",
         }
 
+    def test_profile4_sync_paths_use_backend_profile4_prompts(self):
+        paths = _get_extension_prompt_profile_paths()
+
+        assert paths["profile4"] == {
+            "prompt3": "profiles/profile4/prompt3.txt",
+        }
+
     @patch("app.routers.config._get_extension_prompt_artifacts")
     async def test_returns_only_changed_artifacts(self, mock_artifacts, client):
         mock_artifacts.return_value = {
@@ -587,3 +594,15 @@ class TestExtensionPromptSync:
         assert data["changed"] == {}
         assert data["removed"] == []
         assert data["manifest"] == {"prompt1.template": "same-hash"}
+
+    async def test_sync_serves_profile4_prompt3_template(self, client):
+        async with client:
+            resp = await client.post(
+                "/api/v1/config/extension-prompts/sync",
+                json={"manifest": {}},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "profile4.prompt3.template" in data["changed"]
+        assert "/resume_writer:" in data["changed"]["profile4.prompt3.template"]

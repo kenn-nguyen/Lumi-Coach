@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getMasterResumeImportProviderIssue,
   isFreeformPromptProfileId,
+  isSingleStagePromptProfileId,
   getPrompt4ResumeRejectionMessage,
   prefixGenerationFeedbackSummary,
   preserveGeneratedResumeFacts,
@@ -316,6 +317,14 @@ describe("isFreeformPromptProfileId", () => {
     expect(isFreeformPromptProfileId("profile3")).toBe(true);
     expect(isFreeformPromptProfileId("profile2")).toBe(false);
     expect(isFreeformPromptProfileId("")).toBe(false);
+  });
+});
+
+describe("isSingleStagePromptProfileId", () => {
+  it("enables the single-stage tailoring flow only for profile 4", () => {
+    expect(isSingleStagePromptProfileId("profile4")).toBe(true);
+    expect(isSingleStagePromptProfileId("profile3")).toBe(false);
+    expect(isSingleStagePromptProfileId("")).toBe(false);
   });
 });
 

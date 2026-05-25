@@ -1,0 +1,13 @@
+---
+prompt_artifact: profile4.prompt3.template
+prompt_version: v1.0.0
+prompt_label: direct-one-shot-writer
+prompt_notes: One-shot tailoring prompt using CURRENT_RESUME and the JD only.
+---
+/resume_writer: write the resume using the current resume and the job description below
+
+Job description:
+{{JOB_DESCRIPTION}}
+
+Current resume:
+{{CURRENT_RESUME}}

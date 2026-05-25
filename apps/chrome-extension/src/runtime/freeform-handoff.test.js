@@ -58,4 +58,37 @@ describe("cleanFreeformHandoffText", () => {
       }),
     ).toBe(clean);
   });
+
+  it("cuts off leaked prompt scaffolding markers like Input and Prompt 1 output", () => {
+    const dirty = [
+      "ATS",
+      "- Priority keywords: payments, roadmap, discovery",
+      "",
+      "Hiring manager",
+      "- Trusts: measurable product delivery",
+      "- Rejects: vague ownership claims",
+      "",
+      "Input:",
+      "job_title: Concourse Product Manager",
+      "",
+      "Prompt 1 output:",
+      "ATS",
+      "- should not remain",
+    ].join("\n");
+
+    expect(
+      cleanFreeformHandoffText(dirty, {
+        expectedHeadings: ["ATS", "Hiring manager persona"],
+      }),
+    ).toBe(
+      [
+        "ATS",
+        "- Priority keywords: payments, roadmap, discovery",
+        "",
+        "Hiring manager",
+        "- Trusts: measurable product delivery",
+        "- Rejects: vague ownership claims",
+      ].join("\n"),
+    );
+  });
 });

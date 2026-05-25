@@ -13,8 +13,11 @@ import {
 import { logWarn } from "./log.js";
 import { isUserEditablePromptTemplateName } from "./prompt-defaults.js";
 
-const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
+const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3", "profile4"];
 const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
+const PROMPT_DEFAULTS_MODES = ["server", "extension"];
+const TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL =
+  "kenn.nguyen@aya.yale.edu";
 const ONBOARDING_STEPS = ["intro", "sign_in", "provider", "assets", "done"];
 const ACCOUNT_STORAGE_VERSION = 1;
 const STORAGE_LOCAL_QUOTA_BYTES = 10_485_760;
@@ -23,6 +26,7 @@ const LEGACY_ACCOUNT_SCOPED_KEYS = [
   STORAGE_KEYS.masterResumeContextAsset,
   STORAGE_KEYS.storyboardAsset,
   STORAGE_KEYS.promptTemplateProfiles,
+  STORAGE_KEYS.promptDefaultsMode,
   STORAGE_KEYS.prompt1TemplateAsset,
   STORAGE_KEYS.prompt2TemplateAsset,
   STORAGE_KEYS.prompt3TemplateAsset,
@@ -39,6 +43,7 @@ const LEGACY_ACCOUNT_SCOPED_KEYS = [
 ];
 const ACCOUNT_SETTINGS_SCOPED_KEYS = [
   STORAGE_KEYS.promptTemplateProfiles,
+  STORAGE_KEYS.promptDefaultsMode,
   STORAGE_KEYS.serverPromptArtifacts,
   STORAGE_KEYS.serverPromptManifest,
   STORAGE_KEYS.serverPromptLastSyncedAt,
@@ -112,6 +117,23 @@ function normalizePromptManifest(storedManifest) {
 
 function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeAccountIdentityEmail(email) {
+  return typeof email === "string" ? email.trim().toLowerCase() : "";
+}
+
+function getDefaultPromptDefaultsModeForEmail(email) {
+  return normalizeAccountIdentityEmail(email) ===
+    TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL
+    ? "extension"
+    : "server";
+}
+
+function normalizePromptDefaultsMode(storedMode, email = "") {
+  return PROMPT_DEFAULTS_MODES.includes(storedMode)
+    ? storedMode
+    : getDefaultPromptDefaultsModeForEmail(email);
 }
 
 function getDefaultExtensionState() {
@@ -727,6 +749,7 @@ export async function getUserAssets() {
         STORAGE_KEYS.masterResumeContextAsset,
         STORAGE_KEYS.storyboardAsset,
         STORAGE_KEYS.promptTemplateProfiles,
+        STORAGE_KEYS.promptDefaultsMode,
         STORAGE_KEYS.prompt1TemplateAsset,
         STORAGE_KEYS.prompt2TemplateAsset,
         STORAGE_KEYS.prompt3TemplateAsset,
@@ -757,6 +780,11 @@ export async function getUserAssets() {
   const activePromptProfile =
     promptTemplateProfiles.profiles[activePromptProfileId] ??
     getDefaultPromptTemplateProfiles().profiles[DEFAULT_ACTIVE_PROMPT_PROFILE_ID];
+  const extensionAuth = globalData[STORAGE_KEYS.extensionAuth] ?? null;
+  const promptDefaultsMode = normalizePromptDefaultsMode(
+    scopedData[STORAGE_KEYS.promptDefaultsMode],
+    extensionAuth?.user?.email ?? "",
+  );
   return {
     activeAccountKey: accountKey,
     masterResumeContextAsset:
@@ -764,6 +792,7 @@ export async function getUserAssets() {
     storyboardAsset: scopedData[STORAGE_KEYS.storyboardAsset] ?? null,
     promptTemplateProfiles,
     activePromptProfileId,
+    promptDefaultsMode,
     prompt1TemplateAsset: activePromptProfile.prompt1TemplateAsset ?? null,
     prompt2TemplateAsset: activePromptProfile.prompt2TemplateAsset ?? null,
     prompt3TemplateAsset: activePromptProfile.prompt3TemplateAsset ?? null,
@@ -772,7 +801,7 @@ export async function getUserAssets() {
     llmSettings,
     appOrigin: globalData[STORAGE_KEYS.appOrigin] ?? DEFAULT_APP_ORIGIN,
     apiOrigin: globalData[STORAGE_KEYS.apiOrigin] ?? DEFAULT_API_ORIGIN,
-    extensionAuth: globalData[STORAGE_KEYS.extensionAuth] ?? null,
+    extensionAuth,
     onboardingProgress: normalizeOnboardingProgress(
       scopedData[STORAGE_KEYS.onboardingProgress],
     ),
@@ -955,6 +984,16 @@ export async function savePromptTemplateProfileSelection(profileId) {
     [STORAGE_KEYS.promptTemplateProfiles]: next,
   });
   return next;
+}
+
+export async function savePromptDefaultsMode(mode) {
+  if (!PROMPT_DEFAULTS_MODES.includes(mode)) {
+    throw new Error(`Unknown prompt defaults mode "${mode}".`);
+  }
+  await setScopedStorageValues({
+    [STORAGE_KEYS.promptDefaultsMode]: mode,
+  });
+  return mode;
 }
 
 export async function savePromptTemplateProfileBundle(profileId, uploads) {

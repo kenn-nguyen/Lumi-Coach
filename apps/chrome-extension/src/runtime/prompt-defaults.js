@@ -1,7 +1,7 @@
 import { STORAGE_KEYS } from "./constants.js";
 
 export const SYSTEM_GUARDRAILS_ARTIFACT_KEY = "system.guardrails";
-export const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3"];
+export const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3", "profile4"];
 export const USER_EDITABLE_PROMPT_TEMPLATE_NAMES = [
   "prompt1",
   "prompt2",
@@ -51,10 +51,13 @@ const PROFILE_DEFAULT_PROMPT_PATHS = {
     prompt3: "src/prompts/profiles/profile3/prompt3.txt",
     systemPrompt: "src/prompts/system-prompt.txt",
   },
+  profile4: {
+    prompt3: "src/prompts/profiles/profile4/prompt3.txt",
+  },
 };
 
 const PROFILE_TEMPLATE_ARTIFACT_PATTERN =
-  /^(profile[123])\.(prompt1|prompt2|prompt3|systemPrompt)\.template$/;
+  /^(profile[1234])\.(prompt1|prompt2|prompt3|systemPrompt)\.template$/;
 
 export const PROMPT_ARTIFACT_DEFINITIONS = {
   "prompt1.template": {

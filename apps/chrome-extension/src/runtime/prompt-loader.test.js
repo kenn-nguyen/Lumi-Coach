@@ -100,6 +100,46 @@ describe("prompt-loader", () => {
     expect(result).not.toContain("prompt_version");
   });
 
+  it("uses packaged extension prompts instead of server artifacts when prompt source mode is extension", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile2",
+      promptDefaultsMode: "extension",
+      prompt1TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({
+      artifacts: {
+        "profile2.prompt1.template": "SERVER PROFILE2 TEMPLATE {{JOB_TITLE}}",
+        "prompt1.output_contract": "SERVER CONTRACT",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) =>
+        createFetchResponse(
+          withFrontmatter(
+            {
+              prompt_artifact: "profile2.prompt1.template",
+              prompt_version: "v1",
+              prompt_label: "packaged-profile2",
+            },
+            `PACKAGED:${url}`,
+          ),
+        ),
+      ),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const result = await promptLoader.loadPromptTemplate("prompt1", {});
+
+    expect(result).toContain("PACKAGED:src/prompts/profiles/profile2/prompt1.txt");
+    expect(result).toContain(
+      "PACKAGED:src/prompts/patches/prompt1.output-contract.txt",
+    );
+    expect(result).not.toContain("SERVER PROFILE2 TEMPLATE");
+    expect(result).not.toContain("SERVER CONTRACT");
+  });
+
   it("keeps system guardrails shared while allowing profile-scoped system prompt bodies", async () => {
     getUserAssets.mockResolvedValue({
       activePromptProfileId: "profile1",
@@ -644,5 +684,35 @@ describe("prompt-loader", () => {
       promptLabel: "custom-positioning",
       aiUpdateNotes: "Update version metadata when this override changes.",
     });
+  });
+
+  it("loads the profile4 prompt3 template from the profile4 packaged path", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile4",
+      prompt3TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({ artifacts: {} });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) =>
+        createFetchResponse(
+          String(url).includes("profiles/profile4/prompt3.txt")
+            ? "PROFILE4 TEMPLATE {{JOB_DESCRIPTION}} {{CURRENT_RESUME}}"
+            : "PACKAGED",
+        ),
+      ),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const rendered = await promptLoader.renderPrompt3WithMetadata(
+      {
+        jobDescriptionRawText: "JD",
+        currentResume: { personalInfo: { name: "T" } },
+      },
+      {},
+    );
+
+    expect(rendered.text).toContain("PROFILE4 TEMPLATE");
   });
 });
