@@ -194,6 +194,224 @@ describe('injectedProviderPromptEntry completion detection', () => {
       rawText: '{"summary":"done"}',
     });
   });
+
+  it('extracts the Claude assistant response from the assistant turn instead of a later prompt echo wrapper', async () => {
+    const CLAUDE_TEST_CONFIG = {
+      providerLabel: 'Claude',
+      urlMatchers: [`${window.location.origin}/`],
+      inputSelectors: ['#composer'],
+      sendButtonSelectors: ['#send-button'],
+      stopButtonSelectors: ['button[aria-label*="Stop"]'],
+      responseBusySelectors: ['[data-is-streaming="true"]'],
+      assistantTextSelectors: ['[data-test-render-count]'],
+      assistantTurnContainerSelectors: ['[data-test-render-count]'],
+      assistantTurnRoleHeadingSelectors: ['h2.sr-only'],
+      assistantTurnRoleHeadingPattern: '^Claude responded:',
+      assistantContentSelectors: [
+        '.font-claude-response .standard-markdown',
+        '.font-claude-response',
+      ],
+      loginSelectors: [],
+      authRequiredMessage: 'Please log into Claude in a normal browser tab first.',
+      responseSettleDelayMs: 0,
+    };
+    const composer = document.getElementById('composer');
+    const sendButton = document.getElementById('send-button');
+    const messages = document.getElementById('messages');
+
+    sendButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      composer.value = '';
+      sendButton.setAttribute('aria-label', 'Send');
+
+      messages.innerHTML = `
+        <div data-test-render-count="1">
+          <div data-is-streaming="false" class="group relative relative pb-3">
+            <h2 class="sr-only select-none">Claude responded: ATS</h2>
+            <div class="font-claude-response">
+              <div class="standard-markdown">
+                <p>ATS</p>
+                <ul>
+                  <li>Priority keywords: payments, APIs</li>
+                  <li>Hard filters: 8+ years</li>
+                </ul>
+                <p>Hiring manager persona</p>
+                <ul>
+                  <li>Trusts: full product ownership</li>
+                </ul>
+              </div>
+            </div>
+            <div role="group" aria-label="Message actions">
+              <button data-testid="action-bar-copy" aria-label="Copy">Copy</button>
+            </div>
+          </div>
+        </div>
+        <div data-test-render-count="2">
+          <div class="whitespace-pre-wrap">
+            ATS
+            - Priority keywords:
+            - Hard filters:
+            - Proof themes:
+            Hiring manager persona
+            - Trusts:
+            - Rejects:
+            - Wants first on page one:
+          </div>
+        </div>
+      `;
+    });
+
+    let settled = false;
+    let result = null;
+    const runPromise = injectedProviderPromptEntry(
+      'Return valid plain text only.',
+      CLAUDE_TEST_CONFIG,
+      {
+        responseTimeoutMs: 30000,
+        responseIdleTimeoutMs: 30000,
+        responseFirstTokenTimeoutMs: 30000,
+        composeReadyTimeoutMs: 1000,
+        sendReadyTimeoutMs: 1000,
+        responseSettleDelayMs: 0,
+      }
+    ).then((value) => {
+      settled = true;
+      result = value;
+      return value;
+    });
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await flushMicrotasks();
+
+    expect(settled).toBe(true);
+    expect(result).toMatchObject({
+      status: 'success',
+    });
+    expect(result.rawText).toContain('Priority keywords: payments, APIs');
+    expect(result.rawText).toContain('Trusts: full product ownership');
+    expect(result.rawText).not.toContain('Proof themes:');
+    expect(result.rawText).not.toContain('Wants first on page one:');
+    await runPromise;
+  });
+
+  it('extracts the Claude assistant response from the incognito chat layout', async () => {
+    const CLAUDE_TEST_CONFIG = {
+      providerLabel: 'Claude',
+      urlMatchers: [`${window.location.origin}/`],
+      inputSelectors: ['#composer'],
+      sendButtonSelectors: ['#send-button'],
+      stopButtonSelectors: ['button[aria-label*="Stop"]'],
+      responseBusySelectors: ['[data-is-streaming="true"]'],
+      assistantTextSelectors: ['#main-content [data-test-render-count]'],
+      assistantTurnContainerSelectors: ['#main-content [data-test-render-count]'],
+      assistantTurnRoleHeadingSelectors: ['h2.sr-only'],
+      assistantTurnRoleHeadingPattern: '^Claude responded:',
+      assistantContentSelectors: [
+        '.font-claude-response .standard-markdown',
+        '.font-claude-response .progressive-markdown',
+        '.font-claude-response',
+      ],
+      loginSelectors: [],
+      authRequiredMessage: 'Please log into Claude in a normal browser tab first.',
+      responseSettleDelayMs: 0,
+    };
+    const composer = document.getElementById('composer');
+    const sendButton = document.getElementById('send-button');
+    const messages = document.getElementById('messages');
+
+    sendButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      composer.value = '';
+      sendButton.setAttribute('aria-label', 'Send');
+
+      messages.innerHTML = `
+        <div id="main-content">
+          <div class="flex flex-1 h-full w-full overflow-hidden">
+            <div class="h-full flex flex-col overflow-hidden" style="flex: 100 1 0%;">
+              <div class="overflow-y-auto overflow-x-hidden pt-6 flex-1">
+                <div class="relative w-full min-h-full flex flex-col">
+                  <div class="mx-auto flex w-full flex-1 flex-col max-w-3xl md:px-2">
+                    <div class="flex-1 flex flex-col px-4 max-w-3xl mx-auto w-full pt-1">
+                      <div class="pb-8 -mb-8">
+                        <div data-test-render-count="2">
+                          <div class="contents">
+                            <div class="mb-1 mt-6 group">
+                              <h2 class="sr-only select-none">You said: abcde</h2>
+                              <div data-user-message-bubble="true">
+                                <div data-testid="user-message">
+                                  <p class="whitespace-pre-wrap break-words">abcde</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <div data-test-render-count="1">
+                            <div class="group">
+                              <div class="contents">
+                                <div data-is-streaming="false" class="group relative relative pb-3">
+                                  <h2 class="sr-only select-none">Claude responded: Hey!</h2>
+                                  <div class="font-claude-response relative leading-[1.65rem]">
+                                    <div>
+                                      <div class="standard-markdown grid-cols-1 grid gap-3">
+                                        <p class="font-claude-response-body break-words whitespace-normal leading-[1.7]">
+                                          Hey! It looks like you just typed "abcde" — was that a test, or is there something I can help you with?
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div class="flex justify-start" role="group" aria-label="Message actions">
+                                <button data-testid="action-bar-copy" aria-label="Copy">Copy</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="fixed left-0 right-0 z-header flex items-center gap-2 text-bg-000 py-1.5 pr-2 draggable pl-5">
+                          <span class="text-sm select-none">Incognito chat</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    let settled = false;
+    let result = null;
+    const runPromise = injectedProviderPromptEntry(
+      'Return valid plain text only.',
+      CLAUDE_TEST_CONFIG,
+      {
+        responseTimeoutMs: 30000,
+        responseIdleTimeoutMs: 30000,
+        responseFirstTokenTimeoutMs: 30000,
+        composeReadyTimeoutMs: 1000,
+        sendReadyTimeoutMs: 1000,
+        responseSettleDelayMs: 0,
+      }
+    ).then((value) => {
+      settled = true;
+      result = value;
+      return value;
+    });
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await flushMicrotasks();
+
+    expect(settled).toBe(true);
+    expect(result).toMatchObject({
+      status: 'success',
+    });
+    expect(result.rawText).toContain('Hey! It looks like you just typed "abcde"');
+    expect(result.rawText).not.toContain('You said: abcde');
+    await runPromise;
+  });
 });
 
 function createChromeMock() {

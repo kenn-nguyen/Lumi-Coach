@@ -455,6 +455,16 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
   const RESPONSE_BUSY_SELECTORS = config.responseBusySelectors ?? [];
   const PRIMARY_ASSISTANT_TEXT_SELECTORS = config.primaryAssistantTextSelectors ?? [];
   const ASSISTANT_TEXT_SELECTORS = config.assistantTextSelectors ?? [];
+  const ASSISTANT_TURN_CONTAINER_SELECTORS =
+    config.assistantTurnContainerSelectors ?? [];
+  const ASSISTANT_TURN_ROLE_HEADING_SELECTORS =
+    config.assistantTurnRoleHeadingSelectors ?? [];
+  const ASSISTANT_CONTENT_SELECTORS = config.assistantContentSelectors ?? [];
+  const ASSISTANT_TURN_ROLE_HEADING_PATTERN =
+    typeof config.assistantTurnRoleHeadingPattern === 'string' &&
+    config.assistantTurnRoleHeadingPattern.trim().length > 0
+      ? new RegExp(config.assistantTurnRoleHeadingPattern, 'i')
+      : null;
   const LOGIN_SELECTORS = config.loginSelectors ?? [];
   const providerLabel = config.providerLabel ?? 'LLM';
   const authRequiredMessage = config.authRequiredMessage ?? `Please log into ${providerLabel} in a normal browser tab first.`;
@@ -690,23 +700,27 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
         return true;
       })
       .map((node, index) => {
-        const article =
-          node.closest('article[data-testid^="conversation-turn-"]') ||
-          node.closest('[data-test-render-count]') ||
-          node.closest('[data-message-id]') ||
-          node.closest('[data-testid*="message"]');
+        const article = findAssistantTurnContainer(node);
         const key =
           article?.getAttribute('data-testid') ||
           article?.getAttribute('data-message-id') ||
           article?.getAttribute('data-test-render-count') ||
           `assistant-node-${index}`;
         const text = extractAssistantCandidateText(node, article);
-        return { key, text };
+        return { key, text, article };
       })
-      .filter((item) => item.text);
+      .filter(
+        (item) =>
+          item.text &&
+          (!ASSISTANT_TURN_ROLE_HEADING_PATTERN || item.article instanceof Element)
+      );
   }
 
   function extractAssistantCandidateText(node, article) {
+    const scopedText = extractScopedAssistantContent(article);
+    if (scopedText) {
+      return scopedText;
+    }
     const nodeText = normalizeAssistantText(readNodeText(node));
     const isCodeLikeNode = node instanceof Element && Boolean(node.closest('pre, code'));
     if (isCodeLikeNode || !(article instanceof Element)) {
@@ -726,6 +740,78 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
 
   function normalizeAssistantText(text) {
     return text.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim();
+  }
+
+  function getUniqueElements(elements) {
+    const seen = new Set();
+    return elements.filter((element) => {
+      if (!(element instanceof Element)) return false;
+      if (seen.has(element)) return false;
+      seen.add(element);
+      return true;
+    });
+  }
+
+  function getAssistantTurnContainers(node) {
+    return getUniqueElements([
+      ...ASSISTANT_TURN_CONTAINER_SELECTORS.map((selector) =>
+        node.closest(selector)
+      ),
+      node.closest('article[data-testid^="conversation-turn-"]'),
+      node.closest('[data-test-render-count]'),
+      node.closest('[data-message-id]'),
+      node.closest('[data-testid*="message"]'),
+    ]);
+  }
+
+  function containerHasAssistantRoleMarker(container) {
+    if (!(container instanceof Element)) return false;
+    if (!ASSISTANT_TURN_ROLE_HEADING_PATTERN) return true;
+
+    const headingNodes = ASSISTANT_TURN_ROLE_HEADING_SELECTORS.length
+      ? ASSISTANT_TURN_ROLE_HEADING_SELECTORS.flatMap((selector) =>
+          Array.from(container.querySelectorAll(selector))
+        )
+      : [container];
+
+    return headingNodes.some((node) => {
+      const text = normalizeAssistantText(readNodeText(node));
+      return text && ASSISTANT_TURN_ROLE_HEADING_PATTERN.test(text);
+    });
+  }
+
+  function findAssistantTurnContainer(node) {
+    const containers = getAssistantTurnContainers(node);
+    if (!containers.length) {
+      return null;
+    }
+    if (!ASSISTANT_TURN_ROLE_HEADING_PATTERN) {
+      return containers[0];
+    }
+    return (
+      containers.find((container) => containerHasAssistantRoleMarker(container)) ??
+      null
+    );
+  }
+
+  function extractScopedAssistantContent(container) {
+    if (!(container instanceof Element) || !ASSISTANT_CONTENT_SELECTORS.length) {
+      return '';
+    }
+
+    const matches = getUniqueElements(
+      ASSISTANT_CONTENT_SELECTORS.flatMap((selector) =>
+        Array.from(container.querySelectorAll(selector))
+      )
+    );
+    let bestText = '';
+    matches.forEach((node) => {
+      const text = normalizeAssistantText(readNodeText(node));
+      if (text.length > bestText.length) {
+        bestText = text;
+      }
+    });
+    return bestText;
   }
 
   function mergeAssistantCandidates(candidates) {

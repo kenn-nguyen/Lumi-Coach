@@ -541,7 +541,6 @@ export default function ResumeViewerPage() {
 
   const handleDownload = async () => {
     setIsDownloading(true);
-    let syncedForDownload = false;
     try {
       const userName = resumeData?.personalInfo?.name?.trim() || null;
       const filename = buildResumeArtifactFilename(
@@ -551,8 +550,6 @@ export default function ResumeViewerPage() {
         'resume',
         'pdf'
       );
-      await updateResumeTemplateSettings(resumeId, templateSettings);
-      syncedForDownload = true;
       const blob = await downloadResumePdf(
         resumeId,
         templateSettings,
@@ -563,11 +560,7 @@ export default function ResumeViewerPage() {
       downloadBlobAsFile(blob, filename);
     } catch (err) {
       console.error('Failed to download resume:', err);
-      if (
-        syncedForDownload &&
-        err instanceof TypeError &&
-        err.message.includes('Failed to fetch')
-      ) {
+      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
         const userName = resumeData?.personalInfo?.name?.trim() || null;
         const filename = buildResumeArtifactFilename(
           userName,

@@ -2329,8 +2329,7 @@ function injectStyles() {
     }
 
     .resume-matcher-profile-tabs.is-run-wide {
-      display: flex;
-      width: 100%;
+      max-width: 100%;
     }
 
     .resume-matcher-profile-tabs__button {
@@ -2369,9 +2368,11 @@ function injectStyles() {
     }
 
     .resume-matcher-profile-tabs.is-run-wide .resume-matcher-profile-tabs__button {
-      flex: 1 1 0;
-      min-width: 88px;
-      padding: 0 12px;
+      flex: 0 0 auto;
+      min-width: 72px;
+      min-height: 24px;
+      padding: 0 8px;
+      font-size: 10px;
     }
 
     .resume-matcher-run-style-row {

@@ -307,10 +307,10 @@ Skill implication safety:
 
 - The goal is the strongest defensible version, not the safest acceptable version.
 - A brief fails if the final resume would read like a generally relevant PM rather than a standout candidate for this specific hiring manager.
-- Do not bury approved target-native language in skills or storylines. If a target-native phrase is central to the JD and direct/functionally equivalent, promote it into `recommended_title`, `summary_lead`, and the first relevant scope-bullet instruction unless doing so would imply a specifically blocked subclaim.
+- Do not bury approved target-native language in skills or storylines. If a target-native phrase is central to the JD and direct/functionally equivalent, promote the strongest 1-2 such phrases into `recommended_title`, `summary_lead`, and the first relevant scope-bullet instruction unless doing so would imply a specifically blocked subclaim. Keep the remaining high-value truth-safe ATS/recruiter phrases in `phrases_to_mirror` or `final_skills_list` so Prompt 3 preserves them somewhere in the final resume rather than dropping them during polish.
 - Source-native labels are proof anchors, not default headline language. If a source-native category and a JD-native category are both defensible, prefer the JD-native category in resume-facing fields and use the source-native category as proof/mechanism.
 - If two phrases are equally defensible, choose the one closer to the JD’s native domain language and hiring-manager vocabulary.
-- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it belongs in `recommended_title`. If excluded, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
+- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the first relevant scope-bullet instruction. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
 - Do not let a related unsupported subclaim suppress a clean supported target-native category. Block the subclaim; promote the category.
 
 Validated-domain rule:
@@ -337,6 +337,7 @@ A++ skills rule:
 - Prefer domain-specific proof skills over generic PM skills when both are supported.
 - Prefer the skill that would make the hiring manager pause over the safer umbrella term.
 - If a generic skill is useful but crowded, replace it with a more specific supported proof skill.
+- Do not drop ATS-useful recruiter/process/ownership phrases entirely just because they are not strong enough for the top 5 skills; preserve them later in `final_skills_list` or `phrases_to_mirror`.
 
 
 
@@ -549,7 +550,15 @@ Bullet clarity gate for instructions:
 - Use simple words when a keyword is not needed for ATS or hiring-manager recognition.
 
 Decision-mechanism rule:
-- In bullet instructions, `mechanism` should name the product decision, sequencing choice, policy choice, tradeoff, launch pattern, packaging decision, workflow change, or operating-model change that caused the result.
+- In bullet instructions, `mechanism` should name the product decision, sequencing choice, policy choice, tradeoff, launch pattern, packaging decision, workflow change, operating-model change, or triggering insight that caused the result.
+- Prefer a mechanism that shows judgment, not just activity.
+- Strong `mechanism` shapes:
+  - tradeoff: `did [decision] rather than [close believable alternative]`
+  - triggering insight: `did [decision] as [shift/risk/failure pattern] made it necessary`
+  - named constraint: `did [decision] against [threshold/budget/limit]`
+  - mechanism: `did [specific thing built/changed]`
+- Prefer tradeoff, triggering insight, or named constraint over a bare mechanism when the source or Prompt 2 evidence supports it.
+- Use the bare mechanism shape when the thing built or changed is itself the differentiator.
 - Do not use work artifacts such as PRDs, API requirements, stakeholder alignment, roadmap ownership, or documentation as the primary mechanism unless the actual decision inside that artifact is named.
 - Strong mechanism pattern: `sequenced [rollout/customer/workflow] around [highest-value constraint]`, `calibrated [threshold/policy/model/product rule] to balance [tradeoff]`, `standardized [platform/packaging/process] to reduce [cost/time/risk]`, `pivoted [roadmap/product direction] toward [emerging customer/risk/market need]`.
 - Weak mechanism pattern: `defined PRDs`, `wrote requirements`, `managed stakeholders`, `led roadmap`, `owned execution`, `aligned teams`.
@@ -562,6 +571,10 @@ Causal-Z test:
 - Strong Z examples by structure: `sequenced rollout around [highest-risk/highest-value workflow] first`, `introduced [control/check] before [critical user/system step]`, `calibrated [rule/threshold/model] to balance [tradeoff]`, `pivoted [roadmap] toward [emerging risk/customer need]`, `standardized [packaging/platform/process] to remove [friction/cost/risk]`.
 - If the source contains many actions, select the 1-2 actions most likely to convince the hiring manager that the result was caused by the candidate's product judgment.
 - Write Z as a meaningful causal phrase, not a comma-separated activity list.
+- Vary Z shape across a role's bullets when the evidence allows it; do not let every top bullet use the same bare `by [verb]-ing [noun]` mold.
+- In the top 2 bullets of the most relevant role, aim for at least one Z that uses tradeoff, triggering insight, or named constraint rather than bare mechanism when support exists.
+- `rather than` is allowed when the rejected path is a close believable alternative implied by the source evidence or Prompt 2 instruction.
+- If the alternative would feel invented or too speculative in an interview answer, use triggering insight, named constraint, or bare mechanism instead.
 - It is acceptable for Z to be slightly longer when the extra words make the product decision more convincing.
 
 Mechanism-list repair for instructions:
@@ -575,6 +588,10 @@ Mechanism-list repair for instructions:
 
 Important-experience bullet budget:
 - For the most relevant candidate-owned role, allow 4-6 bullet instructions when each bullet proves a distinct high-value signal.
+- Treat all source bullets for the same role as one evidence pool, not as separate draft sets that each deserve output.
+- Merge overlapping source bullets by achievement or proof theme, not by sentence wording.
+- If multiple source bullets express the same underlying achievement with different phrasing, metrics, or mechanisms, keep one instruction for that achievement using the strongest truthful metric plus the strongest causal mechanism combination.
+- Do not create separate bullet instructions for two versions of the same launch, same platform scale story, same revenue expansion, same cost reduction, or same conversion/fraud-improvement story unless they answer clearly different hiring-manager doubts.
 
 High-signal proof preservation rule:
 - If a high-strength `selected_storylines` entry contains a distinct role-winning proof point, it must map to at least one of:
@@ -591,6 +608,8 @@ High-signal proof preservation rule:
   - revenue or business growth;
   - integration/tooling acceleration;
   - operating leverage or cost/reliability improvement.
+- Distinct proof categories means different hiring-manager doubts answered by the role, not different draft phrasings of the same achievement.
+- When two source bullets share the same core X and Y but vary mostly in wording or supporting detail, merge them into one stronger bullet instruction rather than preserving both.
 - Do not drop high-signal performance proof such as success rate, reliability, false rejection, fraud reduction, conversion, latency, cost, adoption, or usage when it answers a different hiring-manager doubt from the other bullets.
 - When two proof points share the same product but answer different doubts, usually keep both if the role is the main fit engine. Example structure: one bullet can prove `launched/scaled product`; another can prove `improved success/reliability/fraud tradeoff`.
 - If space is tight, remove lower-signal team/process bullets before removing distinct performance, risk, reliability, conversion, or fraud outcome proof.
@@ -724,9 +743,10 @@ Final audit before output:
 - The final brief is generic-process generated from the current JD, not from prior examples.
 
 A++ final promotion audit:
-- Identify the 1-2 central JD-native phrases the hiring manager most wants to see.
+- Identify the strongest 1-2 central JD-native promotion phrases the hiring manager most wants to see.
 - If they are direct/functionally equivalent, confirm they appear in `recommended_title`, `summary_lead`, and the first relevant scope-bullet instruction.
-- If they are excluded from any of those three places, the reason must be captured in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for promotion rationale.
+- Identify the next 3-5 most important truth-safe preservation phrases and confirm they remain in `phrases_to_mirror`, relevant bullet instructions, or `final_skills_list` so Prompt 3 can preserve them in final resume text.
+- If any promotion or preservation phrase is excluded, the reason must be captured in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for promotion rationale.
 - If a source-native term crowds out a stronger target-native term, revise the resume-facing field before output.
 
 Natural-language polish audit:

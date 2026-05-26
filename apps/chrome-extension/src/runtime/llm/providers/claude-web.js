@@ -46,6 +46,9 @@ const CLAUDE_WEB_CONFIG = {
   ],
   responseSettleDelayMs: 2200,
   primaryAssistantTextSelectors: [
+    '#main-content .font-claude-response .standard-markdown',
+    '#main-content .font-claude-response .progressive-markdown',
+    '#main-content .font-claude-response',
     '#main-content .overflow-x-auto > pre > code',
     '#main-content pre code',
     '[data-testid*="assistant"] pre code',
@@ -54,6 +57,11 @@ const CLAUDE_WEB_CONFIG = {
     'main pre code',
   ],
   assistantTextSelectors: [
+    '#main-content .font-claude-response .standard-markdown',
+    '#main-content .font-claude-response .progressive-markdown',
+    '#main-content .font-claude-response',
+    '#main-content .standard-markdown',
+    '#main-content .progressive-markdown',
     '#main-content pre code',
     '#main-content .overflow-x-auto > pre > code',
     '#main-content [data-is-streaming]',
@@ -71,6 +79,20 @@ const CLAUDE_WEB_CONFIG = {
     'main .font-claude-message',
     'main .prose',
     'main pre code',
+  ],
+  assistantTurnContainerSelectors: [
+    '#main-content [data-test-render-count]',
+    '#main-content [data-message-id]',
+    '#main-content [data-testid*="message"]',
+  ],
+  assistantTurnRoleHeadingSelectors: ['h2.sr-only'],
+  assistantTurnRoleHeadingPattern: '^Claude responded:',
+  assistantContentSelectors: [
+    '.font-claude-response .standard-markdown',
+    '.font-claude-response .progressive-markdown',
+    '.font-claude-response',
+    '.standard-markdown',
+    '.progressive-markdown',
   ],
   loginSelectors: [
     'a[href*="/login"]',
