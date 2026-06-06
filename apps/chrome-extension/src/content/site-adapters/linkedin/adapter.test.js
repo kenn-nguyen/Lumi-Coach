@@ -65,4 +65,47 @@ describe('linkedInAdapter', () => {
     expect(snapshot.provenance.description).toBe('testid_expanded');
     expect(snapshot.readiness).toBe('full_jd_ready');
   });
+
+  it('does not collapse an already-expanded description in full mode', async () => {
+    const box = document.querySelector('[data-testid="expandable-text-box"]');
+    const button = document.querySelector('[data-testid="expandable-text-button"]');
+    const expandedText = `${box.textContent} ${'x'.repeat(1200)}`;
+    box.textContent = expandedText;
+    button.setAttribute('aria-expanded', 'true');
+    button.textContent = 'Show less';
+    button.addEventListener('click', () => {
+      box.textContent = 'Short collapsed description';
+    });
+
+    const snapshot = await linkedInAdapter.snapshot(document, {
+      mode: 'full',
+      locationHref: 'https://www.linkedin.com/jobs/view/4387987722/',
+    });
+
+    expect(snapshot.quality.expandedAttempted).toBe(false);
+    expect(snapshot.provenance.description).toBe('testid_expanded');
+    expect(snapshot.quality.descriptionLength).toBe(expandedText.replace(/\s+/g, ' ').trim().length);
+    expect(snapshot.readiness).toBe('full_jd_ready');
+  });
+
+  it('stays full-jd-ready when the description expander is gone but another page expander exists', async () => {
+    const box = document.querySelector('[data-testid="expandable-text-box"]');
+    const expandedText = `${box.textContent} ${'x'.repeat(1200)}`;
+    box.textContent = expandedText;
+    document.querySelector('[data-testid="expandable-text-button"]')?.remove();
+
+    const unrelated = document.createElement('button');
+    unrelated.setAttribute('data-testid', 'expandable-text-button');
+    unrelated.textContent = 'Show more';
+    document.body.appendChild(unrelated);
+
+    const snapshot = await linkedInAdapter.snapshot(document, {
+      mode: 'full',
+      locationHref: 'https://www.linkedin.com/jobs/view/4387987722/',
+    });
+
+    expect(snapshot.quality.expandedAttempted).toBe(false);
+    expect(snapshot.provenance.description).toBe('testid');
+    expect(snapshot.readiness).toBe('full_jd_ready');
+  });
 });

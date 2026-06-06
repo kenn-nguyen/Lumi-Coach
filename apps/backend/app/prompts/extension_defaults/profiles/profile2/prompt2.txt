@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v2.1.0
-prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-resume-actionable-questions
-prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with resume-actionable gap questions limited to the highest-impact 3-4 story-bank upgrades.
+prompt_version: v2.1.2
+prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-execution-heavy
+prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, PM-owned technical attribution, falsifiable-detail preference, and resume-actionable gap questions limited to the highest-impact 3-4 story-bank upgrades.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Resolved hiring manager persona from Prompt 1:
@@ -32,6 +32,7 @@ Selected-storyline to bullet-instruction mapping rule:
 - After creating `selected_storylines`, audit whether each `high` storyline has a corresponding resume execution path.
 - A storyline has an execution path only if its core proof appears in `summary_lead`, `excitement_anchor`, or a specific `bullet_rewrite_instructions` item.
 - If a high storyline contains a proof category not already represented by another bullet instruction, create a dedicated bullet instruction for it.
+- When several supported storylines compete, prioritize the ones that best answer the hiring manager's top JD demands and can be proven through candidate-owned execution, not just adjacency or abstract fit.
 - Do not rely on Prompt 3 to synthesize missing high-strength storylines from `selected_storylines` or `signal_map`.
 - In the most relevant role, prefer preserving a distinct proof bullet over compressing the role too aggressively.
 - If a metric appears only in company context, it is company-wide and must not be used as candidate-owned proof.
@@ -308,6 +309,7 @@ Skill implication safety:
 - The goal is the strongest defensible version, not the safest acceptable version.
 - A brief fails if the final resume would read like a generally relevant PM rather than a standout candidate for this specific hiring manager.
 - Do not bury approved target-native language in skills or storylines. If a target-native phrase is central to the JD and direct/functionally equivalent, promote the strongest 1-2 such phrases into `recommended_title`, `summary_lead`, and the first relevant scope-bullet instruction unless doing so would imply a specifically blocked subclaim. Keep the remaining high-value truth-safe ATS/recruiter phrases in `phrases_to_mirror` or `final_skills_list` so Prompt 3 preserves them somewhere in the final resume rather than dropping them during polish.
+- Treat the source resume as an evidence pool, not output structure. Collapse overlapping bullets into distinct PM proof stories that answer the JD's main hiring-manager doubts. Prefer hiring-manager-natural phrasing in `recommended_title`, `summary_lead`, and bullet instructions; preserve ATS phrases selectively enough to remain searchable, not as the dominant writing style.
 - Source-native labels are proof anchors, not default headline language. If a source-native category and a JD-native category are both defensible, prefer the JD-native category in resume-facing fields and use the source-native category as proof/mechanism.
 - If two phrases are equally defensible, choose the one closer to the JD’s native domain language and hiring-manager vocabulary.
 - If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the first relevant scope-bullet instruction. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
@@ -550,15 +552,10 @@ Bullet clarity gate for instructions:
 - Use simple words when a keyword is not needed for ATS or hiring-manager recognition.
 
 Decision-mechanism rule:
-- In bullet instructions, `mechanism` should name the product decision, sequencing choice, policy choice, tradeoff, launch pattern, packaging decision, workflow change, operating-model change, or triggering insight that caused the result.
-- Prefer a mechanism that shows judgment, not just activity.
-- Strong `mechanism` shapes:
-  - tradeoff: `did [decision] rather than [close believable alternative]`
-  - triggering insight: `did [decision] as [shift/risk/failure pattern] made it necessary`
-  - named constraint: `did [decision] against [threshold/budget/limit]`
-  - mechanism: `did [specific thing built/changed]`
-- Prefer tradeoff, triggering insight, or named constraint over a bare mechanism when the source or Prompt 2 evidence supports it.
-- Use the bare mechanism shape when the thing built or changed is itself the differentiator.
+- In bullet instructions, `mechanism` should name the PM-owned execution choice, product decision, lever, packaging choice, rollout choice, threshold, or constraint that caused the result.
+- Express technical depth through PM attribution: identified signal gaps, defined thresholds/specs, set rollout criteria, packaged self-serve tooling, redesigned workflow, sequenced rollout, or balanced tradeoffs. Do not imply model training, coding, or infrastructure ownership unless the evidence explicitly supports it.
+- For PM and senior PM targets, prefer bullets that prove shipped or operationalized execution first, then preserve diagnosis or tradeoff when it strengthens credibility.
+- Include at least one falsifiable detail when available: named signal, threshold, failure mode, held-constant metric, or beneficiary bottleneck.
 - Do not use work artifacts such as PRDs, API requirements, stakeholder alignment, roadmap ownership, or documentation as the primary mechanism unless the actual decision inside that artifact is named.
 - Strong mechanism pattern: `sequenced [rollout/customer/workflow] around [highest-value constraint]`, `calibrated [threshold/policy/model/product rule] to balance [tradeoff]`, `standardized [platform/packaging/process] to reduce [cost/time/risk]`, `pivoted [roadmap/product direction] toward [emerging customer/risk/market need]`.
 - Weak mechanism pattern: `defined PRDs`, `wrote requirements`, `managed stakeholders`, `led roadmap`, `owned execution`, `aligned teams`.
@@ -572,7 +569,9 @@ Causal-Z test:
 - If the source contains many actions, select the 1-2 actions most likely to convince the hiring manager that the result was caused by the candidate's product judgment.
 - Write Z as a meaningful causal phrase, not a comma-separated activity list.
 - Vary Z shape across a role's bullets when the evidence allows it; do not let every top bullet use the same bare `by [verb]-ing [noun]` mold.
-- In the top 2 bullets of the most relevant role, aim for at least one Z that uses tradeoff, triggering insight, or named constraint rather than bare mechanism when support exists.
+- In the top 2-3 bullets of the most relevant role, prefer execution-heavy Z that still preserves the reason the move was right when support exists.
+- For PM and senior PM targets, the strongest top bullets usually show the shipped change or operating choice first, then preserve diagnosis, insight, or tradeoff when it materially strengthens credibility.
+- Do not force diagnosis-first framing when the strongest truthful proof is rollout sequencing, workflow redesign, threshold/rule tuning, packaging, self-serve tooling, or other operationalized execution.
 - `rather than` is allowed when the rejected path is a close believable alternative implied by the source evidence or Prompt 2 instruction.
 - If the alternative would feel invented or too speculative in an interview answer, use triggering insight, named constraint, or bare mechanism instead.
 - It is acceptable for Z to be slightly longer when the extra words make the product decision more convincing.

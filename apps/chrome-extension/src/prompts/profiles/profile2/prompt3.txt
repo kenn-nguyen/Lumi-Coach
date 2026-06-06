@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt3.template
-prompt_version: v3.1.2
-prompt_label: hard-stretch-resume-writer-storybank-feedback-v12-resume-actionable-questions
-prompt_notes: Executes Prompt 2 into final resume JSON, expands bullet targets to 25-40 words, and renders only the top 3-4 resume-actionable story-bank questions, prioritizing bullet strengthening, title/summary unlocks, and replacement-worthy new stories.
+prompt_version: v3.1.6
+prompt_label: hard-stretch-resume-writer-storybank-feedback-v12-execution-heavy
+prompt_notes: Executes Prompt 2 into final resume JSON with execution-heavy PM/Senior PM bullet writing, PM-owned attribution for technical depth, ATS balance, and 25-43 word bullet targets while preserving the strongest hiring-manager proof early.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 You are a top-tier PM resume writer for competitive product roles.
@@ -52,8 +52,12 @@ Truth-safety repair rules:
 
 - Do not soften Prompt 2’s approved hard-stretch language.
 - If Prompt 2 marks a JD-native phrase as direct or functionally equivalent, use it confidently in final resume-facing text unless it conflicts with immutable facts or a forbidden claim.
-- If a JD-native phrase is approved in skills/storylines/`phrases_to_mirror`, treat the strongest 1-2 such phrases as required promotion phrases for the headline, summary, or first scope bullet, and preserve the remaining truth-safe high-value phrases naturally across bullets or skills unless Prompt 2 explicitly says not to.
-- Prefer the hiring-manager-native phrase over the source-native phrase in headline, summary, and first scope bullet; use source-native phrases as proof/mechanism.
+- If a JD-native phrase is approved in skills/storylines/`phrases_to_mirror`, assign it to one of three preservation levels:
+  - exact + prominent: strongest 2-4 truth-safe phrases that should appear in the title, summary, first scope bullet, or first relevant achievement bullet;
+  - exact + lower-visibility: important ATS phrases that should survive verbatim in later bullets or skills when exact wording would clutter prominent prose;
+  - natural variant allowed: only when exact wording would overclaim, sound awkward, or create a keyword pile.
+- Prefer the hiring-manager-native phrase over the source-native phrase in headline, summary, and first scope bullet, but do not rewrite away a protected ATS phrase when exact wording is truthful and readable.
+- Keep title and summary clean: do not force more than 2-3 exact protected phrases across them before moving remaining exact phrase preservation into bullets or skills.
 - If the current role is less relevant and Prompt 2 says to compress it, default to one bullet. Use two bullets only when the second bullet adds distinct, high-signal proof for the JD.
 - Make the first scope bullet of the most relevant role feel like the candidate has operated in the target arena. It should be bold, clean, and immediately legible.
 - If the final title is source-native but Prompt 2 approved a stronger target-native phrase, revise the title toward the target-native phrase.
@@ -226,18 +230,24 @@ Experience execution:
 
 XYZ example execution pattern:
 - Some bullets need explicit causal reconstruction.
-- Weak final bullet pattern: `Scaled [product] to [customers] by defining requirements and rollout priorities.`
-- Strong final bullet pattern: `Launched a 0-to-1 [product/platform] to [customer count] in [timeframe] by sequencing rollout around the highest-risk/highest-value user actions first rather than lower-friction paths.`
-- Use the pattern generically: X = launched/scaled product; Y = customer/time/usage proof; Z = the product sequencing decision.
+- Weak final bullet pattern: `Scaled [product] by defining requirements and rollout priorities.`
+- Strong final bullet pattern: `[Raised/Reduced/Scaled/Launched] [outcome + scale] by [what changed or shipped], informed by [diagnosis or insight] and [tradeoff or constraint], [metric proof].`
+- Not every bullet needs every part. Minimum: outcome + mechanism + one falsifiable detail when available.
+- For PM and senior PM roles, bullets should usually remain execution-heavy: name the shipped change, operating choice, workflow redesign, rollout pattern, packaging decision, threshold, or other concrete lever that made the result happen.
+- Keep diagnosis or tradeoff when it materially strengthens credibility.
 - Do not copy the example domain unless Prompt 2 and the candidate evidence support it.
 - Each non-scope bullet should have one primary message and at most one primary result metric, except supported paired metrics.
-- Prefer one sharp product outcome + one concrete mechanism over dense multi-claim bullets.
+- Prefer one sharp product outcome + one primary execution pattern over dense multi-claim bullets.
+- A bullet may keep up to 3 components when they are distinct and still read as one coherent execution story:
+  - 1 primary execution pattern
+  - up to 2 supporting details
+- Most bullets should still use 1-2 components. Use 3 only for the strongest senior bullets when the extra detail materially improves credibility.
 - Vary the form of Z across a role's bullets when the evidence allows it.
 - Strong Z forms include:
+  - execution-heavy mechanism
   - tradeoff
   - triggering insight
   - named constraint
-  - bare mechanism when the mechanism itself is the differentiator
 - Do not let all top bullets in the same role default to the same mechanism shape if a stronger supported shape exists.
 
 Direct-JD-match ordering execution:
@@ -256,12 +266,15 @@ Prompt 2 conflict resolution:
 For each bullet, synthesize:
 - one lead claim;
 - one metric cluster;
-- one mechanism or decision pattern.
+- one primary execution pattern;
+- optionally up to 2 supporting details when they are distinct, improve credibility, and do not turn the bullet into a checklist.
 
 Use the metric early, but omit secondary metrics when they make the bullet feel crowded.
+- Lead achievement bullets with a directional result verb when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`.
+- Reserve `Led`, `Owned`, or `Managed` mainly for scope-setting bullets or cases where the outcome is already explicit.
 
-Target bullets at 25-40 words.
-Compressed current-role bullets may use the upper end of that range when they must combine launch, result, and mechanism into one bullet.
+Target bullets at 25-43 words.
+Compressed current-role bullets may use the 38-43 word range when they must combine result, primary execution pattern, and up to 1-2 supporting details without dropping the strongest falsifiable proof.
 If a bullet reads like an instruction turned into a sentence, rewrite it into a sharper resume bullet.
 
 Final bullet clarity gate:
@@ -273,14 +286,17 @@ Final bullet clarity gate:
 
 Decision-over-artifact execution rule:
 - When writing final bullets, make the Z mechanism a product decision or operating choice, not a list of work artifacts.
+- Express technical depth through PM-owned decisions, requirements, thresholds, rollout criteria, packaging, workflow redesign, or tradeoff management rather than implying hands-on data-science or engineering implementation unless the evidence explicitly supports it.
 - Replace artifact-heavy wording such as `defined PRDs, API requirements, and rollout priorities` with the actual decision when Prompt 2 provides it, such as `sequenced rollout around [constraint]`, `calibrated [threshold]`, `standardized [deployment/packaging]`, `pivoted roadmap toward [risk/customer need]`, or `shipped [tool/workflow] to remove [dependency/friction]`.
 - Keep artifacts only when they materially prove technical product depth and do not crowd out the decision.
 
 Causal-Z execution rule:
 - For every non-scope bullet, Z must answer: `What product decision made X happen, and why would a hiring manager believe it caused Y?`
 - Do not use activity lists as the main mechanism.
-- Convert lists of actions into the 1-2 most convincing product-decision phrases.
+- Convert lists of actions into one primary execution pattern, with up to 2 supporting details only when they are distinct and materially improve credibility.
+- If the source gives many actions, keep the shipped or operationalized change first; then keep diagnosis, insight, or tradeoff only when it strengthens credibility. One supporting detail should be falsifiable when available.
 - Prefer causal phrases such as:
+  - `by identifying [unmet need / risk shift / workflow bottleneck], then [execution choice]`
   - `by sequencing rollout around [highest-risk/highest-value workflow] first`
   - `by introducing [control/check] before [critical user/system step]`
   - `by calibrating [rule/threshold/model] to balance [tradeoff]`
@@ -292,21 +308,16 @@ Causal-Z execution rule:
   - named constraint: `by [decision] against [threshold/budget/limit]`
   - mechanism: `by [specific thing built/changed]`
 - Prefer tradeoff, triggering insight, or named constraint when Prompt 2 and the source evidence support them.
-- Use the bare mechanism form when the thing built or changed is itself the differentiator.
+- Apply that preference from the hiring manager's product standpoint:
+  - for PM and senior PM targets, the top 2-3 bullets should remain execution-heavy: lead with the shipped change, operating choice, workflow redesign, rollout pattern, packaging decision, threshold, or other concrete lever, then preserve diagnosis, insight, or tradeoff when it materially strengthens credibility;
+  - for more strategy-heavy director/head-of-product targets, diagnosis or tradeoff may lead when the source clearly supports it and execution still appears as proof.
+- If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof.
+- Use the bare mechanism form when the thing built or changed is itself the differentiator, or when rationale-heavy framing would sound inflated in an interview.
 - Avoid final mechanisms that read like `by refining A, B, C, and D` unless the list itself is the product strategy.
 - If a role's first two bullets use the same Z shape and another supported shape exists, vary them.
 - `rather than` is allowed when the rejected path is a close believable alternative implied by the source evidence or Prompt 2 instruction.
 - If that rejected path would feel invented or too speculative in an interview answer, use triggering insight, named constraint, or mechanism instead.
 - Z may be slightly longer when the added words make the causal product judgment clearer and more convincing.
-
-Mechanism list repair:
-- If a mechanism contains more than 3 comma-separated actions, rewrite it into the 1-2 product decisions that caused the result.
-- Prefer causal decision phrases over activity inventories.
-- Example structure:
-  - weak: `optimized A, B, C, D, and E`
-  - strong: `redesigned [workflow] and calibrated [tradeoff metric] to reduce [failure mode]`
-- If the mechanism list is necessary because the list itself is the strategy, name the strategy first and keep only the most important components.
-- If a bullet remains accurate but hard to parse, simplify the mechanism before returning JSON.
 
 Important-experience bullet budget:
 - For the most relevant candidate-owned role, 4-6 bullets are allowed when every bullet proves a distinct high-value signal from Prompt 2.
@@ -395,15 +406,18 @@ Team-scope bullet cleanup:
 - If included, place team scope after product/domain and metric bullets.
 
 Skills execution:
-- Use Prompt 2 `final_skills_list` as source of truth, after filtering unsupported, forbidden, duplicate, awkward, or hedge-loaded skills.
+- Use Prompt 2 `final_skills_list` as source of truth for the top 5-8 skills, after filtering unsupported, forbidden, duplicate, awkward, or hedge-loaded skills.
+- Use Prompt 2 `phrases_to_mirror` as the ATS safety net for lower-priority exact phrase preservation when those phrases are truth-safe, externally searchable, and would sound awkward or repetitive in summary or bullets.
 - Do not include skills containing banned hedge words.
 - If a skill is defensible but phrased defensively, rewrite it into the clean approved replacement from Prompt 2.
 - Keep at most 12 skills.
 - Do not add replacement skills beyond Prompt 2 unless Prompt 2 explicitly gave a clean safe replacement for the same concept.
+- If an exact protected phrase and a polished variant refer to the same concept, prefer the polished version in the top skills and the exact version in lower-visibility skills only when extra ATS coverage is still needed.
 
 Skills polish:
-- Preserve Prompt 2 priority order, but polish awkward generic labels.
-- If a skill uses a generic suffix such as `Products`, `Workflows`, `Metrics`, `Systems`, `Platforms`, or `Tools`, and Prompt 2 provides a more concrete supported phrase for the same concept, use the concrete phrase.
+- Preserve Prompt 2 priority order for the top skills, but do not polish away a protected ATS phrase merely because a cleaner synonym exists.
+- If a protected phrase is a standard external keyword and remains truthful, prefer exact wording in skills unless it overclaims.
+- If a skill uses a generic suffix such as `Products`, `Workflows`, `Metrics`, `Systems`, `Platforms`, or `Tools`, and Prompt 2 provides a more concrete supported phrase for the same concept, use the concrete phrase in the top skills unless exact ATS preservation is more valuable in a lower slot.
 - Do not invent new skill areas; only polish within the same validated concept.
 - The top 5 skills should be both searchable and distinctive.
 
@@ -412,12 +426,18 @@ The top 5 skills should not sound like generic PM categories.
 
 - No more than two skills in the top 5 should end with `Product Management`, `Product Strategy`, `Workflows`, `Platforms`, `Tools`, or `Systems`.
 - Prefer concise, proof-specific noun phrases when Prompt 2 supports them.
-- Prefer `[domain] platform`, `[workflow]`, `[metric/tradeoff family]`, `[integration capability]`, or `[scaling/operating model]` over generic PM labels.
+- Prefer `[domain] platform`, `[workflow]`, `[metric/tradeoff family]`, `[integration capability]`, or `[scaling/operating model]` over generic PM labels in the top skills.
 - Keep skills searchable, but make the top 5 feel rare and candidate-specific.
+- Lower-priority skills may be more ATS-literal when they remain truthful and readable.
+
+ATS safety-net rule:
+- After selecting the top skills, use remaining slots for missing truth-safe protected phrases from `phrases_to_mirror` that are not already preserved clearly in the title, summary, or bullets.
+- Prefer exact wording for these ATS safety-net skills.
+- Do not use more than 4 ATS safety-net skills unless Prompt 2 makes ATS coverage unusually central.
 
 Skills naturalization:
 - Convert internal company/team labels into portable market-natural skills unless the exact label is a standard external keyword.
-- Prefer proof-specific skills over generic labels such as `[Domain] Products` when Prompt 2 provides a sharper supported phrase.
+- Prefer proof-specific skills over generic labels such as `[Domain] Products` when Prompt 2 provides a sharper supported phrase, but do not naturalize away a protected ATS phrase entirely.
 - Top skills should read like a candidate's durable strengths, not a mirror of one employer's team name.
 
 Skill implication cleanup:
@@ -513,20 +533,14 @@ Technical-language final gate:
 - The most relevant candidate-owned role may use up to 6 bullets if each bullet proves a distinct role-winning signal.
 
 Selected-storyline coverage repair:
-- After drafting bullets, compare the final resume against Prompt 2 `selected_storylines`.
-- Every `high` selected storyline must be represented in the resume unless it is truly redundant with a stronger bullet.
-- A storyline is represented only if its distinct proof category appears in the summary or a resume bullet, not merely in skills.
-- If a high-strength storyline contains a distinct proof category not yet represented, add or swap a bullet in the most relevant role when that role has room for 4-6 bullets.
-- Especially preserve distinct proof categories:
-  - launch/adoption;
-  - performance/success metrics;
-  - fraud/risk outcome;
-  - scale/usage;
-  - revenue/business growth;
-  - integration/tooling acceleration;
-  - operating leverage/cost/reliability improvement.
-- Do not drop a high-signal performance metric such as success rate, reliability, false rejection, fraud reduction, conversion, latency, cost, or adoption if it answers a different hiring-manager doubt from the existing bullets.
-- If a role already has a launch/scale bullet for a product, a separate success/reliability/fraud-tradeoff bullet may still be necessary when Prompt 2 marks that proof as high.
+Storyline-to-surface audit:
+- After drafting, compare the final resume against Prompt 2 `selected_storylines` and the top hiring-manager demands.
+- A high-strength storyline is represented only if its distinct proof category appears in the summary, first scope bullet, or a bullet in the most relevant role.
+- Ensure the final resume surfaces:
+  - arena identity in title + summary
+  - domain/scope + scale in the first scope bullet
+  - the top 2-3 role-winning proof categories in the first 2-3 bullets of the most relevant role
+- If a stronger proof category is missing or buried, reorder or swap before polishing lower-priority content.
 - Title, summary, scope bullets, and skills use market-natural labels rather than target-company-internal team labels when appropriate.
 - `generation_feedback`, if present, is useful for story-bank expansion: pros = strong proof, cons = resume-actionable questions, caveats = interview-prep-only topics, conditional low-priority ideas, and do-not-claim boundaries.
 - `generation_feedback` does not invent experiences, assert unsupported future bullet claims as facts, or ask low-impact questions that would not change the next resume.
@@ -556,29 +570,37 @@ A++ final resume QA:
 - If a high-strength selected storyline appears only in Prompt 2 but not in final resume text, add or swap a bullet unless it is genuinely redundant.
 - If a payment/success/reliability/fraud metric is the proof that makes a risk product credible, preserve it even when a separate launch/scale bullet already exists.
 - If the summary uses only adoption scale while Prompt 2 provided a stronger performance metric, replace the weakest scale number with the performance metric.
-- If a mechanism reads like a checklist, rewrite it into the product decision that would convince the hiring manager.
+- If a mechanism reads like a checklist, rewrite it into one primary execution pattern plus only the supporting details that materially improve credibility.
 
 - If the first scope bullet lists sub-products that do not add reader value, compress them into the umbrella category.
 - If a strong seniority signal such as team/org scope can fit cleanly in the first scope bullet, include it.
-- If a bullet's Z is a list of actions, rewrite it into the 1-2 product decisions that most convincingly caused the result.
-- If a compressed current-role bullet is longer than roughly two resume lines, shorten it by removing secondary mechanisms.
+- If a bullet's Z is a list of actions, rewrite it into one primary execution pattern plus up to 2 supporting details that most convincingly caused the result.
+- If Prompt 2 supplied both a PM-owned execution lever and supporting diagnosis, insight, or tradeoff, keep the execution lever first and restore only the strongest supporting rationale that materially improves credibility.
+- If a compressed current-role bullet is longer than roughly two resume lines, shorten it by removing secondary execution detail before removing the strongest product rationale.
+- If a bullet keeps 3 causal components, confirm they are distinct and still read like one coherent decision story rather than a stacked action list.
 
-- If Prompt 2 approved a broad JD-native category or preserved ATS phrase in `phrases_to_mirror`, and the resume retreated to source-native wording or dropped the phrase entirely, restore the strongest approved phrase once in the most natural location unless it creates an exact forbidden implication.
+- Audit Prompt 2 `phrases_to_mirror` across title, summary, bullets, and skills before returning JSON.
+- The strongest 2-4 truth-safe protected phrases should survive as exact wording or close natural variants in prominent resume text.
+- Ensure at least 6 protected phrases survive across the final resume when truth-safe, using exact wording in skills or later bullets when summary or top bullets would become crowded.
+- If a protected phrase is missing and exact wording remains readable and defensible, restore it before returning JSON.
+- When exact wording and a polished near-synonym compete for the same concept, prefer the polished version in prominent prose or top skills and the exact version in lower-visibility skills or later bullets if extra ATS coverage is still needed.
 - If a bullet uses work artifacts as the causal mechanism, rewrite the Z into the decision behind the artifact.
 - If a direct JD match is buried below less relevant bullets in the same role, reorder within that role.
 - If a reduction metric has a supported scale/growth pair in Prompt 2, keep the pair together.
 - If a bullet reads like `primary_message + metric + mechanism` pasted together, synthesize and shorten it.
 - If the first two bullets lead with source-native taxonomy but a cleaner hiring-manager-native surface is approved, rewrite the lead phrase.
+- If a bullet reads like hands-on engineering or data-science execution rather than a PM-owned decision and shipped change, rewrite it through PM attribution unless the evidence explicitly supports deeper ownership.
 - If the current role has 2 bullets but the second is only general product/founder/AI-process proof, remove it.
 - If summary exceeds 45 words or has more than 2 metric clusters, tighten it unless readability would be harmed.
 - If a bullet contains awkward repeated nouns, rewrite before output.
+- Within a role, avoid repeating the same opening verb or the same Z-shape across consecutive bullets when another truthful phrasing exists.
+- Do not rewrite protected ATS phrases merely to avoid repetition; vary surrounding wording first.
 - Does the headline use the strongest defensible target-native domain phrase, not merely the source-native category?
 - Does the summary contain the central target-native domain and the biggest proof metric?
 - Does the first scope bullet of the most relevant role promote the strongest defensible target-native category?
 - Did you compress a less-relevant current role instead of letting it dominate the top half?
 - Did you remove generic PM skills when a sharper domain-specific proof skill is available from Prompt 2, while still preserving ATS-useful recruiter/process/ownership phrases elsewhere in bullets or skills?
 - Does the title or first scope bullet read like a keyword pile? If yes, remove redundant modifiers while preserving the strongest JD-native arena and proof category.
-- Did any high-value phrase preserved in Prompt 2 `phrases_to_mirror` disappear from the final resume? If yes, restore it naturally in the headline, summary, bullet, or skills.
 - Are the top skills concrete enough to distinguish the candidate from generic PMs? If not, polish generic labels into supported proof-specific labels.
 If any answer is no, revise before output.
 

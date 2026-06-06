@@ -27,6 +27,28 @@ describe('extractFromTestids', () => {
     expect(result.descriptionProvenance).toBe('testid_collapsed');
   });
 
+  it('treats a show-less control as already expanded', () => {
+    const button = document.querySelector('[data-testid="expandable-text-button"]');
+    button.setAttribute('aria-expanded', 'true');
+    button.textContent = 'Show less';
+
+    const result = extractFromTestids(document);
+    expect(result.expanderPresent).toBe(false);
+    expect(result.descriptionProvenance).toBe('testid_expanded');
+  });
+
+  it('ignores unrelated expandable buttons outside the job-description region', () => {
+    document.querySelector('[data-testid="expandable-text-button"]')?.remove();
+    const unrelated = document.createElement('button');
+    unrelated.setAttribute('data-testid', 'expandable-text-button');
+    unrelated.textContent = 'Show more';
+    document.body.appendChild(unrelated);
+
+    const result = extractFromTestids(document);
+    expect(result.expanderPresent).toBe(false);
+    expect(result.descriptionProvenance).toBe('testid');
+  });
+
   it('strips follower-count noise from company text', () => {
     const result = extractFromTestids(document);
     expect(result.company).toBe('Red Gold');
