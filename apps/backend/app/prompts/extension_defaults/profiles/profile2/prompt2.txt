@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v2.1.2
-prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-execution-heavy
-prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, PM-owned technical attribution, falsifiable-detail preference, and resume-actionable gap questions limited to the highest-impact 3-4 story-bank upgrades.
+prompt_version: v2.1.4
+prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-lead-bullet
+prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, PM-owned technical attribution, falsifiable-detail preference, seniority-shaped summary hooks, and flexible lead-bullet selection that allows either scope or quantified outcomes to lead.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Resolved hiring manager persona from Prompt 1:
@@ -87,7 +87,7 @@ Calibrated boldness ladder:
 - Tier 0 - source-native only: accurate but often forgettable. Use only when target-native framing is not defensible.
 - Tier 1 - supported bridge: translates source work into target-domain language but remains visibly cautious. Use for genuinely adjacent evidence.
 - Tier 2 - functionally equivalent target-native: use clean JD-native language because the source evidence maps to the same product surface, user workflow, risk surface, customer problem, system capability, or business outcome. This is the default target for strong resumes.
-- Tier 3 - bold positioning headline: uses the JD's strongest clean domain/team/category phrase in title, summary, or first scope bullet. Use when the candidate can defend the arena through multiple concrete proof points.
+- Tier 3 - bold positioning headline: uses the JD's strongest clean domain/team/category phrase in title, summary, or lead bullet. Use when the candidate can defend the arena through multiple concrete proof points.
 - Forbidden - invented: implies unsupported ownership, tools, protocols, technical implementation, customer type, regulation, seniority, or system authority. Block it.
 
 Default stance:
@@ -100,10 +100,10 @@ Role-winning phrase promotion:
 - If each phrase is direct or functionally equivalent, it must appear in at least two of:
   1. `recommended_title`
   2. `summary_lead`
-  3. first scope-bullet instruction for the most relevant role
+  3. lead-bullet instruction or another top-2 bullet instruction for the most relevant role
   4. top 5 `final_skills_list`
 - If a role-winning phrase is excluded from all top surfaces, revise before output.
-- If excluded from one of title/summary/scope, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
+- If excluded from one of title/summary/lead-bullet surfaces, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
 
 Title competitiveness floor:
 - The title should be the cleanest bold positioning headline, not a conservative source-title paraphrase.
@@ -147,7 +147,7 @@ Summary/excitement-anchor alignment rule:
 - `summary_lead` should contain the central target-native domain plus one memorable proof cluster.
 - Prefer 1 primary wow claim plus up to 2 supporting numbers.
 - Do not list every strong metric in the summary if it makes the sentence feel crowded.
-- If several metrics are supported, choose the cluster that best answers the hiring manager's core doubt.
+- If several metrics are supported, choose the cluster that best answers the hiring manager's core doubt and most clearly differentiates the candidate for this role; do not default to the biggest raw number if another metric better proves role-winning strength.
 
 Efficiency-with-scale pairing rule:
 - When the strongest result is a reduction metric such as cost, latency, integration time, error rate, fraud loss, manual effort, failure rate, or operational burden, check whether the same source role/story also supports a concurrent growth, scale, adoption, customer, user, or volume metric.
@@ -158,13 +158,18 @@ Efficiency-with-scale pairing rule:
 
 Summary-lead compression rule:
 - `summary_lead` should be a resume-writer instruction for one clean hook sentence, not a full draft packed with every proof point.
-- Prefer a compact pattern: `[seniority/role] with [years] building [validated domain] for [supported customer/user context] - [single strongest proof cluster]`.
-- Use at most 2 metric clusters in `summary_lead`; a paired scale cluster such as users + daily usage counts as one cluster when it reads naturally.
-- If three or more numbers compete, choose the two that most directly prove the hiring manager's core doubt.
+- Keep title/summary/lead-bullet roles distinct:
+  - title carries explicit level;
+  - summary carries level-shaped positioning;
+  - lead bullet carries the strongest proof, while scope proof can move to bullet 2 when that sells better.
+- For PM targets, make the summary execution/result-forward.
+- For Senior PM targets, make the summary broader in product arena ownership plus scaled execution or operating-leverage proof; do not make it a PM summary plus the word `Senior`.
+- Choose the proof cluster that most differentiates the candidate for this role, not merely the biggest raw number.
+- Use at most 2 metric clusters in `summary_lead`.
 - Do not force education, transition language, or every product surface into `summary_lead`.
 
 Scope-bullet polish rule:
-- The first scope bullet should be bold but readable.
+- When a scope bullet is used, it should be bold but readable.
 - Use at most 2 abstract domain/category labels before the word `across`.
 - Use at most 4 source-supported surfaces/workflows after `across`.
 - If a scope bullet becomes a keyword pile, keep the strongest JD-native category and move secondary categories into later bullets or skills.
@@ -173,14 +178,14 @@ Scope-bullet proof budget:
 - A scope bullet is not XYZ. It establishes arena, product/domain scope, customer/user context, scale, and seniority.
 - Prefer the highest-value umbrella product/domain category over a taxonomy list of sub-products.
 - Do not list sub-products, workflows, or surfaces unless each one materially improves hiring-manager recognition for this JD.
-- The first scope bullet should prioritize: 1) validated JD-native arena, 2) supported customer/user context, 3) strongest 1-2 scale proofs.
-- Include team size/direct reports in the first scope bullet when it materially improves seniority credibility and the sentence remains clean.
+- A scope bullet should prioritize: 1) validated JD-native arena, 2) supported customer/user context, 3) strongest 1-2 scale proofs.
+- Include team size/direct reports in a scope bullet when it materially improves seniority credibility and the sentence remains clean.
 - Do not include revenue, cost reduction, architecture, launch count, product taxonomy, usage scale, and team size all in the same scope bullet.
 - If team/org scope makes the bullet clunky, place it in a later bullet or omit it.
-- The first scope bullet should be memorable in one breath.
+- A scope bullet should be memorable in one breath.
 
 Scope-bullet umbrella rule:
-- When creating the first scope-bullet instruction, lead with the broadest defensible umbrella category that the hiring manager cares about.
+- When creating a scope-bullet instruction, lead with the broadest defensible umbrella category that the hiring manager cares about.
 - Use sub-product lists only when the list itself is the proof of scope or when the JD explicitly screens for those surfaces.
 - If a sub-product list is not adding reader value, compress it into the umbrella category.
 - Good scope pattern: `Led [umbrella product/domain category] for [customer/user context] - [scale], [usage], [team/org scope if clean].`
@@ -251,7 +256,7 @@ Competitiveness/safety scoring before output:
   - hiring-manager fit
   - truth safety
   - generic reliability
-- If competitiveness is below 9 or hiring-manager fit is below 9, revise title, summary_lead, excitement_anchor, first scope bullet, and top skills before output.
+- If competitiveness is below 9 or hiring-manager fit is below 9, revise title, summary_lead, excitement_anchor, lead bullet, and top skills before output.
 - If truth safety is below 8, pull back only the specific unsupported implication, not the whole target-native phrase.
 - If reliability is below 9 because instructions are too vague, make bullet instructions more componentized and deterministic.
 - Do not output the scores unless the schema has a place for them; use the audit to revise.
@@ -308,11 +313,11 @@ Skill implication safety:
 
 - The goal is the strongest defensible version, not the safest acceptable version.
 - A brief fails if the final resume would read like a generally relevant PM rather than a standout candidate for this specific hiring manager.
-- Do not bury approved target-native language in skills or storylines. If a target-native phrase is central to the JD and direct/functionally equivalent, promote the strongest 1-2 such phrases into `recommended_title`, `summary_lead`, and the first relevant scope-bullet instruction unless doing so would imply a specifically blocked subclaim. Keep the remaining high-value truth-safe ATS/recruiter phrases in `phrases_to_mirror` or `final_skills_list` so Prompt 3 preserves them somewhere in the final resume rather than dropping them during polish.
+- Do not bury approved target-native language in skills or storylines. If a target-native phrase is central to the JD and direct/functionally equivalent, promote the strongest 1-2 such phrases into `recommended_title`, `summary_lead`, and the lead bullet or another top-2 bullet of the most relevant role unless doing so would imply a specifically blocked subclaim. Keep the remaining high-value truth-safe ATS/recruiter phrases in `phrases_to_mirror` or `final_skills_list` so Prompt 3 preserves them somewhere in the final resume rather than dropping them during polish.
 - Treat the source resume as an evidence pool, not output structure. Collapse overlapping bullets into distinct PM proof stories that answer the JD's main hiring-manager doubts. Prefer hiring-manager-natural phrasing in `recommended_title`, `summary_lead`, and bullet instructions; preserve ATS phrases selectively enough to remain searchable, not as the dominant writing style.
 - Source-native labels are proof anchors, not default headline language. If a source-native category and a JD-native category are both defensible, prefer the JD-native category in resume-facing fields and use the source-native category as proof/mechanism.
 - If two phrases are equally defensible, choose the one closer to the JD’s native domain language and hiring-manager vocabulary.
-- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the first relevant scope-bullet instruction. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
+- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the lead bullet / another top-2 bullet instruction of the most relevant role. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
 - Do not let a related unsupported subclaim suppress a clean supported target-native category. Block the subclaim; promote the category.
 
 Validated-domain rule:
@@ -329,11 +334,13 @@ A++ title rule:
 - If the JD’s central domain/team label is defensible as a positioning headline, use it or a clean near-equivalent.
 - If the strongest exact label is too risky, use the strongest clean near-equivalent rather than retreating to a generic source label.
 
-A++ first-scope-bullet rule:
-- The first scope bullet for the most relevant role must use the strongest defensible JD-native product/domain category, not merely the candidate’s source-native product labels.
-- Use source-native labels in the “across [surfaces/workflows]” part to defend the claim.
-- Pattern: `Led [strongest defensible JD-native domain/platform scope] across [source-supported surfaces/workflows] for [accurate customer/user context] - [scale], [usage metric]`.
-- Prioritize product/domain scope + scale, but include team size/direct reports when it materially improves seniority credibility and does not make the bullet clunky.
+A++ lead-bullet rule:
+- The first bullet of the most relevant role should be the single bullet that most changes the hiring manager's decision.
+- It may be either:
+  - a scope/arena bullet, when breadth of product/domain ownership is the strongest lead signal; or
+  - a quantified achievement bullet, when a specific shipped outcome is the stronger lead signal.
+- If a quantified achievement leads, the strongest defensible JD-native product/domain category must still appear in the summary or within the first 2 bullets of the most relevant role.
+- Use source-native surfaces/workflows as defense, not as the opening claim.
 
 A++ skills rule:
 - Prefer domain-specific proof skills over generic PM skills when both are supported.
@@ -484,6 +491,7 @@ Title rules:
 Summary rules for this brief:
 - `summary_lead` must be a clean resume instruction, not a caveat.
 - Lead with strongest JD-native domain identity and biggest supported proof.
+- Avoid vague leadership language; seniority should show up through ownership/proof shape, not title inflation alone.
 - Do not use hedge words or gap language.
 - If an exact JD phrase is too risky, use the clean positive replacement, not a caveat-loaded phrase.
 
@@ -497,7 +505,7 @@ Chronology-preserving current-role compression:
 - Preserve chronological/source order by default.
 - If the current role is less relevant than a prior role, recommend compressing it to 1-2 bullets.
 - Do not recommend moving it down unless the user explicitly enables relevance-first ordering.
-- Make the most relevant prior role dominate through headline, summary, scope bullet, bullet order within role, and bullet strength.
+- Make the most relevant prior role dominate through headline, summary, lead bullet, bullet order within role, and bullet strength.
 
 Current-role compression default:
 - If the current/most recent role is less relevant than a prior role, default to exactly 1 bullet instruction for that current role.
@@ -723,7 +731,7 @@ Final audit before output:
 - Each top gap question states its intended `resume_action` and target bullet/theme.
 - New-bullet questions are included only when they can plausibly enter the top 4-6 bullets or replace a weaker current proof category.
 - Questions that only help interview defense are tagged `interview_prep_only` or omitted unless high-risk.
-- Resume-facing fields have passed the target-native translation pass: source-native labels are proof/mechanisms, while hiring-manager-native labels lead title, summary, first scope bullet, and top skills when defensible.
+- Resume-facing fields have passed the target-native translation pass: source-native labels are proof/mechanisms, while hiring-manager-native labels lead title, summary, lead bullet, and top skills when defensible.
 - Broad JD terms are scope-limited when only part of the broad system/lifecycle/platform is supported.
 - Bullet instructions are compressed enough that Prompt 3 can synthesize clean bullets instead of concatenating instruction fragments.
 - If the current role is less relevant, Prompt 2 creates exactly 1 bullet instruction for it unless a second bullet has direct/functionally equivalent target-domain proof.
@@ -731,7 +739,7 @@ Final audit before output:
 - Team-scope bullets use clean human wording and are omitted when product/metric bullets already establish seniority.
 - Skill labels avoid implying formal program ownership or engineering infrastructure authority unless explicitly supported.
 - Company/team-specific labels are converted into market-natural equivalents for `recommended_title` unless the exact label is externally recognizable and natural.
-- First scope bullet does not overpack team size, direct reports, product scope, scale, architecture, and revenue.
+- Scope bullets do not overpack team size, direct reports, product scope, scale, architecture, and revenue.
 - Top skills are market-natural and proof-specific, not internal-team labels or generic category labels.
 - Gap and guardrail fields are specific enough for Prompt 3 to ask only resume-changing questions, without adding new fields or distracting from the resume strategy.
 - No mixed-support JD phrase remains bundled without subclaim-level clarity.
@@ -743,13 +751,13 @@ Final audit before output:
 
 A++ final promotion audit:
 - Identify the strongest 1-2 central JD-native promotion phrases the hiring manager most wants to see.
-- If they are direct/functionally equivalent, confirm they appear in `recommended_title`, `summary_lead`, and the first relevant scope-bullet instruction.
+- If they are direct/functionally equivalent, confirm they appear in `recommended_title`, `summary_lead`, and the lead bullet or another top-2 bullet instruction of the most relevant role.
 - Identify the next 3-5 most important truth-safe preservation phrases and confirm they remain in `phrases_to_mirror`, relevant bullet instructions, or `final_skills_list` so Prompt 3 can preserve them in final resume text.
 - If any promotion or preservation phrase is excluded, the reason must be captured in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for promotion rationale.
 - If a source-native term crowds out a stronger target-native term, revise the resume-facing field before output.
 
 Natural-language polish audit:
-- If `recommended_title`, `summary_lead`, or the first scope-bullet instruction reads like a keyword list, rewrite it into cleaner human language while preserving the strongest validated signals.
+- If `recommended_title`, `summary_lead`, or the lead-bullet instruction reads like a keyword list, rewrite it into cleaner human language while preserving the strongest validated signals.
 - Do not sacrifice the hard-stretch claim; sacrifice only redundant modifiers.
 - Prefer a memorable phrase that a hiring manager would repeat over a phrase that merely covers more ATS tokens.
 
@@ -774,6 +782,6 @@ Return valid JSON only, exactly matching the Prompt 2 output contract supplied b
 A++ final score-gate:
 - If `recommended_title` does not contain a validated role-winning JD-native phrase, revise unless a stronger defensibility reason exists.
 - If `summary_lead` does not include both the target-native domain and the strongest proof metric, revise.
-- If the first scope-bullet instruction for the most relevant role does not lead with the strongest defensible target-native category, revise.
+- If the strongest defensible target-native category does not appear in the lead bullet or within the first 2 bullet instructions of the most relevant role, revise.
 - If `final_skills_list` top 5 are not JD-native/domain-proof skills, revise.
 - If the brief sounds safe but not memorable, revise toward Tier 2/Tier 3 language.
