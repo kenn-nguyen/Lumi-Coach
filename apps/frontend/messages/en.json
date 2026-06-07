@@ -187,11 +187,14 @@
       }
     },
     "customSections": {
-      "dialogTitle": "Add Custom Section",
-      "dialogDescription": "Create a new section for your resume with a custom name and type.",
+      "dialogTitle": "Add Section",
+      "dialogDescription": "Restore a core section or create a new custom section.",
+      "restoreDefaultsLabel": "Restore Core Section",
+      "restoreDefaultsDescription": "Bring back the built-in section.",
       "sectionNameLabel": "Section Name",
       "sectionNamePlaceholder": "e.g., Publications, Volunteer Work, Certifications",
       "sectionTypeLabel": "Section Type",
+      "customSectionTypeLabel": "Custom Section Type",
       "addCustomSectionButton": "Add Custom Section",
       "sectionTypes": {
         "textBlockLabel": "Text Block",

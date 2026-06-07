@@ -14,13 +14,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, FileText, List, ListOrdered } from 'lucide-react';
-import type { SectionType } from '@/components/dashboard/resume-component';
+import type { SectionMeta, SectionType } from '@/components/dashboard/resume-component';
 import { useTranslations } from '@/lib/i18n';
 
 interface AddSectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (displayName: string, sectionType: SectionType) => void;
+  missingDefaultSections?: SectionMeta[];
+  onRestoreDefaultSection?: (sectionId: string) => void;
 }
 
 type SelectableSectionType = Exclude<SectionType, 'personalInfo'>;
@@ -35,6 +37,8 @@ export const AddSectionDialog: React.FC<AddSectionDialogProps> = ({
   open,
   onOpenChange,
   onAdd,
+  missingDefaultSections = [],
+  onRestoreDefaultSection,
 }) => {
   const { t } = useTranslations();
   const [displayName, setDisplayName] = useState('');
@@ -53,6 +57,13 @@ export const AddSectionDialog: React.FC<AddSectionDialogProps> = ({
     if (e.key === 'Enter' && displayName.trim()) {
       handleSubmit();
     }
+  };
+
+  const handleRestoreSection = (sectionId: string) => {
+    onRestoreDefaultSection?.(sectionId);
+    setDisplayName('');
+    setSectionType('text');
+    onOpenChange(false);
   };
 
   const sectionTypes: {
@@ -94,6 +105,36 @@ export const AddSectionDialog: React.FC<AddSectionDialogProps> = ({
         </DialogHeader>
 
         <div className="p-6 space-y-6">
+          {missingDefaultSections.length > 0 && (
+            <div className="space-y-3">
+              <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
+                {t('builder.customSections.restoreDefaultsLabel')}
+              </Label>
+              <div className="space-y-2">
+                {missingDefaultSections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => handleRestoreSection(section.id)}
+                    className="w-full p-4 border text-left transition-colors border-gray-300 hover:border-gray-400"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 border border-gray-300 bg-gray-50">
+                        <Plus className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-sans font-medium text-sm">{section.displayName}</div>
+                        <div className="font-mono text-xs text-gray-500 mt-0.5">
+                          {t('builder.customSections.restoreDefaultsDescription')}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Section Name */}
           <div className="space-y-2">
             <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
@@ -112,7 +153,7 @@ export const AddSectionDialog: React.FC<AddSectionDialogProps> = ({
           {/* Section Type */}
           <div className="space-y-3">
             <Label className="font-mono text-xs uppercase tracking-wider text-gray-500">
-              {t('builder.customSections.sectionTypeLabel')}
+              {t('builder.customSections.customSectionTypeLabel')}
             </Label>
             <div className="space-y-2">
               {sectionTypes.map((item) => (
@@ -175,9 +216,15 @@ export const AddSectionDialog: React.FC<AddSectionDialogProps> = ({
  */
 interface AddSectionButtonProps {
   onAdd: (displayName: string, sectionType: SectionType) => void;
+  missingDefaultSections?: SectionMeta[];
+  onRestoreDefaultSection?: (sectionId: string) => void;
 }
 
-export const AddSectionButton: React.FC<AddSectionButtonProps> = ({ onAdd }) => {
+export const AddSectionButton: React.FC<AddSectionButtonProps> = ({
+  onAdd,
+  missingDefaultSections = [],
+  onRestoreDefaultSection,
+}) => {
   const { t } = useTranslations();
   const [open, setOpen] = useState(false);
 
@@ -189,9 +236,15 @@ export const AddSectionButton: React.FC<AddSectionButtonProps> = ({ onAdd }) => 
         className="w-full rounded-none border-dashed border-2 border-black py-6 hover:bg-gray-50 hover:border-solid transition-all"
       >
         <Plus className="w-5 h-5 mr-2" />
-        {t('builder.customSections.addCustomSectionButton')}
+        {t('builder.addSection')}
       </Button>
-      <AddSectionDialog open={open} onOpenChange={setOpen} onAdd={onAdd} />
+      <AddSectionDialog
+        open={open}
+        onOpenChange={setOpen}
+        onAdd={onAdd}
+        missingDefaultSections={missingDefaultSections}
+        onRestoreDefaultSection={onRestoreDefaultSection}
+      />
     </>
   );
 };

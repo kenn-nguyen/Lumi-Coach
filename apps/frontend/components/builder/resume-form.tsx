@@ -39,6 +39,9 @@ import {
   getAllSections,
   createCustomSection,
   DEFAULT_SECTION_META,
+  getMissingDefaultSections,
+  localizeDefaultSectionMeta,
+  restoreDefaultSection,
 } from '@/lib/utils/section-helpers';
 import { useTranslations } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
@@ -78,6 +81,10 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
   // Use getAllSections for form - shows ALL sections including hidden ones
   // (Hidden sections are editable but marked with visual indicator)
   const sortedAllSections = getAllSections(resumeData);
+  const missingDefaultSections = localizeDefaultSectionMeta(
+    getMissingDefaultSections(resumeData),
+    t
+  );
 
   // Handle section metadata updates
   const handleSectionMetaUpdate = (sections: SectionMeta[]) => {
@@ -119,6 +126,15 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
         [newSection.key]: newCustomSection,
       },
     });
+  };
+
+  const handleRestoreDefaultSection = (sectionId: string) => {
+    const restoredSection = missingDefaultSections.find((section) => section.id === sectionId);
+    onUpdate(
+      restoreDefaultSection(resumeData, sectionId, {
+        displayName: restoredSection?.displayName,
+      })
+    );
   };
 
   // Handler for section rename
@@ -339,7 +355,7 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
         onToggleVisibility={() => handleToggleVisibility(section.id)}
         isFirst={isFirst}
         isLast={isLast}
-        canDelete={true}
+        canDelete={false}
         headerActions={headerActions}
       >
         {isCollapsed || section.pendingRemoval ? null : renderContent()}
@@ -465,7 +481,11 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({
           })}
 
           {/* Add Section Button */}
-          <AddSectionButton onAdd={handleAddSection} />
+          <AddSectionButton
+            onAdd={handleAddSection}
+            missingDefaultSections={missingDefaultSections}
+            onRestoreDefaultSection={handleRestoreDefaultSection}
+          />
         </div>
       </SortableContext>
     </DndContext>

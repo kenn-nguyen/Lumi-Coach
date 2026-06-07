@@ -83,6 +83,12 @@ const DEFAULT_SECTION_I18N_KEY_BY_ID: Readonly<Record<string, string>> = Object.
   additional: 'resume.sections.skills',
 });
 
+const RESTORABLE_DEFAULT_SECTION_IDS = new Set(
+  DEFAULT_SECTION_META.filter((section) => section.id !== 'personalInfo').map(
+    (section) => section.id
+  )
+);
+
 /**
  * Localize default section display names without overwriting user customizations.
  *
@@ -148,6 +154,89 @@ export function getAllSections(resumeData: ResumeData): SectionMeta[] {
 }
 
 /**
+ * Get built-in sections that were removed from section metadata and can be restored.
+ */
+export function getMissingDefaultSections(resumeData: ResumeData): SectionMeta[] {
+  const currentIds = new Set(getSectionMeta(resumeData).map((section) => section.id));
+
+  return DEFAULT_SECTION_META.filter(
+    (section) => RESTORABLE_DEFAULT_SECTION_IDS.has(section.id) && !currentIds.has(section.id)
+  );
+}
+
+/**
+ * Restore a removed built-in section to section metadata without creating a custom duplicate.
+ */
+export function restoreDefaultSection(
+  resumeData: ResumeData,
+  sectionId: string,
+  options?: { displayName?: string }
+): ResumeData {
+  if (!RESTORABLE_DEFAULT_SECTION_IDS.has(sectionId)) {
+    return resumeData;
+  }
+
+  const currentSections = getSectionMeta(resumeData);
+  if (currentSections.some((section) => section.id === sectionId)) {
+    return resumeData;
+  }
+
+  const defaultSection = DEFAULT_SECTION_META.find((section) => section.id === sectionId);
+  if (!defaultSection) {
+    return resumeData;
+  }
+
+  const maxOrder = Math.max(...currentSections.map((section) => section.order), 0);
+  const usedOrders = new Set(currentSections.map((section) => section.order));
+  const restoredSection: SectionMeta = {
+    ...defaultSection,
+    displayName: options?.displayName ?? defaultSection.displayName,
+    isVisible: true,
+    order: usedOrders.has(defaultSection.order) ? maxOrder + 1 : defaultSection.order,
+  };
+
+  const nextResumeData: ResumeData = {
+    ...resumeData,
+    sectionMeta: [...currentSections, restoredSection],
+  };
+
+  switch (sectionId) {
+    case 'summary':
+      return {
+        ...nextResumeData,
+        summary: nextResumeData.summary ?? '',
+      };
+    case 'workExperience':
+      return {
+        ...nextResumeData,
+        workExperience: nextResumeData.workExperience ?? [],
+      };
+    case 'education':
+      return {
+        ...nextResumeData,
+        education: nextResumeData.education ?? [],
+      };
+    case 'personalProjects':
+      return {
+        ...nextResumeData,
+        personalProjects: nextResumeData.personalProjects ?? [],
+      };
+    case 'additional':
+      return {
+        ...nextResumeData,
+        additional: nextResumeData.additional ?? {
+          technicalSkills: [],
+          languages: [],
+          certificationsTraining: [],
+          awards: [],
+        },
+      };
+    default:
+      return nextResumeData;
+  }
+}
+
+/**
  * Permanently remove sections that were staged for deletion.
  * Default-section content is left intact in the payload, but becomes unreachable
  * once the section metadata entry is removed. Custom sections are fully removed.
@@ -162,7 +251,12 @@ export function commitPendingSectionRemovals(resumeData: ResumeData): ResumeData
 
   const nextSectionMeta = currentSections
     .filter((section) => !section.pendingRemoval)
-    .map(({ pendingRemoval, visibilityBeforeRemoval, ...section }) => section);
+    .map((section) => {
+      const persistedSection = { ...section };
+      delete persistedSection.pendingRemoval;
+      delete persistedSection.visibilityBeforeRemoval;
+      return persistedSection;
+    });
 
   const pendingCustomKeys = new Set(
     pendingSections.filter((section) => !section.isDefault).map((section) => section.key)
