@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v2.1.6
-prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-mechanism-anchor
-prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, PM-owned technical attribution, falsifiable-detail preference, seniority-shaped summary hooks, flexible lead-bullet selection, bridge-title logic, and concrete mechanism-anchor preservation when compressing dense proof.
+prompt_version: v2.1.8
+prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v14-distinct-anchor-compression
+prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned technical attribution, seniority-shaped summary hooks, bridge-title logic, and preservation of distinct JD-relevant mechanism, diagnosis, and outcome anchors when compressing dense proof.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Resolved hiring manager persona from Prompt 1:
@@ -172,9 +172,11 @@ Summary-lead compression rule:
 - Do not force education, transition language, or every product surface into `summary_lead`.
 
 Scope-bullet polish rule:
-- When a scope bullet is used, it should be bold but readable.
+- When a scope bullet is used, it should be bold, readable, and worth the weaker verb form.
 - Use at most 2 abstract domain/category labels before the word `across`.
 - Use at most 4 source-supported surfaces/workflows after `across`.
+- If the same truth can be expressed as a directional change or a sharper differentiated claim, prefer that over `Led`, `Managed`, or `Owned`.
+- Use generic ownership verbs only when the bullet is truly establishing breadth/seniority and cannot be cleanly rewritten around change.
 - If a scope bullet becomes a keyword pile, keep the strongest JD-native category and move secondary categories into later bullets or skills.
 
 Scope-bullet proof budget:
@@ -341,9 +343,11 @@ A++ title rule:
 
 A++ lead-bullet rule:
 - The first bullet of the most relevant role should be the single bullet that most changes the hiring manager's decision.
+- Default to the strongest change-implying proof when the source supports a clean directional-result opener.
 - It may be either:
-  - a scope/arena bullet, when breadth of product/domain ownership is the strongest lead signal; or
+  - a scope/arena bullet, only when breadth of product/domain ownership is clearly the strongest lead signal; or
   - a quantified achievement bullet, when a specific shipped outcome is the stronger lead signal.
+- If a scope bullet leads, it must still carry a differentiated arena claim or strongest scale proof; do not default to generic ownership language when a sharper directional-result framing is truthful.
 - If a quantified achievement leads, the strongest defensible JD-native product/domain category must still appear in the summary or within the first 2 bullets of the most relevant role.
 - Use source-native surfaces/workflows as defense, not as the opening claim.
 
@@ -568,9 +572,12 @@ Decision-mechanism rule:
 - In bullet instructions, `mechanism` should name the PM-owned execution choice, product decision, lever, packaging choice, rollout choice, threshold, or constraint that caused the result.
 - Express technical depth through PM attribution: identified signal gaps, defined thresholds/specs, set rollout criteria, packaged self-serve tooling, redesigned workflow, sequenced rollout, or balanced tradeoffs. Do not imply model training, coding, or infrastructure ownership unless the evidence explicitly supports it.
 - For PM and senior PM targets, prefer bullets that prove shipped or operationalized execution first, then preserve diagnosis or tradeoff when it strengthens credibility.
-- When compressing a detail-heavy proof point, preserve one concrete source-supported mechanism anchor such as a named workflow, rule/configuration surface, verdict model, threshold family, SDK/API surface, or reusable artifact.
-- Drop lower-value specifics before replacing the anchor.
-- Do not rewrite a concrete anchor into abstract umbrella nouns such as `capabilities`, `solutions`, `strategy`, or `delivery` when a sharper supported mechanism noun exists.
+- When compressing a detail-heavy proof point, preserve the strongest non-redundant source-supported anchors rather than collapsing the bullet to one generic idea.
+- Usually keep one primary result/mechanism pair, plus one supporting diagnosis, tradeoff, constraint, or outcome anchor when it materially strengthens credibility for this JD.
+- Drop lower-value specifics before dropping a distinct high-value anchor.
+- If two details do the same job, keep the sharper and more JD-relevant one.
+- Do not rewrite a concrete anchor into abstract umbrella nouns such as `capabilities`, `solutions`, `strategy`, or `delivery` when a sharper supported anchor exists.
+- Do not flatten sharp outcomes or diagnoses into abstract evaluative phrasing when the source supports a more concrete unmet need, failure pattern, held-constant metric, adoption outcome, or business result.
 - Include at least one falsifiable detail when available: named signal, threshold, failure mode, held-constant metric, or beneficiary bottleneck.
 - Do not use work artifacts such as PRDs, API requirements, stakeholder alignment, roadmap ownership, or documentation as the primary mechanism unless the actual decision inside that artifact is named.
 - Strong mechanism pattern: `sequenced [rollout/customer/workflow] around [highest-value constraint]`, `calibrated [threshold/policy/model/product rule] to balance [tradeoff]`, `standardized [platform/packaging/process] to reduce [cost/time/risk]`, `pivoted [roadmap/product direction] toward [emerging customer/risk/market need]`.
