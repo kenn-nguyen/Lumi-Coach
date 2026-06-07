@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v2.1.4
-prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-lead-bullet
-prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, PM-owned technical attribution, falsifiable-detail preference, seniority-shaped summary hooks, and flexible lead-bullet selection that allows either scope or quantified outcomes to lead.
+prompt_version: v2.1.6
+prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v12-mechanism-anchor
+prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, PM-owned technical attribution, falsifiable-detail preference, seniority-shaped summary hooks, flexible lead-bullet selection, bridge-title logic, and concrete mechanism-anchor preservation when compressing dense proof.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Resolved hiring manager persona from Prompt 1:
@@ -123,11 +123,12 @@ Title polish rule:
 Company/team-specific label handling:
 - A JD may use an internal team label, product-suite label, org name, or branded category.
 - Treat these labels as high-value signals to interpret, validate, and mirror when useful.
-- For `recommended_title`, prefer the market-natural equivalent unless the exact label is a recognized external category or reads naturally as a candidate headline outside the target company.
+- For `recommended_title`, prefer the market-natural equivalent unless the exact label is a recognized external category, reads naturally as a candidate headline outside the target company, and the candidate's role-family proximity is close enough to defend it directly.
 - Generic pattern: internal/team label -> market-natural candidate headline.
 - Example by structure: `[Company Team Label]` -> `[external domain/category]` when the candidate's evidence supports the external category but not actual employment inside that company team.
 - Exact company/team labels may still appear in `target_native_phrases_to_validate`, `signal_map`, `phrases_to_mirror`, or evidence notes, but should not dominate the candidate headline if they sound like internal org branding.
-- For `summary_lead`, use the market-natural equivalent first, then optionally echo the JD-native phrase only if it reads naturally and is defensible.
+- If the JD/team label is useful but the candidate is not close enough to wear it as a literal headline, use it as an arena signal in modifiers or `summary_lead` rather than as the direct role identity.
+- For `summary_lead`, use the market-natural equivalent or a portable bridge identity first, then optionally echo the JD-native phrase only if it reads naturally and is defensible.
 
 Validated-domain compactness rule:
 - `validated_domain` should be a compact positive positioning arena, not an exhaustive inventory.
@@ -164,8 +165,10 @@ Summary-lead compression rule:
   - lead bullet carries the strongest proof, while scope proof can move to bullet 2 when that sells better.
 - For PM targets, make the summary execution/result-forward.
 - For Senior PM targets, make the summary broader in product arena ownership plus scaled execution or operating-leverage proof; do not make it a PM summary plus the word `Senior`.
+- If the exact JD role identity is not close enough for the title, let `summary_lead` bridge into the target arena through a portable PM identity plus the strongest differentiating proof cluster.
 - Choose the proof cluster that most differentiates the candidate for this role, not merely the biggest raw number.
-- Use at most 2 metric clusters in `summary_lead`.
+- Use at most 2 metric clusters in `summary_lead`, and keep them role-coherent. If the strongest proof comes from different employers or time periods, either make the boundary explicit or keep the summary anchored to one role.
+- Allow a slightly longer summary hook when the extra room materially improves differentiation, as long as it still reads like one clean hiring-manager-facing sentence.
 - Do not force education, transition language, or every product surface into `summary_lead`.
 
 Scope-bullet polish rule:
@@ -328,11 +331,13 @@ Validated-domain rule:
 
 A++ title rule:
 - `recommended_title` must be the boldest clean title that can survive an interview.
-- Prefer `JD role title + strongest defensible JD-native domain modifier` or `boldest JD-native positioning title` over a source-native title.
-- Do not default to source-native labels such as risk, analytics, operations, growth, platform, marketplace, or workflow if a more target-native label is defensible.
+- Prefer the strongest truthful headline that links the candidate to the JD's validated arena, not a mechanical copy of the JD title.
+- Use the exact JD role title only when the candidate's truthful role family is already close enough that the title would read naturally and remain easy to defend in an interview.
+- If role-family proximity is weaker, use a portable bridge headline that preserves truthful PM identity while linking clearly to the validated JD-native arena and strongest proof category.
+- Do not default to source-native labels such as risk, analytics, operations, growth, platform, marketplace, or workflow if a stronger target-linked headline is defensible.
 - Do not create awkward keyword strings. The title must sound like a real role/headline a hiring manager would recognize.
-- If the JD’s central domain/team label is defensible as a positioning headline, use it or a clean near-equivalent.
-- If the strongest exact label is too risky, use the strongest clean near-equivalent rather than retreating to a generic source label.
+- If the JD’s central domain/team label is useful but the candidate is not close enough to wear it directly, use it as an arena-linked modifier inside a portable bridge headline.
+- If the strongest exact label is too risky, use the strongest clean near-equivalent or bridge title rather than retreating to a generic source label.
 
 A++ lead-bullet rule:
 - The first bullet of the most relevant role should be the single bullet that most changes the hiring manager's decision.
@@ -563,6 +568,9 @@ Decision-mechanism rule:
 - In bullet instructions, `mechanism` should name the PM-owned execution choice, product decision, lever, packaging choice, rollout choice, threshold, or constraint that caused the result.
 - Express technical depth through PM attribution: identified signal gaps, defined thresholds/specs, set rollout criteria, packaged self-serve tooling, redesigned workflow, sequenced rollout, or balanced tradeoffs. Do not imply model training, coding, or infrastructure ownership unless the evidence explicitly supports it.
 - For PM and senior PM targets, prefer bullets that prove shipped or operationalized execution first, then preserve diagnosis or tradeoff when it strengthens credibility.
+- When compressing a detail-heavy proof point, preserve one concrete source-supported mechanism anchor such as a named workflow, rule/configuration surface, verdict model, threshold family, SDK/API surface, or reusable artifact.
+- Drop lower-value specifics before replacing the anchor.
+- Do not rewrite a concrete anchor into abstract umbrella nouns such as `capabilities`, `solutions`, `strategy`, or `delivery` when a sharper supported mechanism noun exists.
 - Include at least one falsifiable detail when available: named signal, threshold, failure mode, held-constant metric, or beneficiary bottleneck.
 - Do not use work artifacts such as PRDs, API requirements, stakeholder alignment, roadmap ownership, or documentation as the primary mechanism unless the actual decision inside that artifact is named.
 - Strong mechanism pattern: `sequenced [rollout/customer/workflow] around [highest-value constraint]`, `calibrated [threshold/policy/model/product rule] to balance [tradeoff]`, `standardized [platform/packaging/process] to reduce [cost/time/risk]`, `pivoted [roadmap/product direction] toward [emerging customer/risk/market need]`.
