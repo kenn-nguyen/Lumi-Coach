@@ -62,6 +62,12 @@ const RUN_ONBOARDING_ID = "resume-matcher-run-onboarding";
 const RUN_NOTES_ID = "resume-matcher-run-notes";
 const RUN_MANUAL_JD_FIELD_ID = "resume-matcher-manual-jd-field";
 const RUN_MANUAL_JD_ID = "resume-matcher-manual-jd";
+const RUN_MANUAL_DETAILS_TOGGLE_ID =
+  "resume-matcher-manual-details-toggle";
+const RUN_MANUAL_DETAILS_PANEL_ID = "resume-matcher-manual-details-panel";
+const RUN_MANUAL_TITLE_ID = "resume-matcher-manual-title";
+const RUN_MANUAL_COMPANY_ID = "resume-matcher-manual-company";
+const RUN_MANUAL_SOURCE_URL_ID = "resume-matcher-manual-source-url";
 const RUN_PRIMARY_ID = "resume-matcher-run-primary";
 const RUN_CANCEL_ROW_ID = "resume-matcher-run-cancel-row";
 const RUN_CANCEL_ID = "resume-matcher-run-cancel";
@@ -723,6 +729,10 @@ const state = {
   jobLoadStartedAt: null,
   customMessage: "",
   manualJobDescription: "",
+  manualJobDetailsOpen: false,
+  manualJobTitle: null,
+  manualJobCompany: null,
+  manualJobSourceUrl: null,
   scrapeIssue: "",
   storyboardHelpOpen: false,
   currentJob: null,
@@ -2960,6 +2970,39 @@ function injectStyles() {
       box-shadow:
         0 0 0 3px rgba(168, 85, 110, 0.16),
         0 14px 28px rgba(127, 29, 63, 0.08);
+    }
+
+    .resume-matcher-run-manual-details {
+      display: grid;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .resume-matcher-run-manual-details__toggle {
+      justify-self: start;
+    }
+
+    .resume-matcher-run-manual-details__panel {
+      display: grid;
+      gap: 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(231, 197, 207, 0.82);
+      background: rgba(255, 252, 252, 0.62);
+      padding: 10px;
+    }
+
+    .resume-matcher-run-manual-details__panel[hidden] {
+      display: none;
+    }
+
+    .resume-matcher-run-shell .resume-matcher-field--manual-meta label {
+      display: block;
+      color: rgba(88, 28, 52, 0.72);
+      letter-spacing: 0.08em;
+    }
+
+    .resume-matcher-run-shell .resume-matcher-run-manual-details__panel input {
+      background: rgba(255, 255, 255, 0.84);
     }
 
     .resume-matcher-field__hint {
@@ -5564,21 +5607,76 @@ function shouldShowManualJdInput() {
   return isManualRunMode() || shouldShowManualJdFallback();
 }
 
-function buildManualJobInput() {
-  const rawText = state.manualJobDescription.trim();
-  if (!rawText) {
+function pickManualJobMetadataValue(manualValue = null, fallbackValue = "") {
+  if (manualValue == null) {
+    return String(fallbackValue || "").trim();
+  }
+  return String(manualValue).trim();
+}
+
+function resolveManualJobSourceUrl(
+  manualValue = null,
+  fallbackValue = "",
+  locationHref = "",
+) {
+  const fallbackSourceUrl =
+    pickManualJobMetadataValue(fallbackValue, locationHref);
+
+  if (manualValue == null) {
+    return normalizeJobSourceUrl(fallbackSourceUrl);
+  }
+
+  const trimmedManualValue = String(manualValue).trim();
+  if (!trimmedManualValue) {
+    return "";
+  }
+
+  try {
+    return normalizeJobSourceUrl(new URL(trimmedManualValue).toString());
+  } catch {
+    return normalizeJobSourceUrl(fallbackSourceUrl);
+  }
+}
+
+function createManualJobInput({
+  rawText = "",
+  currentJob = null,
+  manualTitle = null,
+  manualCompany = null,
+  manualSourceUrl = null,
+  locationHref = "",
+} = {}) {
+  const normalizedRawText = String(rawText || "").trim();
+  if (!normalizedRawText) {
     return null;
   }
 
+  const baseJob = currentJob && typeof currentJob === "object" ? currentJob : {};
+
   return {
     source: "manual_text",
-    rawText,
-    title: state.currentJob?.title || "",
-    company: state.currentJob?.company || "",
-    location: state.currentJob?.location || "",
-    datePosted: state.currentJob?.datePosted || "",
-    sourceUrl: state.currentJob?.sourceUrl || window.location.href,
+    rawText: normalizedRawText,
+    title: pickManualJobMetadataValue(manualTitle, baseJob.title || ""),
+    company: pickManualJobMetadataValue(manualCompany, baseJob.company || ""),
+    location: String(baseJob.location || "").trim(),
+    datePosted: baseJob.datePosted || "",
+    sourceUrl: resolveManualJobSourceUrl(
+      manualSourceUrl,
+      baseJob.sourceUrl || "",
+      locationHref,
+    ),
   };
+}
+
+function buildManualJobInput() {
+  return createManualJobInput({
+    rawText: state.manualJobDescription,
+    currentJob: state.currentJob,
+    manualTitle: state.manualJobTitle,
+    manualCompany: state.manualJobCompany,
+    manualSourceUrl: state.manualJobSourceUrl,
+    locationHref: window.location.href,
+  });
 }
 
 function extractLinkedInViewJobIdFromPathname(pathname) {
@@ -7864,6 +7962,11 @@ function renderRunView() {
   const onboardingRoot = $(RUN_ONBOARDING_ID);
   const manualJdField = $(RUN_MANUAL_JD_FIELD_ID);
   const manualJdInput = $(RUN_MANUAL_JD_ID);
+  const manualDetailsToggle = $(RUN_MANUAL_DETAILS_TOGGLE_ID);
+  const manualDetailsPanel = $(RUN_MANUAL_DETAILS_PANEL_ID);
+  const manualTitleInput = $(RUN_MANUAL_TITLE_ID);
+  const manualCompanyInput = $(RUN_MANUAL_COMPANY_ID);
+  const manualSourceUrlInput = $(RUN_MANUAL_SOURCE_URL_ID);
   const promptProfileField = $(RUN_PROMPT_PROFILE_FIELD_ID);
   const promptProfileTabs = $(RUN_PROMPT_PROFILE_TABS_ID);
   const promptProfilePopup = $(RUN_PROMPT_PROFILE_POPUP_ID);
@@ -8062,6 +8165,60 @@ function renderRunView() {
   if (manualJdInput && manualJdInput.value !== state.manualJobDescription) {
     manualJdInput.value = state.manualJobDescription;
     autoGrowTextarea(manualJdInput);
+  }
+  if (manualDetailsToggle instanceof HTMLButtonElement) {
+    const showManualDetails = !manualJdField?.hidden;
+    manualDetailsToggle.hidden = !showManualDetails;
+    manualDetailsToggle.setAttribute(
+      "aria-expanded",
+      String(Boolean(state.manualJobDetailsOpen)),
+    );
+    manualDetailsToggle.textContent = state.manualJobDetailsOpen
+      ? "Hide details"
+      : "Add details (optional)";
+  }
+  if (manualDetailsPanel) {
+    manualDetailsPanel.hidden =
+      manualJdField?.hidden || !state.manualJobDetailsOpen;
+  }
+  if (
+    manualTitleInput instanceof HTMLInputElement &&
+    manualTitleInput.value !==
+      pickManualJobMetadataValue(
+        state.manualJobTitle,
+        state.currentJob?.title || "",
+      )
+  ) {
+    manualTitleInput.value = pickManualJobMetadataValue(
+      state.manualJobTitle,
+      state.currentJob?.title || "",
+    );
+  }
+  if (
+    manualCompanyInput instanceof HTMLInputElement &&
+    manualCompanyInput.value !==
+      pickManualJobMetadataValue(
+        state.manualJobCompany,
+        state.currentJob?.company || "",
+      )
+  ) {
+    manualCompanyInput.value = pickManualJobMetadataValue(
+      state.manualJobCompany,
+      state.currentJob?.company || "",
+    );
+  }
+  if (
+    manualSourceUrlInput instanceof HTMLInputElement &&
+    manualSourceUrlInput.value !==
+      pickManualJobMetadataValue(
+        state.manualJobSourceUrl,
+        state.currentJob?.sourceUrl || "",
+      )
+  ) {
+    manualSourceUrlInput.value = pickManualJobMetadataValue(
+      state.manualJobSourceUrl,
+      state.currentJob?.sourceUrl || "",
+    );
   }
   if (notesField) {
     notesField.hidden = showOnboarding || hardBlocker || waitingForSelection;
@@ -9391,6 +9548,25 @@ function ensureRoot() {
               <div id="${RUN_MANUAL_JD_FIELD_ID}" class="resume-matcher-field" hidden>
                 <label for="${RUN_MANUAL_JD_ID}">Paste job description</label>
                 <textarea id="${RUN_MANUAL_JD_ID}" rows="5" placeholder="Paste the full job description here to continue."></textarea>
+                <div class="resume-matcher-run-manual-details">
+                  <button id="${RUN_MANUAL_DETAILS_TOGGLE_ID}" type="button" class="resume-matcher-settings-row-card__subtle-action resume-matcher-run-manual-details__toggle" aria-expanded="false" aria-controls="${RUN_MANUAL_DETAILS_PANEL_ID}">
+                    Add details (optional)
+                  </button>
+                  <div id="${RUN_MANUAL_DETAILS_PANEL_ID}" class="resume-matcher-run-manual-details__panel" hidden>
+                    <div class="resume-matcher-field resume-matcher-field--manual-meta">
+                      <label for="${RUN_MANUAL_TITLE_ID}">Job title</label>
+                      <input id="${RUN_MANUAL_TITLE_ID}" type="text" placeholder="Job title" />
+                    </div>
+                    <div class="resume-matcher-field resume-matcher-field--manual-meta">
+                      <label for="${RUN_MANUAL_COMPANY_ID}">Company</label>
+                      <input id="${RUN_MANUAL_COMPANY_ID}" type="text" placeholder="Company" />
+                    </div>
+                    <div class="resume-matcher-field resume-matcher-field--manual-meta">
+                      <label for="${RUN_MANUAL_SOURCE_URL_ID}">JD link</label>
+                      <input id="${RUN_MANUAL_SOURCE_URL_ID}" type="url" placeholder="https://example.com/job" />
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="resume-matcher-field resume-matcher-field--notes">
                 <label for="${RUN_NOTES_ID}">Helpful context</label>
@@ -9700,6 +9876,19 @@ function ensureRoot() {
     state.manualJobDescription = event.target.value || "";
     autoGrowTextarea(event.target);
     render();
+  });
+  $(RUN_MANUAL_DETAILS_TOGGLE_ID)?.addEventListener("click", () => {
+    state.manualJobDetailsOpen = !state.manualJobDetailsOpen;
+    renderRunView();
+  });
+  $(RUN_MANUAL_TITLE_ID)?.addEventListener("input", (event) => {
+    state.manualJobTitle = event.target.value || "";
+  });
+  $(RUN_MANUAL_COMPANY_ID)?.addEventListener("input", (event) => {
+    state.manualJobCompany = event.target.value || "";
+  });
+  $(RUN_MANUAL_SOURCE_URL_ID)?.addEventListener("input", (event) => {
+    state.manualJobSourceUrl = event.target.value || "";
   });
   $(RUN_PROMPT_PROFILE_TABS_ID)?.addEventListener("click", async (event) => {
     const target = event.target.closest("[data-prompt-profile-id]");
