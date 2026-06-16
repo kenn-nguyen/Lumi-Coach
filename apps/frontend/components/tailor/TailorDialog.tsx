@@ -218,10 +218,10 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                   onChange={(e) => setProfileId(e.target.value as PromptProfileId)}
                   className="w-full rounded-none border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
                 >
-                  <option value="profile2">Standard (recommended)</option>
-                  <option value="profile1">Classic</option>
-                  <option value="profile3">Lean (plain text analysis)</option>
-                  <option value="profile4">One-shot (fast)</option>
+                  <option value="profile1">Safe</option>
+                  <option value="profile2">Competitive (recommended)</option>
+                  <option value="profile3">Lean</option>
+                  <option value="profile4">Direct</option>
                 </select>
               </div>
 
