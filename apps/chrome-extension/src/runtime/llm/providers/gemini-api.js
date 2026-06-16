@@ -1,5 +1,10 @@
 import { logError, logInfo } from '../../log.js';
 import {
+  decorateSystemPromptForJsonOutput,
+  getGeminiJsonModeConfig,
+  shouldUseJsonOutput,
+} from '../json-output.js';
+import {
   buildApiHttpError,
   buildApiNetworkError,
   buildApiResponseError,
@@ -30,12 +35,16 @@ function extractGeminiText(payload) {
   return textParts.join('\n\n');
 }
 
-async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt = '', signal }) {
+async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt = '', useJsonOutput = false, signal }) {
+  const systemPromptText = useJsonOutput
+    ? decorateSystemPromptForJsonOutput(systemPrompt)
+    : systemPrompt;
   logInfo('GeminiApi', 'Sending prompt to Gemini API.', {
     promptLabel,
     model,
     endpoint,
     promptLength: prompt.length,
+    jsonOutput: useJsonOutput,
   });
 
   let response;
@@ -48,13 +57,14 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
-        ...(systemPrompt
+        ...(systemPromptText
           ? {
               systemInstruction: {
-                parts: [{ text: systemPrompt }],
+                parts: [{ text: systemPromptText }],
               },
             }
           : {}),
+        ...(useJsonOutput ? { generationConfig: getGeminiJsonModeConfig() } : {}),
         contents: [
           {
             parts: [
@@ -152,6 +162,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
     ? profile.apiBaseUrl.trim().replace(/\/+$/, '')
     : 'https://generativelanguage.googleapis.com/v1beta/models';
   const systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
+  const useJsonOutput = shouldUseJsonOutput(options.promptStage);
   const signal = options.signal;
 
   if (!apiKey) {
@@ -162,7 +173,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
   }
 
   const endpoint = `${apiBaseUrl}/${encodeURIComponent(model)}:generateContent`;
-  let result = await callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt, signal });
+  let result = await callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt, useJsonOutput, signal });
   const validateResponse = typeof options.validateResponse === 'function' ? options.validateResponse : null;
   const buildRepairPrompt = typeof options.buildRepairPrompt === 'function' ? options.buildRepairPrompt : null;
   const maxRepairAttempts = Number.isInteger(options.maxRepairAttempts)
@@ -202,6 +213,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
         endpoint,
         promptLabel: `${promptLabel} Repair`,
         systemPrompt,
+        useJsonOutput,
         signal,
       });
       if (result.status !== 'success') {

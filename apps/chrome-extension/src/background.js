@@ -3,6 +3,7 @@ import {
   importMasterResumeFromTextAsset,
   saveStoryboardAsset,
 } from "./runtime/orchestrator.js";
+import { closeOrphanedChatGptWindows } from "./runtime/chatgpt.js";
 import { captureExtensionEvent } from "./runtime/analytics.js";
 import { logError, logInfo, logWarn, setLogRelayTabId } from "./runtime/log.js";
 import { clearPromptTemplateCache } from "./runtime/prompt-loader.js";
@@ -11,6 +12,7 @@ import {
   fetchExtensionAccessToken,
   listResumes,
   openPreviewTab,
+  clearWebsiteSessionCache,
   openWebsiteSignInTab,
   openWebsiteSignOutTab,
   syncExtensionPromptDefaults,
@@ -447,6 +449,9 @@ function clearBackendMasterResumeCache() {
     promise: null,
     fetchedAt: 0,
   };
+  // Also bust the website session cache so the next connection check
+  // fetches a fresh session (e.g. after sign-out or account switch).
+  clearWebsiteSessionCache();
 }
 
 function setCachedBackendMasterResumeData(accountKey, resumeId, value) {
@@ -1042,7 +1047,7 @@ async function ensureExtensionAuthForAction(pendingAction, options = {}) {
   if (!hasAuth) {
     let websiteAuthenticated = false;
     try {
-      const websiteSession = await verifyWebsiteSession();
+      const websiteSession = await verifyWebsiteSession({ forceRefresh: true });
       websiteAuthenticated = websiteSession?.authenticated === true;
     } catch {
       websiteAuthenticated = false;
@@ -1077,7 +1082,7 @@ async function ensureExtensionAuthForAction(pendingAction, options = {}) {
 
   let websiteSession = null;
   try {
-    websiteSession = await verifyWebsiteSession();
+    websiteSession = await verifyWebsiteSession({ forceRefresh: true });
   } catch (error) {
     logWarn(
       "Background",
@@ -1331,6 +1336,10 @@ async function resumePendingExtensionAction(options = {}) {
 chrome.runtime.onInstalled.addListener(() => {
   logInfo("Background", "Extension installed.");
 });
+
+// Close any ChatGPT popup windows left open when the service worker was
+// previously killed mid-run.  Runs on every worker restart (MV3 behaviour).
+void closeOrphanedChatGptWindows();
 
 chrome.action.onClicked.addListener(async (tab) => {
   const currentUrl = tab?.url || tab?.pendingUrl || "";

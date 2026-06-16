@@ -41,7 +41,10 @@ import {
 } from "./api.js";
 import { logError, logInfo } from "./log.js";
 import { logWarn } from "./log.js";
-import { closeChatGptRunSession } from "./chatgpt.js";
+import {
+  closeChatGptRunSession,
+  prepareChatGptRunSessionForNextStage,
+} from "./chatgpt.js";
 import {
   getExtensionState,
   getUserAssets,
@@ -1714,6 +1717,8 @@ export async function generateResumeForLinkedInJob(
       const prompt1Run = await runPrompt(prompt1, {
         profile: activeLlmProfile,
         promptLabel: "Prompt 1",
+        promptStage: "prompt1",
+        apiPromptBlocks: prompt1Rendered.apiPromptBlocks,
         systemPrompt,
         runId,
         signal: cancel.signal(),
@@ -1763,6 +1768,17 @@ export async function generateResumeForLinkedInJob(
           error_message: prompt1Run.validationError,
         });
         throw new Error(`Prompt 1 failed: ${prompt1Run.validationError}`);
+      }
+      if (reuseChatGptPopup) {
+        const prompt2ResetPromise = prepareChatGptRunSessionForNextStage(
+          runId,
+          {
+            profile: activeLlmProfile,
+            promptLabel: "Prompt 2",
+            targetUrl: activeLlmProfile?.targetUrl,
+          },
+        );
+        prompt2ResetPromise?.catch(() => {});
       }
       logInfo("Orchestrator", "Parsing Prompt 1 output.");
       logPromptDebug("Prompt 1", "output", prompt1Raw);
@@ -1826,6 +1842,8 @@ export async function generateResumeForLinkedInJob(
       const prompt2Run = await runPrompt(prompt2, {
         profile: activeLlmProfile,
         promptLabel: "Prompt 2",
+        promptStage: "prompt2",
+        apiPromptBlocks: prompt2Rendered.apiPromptBlocks,
         systemPrompt,
         runId,
         signal: cancel.signal(),
@@ -1875,6 +1893,17 @@ export async function generateResumeForLinkedInJob(
           error_message: prompt2Run.validationError,
         });
         throw new Error(`Prompt 2 failed: ${prompt2Run.validationError}`);
+      }
+      if (reuseChatGptPopup) {
+        const prompt3ResetPromise = prepareChatGptRunSessionForNextStage(
+          runId,
+          {
+            profile: activeLlmProfile,
+            promptLabel: "Prompt 3",
+            targetUrl: activeLlmProfile?.targetUrl,
+          },
+        );
+        prompt3ResetPromise?.catch(() => {});
       }
       logInfo("Orchestrator", "Parsing Prompt 2 output.");
       logPromptDebug("Prompt 2", "output", prompt2Raw);
@@ -1938,6 +1967,8 @@ export async function generateResumeForLinkedInJob(
     const prompt3Run = await runPrompt(prompt3, {
       profile: activeLlmProfile,
       promptLabel: "Prompt 3",
+      promptStage: "prompt3",
+      apiPromptBlocks: prompt3Rendered.apiPromptBlocks,
       systemPrompt,
       runId,
       signal: cancel.signal(),

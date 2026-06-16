@@ -78,9 +78,6 @@ const validPrompt2 = {
     "Platform execution",
     "Cross-functional leadership",
   ],
-  summary_sentences: 2,
-  voice: "Sharp and credible",
-  adjacent_framing: "Position as adjacent rather than exact match",
   excitement_anchor: {
     claim: "Risk-platform roadmap ownership with measurable funnel outcomes",
     evidence:
@@ -136,39 +133,14 @@ const validPrompt2 = {
       guardrail: "Keep risk framing adjacent and truthful",
     },
   ],
-  company_context_guidance: [
-    {
-      role: "Associate Director of Product",
-      company: "RiskCo",
-      recommended_context:
-        "B2B risk platform serving enterprise financial institutions",
-      action: "add",
-      evidence:
-        "Source resume describes enterprise financial-institution customers",
-      guardrail:
-        "Do not include candidate-owned outcome metrics in company context",
-    },
-  ],
   bullet_rewrite_instructions: [
     {
       role: "Associate Director of Product",
       action: "rewrite",
       bullet_anchor: "Led roadmap planning",
-      instruction: {
-        primary_message:
-          "Show platform roadmap ownership for identity-risk workflows",
-        primary_metric: "",
-        mechanism:
-          "sequencing roadmap priorities across product and engineering",
-        optional_context: "for risk and approval workflows",
-        do_not_include: ["direct fraud-specialist title"],
-      },
-    },
-  ],
-  education_notes: [
-    {
-      institution: "Yale School of Management",
-      instruction: "Keep concise",
+      merge_with: [],
+      placement_hint: "lead",
+      guardrail: "Keep risk framing adjacent and truthful",
     },
   ],
   final_skills_list: ["SQL", "Experimentation"],
@@ -262,16 +234,13 @@ describe("prompt stage validation", () => {
     );
   });
 
-  it("accepts Prompt 2 summary_sentences of 1 or 2 only", () => {
-    expect(
-      validatePrompt2Data({ ...validPrompt2, summary_sentences: 1 }),
-    ).toEqual([]);
+  it("rejects deleted legacy Prompt 2 fields", () => {
     expect(
       validatePrompt2Data({ ...validPrompt2, summary_sentences: 2 }),
-    ).toEqual([]);
+    ).toContain("prompt2.summary_sentences is not allowed.");
     expect(
-      validatePrompt2Data({ ...validPrompt2, summary_sentences: 3 }),
-    ).toContain("prompt2.summary_sentences must be 1 or 2.");
+      validatePrompt2Data({ ...validPrompt2, company_context_guidance: [] }),
+    ).toContain("prompt2.company_context_guidance is not allowed.");
   });
 
   it("accepts a minimal Prompt 2 handoff and normalizes missing strategy detail fields", () => {
@@ -296,7 +265,6 @@ describe("prompt stage validation", () => {
 
     const normalized = normalizePrompt2Data(minimalPrompt2);
 
-    expect(normalized.summary_sentences).toBe(2);
     expect(normalized.signal_map).toEqual([]);
     expect(normalized.selected_storylines).toEqual([]);
     expect(normalized.excitement_anchor).toEqual({
@@ -305,25 +273,35 @@ describe("prompt stage validation", () => {
       placement: "summary",
       why_distinctive: "",
     });
+    expect(normalized).not.toHaveProperty("summary_sentences");
     expect(normalized.flex_notes).toBe("keep the hiring-manager tone direct");
   });
 
-  it("keeps Prompt 2 summary_sentences lightweight but typed", () => {
+  it("normalizes the source-bullet-selection Prompt 2 bullet schema", () => {
     const minimalPrompt2 = {
-      validated_role: "Technical Product Manager",
-      validated_domain: "Infrastructure",
-      positioning_thesis: "Position around platform execution depth",
-      top_resume_goals: ["Goal 1"],
-      recommended_title: "Technical Product Manager",
-      summary_lead: "Platform-focused product leader",
-      final_skills_list: ["SQL"],
-      cannot_claim: ["Direct SRE ownership"],
-      summary_sentences: 3,
+      ...validPrompt2,
+      bullet_rewrite_instructions: [
+        {
+          role: "Associate Director of Product",
+          action: "merge",
+          bullet_anchor: "Led roadmap planning",
+          merge_with: ["Prioritized identity-risk workflows with engineering"],
+          placement_hint: "top2",
+          guardrail: "Keep risk framing adjacent and truthful",
+        },
+      ],
     };
 
-    expect(validatePrompt2MinimalData(minimalPrompt2)).toContain(
-      "prompt2.summary_sentences must be 1 or 2.",
-    );
+    const normalized = normalizePrompt2Data(minimalPrompt2);
+
+    expect(normalized.bullet_rewrite_instructions[0]).toEqual({
+      role: "Associate Director of Product",
+      action: "merge",
+      bullet_anchor: "Led roadmap planning",
+      merge_with: ["Prioritized identity-risk workflows with engineering"],
+      placement_hint: "top2",
+      guardrail: "Keep risk framing adjacent and truthful",
+    });
   });
 });
 

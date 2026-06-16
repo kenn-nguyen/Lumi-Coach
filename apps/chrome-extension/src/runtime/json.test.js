@@ -23,9 +23,6 @@ const validPrompt2 = {
     "Platform execution",
     "Cross-functional leadership",
   ],
-  summary_sentences: 2,
-  voice: "Sharp and credible",
-  adjacent_framing: "Position as adjacent rather than exact match",
   excitement_anchor: {
     claim: "Risk-platform roadmap ownership with measurable funnel outcomes",
     evidence:
@@ -81,36 +78,16 @@ const validPrompt2 = {
       guardrail: "Keep framing truthful",
     },
   ],
-  company_context_guidance: [
-    {
-      role: "Associate Director of Product",
-      company: "RiskCo",
-      recommended_context:
-        "B2B risk platform serving enterprise financial institutions",
-      action: "add",
-      evidence:
-        "Source resume describes enterprise financial-institution customers",
-      guardrail:
-        "Do not include candidate-owned outcome metrics in company context",
-    },
-  ],
   bullet_rewrite_instructions: [
     {
       role: "Associate Director of Product",
       action: "rewrite",
       bullet_anchor: "Led roadmap planning",
-      instruction: {
-        primary_message:
-          "Show platform roadmap ownership for identity-risk workflows",
-        primary_metric: "",
-        mechanism:
-          "sequencing roadmap priorities across product and engineering",
-        optional_context: "for risk and approval workflows",
-        do_not_include: ["direct fraud-specialist title"],
-      },
+      merge_with: [],
+      placement_hint: "lead",
+      guardrail: "Keep framing truthful",
     },
   ],
-  education_notes: [],
   final_skills_list: ["SQL", "Experimentation"],
   phrases_to_mirror: ["identity risk"],
   cannot_claim: ["Direct fraud analyst experience"],

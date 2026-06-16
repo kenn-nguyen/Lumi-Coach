@@ -733,7 +733,7 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
 
   function readNodeText(node) {
     if (node instanceof HTMLElement) {
-      return node.innerText ?? node.textContent ?? '';
+      return node.innerText || node.textContent || '';
     }
     return node?.textContent ?? '';
   }

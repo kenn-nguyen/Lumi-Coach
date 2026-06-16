@@ -4,6 +4,7 @@ import {
   clearChatGptRunSessionsForTests,
   closeChatGptRunSession,
   getOrOpenChatGptRunSession,
+  prepareChatGptRunSessionForNextStage,
   resetChatGptRunSession,
   runChatGptPrompt,
 } from './chatgpt.js';
@@ -16,6 +17,8 @@ import {
 function createChromeMock() {
   let nextWindowId = 1;
   let nextTabId = 101;
+  let defaultTabStatus = 'complete';
+  let pendingTabUpdate = null;
   const windowsById = new Map();
   const tabsById = new Map();
   const scriptingResults = [];
@@ -26,7 +29,7 @@ function createChromeMock() {
       id: nextTabId++,
       windowId,
       url,
-      status: 'complete',
+      status: defaultTabStatus,
       title: 'ChatGPT',
     };
     tabsById.set(tab.id, tab);
@@ -75,6 +78,11 @@ function createChromeMock() {
         if (!tab) {
           throw new Error(`No tab with id ${tabId}`);
         }
+        if (pendingTabUpdate) {
+          const gate = pendingTabUpdate;
+          pendingTabUpdate = null;
+          await gate;
+        }
         if (typeof updateProperties?.url === 'string') {
           tab.url = updateProperties.url;
         }
@@ -105,7 +113,26 @@ function createChromeMock() {
     },
   };
 
-  return { chrome, scriptingResults, readinessResults };
+  return {
+    chrome,
+    scriptingResults,
+    readinessResults,
+    setDefaultTabStatus(status) {
+      defaultTabStatus = status;
+    },
+    holdNextTabUpdate() {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      pendingTabUpdate = gate;
+      return {
+        release() {
+          release?.();
+        },
+      };
+    },
+  };
 }
 
 describe('chatgpt run-scoped popup reuse', () => {
@@ -216,6 +243,18 @@ describe('chatgpt run-scoped popup reuse', () => {
     await sessionPromise;
   });
 
+  it('opens a reusable session without waiting for tab completion when the page is already reachable', async () => {
+    ensureActiveRun({ runId: 'run-loading-tab', phase: 'running', inFlight: true });
+    chromeMock.setDefaultTabStatus('loading');
+
+    const session = await getOrOpenChatGptRunSession('run-loading-tab', {
+      warmupDelayMs: 0,
+    });
+
+    expect(session.tabId).toBeTruthy();
+    expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps repair attempts in the same popup session without resetting', async () => {
     ensureActiveRun({ runId: 'run-repair', phase: 'running', inFlight: true });
     chromeMock.scriptingResults.push(
@@ -288,6 +327,36 @@ describe('chatgpt run-scoped popup reuse', () => {
     const secondTabId =
       chromeMock.chrome.scripting.executeScript.mock.calls[1][0].target.tabId;
     expect(firstTabId).toBe(secondTabId);
+  });
+
+  it('deduplicates an in-flight background reset for the next stage', async () => {
+    ensureActiveRun({ runId: 'run-prepare', phase: 'running', inFlight: true });
+    const session = await getOrOpenChatGptRunSession('run-prepare', {
+      warmupDelayMs: 0,
+    });
+    session.needsReset = true;
+    const heldUpdate = chromeMock.holdNextTabUpdate();
+
+    const firstReset = prepareChatGptRunSessionForNextStage('run-prepare', {
+      warmupDelayMs: 0,
+    });
+    const secondReset = prepareChatGptRunSessionForNextStage('run-prepare', {
+      warmupDelayMs: 0,
+    });
+
+    await Promise.resolve();
+    expect(chromeMock.chrome.tabs.update).toHaveBeenCalledTimes(1);
+
+    heldUpdate.release();
+    const [firstSession, secondSession] = await Promise.all([
+      firstReset,
+      secondReset,
+    ]);
+
+    expect(firstSession.tabId).toBe(session.tabId);
+    expect(secondSession.tabId).toBe(session.tabId);
+    expect(session.needsReset).toBe(false);
+    expect(session.pendingResetPromise).toBe(null);
   });
 
   it('preserves the legacy open-close behavior when popup reuse is disabled', async () => {

@@ -2,6 +2,7 @@ import { logInfo } from '../log.js';
 import { runChatGptApiPrompt } from './providers/chatgpt-api.js';
 import { runClaudeApiPrompt } from './providers/claude-api.js';
 import { runClaudeWebPrompt } from './providers/claude-web.js';
+import { runDeepSeekApiPrompt } from './providers/deepseek-api.js';
 import { runGeminiApiPrompt } from './providers/gemini-api.js';
 import { runGeminiWebPrompt } from './providers/gemini-web.js';
 import { runChatGptWebPrompt } from './providers/chatgpt-web.js';
@@ -11,6 +12,7 @@ const RUNNERS = {
   'claude:web_automation': runClaudeWebPrompt,
   'claude:api': runClaudeApiPrompt,
   'chatgpt:api': runChatGptApiPrompt,
+  'deepseek:api': runDeepSeekApiPrompt,
   'gemini:web_automation': runGeminiWebPrompt,
   'gemini:api': runGeminiApiPrompt,
 };

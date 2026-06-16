@@ -33,18 +33,18 @@ def _normalize_structured_bullet_instruction(value: Any) -> str:
 
     parts: list[str] = []
     for field, label in [
-        ("primary_message", "message"),
-        ("primary_metric", "metric"),
-        ("mechanism", "mechanism"),
-        ("optional_context", "context"),
+        ("action", "action"),
+        ("bullet_anchor", "anchor"),
+        ("placement_hint", "placement"),
+        ("guardrail", "guardrail"),
     ]:
         text = _normalize_strategy_text(value.get(field))
         if text:
             parts.append(f"{label}: {text}")
 
-    do_not_include = _normalize_strategy_items(value.get("do_not_include"))
-    if do_not_include:
-        parts.append(f"omit: {', '.join(do_not_include[:4])}")
+    merge_with = _normalize_strategy_items(value.get("merge_with"))
+    if merge_with:
+        parts.append(f"merge: {', '.join(merge_with[:4])}")
 
     return " | ".join(parts)
 
@@ -199,7 +199,7 @@ def build_prompt2_strategy_context(
                 role_company,
             ):
                 continue
-            instruction = _normalize_structured_bullet_instruction(entry.get("instruction"))
+            instruction = _normalize_structured_bullet_instruction(entry)
             if instruction:
                 matched_instructions.append(instruction)
         if matched_instructions:

@@ -61,6 +61,52 @@ describe("prompt-loader", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("marks stable resume and story placeholders cacheable for API providers", async () => {
+    getUserAssets.mockResolvedValue({
+      activePromptProfileId: "profile1",
+      prompt1TemplateAsset: null,
+      systemPromptTemplateAsset: null,
+    });
+    getServerPromptDefaults.mockResolvedValue({
+      artifacts: {
+        "profile1.prompt1.template":
+          "Static instructions\n{{CURRENT_RESUME}}\n{{JOB_DESCRIPTION}}\n{{STORYBOARD}}",
+        "prompt1.output_contract": "",
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => createFetchResponse("PACKAGED")),
+    );
+
+    const promptLoader = await import("./prompt-loader.js");
+    const rendered = await promptLoader.renderPrompt1WithMetadata(
+      {
+        currentResume: "MASTER RESUME",
+        jobDescriptionRawText: "JOB DESCRIPTION",
+        storyboard: "STORY BANK",
+      },
+      {},
+    );
+
+    expect(rendered.text).toContain("MASTER RESUME");
+    expect(rendered.text).toContain("JOB DESCRIPTION");
+    expect(rendered.apiPromptBlocks).toEqual([
+      {
+        text: "Static instructions\nMASTER RESUME",
+        cacheable: true,
+      },
+      {
+        text: "JOB DESCRIPTION",
+        cacheable: false,
+      },
+      {
+        text: "STORY BANK",
+        cacheable: true,
+      },
+    ]);
+  });
+
   it("falls back to packaged artifacts when the server cache is missing pieces", async () => {
     getUserAssets.mockResolvedValue({
       activePromptProfileId: "profile1",

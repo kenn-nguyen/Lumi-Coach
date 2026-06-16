@@ -118,6 +118,7 @@ class ResumeModel(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     title_search: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     original_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tailor_job: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -263,6 +264,9 @@ class Database:
             if "title_search" not in columns:
                 connection.execute(text("ALTER TABLE resumes ADD COLUMN title_search TEXT"))
                 logger.info("Added resumes.title_search column")
+            if "tailor_job" not in columns:
+                connection.execute(text("ALTER TABLE resumes ADD COLUMN tailor_job JSONB"))
+                logger.info("Added resumes.tailor_job column")
             connection.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS "
@@ -425,6 +429,7 @@ class Database:
             "template_settings": resume.template_settings,
             "title": decrypt_text(resume.title),
             "original_markdown": decrypt_text(resume.original_markdown),
+            "tailor_job": getattr(resume, "tailor_job", None),
             "created_at": self._to_iso(resume.created_at),
             "updated_at": self._to_iso(resume.updated_at),
         }

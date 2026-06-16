@@ -5,6 +5,60 @@ const DEFAULT_GEMINI_TARGET_URL = "https://gemini.google.com/app";
 
 export const DEFAULT_ACTIVE_LLM_PROFILE_ID = "chatgpt:api";
 
+export const DEFAULT_CHATGPT_API_STAGE_MODELS = {
+  prompt1: {
+    model: "gpt-5.4-mini",
+    reasoning: {
+      effort: "low",
+    },
+  },
+  prompt2: {
+    model: "gpt-5.4",
+    reasoning: {
+      effort: "high",
+    },
+  },
+  prompt3: {
+    model: "gpt-5.4",
+    reasoning: {
+      effort: "low",
+    },
+  },
+};
+
+export const DEFAULT_CLAUDE_API_STAGE_MODELS = {
+  prompt1: {
+    model: "claude-sonnet-4-6",
+  },
+  prompt2: {
+    model: "claude-sonnet-4-6",
+    maxTokens: 18000,
+    thinking: {
+      type: "enabled",
+      budget_tokens: 8192,
+    },
+  },
+  prompt3: {
+    model: "claude-sonnet-4-6",
+  },
+};
+
+export const DEFAULT_DEEPSEEK_API_STAGE_MODELS = {
+  prompt1: {
+    model: "deepseek-v4-pro",
+  },
+  prompt2: {
+    model: "deepseek-v4-pro",
+  },
+  prompt3: {
+    model: "deepseek-v4-pro",
+    thinking: {
+      type: "enabled",
+    },
+    reasoning_effort: "medium",
+  },
+};
+
 const BASE_PROFILE_DEFS = [
   {
     id: "chatgpt:web_automation",
@@ -26,7 +80,11 @@ const BASE_PROFILE_DEFS = [
     mode: "api",
     label: "Claude API",
     apiBaseUrl: "https://api.anthropic.com/v1/messages",
-    model: "claude-sonnet-4-5",
+    model: DEFAULT_CLAUDE_API_STAGE_MODELS.prompt1.model,
+    promptCache: {
+      enabled: true,
+    },
+    stageModels: DEFAULT_CLAUDE_API_STAGE_MODELS,
     apiKey: "",
   },
   {
@@ -35,7 +93,25 @@ const BASE_PROFILE_DEFS = [
     mode: "api",
     label: "ChatGPT API",
     apiBaseUrl: "https://api.openai.com/v1/responses",
-    model: "gpt-5-mini",
+    model: DEFAULT_CHATGPT_API_STAGE_MODELS.prompt1.model,
+    promptCache: {
+      enabled: true,
+    },
+    stageModels: DEFAULT_CHATGPT_API_STAGE_MODELS,
+    apiKey: "",
+  },
+  {
+    id: "deepseek:api",
+    vendor: "deepseek",
+    mode: "api",
+    label: "DeepSeek API",
+    apiBaseUrl: "https://api.deepseek.com/chat/completions",
+    model: DEFAULT_DEEPSEEK_API_STAGE_MODELS.prompt1.model,
+    promptCache: {
+      enabled: true,
+      mode: "automatic-prefix",
+    },
+    stageModels: DEFAULT_DEEPSEEK_API_STAGE_MODELS,
     apiKey: "",
   },
   {
@@ -72,6 +148,54 @@ function toProfileMap(profileList) {
   );
 }
 
+function mergeNestedObject(baseValue, storedValue) {
+  if (!baseValue || typeof baseValue !== "object") {
+    return cloneValue(storedValue);
+  }
+  if (!storedValue || typeof storedValue !== "object") {
+    return cloneValue(baseValue);
+  }
+  const merged = cloneValue(baseValue);
+  for (const [key, value] of Object.entries(storedValue)) {
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      merged[key] &&
+      typeof merged[key] === "object" &&
+      !Array.isArray(merged[key])
+    ) {
+      merged[key] = mergeNestedObject(merged[key], value);
+    } else {
+      merged[key] = cloneValue(value);
+    }
+  }
+  return merged;
+}
+
+function mergeProfile(baseProfile, storedProfile) {
+  if (!storedProfile || typeof storedProfile !== "object") {
+    return cloneValue(baseProfile);
+  }
+  const merged = {
+    ...baseProfile,
+    ...cloneValue(storedProfile),
+  };
+  if (baseProfile.stageModels || storedProfile.stageModels) {
+    merged.stageModels = mergeNestedObject(
+      baseProfile.stageModels ?? {},
+      storedProfile.stageModels ?? {},
+    );
+  }
+  if (baseProfile.promptCache || storedProfile.promptCache) {
+    merged.promptCache = mergeNestedObject(
+      baseProfile.promptCache ?? {},
+      storedProfile.promptCache ?? {},
+    );
+  }
+  return withoutProviderPatchKey(merged);
+}
+
 export function getDefaultLlmSettings() {
   return {
     activeProfileId: DEFAULT_ACTIVE_LLM_PROFILE_ID,
@@ -93,13 +217,7 @@ export function mergeLlmSettings(storedSettings, legacyChatGptTargetUrl = "") {
         : {};
     for (const [profileId, baseProfile] of Object.entries(defaults.profiles)) {
       const storedProfile = storedProfiles[profileId];
-      merged.profiles[profileId] =
-        storedProfile && typeof storedProfile === "object"
-          ? withoutProviderPatchKey({
-              ...baseProfile,
-              ...cloneValue(storedProfile),
-            })
-          : cloneValue(baseProfile);
+      merged.profiles[profileId] = mergeProfile(baseProfile, storedProfile);
     }
 
     if (
@@ -136,6 +254,38 @@ export function listLlmProfiles(settings) {
 export function getActiveLlmProfile(settings) {
   const resolved = mergeLlmSettings(settings);
   return resolved.profiles[resolved.activeProfileId];
+}
+
+export function resolveLlmStageSettings(profile, promptStage = "") {
+  const normalizedStage =
+    typeof promptStage === "string" ? promptStage.trim() : "";
+  const stageModels =
+    profile?.stageModels && typeof profile.stageModels === "object"
+      ? profile.stageModels
+      : {};
+  const stageSettings =
+    normalizedStage && stageModels[normalizedStage]
+      ? stageModels[normalizedStage]
+      : null;
+  const merged = {
+    ...(profile && typeof profile === "object" ? cloneValue(profile) : {}),
+    ...(stageSettings && typeof stageSettings === "object"
+      ? cloneValue(stageSettings)
+      : {}),
+  };
+  if (
+    stageSettings?.reasoning &&
+    typeof stageSettings.reasoning === "object"
+  ) {
+    merged.reasoning = cloneValue(stageSettings.reasoning);
+  }
+  if (stageSettings?.thinking && typeof stageSettings.thinking === "object") {
+    merged.thinking = cloneValue(stageSettings.thinking);
+  }
+  if (normalizedStage) {
+    merged.promptStage = normalizedStage;
+  }
+  return withoutProviderPatchKey(merged);
 }
 
 export function updateLlmSettings(

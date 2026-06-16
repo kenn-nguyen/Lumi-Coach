@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { getDefaultLlmSettings } from "../profiles.js";
 import { runChatGptApiPrompt } from "./chatgpt-api.js";
 
 describe("runChatGptApiPrompt", () => {
@@ -36,5 +37,43 @@ describe("runChatGptApiPrompt", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, options] = fetchMock.mock.calls[0];
     expect(options.headers.authorization).toBeUndefined();
+  });
+
+  it("uses prompt-stage model and reasoning settings in the Responses API body", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        output_text: '{"ok":true}',
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const profile = {
+      ...getDefaultLlmSettings().profiles["chatgpt:api"],
+      apiKey: "sk-test",
+    };
+
+    const result = await runChatGptApiPrompt('Return {"ok":true}', {
+      profile,
+      promptLabel: "Prompt 2",
+      promptStage: "prompt2",
+      systemPrompt: "System guardrails",
+    });
+
+    expect(result.status).toBe("success");
+    const [, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(body.model).toBe("gpt-5.4");
+    expect(body.instructions).toContain("System guardrails");
+    expect(body.instructions).toContain("JSON");
+    expect(body.reasoning).toEqual({
+      effort: "high",
+    });
+    expect(body.input).toBe('Return {"ok":true}');
+    expect(body.text).toEqual({
+      format: {
+        type: "json_object",
+      },
+    });
   });
 });

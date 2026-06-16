@@ -6,6 +6,20 @@ import {
   getUserAssets,
 } from "./storage.js";
 
+// ---------------------------------------------------------------------------
+// Website session cache
+// The session status rarely changes between requests — caching it for 45 s
+// prevents a live fetch on every tab switch / SPA navigation.
+// Call clearWebsiteSessionCache() on sign-out or account change to force the
+// next call to hit the network.
+// ---------------------------------------------------------------------------
+let _websiteSessionCache = { value: null, fetchedAt: 0 };
+const WEBSITE_SESSION_CACHE_TTL_MS = 45_000;
+
+export function clearWebsiteSessionCache() {
+  _websiteSessionCache = { value: null, fetchedAt: 0 };
+}
+
 function normalizeOrigin(value, fallback) {
   const normalized = (value || fallback).trim().replace(/\/+$/, "");
   return normalized || fallback;
@@ -40,7 +54,20 @@ function isAbortError(error) {
   return /abort|canceled/i.test(message);
 }
 
-export async function verifyWebsiteSession() {
+export async function verifyWebsiteSession({ forceRefresh = false } = {}) {
+  // Return cached result if it's still fresh and a refresh isn't forced.
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    _websiteSessionCache.value !== null &&
+    now - _websiteSessionCache.fetchedAt < WEBSITE_SESSION_CACHE_TTL_MS
+  ) {
+    logInfo("ExtensionAuth", "Returning cached website session.", {
+      ageMs: now - _websiteSessionCache.fetchedAt,
+    });
+    return _websiteSessionCache.value;
+  }
+
   const { appOrigin } = await getRuntimeEndpoints();
   const endpoint = `${appOrigin}/api/auth/session-status`;
   logInfo("ExtensionAuth", "Checking website session status.", { endpoint });
@@ -67,9 +94,9 @@ export async function verifyWebsiteSession() {
     logWarn("ExtensionAuth", "Website session is not authenticated.", {
       endpoint,
     });
-    return {
-      authenticated: false,
-    };
+    const unauthResult = { authenticated: false };
+    _websiteSessionCache = { value: unauthResult, fetchedAt: Date.now() };
+    return unauthResult;
   }
 
   if (!response.ok) {
@@ -89,10 +116,12 @@ export async function verifyWebsiteSession() {
   }
 
   const payload = await response.json().catch(() => ({ authenticated: true }));
-  return {
+  const result = {
     authenticated: payload?.authenticated !== false,
     user: payload?.user ?? null,
   };
+  _websiteSessionCache = { value: result, fetchedAt: Date.now() };
+  return result;
 }
 
 export async function fetchExtensionAccessToken() {

@@ -1,5 +1,11 @@
 import { logError, logInfo } from '../../log.js';
 import {
+  decorateSystemPromptForJsonOutput,
+  getClaudeJsonModeConfig,
+  shouldUseJsonOutput,
+} from '../json-output.js';
+import { resolveLlmStageSettings } from '../profiles.js';
+import {
   buildApiHttpError,
   buildApiNetworkError,
   buildApiResponseError,
@@ -7,6 +13,7 @@ import {
 
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
 const PROVIDER_LABEL = 'Claude';
+const MAX_CACHE_BREAKPOINTS = 4;
 
 function isAbortError(error) {
   if (!error) return false;
@@ -29,12 +36,74 @@ function extractClaudeText(payload) {
   return textBlocks.join('\n\n');
 }
 
-async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt = '', signal }) {
+function isPromptCacheEnabled(profile) {
+  return profile?.promptCache?.enabled !== false;
+}
+
+function buildClaudeTextBlock(text, cacheable = false, cacheState) {
+  const block = {
+    type: 'text',
+    text,
+  };
+  if (cacheable && cacheState.count < MAX_CACHE_BREAKPOINTS) {
+    block.cache_control = { type: 'ephemeral' };
+    cacheState.count += 1;
+  }
+  return block;
+}
+
+function buildClaudeSystem(systemPrompt, cacheEnabled, cacheState) {
+  if (!systemPrompt) return null;
+  if (!cacheEnabled) return systemPrompt;
+  return [buildClaudeTextBlock(systemPrompt, true, cacheState)];
+}
+
+function buildClaudeUserContent(prompt, apiPromptBlocks, cacheEnabled, cacheState) {
+  if (!cacheEnabled || !Array.isArray(apiPromptBlocks) || !apiPromptBlocks.length) {
+    return prompt;
+  }
+  return apiPromptBlocks
+    .filter((block) => typeof block?.text === 'string' && block.text.trim())
+    .map((block) =>
+      buildClaudeTextBlock(block.text.trim(), block.cacheable === true, cacheState),
+    );
+}
+
+function normalizeThinkingPayload(thinking) {
+  if (!thinking || typeof thinking !== 'object') return null;
+  const type = typeof thinking.type === 'string' ? thinking.type.trim() : '';
+  if (type !== 'enabled') return null;
+  const budgetTokens = Number.isFinite(Number(thinking.budget_tokens))
+    ? Math.max(1024, Math.floor(Number(thinking.budget_tokens)))
+    : 8192;
+  return {
+    type: 'enabled',
+    budget_tokens: budgetTokens,
+  };
+}
+
+async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt = '', apiPromptBlocks = null, promptCacheEnabled = true, maxTokens = 4096, thinking = null, useJsonOutput = false, signal }) {
+  const cacheState = { count: 0 };
+  const cacheEnabled = promptCacheEnabled === true;
+  const systemPromptText = useJsonOutput
+    ? decorateSystemPromptForJsonOutput(systemPrompt)
+    : systemPrompt;
+  const system = buildClaudeSystem(systemPromptText, cacheEnabled, cacheState);
+  const userContent = buildClaudeUserContent(prompt, apiPromptBlocks, cacheEnabled, cacheState);
+  const thinkingPayload = normalizeThinkingPayload(thinking);
+  const resolvedMaxTokens = Math.max(
+    Number.isFinite(Number(maxTokens)) ? Math.floor(Number(maxTokens)) : 4096,
+    thinkingPayload ? thinkingPayload.budget_tokens + 1024 : 4096,
+  );
   logInfo('ClaudeApi', 'Sending prompt to Claude API.', {
     promptLabel,
     model,
     apiBaseUrl,
     promptLength: prompt.length,
+    promptCacheEnabled: cacheEnabled,
+    cacheBreakpoints: cacheState.count,
+    thinkingBudgetTokens: thinkingPayload?.budget_tokens ?? null,
+    jsonOutput: useJsonOutput,
   });
 
   let response;
@@ -50,12 +119,14 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
-        ...(systemPrompt ? { system: systemPrompt } : {}),
+        max_tokens: resolvedMaxTokens,
+        ...(useJsonOutput ? { output_config: getClaudeJsonModeConfig() } : {}),
+        ...(thinkingPayload ? { thinking: thinkingPayload } : {}),
+        ...(system ? { system } : {}),
         messages: [
           {
             role: 'user',
-            content: prompt,
+            content: userContent,
           },
         ],
       }),
@@ -142,14 +213,22 @@ async function callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, s
 
 export async function runClaudeApiPrompt(prompt, options = {}) {
   const profile = options.profile ?? {};
+  const stageSettings = resolveLlmStageSettings(profile, options.promptStage);
   const promptLabel = options.promptLabel ?? 'Prompt';
-  const apiKey = typeof profile.apiKey === 'string' ? profile.apiKey.trim() : '';
-  const model = typeof profile.model === 'string' && profile.model.trim()
-    ? profile.model.trim()
+  const apiKey = typeof stageSettings.apiKey === 'string' ? stageSettings.apiKey.trim() : '';
+  const model = typeof stageSettings.model === 'string' && stageSettings.model.trim()
+    ? stageSettings.model.trim()
     : 'claude-sonnet-4-5';
-  const apiBaseUrl = typeof profile.apiBaseUrl === 'string' && profile.apiBaseUrl.trim()
-    ? profile.apiBaseUrl.trim()
+  const apiBaseUrl = typeof stageSettings.apiBaseUrl === 'string' && stageSettings.apiBaseUrl.trim()
+    ? stageSettings.apiBaseUrl.trim()
     : 'https://api.anthropic.com/v1/messages';
+  const maxTokens = stageSettings.maxTokens ?? 4096;
+  const thinking = stageSettings.thinking ?? null;
+  const promptCacheEnabled = isPromptCacheEnabled(stageSettings);
+  const useJsonOutput = shouldUseJsonOutput(options.promptStage);
+  const apiPromptBlocks = Array.isArray(options.apiPromptBlocks)
+    ? options.apiPromptBlocks
+    : null;
   const systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
   const signal = options.signal;
 
@@ -159,7 +238,7 @@ export async function runClaudeApiPrompt(prompt, options = {}) {
       message: 'Claude API key is required for the active runner.',
     };
   }
-  let result = await callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt, signal });
+  let result = await callClaudeApi(prompt, { apiKey, model, apiBaseUrl, promptLabel, systemPrompt, apiPromptBlocks, promptCacheEnabled, maxTokens, thinking, useJsonOutput, signal });
   const validateResponse = typeof options.validateResponse === 'function' ? options.validateResponse : null;
   const buildRepairPrompt = typeof options.buildRepairPrompt === 'function' ? options.buildRepairPrompt : null;
   const maxRepairAttempts = Number.isInteger(options.maxRepairAttempts)
@@ -199,6 +278,10 @@ export async function runClaudeApiPrompt(prompt, options = {}) {
         apiBaseUrl,
         promptLabel: `${promptLabel} Repair`,
         systemPrompt,
+        promptCacheEnabled,
+        maxTokens,
+        thinking,
+        useJsonOutput,
         signal,
       });
       if (result.status !== 'success') {

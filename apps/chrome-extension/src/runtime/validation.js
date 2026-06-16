@@ -115,26 +115,9 @@ function normalizeExperienceEmphasis(value) {
     }));
 }
 
-function normalizeCompanyContextGuidance(value) {
-  const validActions = new Set(["preserve", "add", "revise", "omit"]);
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
-    .map((item) => ({
-      role: normalizeString(item.role),
-      company: normalizeString(item.company),
-      recommended_context: normalizeString(item.recommended_context),
-      action: validActions.has(item.action) ? item.action : "preserve",
-      evidence: normalizeString(item.evidence),
-      guardrail: normalizeString(item.guardrail),
-    }));
-}
-
 function normalizeBulletRewriteInstructions(value) {
-  const validActions = new Set(["rewrite", "add"]);
+  const validActions = new Set(["rewrite", "merge"]);
+  const validPlacementHints = new Set(["lead", "top2", "normal"]);
   if (!Array.isArray(value)) {
     return [];
   }
@@ -145,26 +128,11 @@ function normalizeBulletRewriteInstructions(value) {
       role: normalizeString(item.role),
       action: validActions.has(item.action) ? item.action : "rewrite",
       bullet_anchor: normalizeString(item.bullet_anchor),
-      instruction: {
-        primary_message: normalizeString(item.instruction?.primary_message),
-        primary_metric: normalizeString(item.instruction?.primary_metric),
-        mechanism: normalizeString(item.instruction?.mechanism),
-        optional_context: normalizeString(item.instruction?.optional_context),
-        do_not_include: normalizeStringArray(item.instruction?.do_not_include),
-      },
-    }));
-}
-
-function normalizeEducationNotes(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
-    .map((item) => ({
-      institution: normalizeString(item.institution),
-      instruction: normalizeString(item.instruction),
+      merge_with: normalizeStringArray(item.merge_with),
+      placement_hint: validPlacementHints.has(item.placement_hint)
+        ? item.placement_hint
+        : "normal",
+      guardrail: normalizeString(item.guardrail),
     }));
 }
 
@@ -399,51 +367,9 @@ function validateExperienceEmphasis(items, label, errors) {
   });
 }
 
-function validateCompanyContextGuidance(items, label, errors) {
-  const validActions = new Set(["preserve", "add", "revise", "omit"]);
-
-  if (!Array.isArray(items)) {
-    errors.push(`${label} must be an array.`);
-    return;
-  }
-
-  items.forEach((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      errors.push(`${label}[${index}] must be an object.`);
-      return;
-    }
-
-    validateExactKeys(
-      item,
-      `${label}[${index}]`,
-      [
-        "role",
-        "company",
-        "recommended_context",
-        "action",
-        "evidence",
-        "guardrail",
-      ],
-      errors,
-    );
-
-    ["role", "company", "recommended_context", "evidence", "guardrail"].forEach(
-      (field) => {
-        if (!isString(item[field])) {
-          errors.push(`${label}[${index}].${field} must be a string.`);
-        }
-      },
-    );
-    if (!validActions.has(item.action)) {
-      errors.push(
-        `${label}[${index}].action must be exactly one of preserve, add, revise, omit.`,
-      );
-    }
-  });
-}
-
 function validateBulletRewriteInstructions(items, label, errors) {
-  const validActions = new Set(["rewrite", "add"]);
+  const validActions = new Set(["rewrite", "merge"]);
+  const validPlacementHints = new Set(["lead", "top2", "normal"]);
 
   if (!Array.isArray(items)) {
     errors.push(`${label} must be an array.`);
@@ -459,7 +385,7 @@ function validateBulletRewriteInstructions(items, label, errors) {
     validateExactKeys(
       item,
       `${label}[${index}]`,
-      ["role", "action", "bullet_anchor", "instruction"],
+      ["role", "action", "bullet_anchor", "merge_with", "placement_hint", "guardrail"],
       errors,
     );
 
@@ -467,48 +393,24 @@ function validateBulletRewriteInstructions(items, label, errors) {
       errors.push(`${label}[${index}].role must be a string.`);
     if (!validActions.has(item.action)) {
       errors.push(
-        `${label}[${index}].action must be exactly "rewrite" or "add".`,
+        `${label}[${index}].action must be exactly "rewrite" or "merge".`,
       );
     }
     if (!isString(item.bullet_anchor)) {
       errors.push(`${label}[${index}].bullet_anchor must be a string.`);
     }
-    if (
-      !item.instruction ||
-      typeof item.instruction !== "object" ||
-      Array.isArray(item.instruction)
-    ) {
-      errors.push(`${label}[${index}].instruction must be an object.`);
-    } else {
-      validateExactKeys(
-        item.instruction,
-        `${label}[${index}].instruction`,
-        [
-          "primary_message",
-          "primary_metric",
-          "mechanism",
-          "optional_context",
-          "do_not_include",
-        ],
-        errors,
+    validateStringArrayField(
+      item.merge_with,
+      `${label}[${index}].merge_with`,
+      errors,
+    );
+    if (!validPlacementHints.has(item.placement_hint)) {
+      errors.push(
+        `${label}[${index}].placement_hint must be exactly "lead", "top2", or "normal".`,
       );
-      [
-        "primary_message",
-        "primary_metric",
-        "mechanism",
-        "optional_context",
-      ].forEach((field) => {
-        if (!isString(item.instruction[field])) {
-          errors.push(
-            `${label}[${index}].instruction.${field} must be a string.`,
-          );
-        }
-      });
-      validateStringArrayField(
-        item.instruction.do_not_include,
-        `${label}[${index}].instruction.do_not_include`,
-        errors,
-      );
+    }
+    if (!isString(item.guardrail)) {
+      errors.push(`${label}[${index}].guardrail must be a string.`);
     }
   });
 }
@@ -543,34 +445,6 @@ function validateExcitementAnchor(value, label, errors) {
       `${label}.placement must be exactly one of summary, first_bullet_of_recent_role, both.`,
     );
   }
-}
-
-function validateEducationNotes(items, label, errors) {
-  if (!Array.isArray(items)) {
-    errors.push(`${label} must be an array.`);
-    return;
-  }
-
-  items.forEach((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      errors.push(`${label}[${index}] must be an object.`);
-      return;
-    }
-
-    validateExactKeys(
-      item,
-      `${label}[${index}]`,
-      ["institution", "instruction"],
-      errors,
-    );
-
-    if (!isString(item.institution)) {
-      errors.push(`${label}[${index}].institution must be a string.`);
-    }
-    if (!isString(item.instruction)) {
-      errors.push(`${label}[${index}].instruction must be a string.`);
-    }
-  });
 }
 
 function arrayHasMeaningfulText(value) {
@@ -1099,15 +973,10 @@ export function validatePrompt2Data(data) {
     "recommended_title",
     "summary_lead",
     "summary_focus",
-    "summary_sentences",
-    "voice",
-    "adjacent_framing",
     "signal_map",
     "selected_storylines",
     "experience_emphasis",
-    "company_context_guidance",
     "bullet_rewrite_instructions",
-    "education_notes",
     "final_skills_list",
     "phrases_to_mirror",
     "cannot_claim",
@@ -1130,8 +999,6 @@ export function validatePrompt2Data(data) {
     "positioning_thesis",
     "recommended_title",
     "summary_lead",
-    "voice",
-    "adjacent_framing",
   ].forEach((field) => {
     if (!isString(data[field])) {
       errors.push(`prompt2.${field} must be a string.`);
@@ -1150,12 +1017,6 @@ export function validatePrompt2Data(data) {
     errors.push("prompt2.top_resume_goals must contain exactly 3 items.");
   }
   validateStringArrayField(data.summary_focus, "prompt2.summary_focus", errors);
-  if (
-    !isInteger(data.summary_sentences) ||
-    ![1, 2].includes(data.summary_sentences)
-  ) {
-    errors.push("prompt2.summary_sentences must be 1 or 2.");
-  }
 
   validateSignalMap(data.signal_map, "prompt2.signal_map", errors);
   validateSelectedStorylines(
@@ -1168,19 +1029,9 @@ export function validatePrompt2Data(data) {
     "prompt2.experience_emphasis",
     errors,
   );
-  validateCompanyContextGuidance(
-    data.company_context_guidance,
-    "prompt2.company_context_guidance",
-    errors,
-  );
   validateBulletRewriteInstructions(
     data.bullet_rewrite_instructions,
     "prompt2.bullet_rewrite_instructions",
-    errors,
-  );
-  validateEducationNotes(
-    data.education_notes,
-    "prompt2.education_notes",
     errors,
   );
   validateExcitementAnchor(
@@ -1230,15 +1081,6 @@ export function validatePrompt2MinimalData(data) {
     validateStringArrayField(data[field], `prompt2.${field}`, errors);
   });
 
-  if (
-    "summary_sentences" in data &&
-    data.summary_sentences != null &&
-    (!isInteger(data.summary_sentences) ||
-      ![1, 2].includes(data.summary_sentences))
-  ) {
-    errors.push("prompt2.summary_sentences must be 1 or 2.");
-  }
-
   if ("flex_notes" in data && !isNullableString(data.flex_notes)) {
     errors.push("prompt2.flex_notes must be a string or null.");
   }
@@ -1255,22 +1097,15 @@ export function normalizePrompt2Data(data) {
     recommended_title: normalizeString(data?.recommended_title),
     summary_lead: normalizeString(data?.summary_lead),
     summary_focus: normalizeStringArray(data?.summary_focus),
-    summary_sentences: data?.summary_sentences === 1 ? 1 : 2,
-    voice: normalizeString(data?.voice),
-    adjacent_framing: normalizeString(data?.adjacent_framing),
     excitement_anchor: normalizeExcitementAnchor(data?.excitement_anchor),
     signal_map: normalizeSignalMap(data?.signal_map),
     selected_storylines: normalizeSelectedStorylines(data?.selected_storylines),
     experience_emphasis: normalizeExperienceEmphasis(
       data?.experience_emphasis,
     ),
-    company_context_guidance: normalizeCompanyContextGuidance(
-      data?.company_context_guidance,
-    ),
     bullet_rewrite_instructions: normalizeBulletRewriteInstructions(
       data?.bullet_rewrite_instructions,
     ),
-    education_notes: normalizeEducationNotes(data?.education_notes),
     final_skills_list: normalizeStringArray(data?.final_skills_list),
     phrases_to_mirror: normalizeStringArray(data?.phrases_to_mirror),
     cannot_claim: normalizeStringArray(data?.cannot_claim),

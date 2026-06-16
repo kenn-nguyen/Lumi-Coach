@@ -6676,7 +6676,7 @@ function renderOnboardingStep() {
           <div id="resume-matcher-onboarding-provider-api-row" class="resume-matcher-field" data-invalid="${missingFields.has("apiBaseUrl") ? "true" : "false"}" data-required-empty="${!missingFields.has("apiBaseUrl") && requiredEmptyFields.has("apiBaseUrl") ? "true" : "false"}"${isApi ? "" : " hidden"}>
             <input id="resume-matcher-onboarding-provider-api-base-input" type="url" placeholder="API endpoint" value="${escapeHtml(isApi ? providerDraft.apiBaseUrl || "" : "")}" />
           </div>
-          <div id="resume-matcher-onboarding-provider-model-row" class="resume-matcher-field" data-invalid="${missingFields.has("model") ? "true" : "false"}" data-required-empty="${!missingFields.has("model") && requiredEmptyFields.has("model") ? "true" : "false"}"${isApi ? "" : " hidden"}>
+          <div id="resume-matcher-onboarding-provider-model-row" class="resume-matcher-field" data-invalid="${missingFields.has("model") ? "true" : "false"}" data-required-empty="${!missingFields.has("model") && requiredEmptyFields.has("model") ? "true" : "false"}" hidden>
             <input id="resume-matcher-onboarding-provider-model-input" type="text" placeholder="Model" value="${escapeHtml(isApi ? providerDraft.model || "" : "")}" />
           </div>
           <div id="resume-matcher-onboarding-provider-key-row" class="resume-matcher-field" data-invalid="${missingFields.has("apiKey") ? "true" : "false"}" data-required-empty="${!missingFields.has("apiKey") && requiredEmptyFields.has("apiKey") ? "true" : "false"}"${isApi ? "" : " hidden"}>
@@ -7415,7 +7415,7 @@ function renderProviderFields() {
   toggleRow(PROVIDER_WEB_ROW_ID, isWeb);
   toggleRow(PROVIDER_API_BASE_ROW_ID, isApi);
   toggleRow(PROVIDER_API_GRID_ID, isApi);
-  toggleRow(PROVIDER_MODEL_ROW_ID, isApi);
+  toggleRow(PROVIDER_MODEL_ROW_ID, false);
   toggleRow(PROVIDER_API_KEY_ROW_ID, isApi);
   select.dataset.invalid = missingFields.has("provider") ? "true" : "false";
   select.dataset.requiredEmpty =

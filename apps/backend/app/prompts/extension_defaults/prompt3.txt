@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt3.template
-prompt_version: v2.1.3
-prompt_label: tailored-resume-writer-company-context-summary-brevity-flex-notes
-prompt_notes: Adds explicit workExperience.context handling, enforces concise one-column summary writing, expands bullet targets to 25-40 words, and reserves flex_notes while preserving story-bank firewall rules.
+prompt_version: v4.0.6
+prompt_label: tailored-resume-writer-source-bullet-rewrite
+prompt_notes: Aligns Prompt 3 with the source-bullet-selection contract, keeps workExperience.context locked to source, rewrites selected CURRENT_RESUME bullets around the reader's proof model, and better preserves diagnosis-led PM judgment when it is the real senior proof.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 1. ROLE AND OBJECTIVES
@@ -126,7 +126,6 @@ Extract and follow:
 - phrases_to_mirror
 - validated_domain
 - validated_role
-- voice
 - role guardrails
 - storyline guardrails
 
@@ -159,7 +158,7 @@ Step D - Rewrite allowed zones
 Rewrite only:
 - summary
 - personalInfo.title if safe
-- workExperience.description bullets that Prompt 2 asks to rewrite, add, keep, or reorder
+- workExperience.description bullets that Prompt 2 asks to rewrite, merge, keep, or reorder
 - skills using Prompt 2 final_skills_list after filtering unsupported or forbidden skills
 - project descriptions only if Prompt 2 says the project strengthens fit
 
@@ -202,7 +201,7 @@ Good bullet examples:
 
 Metric notation rule: for approximate quantities, use compact "~" notation instead of the word "about" when natural and supported. Prefer "~500K", "~2M", "~10M MAU", and "~30%" over "about 500K", "about 2M", "about 10M monthly active users", and "about 30%". Preserve the original meaning and do not convert exact metrics into approximate metrics.
 
-Start bullets with strong verbs when natural:
+Start bullets with strong verbs when natural, and prefer change/result verbs when they are truthful and specific:
 Led, Scaled, Delivered, Drove, Reduced, Cut, Increased, Developed, Founded, Launched, Repositioned, Improved, Built, Expanded, Produced.
 
 Use senior product-manager action verbs that signal ownership, judgment, and measurable impact. Avoid weak helper verbs in resume bullets, including "helped", "supported", "assisted", "contributed to", "worked on", and "was responsible for", unless the weaker verb is required to preserve truthful scope.
@@ -238,11 +237,13 @@ Avoid:
 - Target 35-45 words, with a hard maximum of 50 words.
 - Surface only the strongest 2-3 supported fit signals.
 - Do not stack proof lists; move extra proof into role bullets.
-- Anchor on role identity, domain, scale, and strongest proof.
+- Read like a buyer-facing positioning pitch, not a neutral professional overview.
+- Lead with the strongest hiring wedge, then support it with the smallest believable proof cluster.
 - Use portable, high-signal wording.
 - Do not front-load unsupported jargon.
 - Do not include weak claims just because the JD values them.
 - Do not make the candidate sound like a target-domain insider unless the evidence supports it.
+- If proof spans multiple roles or time periods, make the boundary explicit rather than implying one continuous operating history.
 
 12. EXPERIENCE RULES
 
@@ -250,26 +251,62 @@ Avoid:
 - Prioritize the most relevant recent roles.
 - Keep only bullets that materially improve fit.
 - Use selected_storylines, experience_emphasis, and bullet_rewrite_instructions from Prompt 2.
+- Use `bullet_rewrite_instructions` as source-bullet selection metadata, not as bullet prose.
 - Honor all role and storyline guardrails.
 - When a role has default_action = keep, preserve its bullets unless Prompt 2 explicitly tells you to rewrite one.
-- When a role has default_action = rewrite_all, rewrite for clarity, hierarchy, and fit while staying within Prompt 2 guardrails.
+- When a role has default_action = rewrite_all, rewrite CURRENT_RESUME bullets for clarity, hierarchy, and fit while staying within Prompt 2 guardrails.
 - Only rewrite bullets named in bullet_rewrite_instructions or roles marked rewrite_all.
+- For `action = rewrite`, rewrite only the anchored source bullet from CURRENT_RESUME.
+- For `action = merge`, merge the anchored source bullet with only the listed `merge_with` bullets from the same role, then rewrite the combined result as one bullet.
+- Use `placement_hint` to influence whether the selected bullet should lead, sit in the top 2, or stay in normal order.
+- Rewrite each bullet for the reader's proof model, not just the role label.
+- Use the target role type to choose which proof matters most, and use hiring-manager-native language to choose the right level of technical depth.
+- Preserve source truth and ownership; only change framing, proof order, and density.
+- Do not force implementation-heavy wording when product or workflow ownership is the main trust signal.
+- Do not strip concrete technical detail when that detail is what makes the claim believable.
 - Reorder bullets within a role when needed so the strongest screening proof appears first.
 - Preserve original bullet order unless reordering materially improves recruiter skim or hiring manager proof.
 - For older or less relevant roles, keep concise.
 - Do not force the same signal into every section.
-- Start bullets with the strongest measurable result when supported.
-- Move quantified results toward the front of the bullet. Prefer "Reduced X 30% by..." or "Scaled Y ~4x by..." over burying the metric after long context.
-- Make the mechanism concrete: what changed, what was led, what decision was made, what system or workflow was shaped.
+- Rewrite each bullet around its primary proof goal: launch, scale, quality/performance, productization, customer deployment, technical fluency, operating leverage, business impact, problem diagnosis, unmet-need discovery, decision judgment, or workflow reframing.
+- Some bullets prove seniority through diagnosis, unmet-need discovery, problem reframing, or decision judgment rather than through implementation detail alone.
+- Start with the strongest truthful change, outcome, role-owned action, or diagnosis for that proof goal.
+- If the source bullet's most senior signal is the diagnosis or problem insight, put that diagnosis in the opening clause or first half of the bullet.
+- Move quantified results toward the front when they are the clearest hiring hook, but do not force every bullet to open with a number.
+- Prefer change/result verbs when truthful, especially openers like `Reduced`, `Raised`, `Scaled`, `Expanded`, `Launched`, or `Improved`.
+- When two adjacent bullets in the same role would naturally open with the same verb, vary the opener if a similarly strong truthful alternative exists.
+- Do not force weak synonym swaps purely for variety.
+- Each bullet should preserve:
+  - one primary outcome or decision thesis,
+  - one proof metric cluster,
+  - one concrete ownership anchor.
+- For PM, Senior PM, Technical PM, or forward-deployed product roles, a diagnosis or decision thesis may be the most important ownership proof.
+- The ownership anchor should explain why the candidate credibly owns the result: what they defined, launched, redesigned, productized, prioritized, or turned into a reusable workflow/capability.
+- Preserve the sharpest concrete source proof when it still fits naturally.
+- Do not replace a specific deploy, scale, quality, customer, workflow, or adoption detail with a broader wrapper phrase if the specific detail is more memorable and still readable.
+- Strong bullets usually keep both:
+  - one impressiveness anchor that makes the reader pause; and
+  - one credibility anchor that makes the reader believe the ownership.
+- If space is tight, keep one of each before keeping a second metric or second support detail.
 - One scope-setting bullet is acceptable when it establishes role scale, team scope, product scope, and user/usage scale for the role. Do not repeat the same scope across later bullets.
-- Each bullet must have one primary message and at most one primary result metric.
+- Each bullet must have one primary message and one primary metric cluster.
+- One secondary credibility, adoption, or deployment detail is allowed when it sharpens the same achievement rather than introducing a second one.
 - A second scope detail is allowed only when it clarifies credibility without creating a second achievement.
 - Do not combine team scope, product scope, architecture, revenue, and scale in the same bullet.
 - Avoid "while" clauses that introduce a second major achievement.
-- If Prompt 2 gives an overloaded bullet instruction, simplify it into the strongest single resume bullet rather than preserving every detail.
-- Target 25-40 words per bullet.
-- You may add a new bullet only when CURRENT_RESUME lacks an important supported proof point and Prompt 2 clearly supports it.
-- Add bullets sparingly: only when they materially improve fit and remain truthful.
+- If several source bullets overlap heavily, consolidate them into the strongest single resume bullet rather than preserving every sentence variant.
+- If a bullet becomes crowded, cut in this order:
+  1. umbrella nouns or wrapper phrasing;
+  2. secondary artifact names or packaging detail;
+  3. extra explanatory clauses;
+  4. second support cluster;
+  5. secondary metrics;
+  6. background context.
+- Preserve the main outcome or decision thesis, main metric cluster, strongest ownership anchor, and strongest signature detail before cutting those.
+- Keep bullets concise, usually around 30-50 words.
+- Prefer a clean bullet with stronger proof over a shorter bullet that feels abstract.
+- If a distinct credibility or signature detail still fits cleanly, keep it rather than cutting to the low end of the range.
+- Do not create new bullet substance that is not already present in CURRENT_RESUME.
 - For the most relevant recent roles, 4-6 bullets are allowed if each bullet adds distinct screening value.
 - Do not add duplicate bullets that restate the same signal with different wording.
 - Preserve bullets that are already strong unless Prompt 2 gives a clear reason to improve them.
@@ -292,9 +329,8 @@ Company context handling:
 - Do not put achievements, responsibilities, metrics, or claims of candidate impact in `context`.
 - Do not duplicate the company name.
 - Do not use `context` as a bullet.
-- If Prompt 2 provides `company_context_guidance`, apply supported `preserve`, `add`, `revise`, or `omit` actions.
-- Preserve existing `workExperience[].context` from CURRENT_RESUME unless Prompt 2 gives supported guidance to revise or omit it.
-- If context is unsupported or redundant, use `null` or omit it.
+- Preserve existing `workExperience[].context` from CURRENT_RESUME unless the user explicitly asks to edit company descriptions.
+- If CURRENT_RESUME context is absent, keep it absent.
 
 Experience website handling:
 - Preserve existing `workExperience[].website` from CURRENT_RESUME when present.

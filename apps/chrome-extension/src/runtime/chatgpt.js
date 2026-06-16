@@ -5,6 +5,57 @@ import { registerRunCleanup } from './run-control.js';
 
 const chatGptRunSessions = new Map();
 
+// ---------------------------------------------------------------------------
+// Orphaned-window recovery helpers
+// When the MV3 service worker is killed mid-run the chatGptRunSessions Map is
+// wiped, but any open popup window survives.  We persist window IDs to
+// storage so the next worker startup can close any leftover windows.
+// ---------------------------------------------------------------------------
+const ORPHAN_WINDOW_STORAGE_KEY = 'chatgpt_popup_window_ids';
+
+async function persistPopupWindowId(windowId) {
+  try {
+    const stored = await chrome.storage.local.get(ORPHAN_WINDOW_STORAGE_KEY);
+    const ids = new Set(stored[ORPHAN_WINDOW_STORAGE_KEY] ?? []);
+    ids.add(windowId);
+    await chrome.storage.local.set({ [ORPHAN_WINDOW_STORAGE_KEY]: [...ids] });
+  } catch {
+    // Non-critical — best effort
+  }
+}
+
+async function removePersistedPopupWindowId(windowId) {
+  try {
+    const stored = await chrome.storage.local.get(ORPHAN_WINDOW_STORAGE_KEY);
+    const ids = new Set(stored[ORPHAN_WINDOW_STORAGE_KEY] ?? []);
+    ids.delete(windowId);
+    if (ids.size > 0) {
+      await chrome.storage.local.set({ [ORPHAN_WINDOW_STORAGE_KEY]: [...ids] });
+    } else {
+      await chrome.storage.local.remove(ORPHAN_WINDOW_STORAGE_KEY);
+    }
+  } catch {
+    // Non-critical — best effort
+  }
+}
+
+/**
+ * Close any ChatGPT popup windows left open by a previous service-worker
+ * incarnation.  Call once during service-worker startup.
+ */
+export async function closeOrphanedChatGptWindows() {
+  try {
+    const stored = await chrome.storage.local.get(ORPHAN_WINDOW_STORAGE_KEY);
+    const ids = stored[ORPHAN_WINDOW_STORAGE_KEY] ?? [];
+    if (ids.length === 0) return;
+    logInfo('ChatGptAutomation', 'Closing orphaned ChatGPT popup windows.', { ids });
+    await Promise.all(ids.map((id) => chrome.windows.remove(id).catch(() => {})));
+    await chrome.storage.local.remove(ORPHAN_WINDOW_STORAGE_KEY);
+  } catch {
+    // Non-critical
+  }
+}
+
 function getRuntimeError() {
   return chrome.runtime.lastError?.message;
 }
@@ -26,6 +77,14 @@ function buildRunTargetUrl(targetUrl) {
   } catch {
     return targetUrl;
   }
+}
+
+function isChatGptUrl(url) {
+  return (
+    typeof url === 'string' &&
+    (url.startsWith('https://chatgpt.com') ||
+      url.startsWith('https://chat.openai.com'))
+  );
 }
 
 function isPopupClosedError(error) {
@@ -102,15 +161,17 @@ async function waitForChatGptTab(windowId, timeoutMs = 30000) {
   while (Date.now() - startedAt < timeoutMs) {
     const tabs = await listWindowTabs(windowId);
     if (!tabs.length && Date.now() - startedAt > 500) {
-      throw new Error('ChatGPT popup was closed before the tab finished loading.');
+      throw new Error('ChatGPT popup was closed before the tab became reachable.');
     }
-    const tab = tabs.find((candidate) => candidate.id && (candidate.url?.startsWith('https://chatgpt.com') || candidate.url?.startsWith('https://chat.openai.com')));
-    if (tab?.id && tab.status === 'complete') {
+    const tab = tabs.find(
+      (candidate) => candidate.id && isChatGptUrl(candidate.url),
+    );
+    if (tab?.id) {
       return tab.id;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error('Timed out waiting for the ChatGPT window.');
+  throw new Error('Timed out waiting for the ChatGPT tab.');
 }
 
 async function waitForChatGptTabById(tabId, timeoutMs = 30000) {
@@ -118,27 +179,23 @@ async function waitForChatGptTabById(tabId, timeoutMs = 30000) {
   while (Date.now() - startedAt < timeoutMs) {
     try {
       const tab = await chrome.tabs.get(tabId);
-      if (
-        tab?.id &&
-        tab.status === 'complete' &&
-        (tab.url?.startsWith('https://chatgpt.com') ||
-          tab.url?.startsWith('https://chat.openai.com'))
-      ) {
+      if (tab?.id && isChatGptUrl(tab.url)) {
         return tab;
       }
     } catch {
       if (Date.now() - startedAt > 500) {
         throw new Error(
-          'ChatGPT popup was closed before the tab finished loading.',
+          'ChatGPT popup was closed before the tab became reachable.',
         );
       }
     }
     await wait(250);
   }
-  throw new Error('Timed out waiting for the ChatGPT tab.');
+  throw new Error('Timed out waiting for the ChatGPT tab to become reachable.');
 }
 
 async function closeWindow(windowId) {
+  await removePersistedPopupWindowId(windowId);
   return chrome.windows.remove(windowId).catch(() => {});
 }
 
@@ -438,9 +495,10 @@ async function waitForChatGptStartupReady(
     return { ready: false, skipped: true, state: null, elapsedMs: 0 };
   }
 
+  const acceptAnyProbeResult = options.acceptAnyProbeResult === true;
   const pollIntervalMs = Math.max(
-    50,
-    Math.min(options.pollIntervalMs ?? 150, timeoutMs),
+    100,
+    Math.min(options.pollIntervalMs ?? 300, timeoutMs),
   );
   const startedAt = Date.now();
   let lastState = null;
@@ -448,7 +506,7 @@ async function waitForChatGptStartupReady(
   while (Date.now() - startedAt < timeoutMs) {
     try {
       lastState = await probeChatGptStartupReady(tabId);
-      if (lastState?.ready) {
+      if (lastState && (acceptAnyProbeResult || lastState.ready)) {
         return {
           ready: true,
           timedOut: false,
@@ -484,6 +542,8 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   const responseTimeoutMs = options.responseTimeoutMs ?? 600000;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? 15000;
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? 12000;
+  const preSubmitDelayMinMs = options.preSubmitDelayMinMs ?? 400;
+  const preSubmitDelayMaxMs = options.preSubmitDelayMaxMs ?? 800;
   const INPUT_SELECTORS = [
     'div#prompt-textarea.ProseMirror[contenteditable="true"][role="textbox"]',
     '[data-composer-surface="true"] div#prompt-textarea[contenteditable="true"]',
@@ -532,6 +592,43 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     'button[aria-label*="Log in"]',
     'button[aria-label*="Sign in"]',
   ];
+  const timingMarks = {
+    startedAt: Date.now(),
+    composerFoundAt: null,
+    composerInteractiveAt: null,
+    fillStartedAt: null,
+    fillCompletedAt: null,
+    sendReadyAt: null,
+    preSubmitDelayMs: null,
+    submitStartedAt: null,
+    firstAssistantTurnAt: null,
+    responseCompletedAt: null,
+  };
+
+  function markTiming(name) {
+    if (!(name in timingMarks) || timingMarks[name] !== null) return;
+    timingMarks[name] = Date.now();
+  }
+
+  function buildTimingSummary() {
+    const origin = timingMarks.startedAt;
+    const offset = (value) =>
+      typeof value === 'number' ? Math.max(0, value - origin) : null;
+    return {
+      composerFoundMs: offset(timingMarks.composerFoundAt),
+      composerInteractiveMs: offset(timingMarks.composerInteractiveAt),
+      fillStartedMs: offset(timingMarks.fillStartedAt),
+      fillCompletedMs: offset(timingMarks.fillCompletedAt),
+      sendReadyMs: offset(timingMarks.sendReadyAt),
+      preSubmitDelayMs:
+        typeof timingMarks.preSubmitDelayMs === 'number'
+          ? timingMarks.preSubmitDelayMs
+          : null,
+      submitStartedMs: offset(timingMarks.submitStartedAt),
+      firstAssistantTurnMs: offset(timingMarks.firstAssistantTurnAt),
+      responseCompletedMs: offset(timingMarks.responseCompletedAt),
+    };
+  }
 
   function currentConversationUrl() {
     return window.location.href.startsWith('https://chatgpt.com/') || window.location.href.startsWith('https://chat.openai.com/')
@@ -768,7 +865,10 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
 
   async function waitForComposer(timeoutMs) {
     const existing = findComposer();
-    if (existing) return existing;
+    if (existing) {
+      markTiming('composerFoundAt');
+      return existing;
+    }
     return new Promise((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
         observer.disconnect();
@@ -780,6 +880,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         if (!candidate) return;
         observer.disconnect();
         window.clearTimeout(timeoutId);
+        markTiming('composerFoundAt');
         resolve(candidate);
       });
 
@@ -793,7 +894,6 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   }
 
   async function waitForAssistantBaseline() {
-    await new Promise((resolve) => window.setTimeout(resolve, 500));
     return getAssistantSnapshot();
   }
 
@@ -802,7 +902,8 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     while (Date.now() - startedAt < timeoutMs) {
       const form = composer instanceof HTMLTextAreaElement ? composer.form : composer.closest('form');
       const sendButton = findSendButton(form);
-      if (isComposerInteractive(composer) && (!sendButton || !sendButton.disabled || sendButton.getAttribute('aria-disabled') !== 'true')) {
+      if (isComposerInteractive(composer)) {
+        markTiming('composerInteractiveAt');
         return {
           ready: true,
           sendButtonFound: Boolean(sendButton),
@@ -829,6 +930,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   }
 
   async function fillComposer(composer, nextPrompt) {
+    markTiming('fillStartedAt');
     composer.focus();
     if (composer instanceof HTMLTextAreaElement) {
       const prototype = Object.getPrototypeOf(composer);
@@ -841,6 +943,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       composer.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, data: nextPrompt, inputType: 'insertText' }));
       composer.dispatchEvent(new InputEvent('input', { bubbles: true, data: nextPrompt, inputType: 'insertText' }));
       composer.dispatchEvent(new Event('change', { bubbles: true }));
+      markTiming('fillCompletedAt');
       return;
     }
 
@@ -857,6 +960,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     }
     composer.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, data: nextPrompt, inputType: 'insertText' }));
     composer.dispatchEvent(new Event('input', { bubbles: true }));
+    markTiming('fillCompletedAt');
   }
 
   async function waitForSendReady(composer, timeoutMs = sendReadyTimeoutMs) {
@@ -866,6 +970,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       const sendButton = findSendButton(form);
       const composerText = composer instanceof HTMLTextAreaElement ? composer.value.trim() : composer.textContent?.trim() ?? '';
       if (sendButton && !sendButton.disabled) {
+        markTiming('sendReadyAt');
         return {
           ready: true,
           mode: 'button',
@@ -875,6 +980,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         };
       }
       if (!sendButton && composerText.length > 0) {
+        markTiming('sendReadyAt');
         return {
           ready: true,
           mode: form instanceof HTMLFormElement ? 'keyboard_in_form' : 'keyboard',
@@ -896,6 +1002,19 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       sendButtonState: getButtonState(sendButton),
       ...getFormDebug(form),
     };
+  }
+
+  function getRandomPreSubmitDelayMs() {
+    const minMs = Math.max(0, Number.isFinite(preSubmitDelayMinMs) ? preSubmitDelayMinMs : 400);
+    const maxMs = Math.max(minMs, Number.isFinite(preSubmitDelayMaxMs) ? preSubmitDelayMaxMs : 800);
+    return minMs + Math.round(Math.random() * (maxMs - minMs));
+  }
+
+  async function waitForPreSubmitDelay() {
+    const delayMs = getRandomPreSubmitDelayMs();
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    timingMarks.preSubmitDelayMs = delayMs;
+    return delayMs;
   }
 
   async function waitForSubmissionStart(composer, form, baselineSnapshot, timeoutMs = Math.max(10000, sendReadyTimeoutMs)) {
@@ -921,10 +1040,9 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   async function submitPrompt(composer) {
     await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
     const readiness = await waitForSendReady(composer);
-    const form = composer instanceof HTMLTextAreaElement ? composer.form : composer.closest('form');
-    const sendButton = findSendButton(form);
-    const baselineSnapshot = getSubmissionSnapshot(composer, form);
     if (!readiness.ready) {
+      const form = composer instanceof HTMLTextAreaElement ? composer.form : composer.closest('form');
+      const baselineSnapshot = getSubmissionSnapshot(composer, form);
       throw new Error(
         `dom_changed:Prompt submission control never became ready after filling the ChatGPT composer.|submit_debug=${JSON.stringify({
           ...readiness,
@@ -933,9 +1051,25 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       );
     }
 
+    const preSubmitDelayMs = await waitForPreSubmitDelay();
+    const submitReadiness = await waitForSendReady(composer, 1000);
+    const form = composer instanceof HTMLTextAreaElement ? composer.form : composer.closest('form');
+    const sendButton = findSendButton(form);
+    const baselineSnapshot = getSubmissionSnapshot(composer, form);
+    if (!submitReadiness.ready) {
+      throw new Error(
+        `dom_changed:Prompt submission control stopped being ready during the pre-submit wait.|submit_debug=${JSON.stringify({
+          ...submitReadiness,
+          preSubmitDelayMs,
+          baselineSnapshot,
+        })}`
+      );
+    }
+
     const attemptLog = [];
 
     const trySubmitAttempt = async (label, runner) => {
+      markTiming('submitStartedAt');
       runner();
       const submission = await waitForSubmissionStart(composer, form, baselineSnapshot);
       const started = submission.started;
@@ -976,7 +1110,8 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     throw new Error(
       `dom_changed:Prompt submission did not start after filling the ChatGPT composer.|submit_debug=${JSON.stringify({
         composerType: composer instanceof HTMLTextAreaElement ? 'textarea' : 'contenteditable',
-        submitMode: readiness.mode,
+        submitMode: submitReadiness.mode,
+        preSubmitDelayMs,
         baselineSnapshot,
         attempts: attemptLog,
       })}`
@@ -1019,6 +1154,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         if (changed && isNewTurn) {
           sawNewTurn = true;
           lastProgressAt = Date.now();
+          markTiming('firstAssistantTurnAt');
         }
 
         lastSnapshot = latestSnapshot;
@@ -1037,6 +1173,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
 
         stableTimer = window.setTimeout(() => {
           cleanup();
+          markTiming('responseCompletedAt');
           resolve(latestSnapshot.latestText);
         }, 900);
       };
@@ -1075,12 +1212,14 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
           status: 'dom_changed',
           message: 'ChatGPT returned an empty assistant response after prompt submission.',
           conversationUrl: currentConversationUrl(),
+          timings: buildTimingSummary(),
         };
       }
       return {
         status: 'success',
         rawText,
         conversationUrl: currentConversationUrl(),
+        timings: buildTimingSummary(),
       };
     })
     .catch((error) => {
@@ -1090,6 +1229,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
           status: 'auth_required',
           message: 'Please log into ChatGPT in a normal browser tab first.',
           conversationUrl: currentConversationUrl(),
+          timings: buildTimingSummary(),
         };
       }
 
@@ -1107,6 +1247,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         partialRawText,
         submitDebug,
         conversationUrl: currentConversationUrl(),
+        timings: buildTimingSummary(),
       };
     });
 }
@@ -1130,24 +1271,36 @@ async function openChatGptSession(options = {}) {
   });
   const popupWindowId = await openPopupWindow(targetUrl);
   logInfo('ChatGptAutomation', 'ChatGPT popup created.', { promptLabel, popupWindowId });
+  // Persist immediately so a service-worker crash doesn't leave this window orphaned.
+  void persistPopupWindowId(popupWindowId);
   const unregisterCleanup = runId
     ? registerRunCleanup(runId, async () => {
         await closeWindow(popupWindowId);
       })
     : () => {};
   try {
-    logInfo('ChatGptAutomation', 'Waiting for ChatGPT tab to finish loading.', { promptLabel, popupWindowId });
+    logInfo('ChatGptAutomation', 'Waiting for ChatGPT tab to become reachable.', { promptLabel, popupWindowId });
     const tabId = await waitForChatGptTab(popupWindowId);
-    logInfo('ChatGptAutomation', 'ChatGPT tab ready.', { promptLabel, popupWindowId, tabId });
+    logInfo('ChatGptAutomation', 'ChatGPT tab reachable.', { promptLabel, popupWindowId, tabId });
     if (warmupDelayMs > 0) {
-      logInfo('ChatGptAutomation', 'Waiting for ChatGPT startup readiness.', {
+      logInfo('ChatGptAutomation', 'Probing ChatGPT startup readiness.', {
         promptLabel,
         tabId,
         warmupDelayMs,
       });
-      const readiness = await waitForChatGptStartupReady(tabId, warmupDelayMs);
-      if (readiness.ready) {
+      const readiness = await waitForChatGptStartupReady(tabId, warmupDelayMs, {
+        acceptAnyProbeResult: true,
+        pollIntervalMs: 300,
+      });
+      if (readiness.state?.ready) {
         logInfo('ChatGptAutomation', 'ChatGPT startup ready.', {
+          promptLabel,
+          tabId,
+          elapsedMs: readiness.elapsedMs,
+          readiness: buildStartupReadinessLog(readiness.state),
+        });
+      } else if (readiness.state) {
+        logInfo('ChatGptAutomation', 'ChatGPT page probe succeeded before full startup readiness.', {
           promptLabel,
           tabId,
           elapsedMs: readiness.elapsedMs,
@@ -1156,7 +1309,7 @@ async function openChatGptSession(options = {}) {
       } else {
         logInfo(
           'ChatGptAutomation',
-          'ChatGPT startup readiness wait expired; continuing to prompt runner.',
+          'ChatGPT startup probe expired; continuing to prompt runner.',
           {
             promptLabel,
             tabId,
@@ -1200,18 +1353,12 @@ export async function getOrOpenChatGptRunSession(runId, options = {}) {
     },
   );
   session.needsReset = false;
+  session.pendingResetPromise = null;
   chatGptRunSessions.set(normalizedRunId, session);
   return session;
 }
 
-export async function resetChatGptRunSession(runId, options = {}) {
-  const normalizedRunId =
-    typeof runId === 'string' && runId.trim() ? runId.trim() : '';
-  if (!normalizedRunId) {
-    throw new Error('A run id is required to reset a ChatGPT popup session.');
-  }
-
-  const session = await getOrOpenChatGptRunSession(normalizedRunId, options);
+async function performChatGptRunSessionReset(normalizedRunId, session, options = {}) {
   const requestedTargetUrl = options.targetUrl ?? DEFAULT_CHATGPT_TARGET_URL;
   const targetUrl = buildRunTargetUrl(requestedTargetUrl);
   const warmupDelayMs = options.warmupDelayMs ?? 1500;
@@ -1228,12 +1375,17 @@ export async function resetChatGptRunSession(runId, options = {}) {
   const nextTabId = updatedTab?.id ?? session.tabId;
   await waitForChatGptTabById(nextTabId);
   if (warmupDelayMs > 0) {
-    const readiness = await waitForChatGptStartupReady(nextTabId, warmupDelayMs);
+    const readiness = await waitForChatGptStartupReady(nextTabId, warmupDelayMs, {
+      acceptAnyProbeResult: true,
+      pollIntervalMs: 300,
+    });
     logInfo(
       'ChatGptAutomation',
-      readiness.ready
+      readiness.state?.ready
         ? 'ChatGPT startup ready after reset.'
-        : 'ChatGPT startup readiness wait expired after reset; continuing to prompt runner.',
+        : readiness.state
+          ? 'ChatGPT page probe succeeded after reset before full startup readiness.'
+          : 'ChatGPT startup probe expired after reset; continuing to prompt runner.',
       {
         promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
         runId: normalizedRunId,
@@ -1248,6 +1400,52 @@ export async function resetChatGptRunSession(runId, options = {}) {
   session.targetUrl = targetUrl;
   session.needsReset = false;
   return session;
+}
+
+export async function resetChatGptRunSession(runId, options = {}) {
+  const normalizedRunId =
+    typeof runId === 'string' && runId.trim() ? runId.trim() : '';
+  if (!normalizedRunId) {
+    throw new Error('A run id is required to reset a ChatGPT popup session.');
+  }
+
+  const session = await getOrOpenChatGptRunSession(normalizedRunId, options);
+  if (session.pendingResetPromise) {
+    return session.pendingResetPromise;
+  }
+
+  const resetPromise = performChatGptRunSessionReset(
+    normalizedRunId,
+    session,
+    options,
+  ).finally(() => {
+    if (session.pendingResetPromise === resetPromise) {
+      session.pendingResetPromise = null;
+    }
+  });
+  session.pendingResetPromise = resetPromise;
+  resetPromise.catch(() => {});
+  return resetPromise;
+}
+
+export async function prepareChatGptRunSessionForNextStage(runId, options = {}) {
+  const normalizedRunId =
+    typeof runId === 'string' && runId.trim() ? runId.trim() : '';
+  if (!normalizedRunId) {
+    throw new Error('A run id is required to prepare a ChatGPT popup session.');
+  }
+
+  const session = chatGptRunSessions.get(normalizedRunId);
+  if (!session) {
+    return null;
+  }
+  if (session.pendingResetPromise) {
+    return session.pendingResetPromise;
+  }
+  if (!session.needsReset) {
+    return session;
+  }
+  return resetChatGptRunSession(normalizedRunId, options);
 }
 
 async function executeChatGptPromptInSession(session, prompt, options = {}) {
@@ -1333,6 +1531,7 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     tabUrl: tab?.url ?? null,
     hasResult: Boolean(result),
     status: result?.status ?? null,
+    timings: result?.timings ?? null,
   });
 
   if (!result) {
@@ -1352,6 +1551,9 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
 
 async function closeChatGptSession(session) {
   session?.unregisterCleanup?.();
+  if (session) {
+    session.pendingResetPromise = null;
+  }
   if (session?.popupWindowId) {
     await closeWindow(session.popupWindowId);
   }
@@ -1549,7 +1751,14 @@ export async function runChatGptPrompt(prompt, options = {}) {
       ...options,
       promptLength: prompt.length,
     });
-    if (session.needsReset) {
+    if (session.pendingResetPromise) {
+      logInfo('ChatGptAutomation', 'Awaiting in-flight ChatGPT reset before running the next prompt.', {
+        promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
+        runId: reusableRunId,
+        tabId: session.tabId,
+      });
+      await session.pendingResetPromise;
+    } else if (session.needsReset) {
       await resetChatGptRunSession(reusableRunId, {
         ...options,
         promptLength: prompt.length,

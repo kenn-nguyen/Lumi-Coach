@@ -26,6 +26,7 @@ from app.routers import (
     health_router,
     jobs_router,
     resumes_router,
+    tailor_router,
 )
 
 
@@ -83,6 +84,7 @@ app.include_router(resumes_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(enrichment_router, prefix="/api/v1")
 app.include_router(extension_router, prefix="/api/v1")
+app.include_router(tailor_router, prefix="/api/v1")
 
 
 @app.get("/")

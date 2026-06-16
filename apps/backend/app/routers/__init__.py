@@ -7,6 +7,7 @@ from app.routers.extension import router as extension_router
 from app.routers.health import router as health_router
 from app.routers.jobs import router as jobs_router
 from app.routers.resumes import router as resumes_router
+from app.routers.tailor import router as tailor_router
 
 __all__ = [
     "resumes_router",
@@ -16,4 +17,5 @@ __all__ = [
     "extension_router",
     "health_router",
     "enrichment_router",
+    "tailor_router",
 ]

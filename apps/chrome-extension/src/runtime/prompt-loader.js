@@ -13,6 +13,12 @@ import {
 const PLACEHOLDER_PATTERN = /\{\{([A-Z0-9_]+)\}\}/g;
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const templateCache = new Map();
+const API_CACHEABLE_PLACEHOLDERS = new Set([
+  "CURRENT_RESUME",
+  "MASTER_RESUME",
+  "MASTER_RESUME_MARKDOWN",
+  "STORYBOARD",
+]);
 
 export function clearPromptTemplateCache() {
   templateCache.clear();
@@ -408,11 +414,56 @@ function renderTemplate(template, replacements) {
   return rendered.trim();
 }
 
+function appendApiPromptBlock(blocks, text, cacheable) {
+  if (!text) return;
+  const lastBlock = blocks[blocks.length - 1];
+  if (lastBlock && lastBlock.cacheable === cacheable) {
+    lastBlock.text += text;
+    return;
+  }
+  blocks.push({
+    text,
+    cacheable,
+  });
+}
+
+function buildApiPromptBlocks(template, replacements) {
+  const blocks = [];
+  let lastIndex = 0;
+
+  for (const match of template.matchAll(PLACEHOLDER_PATTERN)) {
+    const [placeholderToken, placeholder] = match;
+    const matchIndex = match.index ?? 0;
+    appendApiPromptBlock(
+      blocks,
+      template.slice(lastIndex, matchIndex),
+      true,
+    );
+    appendApiPromptBlock(
+      blocks,
+      placeholder in replacements ? replacements[placeholder] : placeholderToken,
+      API_CACHEABLE_PLACEHOLDERS.has(placeholder),
+    );
+    lastIndex = matchIndex + placeholderToken.length;
+  }
+
+  appendApiPromptBlock(blocks, template.slice(lastIndex), true);
+
+  return blocks
+    .map((block) => ({
+      ...block,
+      text: block.text.trim(),
+    }))
+    .filter((block) => block.text);
+}
+
 async function renderPromptWithMetadata(templateName, input, profile) {
   const loaded = await loadPromptTemplateWithMetadata(templateName, profile);
-  const text = renderTemplate(loaded.text, buildPromptReplacements(input));
+  const replacements = buildPromptReplacements(input);
+  const text = renderTemplate(loaded.text, replacements);
   return {
     text,
+    apiPromptBlocks: buildApiPromptBlocks(loaded.text, replacements),
     metadata: {
       ...loaded.metadata,
       renderedHash: await hashPromptText(text),
@@ -434,6 +485,13 @@ export async function renderPrompt1WithMetadata(input, profile) {
   const text = `${rendered.text}\n\nAdditional Prompt 1 instruction:\nTreat these user-provided keywords or concepts as extra screening signals to evaluate for importance, but do not force them into the output if the JD does not support them.\n${customInstruction}`;
   return {
     text,
+    apiPromptBlocks: [
+      ...(rendered.apiPromptBlocks ?? []),
+      {
+        text: `Additional Prompt 1 instruction:\nTreat these user-provided keywords or concepts as extra screening signals to evaluate for importance, but do not force them into the output if the JD does not support them.\n${customInstruction}`,
+        cacheable: false,
+      },
+    ],
     metadata: {
       ...rendered.metadata,
       renderedHash: await hashPromptText(text),

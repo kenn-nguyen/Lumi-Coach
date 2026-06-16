@@ -25,7 +25,8 @@ import {
 } from '@/lib/api/resume';
 import { fetchOutputConfig } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
-import { ArrowLeft, Edit, Download, Loader2, AlertCircle, Pencil } from 'lucide-react';
+import { ArrowLeft, Edit, Download, Loader2, AlertCircle, Pencil, Wand2 } from 'lucide-react';
+import { TailorDialog } from '@/components/tailor/TailorDialog';
 import { useTranslations } from '@/lib/i18n';
 import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
@@ -133,6 +134,7 @@ export default function ResumeViewerPage() {
   const [error, setError] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus | null>(null);
   const [isMasterResume, setIsMasterResume] = useState(false);
+  const [showTailorDialog, setShowTailorDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSuccessDialog, setShowDeleteSuccessDialog] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -742,6 +744,12 @@ export default function ResumeViewerPage() {
               <Edit className="w-4 h-4" />
               {t('dashboard.editResume')}
             </Button>
+            {isMasterResume && (
+              <Button variant="outline" onClick={() => setShowTailorDialog(true)}>
+                <Wand2 className="w-4 h-4" />
+                Tailor to Job
+              </Button>
+            )}
             <QuickLayoutControls
               dateDisplay={templateSettings.dateDisplay}
               experienceHeaderOrder={templateSettings.experienceHeaderOrder}
@@ -1012,6 +1020,15 @@ export default function ResumeViewerPage() {
           onConfirm={() => setDeleteError(null)}
           variant="danger"
           showCancelButton={false}
+        />
+      )}
+
+      {/* Tailor dialog — only mounted when open to reset state on close */}
+      {showTailorDialog && (
+        <TailorDialog
+          resumeId={resumeId}
+          isOpen={showTailorDialog}
+          onClose={() => setShowTailorDialog(false)}
         />
       )}
     </div>
