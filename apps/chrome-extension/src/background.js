@@ -32,6 +32,7 @@ import { getExtensionSetupState } from "./runtime/setup-state.js";
 import { syncExtensionRun } from "./runtime/extension-runs.js";
 import {
   getActiveLlmProfile,
+  parseImportedConfig,
   updateLlmSettings,
 } from "./runtime/llm/profiles.js";
 import { validateApiProfile } from "./runtime/llm/api-check.js";
@@ -68,6 +69,8 @@ import {
   savePromptTemplateProfileSelection,
   setStoryboardAsset,
   setPromptTemplateAsset,
+  setImportedLlmConfig,
+  clearImportedLlmConfig,
 } from "./runtime/storage.js";
 import {
   getPackagedPromptArtifactText,
@@ -1625,6 +1628,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await clearAllExtensionLocalData();
         clearBackendMasterResumeCache();
         clearPromptTemplateCache();
+        return { ok: true };
+
+      case "SAVE_IMPORTED_LLM_CONFIG": {
+        try {
+          const parsed = parseImportedConfig(message.payload?.text);
+          await setImportedLlmConfig(parsed);
+          return { ok: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "Invalid config file.",
+          };
+        }
+      }
+
+      case "CLEAR_IMPORTED_LLM_CONFIG":
+        await clearImportedLlmConfig();
         return { ok: true };
 
       case "RESET_DEFAULT_SETTINGS":

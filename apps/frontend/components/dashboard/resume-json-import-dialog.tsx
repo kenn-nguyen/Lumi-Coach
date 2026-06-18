@@ -16,17 +16,22 @@ import { importTailoredResumeJson } from '@/lib/api/resume';
 interface ResumeJsonImportDialogProps {
   trigger?: React.ReactNode | null;
   disabled?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onImportComplete?: (payload: { resumeId: string }) => void;
 }
 
 export function ResumeJsonImportDialog({
   trigger,
   disabled = false,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
   onImportComplete,
 }: ResumeJsonImportDialogProps) {
   const { t } = useTranslations();
   const fileInputId = useId();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [jdUrl, setJdUrl] = useState('');
   const [jdText, setJdText] = useState('');
@@ -48,7 +53,11 @@ export function ResumeJsonImportDialog({
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
+    if (controlledOnOpenChange) {
+      controlledOnOpenChange(nextOpen);
+    } else {
+      setInternalOpen(nextOpen);
+    }
     if (!nextOpen) {
       resetForm();
     }

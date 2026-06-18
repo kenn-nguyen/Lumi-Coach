@@ -95,6 +95,46 @@ function isPopupClosedError(error) {
   );
 }
 
+/**
+ * Remove cookies that are known to accumulate and bloat the Cookie request
+ * header for chatgpt.com, causing HTTP 431 (Request Header Fields Too Large)
+ * when opening a fresh popup window.
+ *
+ * Targets:
+ *   - Cloudflare bot-management cookies (__cf_bm, _cfuvid) — rotate every
+ *     ~30 min and stack up across sessions
+ *   - Any cookie whose expiration date has already passed
+ *
+ * Safe to call even if the `cookies` permission is absent (fails silently).
+ */
+async function pruneChatGptCookies() {
+  const domains = ['chatgpt.com', '.chatgpt.com', 'chat.openai.com', '.chat.openai.com'];
+  // Cloudflare cookies that accumulate and are safe to clear before a fresh session
+  const stalePrefixes = ['__cf_bm', '_cfuvid'];
+  const nowSec = Date.now() / 1000;
+
+  try {
+    for (const domain of domains) {
+      let cookies;
+      try {
+        cookies = await chrome.cookies.getAll({ domain });
+      } catch {
+        continue; // permission not granted or domain not accessible
+      }
+      for (const cookie of cookies) {
+        const isStale =
+          stalePrefixes.some((p) => cookie.name.startsWith(p)) ||
+          (cookie.expirationDate != null && cookie.expirationDate < nowSec);
+        if (!isStale) continue;
+        const cookieUrl = `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`;
+        await chrome.cookies.remove({ url: cookieUrl, name: cookie.name }).catch(() => {});
+      }
+    }
+  } catch {
+    // Best-effort — never block the popup from opening
+  }
+}
+
 async function openPopupWindow(targetUrl) {
   return new Promise((resolve, reject) => {
     chrome.windows.create(
@@ -1269,6 +1309,10 @@ async function openChatGptSession(options = {}) {
     sendReadyTimeoutMs,
     warmupDelayMs,
   });
+  // Clear stale Cloudflare and expired cookies before opening the popup.
+  // This prevents HTTP 431 (Request Header Fields Too Large) caused by
+  // accumulated cookies bloating the Cookie header on fresh popup requests.
+  await pruneChatGptCookies();
   const popupWindowId = await openPopupWindow(targetUrl);
   logInfo('ChatGptAutomation', 'ChatGPT popup created.', { promptLabel, popupWindowId });
   // Persist immediately so a service-worker crash doesn't leave this window orphaned.
@@ -1514,6 +1558,17 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       };
     }
     const message = error instanceof Error ? error.message : String(error);
+    // ChatGPT popup loaded an error page (network failure, site down, etc.).
+    // Treat as a retriable failure rather than a hard crash so the run
+    // surfaces a clean "interrupted" state instead of an unhandled exception.
+    if (/frame with id \d+ is showing error page/i.test(message)) {
+      logError('ChatGptAutomation', 'ChatGPT popup loaded an error page — network or site issue.', {
+        promptLabel,
+        tabId: session.tabId,
+        targetUrl: session.targetUrl,
+      });
+      throw new Error('ChatGPT could not be reached. Please check your internet connection and try again.');
+    }
     logError('ChatGptAutomation', 'Script injection failed.', {
       promptLabel,
       tabId: session.tabId,

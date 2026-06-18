@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   serverPromptManifest: "serverPromptManifest",
   serverPromptLastSyncedAt: "serverPromptLastSyncedAt",
   llmSettings: "llmSettings",
+  importedLlmConfig: "importedLlmConfig",
   chatGptTargetUrl: "chatGptTargetUrl",
   appOrigin: "appOrigin",
   apiOrigin: "apiOrigin",

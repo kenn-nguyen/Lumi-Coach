@@ -147,6 +147,11 @@ const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
 const RESET_LOCAL_ID = "resume-matcher-reset-local";
 const RESET_DEFAULTS_ID = "resume-matcher-reset-defaults";
 const EXPORT_DATA_ID = "resume-matcher-export-data";
+const LLM_CONFIG_BADGE_ID = "resume-matcher-llm-config-badge";
+const LLM_CONFIG_DOWNLOAD_ID = "resume-matcher-llm-config-download";
+const LLM_CONFIG_IMPORT_BTN_ID = "resume-matcher-llm-config-import-btn";
+const LLM_CONFIG_IMPORT_INPUT_ID = "resume-matcher-llm-config-import-input";
+const LLM_CONFIG_RESET_ID = "resume-matcher-llm-config-reset";
 const STYLE_ID = "resume-matcher-floating-style";
 const POSITION_KEY = "resumeMatcherFloatingPosition";
 const DISMISSED_KEY = "resumeMatcherFloatingButtonDismissed";
@@ -156,6 +161,77 @@ const UPLOAD_ICON_PATH = "src/assets/upload.png";
 const DOWNLOAD_ICON_PATH = "src/assets/direct-download.png";
 const DELETE_ICON_PATH = "src/assets/delete.png";
 const LOG_PREFIX = "[ResumeMatcherExt][FloatingBoard]";
+const LLM_CONFIG_TEMPLATE_JSONC = `{
+  // Determines which AI provider handles each prompt stage.
+  // Valid profile IDs: "claude:api", "deepseek:api", "openai:api", "gemini:api"
+  // Remove or reset this file to return to single-provider mode.
+  "stageProviders": {
+    "prompt1": "deepseek:api",
+    "prompt2": "claude:api",
+    "prompt3": "claude:api"
+  },
+
+  // Per-provider model and API call settings for each stage.
+  // The API key and endpoint still come from the Settings panel.
+  // Settings here override the model for the tailor pipeline only.
+  "profiles": {
+    "claude:api": {
+      // Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
+      // Thinking: budget_tokens 1024-16000 (higher = deeper reasoning)
+      "stageModels": {
+        "prompt1": { "model": "claude-sonnet-4-6" },
+        "prompt2": {
+          "model": "claude-sonnet-4-6",
+          "thinking": { "type": "enabled", "budget_tokens": 8192 },
+          "maxTokens": 18000
+        },
+        "prompt3": { "model": "claude-sonnet-4-6" }
+      }
+    },
+
+    "deepseek:api": {
+      // DeepSeek models: deepseek-v4-pro, deepseek-chat
+      // reasoning_effort: "high" | "max" ("medium" silently maps to "high")
+      "stageModels": {
+        "prompt1": { "model": "deepseek-v4-pro" },
+        "prompt2": {
+          "model": "deepseek-v4-pro",
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "medium"
+        },
+        "prompt3": {
+          "model": "deepseek-v4-pro",
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+
+    // Uncomment to enable OpenAI per-stage routing:
+    // ,"openai:api": {
+    //   // Models: gpt-5.4-mini, gpt-5.4, gpt-4.1, gpt-4o-mini
+    //   // reasoning.effort: "low" | "medium" | "high"
+    //   "stageModels": {
+    //     "prompt1": { "model": "gpt-5.4-mini", "reasoning": { "effort": "low" } },
+    //     "prompt2": { "model": "gpt-5.4", "reasoning": { "effort": "high" } },
+    //     "prompt3": { "model": "gpt-5.4", "reasoning": { "effort": "low" } }
+    //   }
+    // }
+
+    // Uncomment to enable Gemini per-stage routing:
+    // ,"gemini:api": {
+    //   // Models: gemini-2.5-flash, gemini-2.5-pro
+    //   // Flash: thinkingBudget 0-24576 (0 disables thinking)
+    //   // Pro: thinkingBudget 128-32768 (cannot be disabled)
+    //   // Use -1 for dynamic budget. includeThoughts: false recommended.
+    //   "stageModels": {
+    //     "prompt1": { "model": "gemini-2.5-flash", "thinkingConfig": { "thinkingBudget": 0 } },
+    //     "prompt2": { "model": "gemini-2.5-pro", "thinkingConfig": { "thinkingBudget": 8192, "includeThoughts": false } },
+    //     "prompt3": { "model": "gemini-2.5-flash" }
+    //   }
+    // }
+  }
+}`;
 const EDGE_PADDING = 8;
 const VIEWPORT_PADDING = 20;
 const RUN_BOARD_WIDTH = 390;
@@ -7412,10 +7488,11 @@ function renderProviderFields() {
         : "false";
   };
 
+  const showModelInput = isApi && !profile?.stageModels;
   toggleRow(PROVIDER_WEB_ROW_ID, isWeb);
   toggleRow(PROVIDER_API_BASE_ROW_ID, isApi);
   toggleRow(PROVIDER_API_GRID_ID, isApi);
-  toggleRow(PROVIDER_MODEL_ROW_ID, false);
+  toggleRow(PROVIDER_MODEL_ROW_ID, showModelInput);
   toggleRow(PROVIDER_API_KEY_ROW_ID, isApi);
   select.dataset.invalid = missingFields.has("provider") ? "true" : "false";
   select.dataset.requiredEmpty =
@@ -7668,6 +7745,12 @@ function renderSettings() {
       connected ? accountLabel || "Signed in" : "Not signed in";
     accountDetail.title = accountDetail.textContent;
   }
+
+  const hasImportedLlmConfig = Boolean(assets?.importedLlmConfig);
+  const llmConfigBadge = $(LLM_CONFIG_BADGE_ID);
+  if (llmConfigBadge) llmConfigBadge.hidden = !hasImportedLlmConfig;
+  const llmConfigResetBtn = $(LLM_CONFIG_RESET_ID);
+  if (llmConfigResetBtn) llmConfigResetBtn.hidden = !hasImportedLlmConfig;
 
   [
     MASTER_RESUME_ACTION_ID,
@@ -9754,6 +9837,19 @@ function ensureRoot() {
                       ).join("")}
                     </div>
                   </div>
+                  <div class="resume-matcher-settings-item resume-matcher-field--full">
+                    <div class="resume-matcher-settings-item__title-row">
+                      <div class="resume-matcher-settings-item__title">LLM config</div>
+                      <span id="${LLM_CONFIG_BADGE_ID}" class="resume-matcher-settings-status-pill" data-tone="success" hidden>Custom active</span>
+                    </div>
+                    <div class="resume-matcher-settings-item__detail">Route different prompt stages to different AI providers. Download the template for instructions — edit it in a text editor, then import.</div>
+                    <div class="resume-matcher-button-row">
+                      <button id="${LLM_CONFIG_DOWNLOAD_ID}" type="button" class="resume-matcher-button">Download template</button>
+                      <button id="${LLM_CONFIG_IMPORT_BTN_ID}" type="button" class="resume-matcher-button">Import config</button>
+                      <button id="${LLM_CONFIG_RESET_ID}" type="button" class="resume-matcher-button is-quiet" hidden>Reset</button>
+                    </div>
+                    <input id="${LLM_CONFIG_IMPORT_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".json,.jsonc,application/json,text/plain" />
+                  </div>
                   <div class="resume-matcher-advanced-actions resume-matcher-field--full">
                     <button id="${EXPORT_DATA_ID}" type="button" class="resume-matcher-button">Export run data</button>
                     <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
@@ -10088,6 +10184,57 @@ function ensureRoot() {
         error instanceof Error ? error.message : "Unable to export run data.",
       );
     }
+  });
+  $(LLM_CONFIG_DOWNLOAD_ID)?.addEventListener("click", () => {
+    try {
+      const blob = new Blob([LLM_CONFIG_TEMPLATE_JSONC], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "lumi-llm-config.jsonc";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Download failed",
+        error instanceof Error ? error.message : "Unable to download template.",
+      );
+    }
+  });
+  $(LLM_CONFIG_IMPORT_BTN_ID)?.addEventListener("click", () => {
+    $(LLM_CONFIG_IMPORT_INPUT_ID)?.click();
+  });
+  $(LLM_CONFIG_IMPORT_INPUT_ID)?.addEventListener("change", async (event) => {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    event.target.value = "";
+    try {
+      const text = await file.text();
+      const response = await sendMessage("SAVE_IMPORTED_LLM_CONFIG", { text });
+      if (!response?.ok) {
+        throw new Error(response?.error || "Invalid config file.");
+      }
+      await refreshBoardData();
+      setRunStatus(
+        "info",
+        "Config imported",
+        `"${file.name}" imported. Stages will use the custom routing.`,
+      );
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Import failed",
+        error instanceof Error ? error.message : "Unable to import config file.",
+      );
+    }
+  });
+  $(LLM_CONFIG_RESET_ID)?.addEventListener("click", async () => {
+    await sendMessage("CLEAR_IMPORTED_LLM_CONFIG").catch(() => {});
+    await refreshBoardData();
+    setRunStatus("info", "Config reset", "Returned to single-provider mode.");
   });
   root.addEventListener("click", async (event) => {
     const target = event.target;
@@ -10643,6 +10790,7 @@ function startUrlFallbackPolling() {
 
   lastRouteSignature = getCurrentRouteSignature();
   routePollTimer = window.setInterval(() => {
+    if (document.hidden) return;
     const nextSignature = getCurrentRouteSignature();
     if (nextSignature === lastRouteSignature) {
       return;
@@ -10684,6 +10832,22 @@ function startSelectedJobDetailWatcher() {
     subtree: true,
     characterData: true,
   });
+}
+
+function handleVisibilityChange() {
+  if (isContentScriptDisposed()) return;
+  if (document.hidden) {
+    // Tab going to background — pause the MutationObserver to stop
+    // burning CPU/memory on DOM mutations we don't need right now.
+    if (selectedJobDetailObserver) {
+      selectedJobDetailObserver.disconnect();
+    }
+  } else {
+    // Tab becoming visible again — reconnect so we pick up any job
+    // changes that happened while we were away, then reconcile state.
+    startSelectedJobDetailWatcher();
+    reconcileRouteState({ force: true });
+  }
 }
 
 function handleRuntimeMessage(message, _sender, sendResponse) {
@@ -11023,6 +11187,7 @@ function destroyContentScriptInstance(reason = "disposed") {
   window.removeEventListener("pointerup", finishPointerDrag);
   window.removeEventListener("pointercancel", finishPointerDrag);
   window.removeEventListener("resize", handleViewportChange);
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
   if (selectedJobClickListenerAttached) {
     document.removeEventListener("click", handleSelectedJobClick);
     selectedJobClickListenerAttached = false;
@@ -11057,6 +11222,7 @@ void loadRunStatusHelpers().finally(() => {
     });
 
   window.addEventListener("resize", handleViewportChange);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
   void refreshBoardData({ refreshBackendMaster: true });
   startUrlFallbackPolling();
   globalThis[CONTENT_SCRIPT_INSTANCE_KEY] = {

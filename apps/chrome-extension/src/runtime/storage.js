@@ -51,6 +51,7 @@ const ACCOUNT_SETTINGS_SCOPED_KEYS = [
   STORAGE_KEYS.chatGptTargetUrl,
   STORAGE_KEYS.onboardingProgress,
   STORAGE_KEYS.apifyFallbackSettings,
+  STORAGE_KEYS.importedLlmConfig,
 ];
 
 function getDefaultOnboardingProgress() {
@@ -757,6 +758,7 @@ export async function getUserAssets() {
         STORAGE_KEYS.chatGptTargetUrl,
         STORAGE_KEYS.onboardingProgress,
         STORAGE_KEYS.apifyFallbackSettings,
+        STORAGE_KEYS.importedLlmConfig,
       ],
       accountKey,
     ),
@@ -808,6 +810,7 @@ export async function getUserAssets() {
     apifyFallbackSettings: normalizeApifyFallbackSettings(
       scopedData[STORAGE_KEYS.apifyFallbackSettings],
     ),
+    importedLlmConfig: scopedData[STORAGE_KEYS.importedLlmConfig] ?? null,
   };
 }
 
@@ -1231,4 +1234,18 @@ export async function resetExtensionSettingsToDefault() {
     STORAGE_KEYS.apiOrigin,
   ]);
   await syncBrowserActionState(await getExtensionState());
+}
+
+export async function getImportedLlmConfig() {
+  const data = await getScopedStorageValues([STORAGE_KEYS.importedLlmConfig]);
+  return data[STORAGE_KEYS.importedLlmConfig] ?? null;
+}
+
+export async function setImportedLlmConfig(config) {
+  await setScopedStorageValues({ [STORAGE_KEYS.importedLlmConfig]: config });
+  return config;
+}
+
+export async function clearImportedLlmConfig() {
+  await removeScopedStorageKeys([STORAGE_KEYS.importedLlmConfig]);
 }

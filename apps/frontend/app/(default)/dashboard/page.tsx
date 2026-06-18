@@ -38,6 +38,7 @@ import MoreHorizontal from 'lucide-react/dist/esm/icons/more-horizontal';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import X from 'lucide-react/dist/esm/icons/x';
+import Wand2 from 'lucide-react/dist/esm/icons/wand-2';
 
 import {
   deleteResume,
@@ -47,7 +48,10 @@ import {
   type ResumeListItem,
 } from '@/lib/api/resume';
 import { ResumeJsonImportDialog } from '@/components/dashboard/resume-json-import-dialog';
+import { ImportMasterResumeDialog } from '@/components/dashboard/import-master-resume-dialog';
+import { SetupChecklist } from '@/components/dashboard/setup-checklist';
 import { useStatusCache } from '@/lib/context/status-cache';
+import { TailorDialog } from '@/components/tailor/TailorDialog';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
 
@@ -82,6 +86,10 @@ export default function DashboardPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isMasterMenuOpen, setIsMasterMenuOpen] = useState(false);
   const [showTailorPrompt, setShowTailorPrompt] = useState(false);
+  const [showTailorDialog, setShowTailorDialog] = useState(false);
+  const [isTailorMenuOpen, setIsTailorMenuOpen] = useState(false);
+  const [showImportTailoredDialog, setShowImportTailoredDialog] = useState(false);
+  const [showImportMasterDialog, setShowImportMasterDialog] = useState(false);
   const [isLlmNoticeDismissed, setIsLlmNoticeDismissed] = useState(false);
   const [resumePendingDelete, setResumePendingDelete] = useState<ResumeListItem | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -98,6 +106,7 @@ export default function DashboardPage() {
   // Lightweight in-memory cache for job snippets to avoid N+1 refetches
   const jobSnippetCacheRef = useRef<Record<string, string>>({});
   const masterMenuRef = useRef<HTMLDivElement>(null);
+  const tailorMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchEditedByUserRef = useRef(false);
   const searchInputValueRef = useRef('');
@@ -107,6 +116,7 @@ export default function DashboardPage() {
   const isFreeModeAvailable = Boolean(systemStatus?.free_llm_available);
   const shouldShowLlmNotice =
     Boolean(masterResumeId) &&
+    processingStatus === 'ready' &&
     !statusLoading &&
     !isLlmNoticeDismissed &&
     (isFreeModeAvailable || !systemStatus?.llm_configured) &&
@@ -256,6 +266,17 @@ export default function DashboardPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMasterMenuOpen]);
+
+  useEffect(() => {
+    if (!isTailorMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tailorMenuRef.current && !tailorMenuRef.current.contains(event.target as Node)) {
+        setIsTailorMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isTailorMenuOpen]);
 
   const handleTailorPromptContinue = () => {
     setShowTailorPrompt(false);
@@ -625,6 +646,17 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => {
                         setIsMasterMenuOpen(false);
+                        setShowImportMasterDialog(true);
+                      }}
+                      className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
+                    >
+                      <span>Import Master Resume</span>
+                      <Upload className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMasterMenuOpen(false);
                         setShowTailorPrompt(true);
                       }}
                       className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
@@ -653,23 +685,66 @@ export default function DashboardPage() {
               </Button>
             )}
           </div>
-          {masterResumeId ? (
-            <ResumeJsonImportDialog
-              onImportComplete={handleImportJsonComplete}
-              trigger={
-                <Button variant="outline" className="h-10 min-w-[12rem] justify-start px-4">
+          {masterResumeId && processingStatus === 'ready' ? (
+            <div className="relative group" ref={tailorMenuRef}>
+              <div className="flex items-stretch">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowTailorDialog(true)}
+                  className="h-10 min-w-[12rem] justify-start px-4 text-left"
+                >
                   <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-secondary text-foreground">
-                    <Upload className="h-3.5 w-3.5" />
+                    <Wand2 className="h-3.5 w-3.5" />
                   </span>
                   <span className="flex min-w-0 flex-col items-start">
-                    <span className="truncate">{t('dashboard.importResumeJson.button')}</span>
+                    <span className="truncate">Tailor to Job</span>
                     <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">
-                      {t('dashboard.importResumeJson.subtext')}
+                      AI-powered
                     </span>
                   </span>
                 </Button>
-              }
-            />
+                <button
+                  type="button"
+                  aria-label="Tailor menu"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsTailorMenuOpen((open) => !open);
+                  }}
+                  className={cn(
+                    'rounded-r-xl border border-border border-l-0 bg-secondary px-3 text-foreground shadow-xs transition-colors hover:bg-muted',
+                    'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100'
+                  )}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+                {isTailorMenuOpen ? (
+                  <div className="absolute right-0 top-full z-40 mt-2 min-w-[16rem] overflow-hidden rounded-2xl border border-border bg-card shadow-sw-default">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsTailorMenuOpen(false);
+                        setShowTailorDialog(true);
+                      }}
+                      className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
+                    >
+                      <span>Tailor to Job</span>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsTailorMenuOpen(false);
+                        setShowImportTailoredDialog(true);
+                      }}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left font-mono text-xs uppercase tracking-wide hover:bg-secondary"
+                    >
+                      <span>Import Tailored Resume JSON</span>
+                      <Upload className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
           ) : null}
           <AccountControl />
           <Link href="/settings">
@@ -681,6 +756,14 @@ export default function DashboardPage() {
       }
     >
       <div className="space-y-6">
+        {/* First-time setup checklist */}
+        <SetupChecklist
+          systemStatus={systemStatus}
+          masterResumeId={masterResumeId}
+          processingStatus={processingStatus}
+          onUploadResume={() => setShowImportMasterDialog(true)}
+        />
+
         {/* Configuration Warning Banner */}
         {shouldShowLlmNotice && (
           <section className="relative rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 pr-14 shadow-sw-sm">
@@ -958,6 +1041,34 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {masterResumeId && showTailorDialog && (
+        <TailorDialog
+          resumeId={masterResumeId}
+          isOpen={showTailorDialog}
+          onClose={() => {
+            setShowTailorDialog(false);
+            void loadTailoredResumes();
+          }}
+        />
+      )}
+
+      {masterResumeId && (
+        <ResumeJsonImportDialog
+          open={showImportTailoredDialog}
+          onOpenChange={setShowImportTailoredDialog}
+          onImportComplete={handleImportJsonComplete}
+          trigger={null}
+        />
+      )}
+
+      <ImportMasterResumeDialog
+        open={showImportMasterDialog}
+        onOpenChange={setShowImportMasterDialog}
+        onImportComplete={({ resumeId }) => {
+          router.push(`/resumes/${resumeId}`);
+        }}
+      />
 
       <Dialog open={showTailorPrompt} onOpenChange={setShowTailorPrompt}>
         <DialogContent className="max-w-[32rem] p-0 gap-0">

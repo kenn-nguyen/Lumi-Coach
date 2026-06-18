@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Thinking API Parameters — 4 Provider Reference</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f8f8f6; color: #111; padding: 2rem 1.5rem; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
+  .subtitle { font-size: 0.875rem; color: #666; margin-bottom: 2rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: #fff; border: 1px solid #e0e0d8; border-radius: 10px; padding: 1.25rem 1.5rem; }
+  .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
+  .badge { font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.03em; }
+  .badge-google { background: #e8f0fe; color: #1a56cc; }
+  .badge-anthropic { background: #fce8dc; color: #b34a1a; }
+  .badge-deepseek { background: #e8f5e9; color: #2e7d32; }
+  .badge-openai { background: #f0f0f0; color: #333; }
+  .card h2 { font-size: 1rem; font-weight: 600; }
+  .model-tag { font-size: 0.75rem; color: #888; font-family: monospace; margin-top: 2px; }
+  pre { background: #1e1e2e; color: #cdd6f4; border-radius: 6px; padding: 1rem; font-size: 0.78rem; line-height: 1.6; overflow-x: auto; margin: 0.75rem 0; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .key { color: #89b4fa; }
+  .string { color: #a6e3a1; }
+  .number { color: #fab387; }
+  .bool { color: #f38ba8; }
+  .comment { color: #6c7086; font-style: italic; }
+  .notes { font-size: 0.8rem; line-height: 1.6; color: #444; }
+  .notes li { margin-left: 1.1rem; margin-bottom: 0.3rem; }
+  .notes strong { font-weight: 600; color: #111; }
+  .warn { background: #fff8e6; border: 1px solid #f0c040; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.78rem; color: #7a5800; margin-top: 0.75rem; }
+  .deprecated { background: #fff0f0; border: 1px solid #f0b0b0; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.78rem; color: #8b0000; margin-top: 0.75rem; }
+  .divider { border: none; border-top: 1px solid #e8e8e0; margin: 2rem 0; }
+  .full-width { grid-column: 1 / -1; }
+  .sources { font-size: 0.75rem; color: #888; line-height: 1.8; }
+  .sources a { color: #1a56cc; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.75rem; }
+  th { text-align: left; padding: 6px 8px; background: #f4f4f0; border: 1px solid #e0e0d8; font-weight: 600; }
+  td { padding: 6px 8px; border: 1px solid #e0e0d8; vertical-align: top; font-family: monospace; font-size: 0.75rem; }
+  td.desc { font-family: system-ui, sans-serif; font-size: 0.78rem; color: #444; }
+</style>
+</head>
+<body>
+
+<h1>LLM Thinking / Reasoning — API Parameter Reference</h1>
+<p class="subtitle">Exact field names, nesting, and valid values for 4 providers. Sourced from official docs, June 2026.</p>
+
+<div class="grid">
+
+  <!-- GEMINI -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-google">GOOGLE</span>
+      <div>
+        <h2>Gemini 2.5 Flash &amp; Pro</h2>
+        <div class="model-tag">gemini-2.5-flash &nbsp;·&nbsp; gemini-2.5-pro</div>
+      </div>
+    </div>
+    <pre><span class="comment">// REST body — generateContent</span>
+{
+  <span class="key">"contents"</span>: [...],
+  <span class="key">"generationConfig"</span>: {
+    <span class="key">"thinkingConfig"</span>: {
+      <span class="key">"thinkingBudget"</span>: <span class="number">1024</span>,
+      <span class="key">"includeThoughts"</span>: <span class="bool">true</span>
+    }
+  }
+}</pre>
+    <ul class="notes">
+      <li><strong>thinkingBudget</strong> — integer token cap for internal reasoning</li>
+      <li><strong>Flash range:</strong> 0–24,576 &nbsp;|&nbsp; 0 = disable thinking &nbsp;|&nbsp; -1 = dynamic (model decides)</li>
+      <li><strong>Pro range:</strong> 128–32,768 &nbsp;|&nbsp; cannot be disabled (no 0) &nbsp;|&nbsp; -1 = dynamic</li>
+      <li><strong>includeThoughts</strong> — when true, response parts contain thought summaries (with <code>thought: true</code> flag); not raw thought tokens</li>
+      <li>Do not mix <code>thinkingLevel</code> (Gemini 3.x) with <code>thinkingBudget</code> (2.5.x)</li>
+    </ul>
+    <div class="warn">Default for both models is <code>-1</code> (dynamic). Setting <code>thinkingBudget: 0</code> on Pro returns an error.</div>
+  </div>
+
+  <!-- CLAUDE -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-anthropic">ANTHROPIC</span>
+      <div>
+        <h2>Claude — extended thinking</h2>
+        <div class="model-tag">claude-sonnet-4-6 &nbsp;·&nbsp; claude-opus-4-5</div>
+      </div>
+    </div>
+    <pre><span class="comment">// Sonnet 4.6 — preferred: effort via output_config</span>
+{
+  <span class="key">"model"</span>: <span class="string">"claude-sonnet-4-6"</span>,
+  <span class="key">"max_tokens"</span>: <span class="number">16000</span>,
+  <span class="key">"output_config"</span>: {
+    <span class="key">"effort"</span>: <span class="string">"high"</span>
+  },
+  <span class="key">"thinking"</span>: { <span class="key">"type"</span>: <span class="string">"adaptive"</span> },
+  <span class="key">"messages"</span>: [...]
+}
+
+<span class="comment">// Older explicit style (deprecated on 4.6+)</span>
+{
+  <span class="key">"thinking"</span>: {
+    <span class="key">"type"</span>: <span class="string">"enabled"</span>,
+    <span class="key">"budget_tokens"</span>: <span class="number">10000</span>
+  }
+}</pre>
+    <ul class="notes">
+      <li><strong>budget_tokens</strong> must be less than <strong>max_tokens</strong>; no hard-coded min, but must be &gt; 0</li>
+      <li>Recommended max budget: ~32k tokens (higher rarely improves quality)</li>
+      <li><strong>effort</strong> valid values: <code>low</code>, <code>medium</code>, <code>high</code> (default), <code>max</code></li>
+      <li>Sonnet 4.6 + Opus 4.6: use <code>output_config.effort</code> + <code>thinking: {type: "adaptive"}</code></li>
+      <li>Older models (Opus 4.5): use <code>thinking: {type: "enabled", budget_tokens: N}</code></li>
+    </ul>
+    <div class="deprecated"><strong>Deprecated on Sonnet 4.6:</strong> <code>budget_tokens</code> still accepted but will be removed. Use <code>output_config.effort</code> instead.</div>
+  </div>
+
+  <!-- DEEPSEEK -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-deepseek">DEEPSEEK</span>
+      <div>
+        <h2>DeepSeek thinking mode</h2>
+        <div class="model-tag">deepseek-v4-pro &nbsp;·&nbsp; deepseek-v4-flash</div>
+      </div>
+    </div>
+    <pre><span class="comment">// Native DeepSeek REST API</span>
+{
+  <span class="key">"model"</span>: <span class="string">"deepseek-v4-pro"</span>,
+  <span class="key">"messages"</span>: [...],
+  <span class="key">"thinking"</span>: {
+    <span class="key">"type"</span>: <span class="string">"enabled"</span>,
+    <span class="key">"reasoning_effort"</span>: <span class="string">"high"</span>
+  }
+}
+
+<span class="comment">// Via OpenAI SDK (extra_body)</span>
+{
+  <span class="key">"model"</span>: <span class="string">"deepseek-v4-pro"</span>,
+  <span class="key">"reasoning_effort"</span>: <span class="string">"high"</span>,
+  <span class="key">"extra_body"</span>: {
+    <span class="key">"thinking"</span>: { <span class="key">"type"</span>: <span class="string">"enabled"</span> }
+  }
+}</pre>
+    <ul class="notes">
+      <li><strong>thinking.type</strong>: <code>"enabled"</code> | <code>"disabled"</code> — defaults to <code>enabled</code></li>
+      <li><strong>reasoning_effort</strong>: <code>"high"</code> | <code>"max"</code> — <code>low</code>/<code>medium</code> map to <code>high</code>; <code>xhigh</code> maps to <code>max</code></li>
+      <li>No top-level <code>enable_thinking</code> boolean — that param does not exist</li>
+      <li>Response includes <code>reasoning_content</code> field with CoT text</li>
+      <li>Temperature / top_p / penalties are silently ignored in thinking mode</li>
+    </ul>
+    <div class="warn"><strong>deepseek-reasoner retiring July 24, 2026</strong> — migrate to <code>deepseek-v4-pro</code> with <code>thinking: {type: "enabled"}</code></div>
+  </div>
+
+  <!-- OPENAI -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-openai">OPENAI</span>
+      <div>
+        <h2>OpenAI reasoning models</h2>
+        <div class="model-tag">gpt-5.4 &nbsp;·&nbsp; gpt-5.4-mini &nbsp;·&nbsp; o3 &nbsp;·&nbsp; o3-mini</div>
+      </div>
+    </div>
+    <pre><span class="comment">// Responses API (recommended)</span>
+{
+  <span class="key">"model"</span>: <span class="string">"gpt-5.4"</span>,
+  <span class="key">"input"</span>: <span class="string">"Your prompt"</span>,
+  <span class="key">"reasoning"</span>: {
+    <span class="key">"effort"</span>: <span class="string">"high"</span>
+  }
+}
+
+<span class="comment">// Chat Completions API (legacy-compatible)</span>
+{
+  <span class="key">"model"</span>: <span class="string">"gpt-5.4"</span>,
+  <span class="key">"reasoning_effort"</span>: <span class="string">"medium"</span>,
+  <span class="key">"messages"</span>: [...]
+}</pre>
+    <ul class="notes">
+      <li><strong>Responses API</strong>: nested as <code>reasoning: { effort: "..." }</code></li>
+      <li><strong>Chat Completions API</strong>: top-level <code>reasoning_effort</code> field</li>
+      <li>Valid values: <code>none</code>, <code>low</code>, <code>medium</code> (default), <code>high</code>, <code>xhigh</code></li>
+      <li>gpt-5.5+ also supports <code>minimal</code>; older o-series may not support all levels — check the model page</li>
+      <li>Higher effort = more reasoning tokens billed; <code>xhigh</code> can cost 3–5× vs <code>low</code></li>
+    </ul>
+    <div class="warn">Two APIs, two field structures. Responses API: <code>reasoning.effort</code>. Chat Completions: top-level <code>reasoning_effort</code>.</div>
+  </div>
+
+  <!-- SUMMARY TABLE -->
+  <div class="card full-width">
+    <h2 style="margin-bottom:0.75rem; font-size:0.95rem;">Quick-reference summary</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <tr>
+          <th>Provider</th>
+          <th>Field path</th>
+          <th>Type</th>
+          <th>Valid values</th>
+          <th class="desc">Notes</th>
+        </tr>
+        <tr>
+          <td>Gemini 2.5 Flash</td>
+          <td>generationConfig.thinkingConfig.thinkingBudget</td>
+          <td>integer</td>
+          <td>-1 (dynamic), 0 (off), 1–24576</td>
+          <td class="desc">includeThoughts: bool for thought summaries in response</td>
+        </tr>
+        <tr>
+          <td>Gemini 2.5 Pro</td>
+          <td>generationConfig.thinkingConfig.thinkingBudget</td>
+          <td>integer</td>
+          <td>-1 (dynamic), 128–32768 (cannot disable)</td>
+          <td class="desc">0 not allowed — returns error</td>
+        </tr>
+        <tr>
+          <td>Claude Sonnet 4.6</td>
+          <td>output_config.effort + thinking.type</td>
+          <td>string + string</td>
+          <td>low | medium | high | max &nbsp;+&nbsp; "adaptive"</td>
+          <td class="desc">budget_tokens still accepted but deprecated</td>
+        </tr>
+        <tr>
+          <td>Claude Opus 4.5</td>
+          <td>thinking.type + thinking.budget_tokens</td>
+          <td>string + integer</td>
+          <td>"enabled", budget &lt; max_tokens, max ~32k</td>
+          <td class="desc">Explicit budget style still correct for Opus 4.5</td>
+        </tr>
+        <tr>
+          <td>DeepSeek v4-pro</td>
+          <td>thinking.type + thinking.reasoning_effort</td>
+          <td>string + string</td>
+          <td>"enabled"/"disabled" + "high"/"max"</td>
+          <td class="desc">No enable_thinking bool. reasoning_content in response.</td>
+        </tr>
+        <tr>
+          <td>OpenAI (Responses API)</td>
+          <td>reasoning.effort</td>
+          <td>string</td>
+          <td>none | low | medium | high | xhigh</td>
+          <td class="desc">Nested object. Default: medium.</td>
+        </tr>
+        <tr>
+          <td>OpenAI (Chat Completions)</td>
+          <td>reasoning_effort (top-level)</td>
+          <td>string</td>
+          <td>none | low | medium | high | xhigh</td>
+          <td class="desc">Top-level field, not nested.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<hr class="divider">
+<div class="sources">
+  <strong>Sources:</strong><br>
+  <a href="https://ai.google.dev/gemini-api/docs/thinking">Google — Gemini thinking (generateContent API)</a> ·
+  <a href="https://platform.claude.com/docs/en/build-with-claude/extended-thinking">Anthropic — Extended thinking</a> ·
+  <a href="https://platform.claude.com/docs/en/build-with-claude/effort">Anthropic — Effort parameter</a> ·
+  <a href="https://api-docs.deepseek.com/guides/thinking_mode">DeepSeek — Thinking mode</a> ·
+  <a href="https://api-docs.deepseek.com/guides/reasoning_model">DeepSeek — Reasoning model</a> ·
+  <a href="https://developers.openai.com/api/docs/guides/reasoning">OpenAI — Reasoning models</a> ·
+  <a href="https://www.nxcode.io/resources/news/gpt-5-4-api-developer-guide-reasoning-computer-use-2026">GPT-5.4 developer guide</a>
+  <br><em>Verified June 2026.</em>
+</div>
+
+</body>
+</html>

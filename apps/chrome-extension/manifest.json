@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lumi Coach",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Tailor your resume for LinkedIn jobs and open the result in Lumi Coach.",
   "icons": {
     "16": "src/assets/icons/icon-16.png",
@@ -9,7 +9,7 @@
     "48": "src/assets/icons/icon-48.png",
     "128": "src/assets/icons/icon-128.png"
   },
-  "permissions": ["activeTab", "scripting", "storage", "tabs", "webNavigation"],
+  "permissions": ["activeTab", "cookies", "scripting", "storage", "tabs", "webNavigation"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://chatgpt.com/*",

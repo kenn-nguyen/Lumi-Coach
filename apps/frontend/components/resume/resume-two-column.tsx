@@ -90,7 +90,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
   // Helper function to render contact details
   const renderContactDetail = (label: string, value?: string | null, hrefPrefix: string = '') => {
     if (!value) return null;
-    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(
+    const { href, isLink, displayText, resolvedLabel } = buildContactDisplay(
       label,
       value,
       hrefPrefix
@@ -99,19 +99,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
     return (
       <span className="inline-flex items-center gap-1">
         {showContactIcons && contactIcons[resolvedLabel]}
-        {socialSlug ? (
-          <>
-            <span>{resolvedLabel}: </span>
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${baseStyles['resume-link']} hover:underline`}
-            >
-              {socialSlug}
-            </a>
-          </>
-        ) : isLink ? (
+        {isLink ? (
           <a
             href={href}
             target="_blank"
@@ -206,7 +194,7 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
 
           {/* Contact - Own line, centered */}
           <div
-            className={`flex flex-wrap justify-center gap-x-1 gap-y-1 ${baseStyles['resume-contact-line']}`}
+            className={`flex flex-nowrap justify-center gap-x-1 ${baseStyles['resume-contact-line']}`}
           >
             {personalInfo.customTagline &&
               renderContactDetail('CustomTagline', personalInfo.customTagline)}

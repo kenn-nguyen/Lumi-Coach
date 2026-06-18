@@ -98,7 +98,7 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
   // Helper function to render contact details
   const renderContactDetail = (label: string, value?: string | null, hrefPrefix: string = '') => {
     if (!value) return null;
-    const { href, isLink, displayText, socialSlug, resolvedLabel } = buildContactDisplay(
+    const { href, isLink, displayText, resolvedLabel } = buildContactDisplay(
       label,
       value,
       hrefPrefix
@@ -107,19 +107,7 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
     return (
       <span className="inline-flex items-center gap-1">
         {showContactIcons && contactIcons[resolvedLabel]}
-        {socialSlug ? (
-          <>
-            <span style={{ color: 'var(--resume-text-primary)' }}>{resolvedLabel}: </span>
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${baseStyles['resume-link']} hover:underline`}
-            >
-              {socialSlug}
-            </a>
-          </>
-        ) : isLink ? (
+        {isLink ? (
           <a
             href={href}
             target="_blank"
@@ -197,9 +185,7 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
           <div className={`${baseStyles['resume-title']} mt-1`}>{personalInfo.title}</div>
         )}
         {personalInfo && (
-          <div
-            className={`${baseStyles['resume-contact-line']} flex flex-wrap gap-x-3 gap-y-1 mt-1`}
-          >
+          <div className={`${baseStyles['resume-contact-line']} flex flex-nowrap gap-x-3 mt-1`}>
             {renderContactDetail('CustomTagline', personalInfo.customTagline)}
             {renderContactDetail('Email', personalInfo.email, 'mailto:')}
             {renderContactDetail('Phone', personalInfo.phone, 'tel:')}

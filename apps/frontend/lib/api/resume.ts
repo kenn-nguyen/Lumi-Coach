@@ -311,6 +311,24 @@ export async function importTailoredResumeJson(
   return (await res.json()) as ResumeUploadResponse;
 }
 
+export async function importMasterResume(file: File): Promise<ResumeUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await apiFetch('/resumes/upload', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      await readApiErrorMessage(res, `Failed to import master resume (status ${res.status}).`)
+    );
+  }
+
+  return (await res.json()) as ResumeUploadResponse;
+}
+
 export async function updateResume(
   resumeId: string,
   resumeData: ProcessedResume,

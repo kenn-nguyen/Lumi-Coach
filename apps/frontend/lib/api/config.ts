@@ -326,6 +326,32 @@ export async function updatePromptConfig(update: PromptConfigUpdate): Promise<Pr
   return res.json();
 }
 
+// Apify API key
+export interface ApifyKeyConfig {
+  api_key: string;
+  configured: boolean;
+}
+
+export async function fetchApifyKey(): Promise<ApifyKeyConfig> {
+  const res = await apiFetch('/config/apify-key', { credentials: 'include' });
+  if (!res.ok) throw new Error(`Failed to load Apify key (status ${res.status}).`);
+  return res.json();
+}
+
+export async function updateApifyKey(api_key: string): Promise<ApifyKeyConfig> {
+  const res = await apiFetch('/config/apify-key', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ api_key }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to save Apify key (status ${res.status}).`);
+  }
+  return res.json();
+}
+
 // API Key Management types
 export type ApiKeyProvider = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'deepseek';
 

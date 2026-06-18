@@ -53,7 +53,7 @@ import {
 } from "./storage.js";
 import { alignSectionMetaToSourceResume } from "./resume-structure.js";
 import { captureExtensionEvent } from "./analytics.js";
-import { getActiveLlmProfile } from "./llm/profiles.js";
+import { getActiveLlmProfile, resolveProfileForStage } from "./llm/profiles.js";
 import { runPrompt } from "./llm/runners.js";
 import { requiresApiKeyForApiBaseUrl } from "./llm/local-proxy.js";
 import {
@@ -1441,8 +1441,12 @@ export async function generateResumeForLinkedInJob(
     llmSettings,
     apifyFallbackSettings,
     activePromptProfileId,
+    importedLlmConfig,
   } = await getUserAssets();
   const activeLlmProfile = getActiveLlmProfile(llmSettings);
+  const p1Profile = resolveProfileForStage("prompt1", importedLlmConfig, llmSettings);
+  const p2Profile = resolveProfileForStage("prompt2", importedLlmConfig, llmSettings);
+  const p3Profile = resolveProfileForStage("prompt3", importedLlmConfig, llmSettings);
   const refreshPromptMetadata = async () => {
     promptMetadata = await buildPromptRunMetadata({
       profile: activeLlmProfile,
@@ -1715,7 +1719,7 @@ export async function generateResumeForLinkedInJob(
         stage_label: "analyze_jd",
       });
       const prompt1Run = await runPrompt(prompt1, {
-        profile: activeLlmProfile,
+        profile: p1Profile,
         promptLabel: "Prompt 1",
         promptStage: "prompt1",
         apiPromptBlocks: prompt1Rendered.apiPromptBlocks,
@@ -1840,7 +1844,7 @@ export async function generateResumeForLinkedInJob(
         stage_label: "strategize_positioning",
       });
       const prompt2Run = await runPrompt(prompt2, {
-        profile: activeLlmProfile,
+        profile: p2Profile,
         promptLabel: "Prompt 2",
         promptStage: "prompt2",
         apiPromptBlocks: prompt2Rendered.apiPromptBlocks,
@@ -1965,7 +1969,7 @@ export async function generateResumeForLinkedInJob(
       stage_label: "write_tailored_resume",
     });
     const prompt3Run = await runPrompt(prompt3, {
-      profile: activeLlmProfile,
+      profile: p3Profile,
       promptLabel: "Prompt 3",
       promptStage: "prompt3",
       apiPromptBlocks: prompt3Rendered.apiPromptBlocks,

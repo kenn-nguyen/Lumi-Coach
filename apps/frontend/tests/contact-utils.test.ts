@@ -6,7 +6,7 @@ describe('buildContactDisplay', () => {
     const result = buildContactDisplay('LinkedIn', 'kenn-nguyen');
 
     expect(result.href).toBe('https://www.linkedin.com/in/kenn-nguyen');
-    expect(result.displayText).toBe('kenn-nguyen');
+    expect(result.displayText).toBe('linkedin.com/in/kenn-nguyen');
     expect(result.socialSlug).toBe('kenn-nguyen');
   });
 
@@ -33,7 +33,7 @@ describe('buildContactDisplay', () => {
     const result = buildContactDisplay('GitHub', 'kenn-nguyen');
 
     expect(result.href).toBe('https://github.com/kenn-nguyen');
-    expect(result.displayText).toBe('kenn-nguyen');
+    expect(result.displayText).toBe('github.com/kenn-nguyen');
     expect(result.socialSlug).toBe('kenn-nguyen');
   });
 

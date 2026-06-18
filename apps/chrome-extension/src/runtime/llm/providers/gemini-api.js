@@ -35,7 +35,7 @@ function extractGeminiText(payload) {
   return textParts.join('\n\n');
 }
 
-async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt = '', useJsonOutput = false, signal }) {
+async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt = '', useJsonOutput = false, thinkingConfig = null, signal }) {
   const systemPromptText = useJsonOutput
     ? decorateSystemPromptForJsonOutput(systemPrompt)
     : systemPrompt;
@@ -64,7 +64,13 @@ async function callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, sys
               },
             }
           : {}),
-        ...(useJsonOutput ? { generationConfig: getGeminiJsonModeConfig() } : {}),
+        ...(() => {
+          const generationConfig = {
+            ...(useJsonOutput ? getGeminiJsonModeConfig() : {}),
+            ...(thinkingConfig && typeof thinkingConfig === 'object' ? { thinkingConfig } : {}),
+          };
+          return Object.keys(generationConfig).length ? { generationConfig } : {};
+        })(),
         contents: [
           {
             parts: [
@@ -163,6 +169,10 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
     : 'https://generativelanguage.googleapis.com/v1beta/models';
   const systemPrompt = typeof options.systemPrompt === 'string' ? options.systemPrompt.trim() : '';
   const useJsonOutput = shouldUseJsonOutput(options.promptStage);
+  const thinkingConfig =
+    profile.thinkingConfig && typeof profile.thinkingConfig === 'object'
+      ? profile.thinkingConfig
+      : null;
   const signal = options.signal;
 
   if (!apiKey) {
@@ -173,7 +183,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
   }
 
   const endpoint = `${apiBaseUrl}/${encodeURIComponent(model)}:generateContent`;
-  let result = await callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt, useJsonOutput, signal });
+  let result = await callGeminiApi(prompt, { apiKey, model, endpoint, promptLabel, systemPrompt, useJsonOutput, thinkingConfig, signal });
   const validateResponse = typeof options.validateResponse === 'function' ? options.validateResponse : null;
   const buildRepairPrompt = typeof options.buildRepairPrompt === 'function' ? options.buildRepairPrompt : null;
   const maxRepairAttempts = Number.isInteger(options.maxRepairAttempts)
@@ -214,6 +224,7 @@ export async function runGeminiApiPrompt(prompt, options = {}) {
         promptLabel: `${promptLabel} Repair`,
         systemPrompt,
         useJsonOutput,
+        thinkingConfig,
         signal,
       });
       if (result.status !== 'success') {

@@ -735,6 +735,28 @@ async def delete_api_key(
     return {"message": f"Your saved API key for {provider} has been cleared"}
 
 
+@router.get("/apify-key")
+async def get_apify_key() -> dict:
+    """Get the stored Apify API token (masked)."""
+    stored = _load_config()
+    token = str(stored.get("apify_api_token", ""))
+    return {"api_key": _mask_api_key(token), "configured": bool(token)}
+
+
+@router.put("/apify-key")
+async def update_apify_key(request: dict) -> dict:
+    """Save the Apify API token to config storage."""
+    api_key = str(request.get("api_key", "")).strip()
+    stored = _load_config()
+    if api_key:
+        stored["apify_api_token"] = api_key
+    else:
+        stored.pop("apify_api_token", None)
+    _save_config(stored)
+    token = str(stored.get("apify_api_token", ""))
+    return {"api_key": _mask_api_key(token), "configured": bool(token)}
+
+
 @router.post("/reset")
 async def reset_database_endpoint() -> dict[str, str]:
     """Reject global database resets from the user-facing app."""

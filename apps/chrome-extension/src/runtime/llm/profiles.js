@@ -49,6 +49,10 @@ export const DEFAULT_DEEPSEEK_API_STAGE_MODELS = {
   },
   prompt2: {
     model: "deepseek-v4-pro",
+    thinking: {
+      type: "enabled",
+    },
+    reasoning_effort: "medium",
   },
   prompt3: {
     model: "deepseek-v4-pro",
@@ -286,6 +290,183 @@ export function resolveLlmStageSettings(profile, promptStage = "") {
     merged.promptStage = normalizedStage;
   }
   return withoutProviderPatchKey(merged);
+}
+
+function stripJsoncComments(text) {
+  let result = "";
+  let i = 0;
+  let inString = false;
+  let escaped = false;
+  while (i < text.length) {
+    const ch = text[i];
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      i++;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") { escaped = true; result += ch; i++; continue; }
+      if (ch === '"') inString = false;
+      result += ch; i++; continue;
+    }
+    if (ch === '"') { inString = true; result += ch; i++; continue; }
+    if (ch === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i += 2; continue;
+    }
+    result += ch; i++;
+  }
+  return result;
+}
+
+export const TEMPLATE_JSONC = `{
+  // Determines which AI provider handles each prompt stage.
+  // Valid profile IDs: "claude:api", "deepseek:api", "openai:api", "gemini:api"
+  // Remove or reset this file to return to single-provider mode.
+  "stageProviders": {
+    "prompt1": "deepseek:api",
+    "prompt2": "claude:api",
+    "prompt3": "claude:api"
+  },
+
+  // Per-provider model and API call settings for each stage.
+  // The API key and endpoint still come from the Settings panel.
+  // Settings here override the model for the tailor pipeline only.
+  "profiles": {
+    "claude:api": {
+      // Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
+      // Thinking: budget_tokens 1024-16000 (higher = deeper reasoning)
+      "stageModels": {
+        "prompt1": { "model": "claude-sonnet-4-6" },
+        "prompt2": {
+          "model": "claude-sonnet-4-6",
+          "thinking": { "type": "enabled", "budget_tokens": 8192 },
+          "maxTokens": 18000
+        },
+        "prompt3": { "model": "claude-sonnet-4-6" }
+      }
+    },
+
+    "deepseek:api": {
+      // DeepSeek models: deepseek-v4-pro, deepseek-chat
+      // reasoning_effort: "high" | "max" ("medium" silently maps to "high")
+      "stageModels": {
+        "prompt1": { "model": "deepseek-v4-pro" },
+        "prompt2": {
+          "model": "deepseek-v4-pro",
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "medium"
+        },
+        "prompt3": {
+          "model": "deepseek-v4-pro",
+          "thinking": { "type": "enabled" },
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+
+    // Uncomment to enable OpenAI per-stage routing:
+    // ,"openai:api": {
+    //   // Models: gpt-5.4-mini, gpt-5.4, gpt-4.1, gpt-4o-mini
+    //   // reasoning.effort: "low" | "medium" | "high"
+    //   "stageModels": {
+    //     "prompt1": { "model": "gpt-5.4-mini", "reasoning": { "effort": "low" } },
+    //     "prompt2": { "model": "gpt-5.4", "reasoning": { "effort": "high" } },
+    //     "prompt3": { "model": "gpt-5.4", "reasoning": { "effort": "low" } }
+    //   }
+    // }
+
+    // Uncomment to enable Gemini per-stage routing:
+    // ,"gemini:api": {
+    //   // Models: gemini-2.5-flash, gemini-2.5-pro
+    //   // Flash: thinkingBudget 0-24576 (0 disables thinking)
+    //   // Pro: thinkingBudget 128-32768 (cannot be disabled)
+    //   // Use -1 for dynamic budget. includeThoughts: false recommended.
+    //   "stageModels": {
+    //     "prompt1": { "model": "gemini-2.5-flash", "thinkingConfig": { "thinkingBudget": 0 } },
+    //     "prompt2": { "model": "gemini-2.5-pro", "thinkingConfig": { "thinkingBudget": 8192, "includeThoughts": false } },
+    //     "prompt3": { "model": "gemini-2.5-flash" }
+    //   }
+    // }
+  }
+}`;
+
+function validateImportedConfig(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Config must be a JSON object.");
+  }
+  if (parsed.stageProviders !== undefined) {
+    if (typeof parsed.stageProviders !== "object" || Array.isArray(parsed.stageProviders)) {
+      throw new Error("stageProviders must be an object.");
+    }
+    for (const [stage, profileId] of Object.entries(parsed.stageProviders)) {
+      if (typeof profileId !== "string" || !profileId.trim()) {
+        throw new Error(`stageProviders.${stage} must be a non-empty string.`);
+      }
+    }
+  }
+  if (parsed.profiles !== undefined) {
+    if (typeof parsed.profiles !== "object" || Array.isArray(parsed.profiles)) {
+      throw new Error("profiles must be an object.");
+    }
+  }
+  return parsed;
+}
+
+export function parseImportedConfig(text) {
+  if (typeof text !== "string") throw new Error("Config must be a string.");
+  const stripped = stripJsoncComments(text);
+  let parsed;
+  try {
+    parsed = JSON.parse(stripped);
+  } catch (e) {
+    throw new Error(`Config is not valid JSON: ${e.message}`);
+  }
+  return validateImportedConfig(parsed);
+}
+
+export function resolveProfileForStage(stage, importedConfig, llmSettings) {
+  if (!importedConfig || typeof importedConfig !== "object") {
+    return getActiveLlmProfile(llmSettings);
+  }
+  const stageProviders = importedConfig.stageProviders;
+  const profileId =
+    stageProviders && typeof stageProviders === "object"
+      ? stageProviders[stage]
+      : null;
+  if (!profileId || typeof profileId !== "string") {
+    return getActiveLlmProfile(llmSettings);
+  }
+  const resolved = mergeLlmSettings(llmSettings);
+  const baseProfile = resolved.profiles[profileId];
+  if (!baseProfile) {
+    return getActiveLlmProfile(llmSettings);
+  }
+  const importedProfileConfig = importedConfig.profiles?.[profileId];
+  const stageOverrides =
+    importedProfileConfig?.stageModels?.[stage] ?? null;
+  if (!stageOverrides || typeof stageOverrides !== "object") {
+    return { ...cloneValue(baseProfile), stageModels: {}, promptStage: stage };
+  }
+  const merged = {
+    ...cloneValue(baseProfile),
+    ...cloneValue(stageOverrides),
+    stageModels: {},
+    promptStage: stage,
+  };
+  if (stageOverrides.thinking && typeof stageOverrides.thinking === "object") {
+    merged.thinking = cloneValue(stageOverrides.thinking);
+  }
+  if (stageOverrides.reasoning && typeof stageOverrides.reasoning === "object") {
+    merged.reasoning = cloneValue(stageOverrides.reasoning);
+  }
+  return merged;
 }
 
 export function updateLlmSettings(

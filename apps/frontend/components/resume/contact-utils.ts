@@ -126,6 +126,14 @@ export function buildContactDisplay(
     displayText = stripProtocolAndWww(trimmedValue);
   }
 
+  // For bare-slug inputs, build the canonical domain-path display text so
+  // all templates can render a consistent "linkedin.com/in/slug" link with
+  // no label prefix, regardless of whether the user stored a slug or full URL.
+  if (socialSlug) {
+    if (resolvedLabel === 'LinkedIn') displayText = `linkedin.com/in/${socialSlug}`;
+    else if (resolvedLabel === 'GitHub') displayText = `github.com/${socialSlug}`;
+  }
+
   return {
     href,
     isLink,

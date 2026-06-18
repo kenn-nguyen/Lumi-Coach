@@ -688,11 +688,27 @@ async def complete(
     config: LLMConfig | None = None,
     max_tokens: int = 4096,
     temperature: float = 0.7,
+    model_override: str | None = None,
+    stage_kwargs: dict[str, Any] | None = None,
 ) -> str:
     """Make a completion request to the LLM.
 
     Transport retries (429, 500, timeout) are handled by the Router.
+
+    When model_override or stage_kwargs are provided (per-stage tailor pipeline),
+    LiteLLM is called directly to avoid router model-cache conflicts.
     """
+    if model_override or stage_kwargs:
+        return await _complete_direct(
+            prompt,
+            system_prompt=system_prompt,
+            config=config,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            model_override=model_override,
+            stage_kwargs=stage_kwargs or {},
+        )
+
     router, config = get_router(config)
     model_name = get_model_name(config)
 
@@ -730,6 +746,67 @@ async def complete(
         logging.error(f"LLM completion failed: {e}", extra={
                       "model": model_name})
         raise_if_known_llm_request_error(config, e)
+        raise ValueError(
+            "LLM completion failed. Please check your API configuration and try again."
+        ) from e
+
+
+async def _complete_direct(
+    prompt: str,
+    system_prompt: str | None,
+    config: LLMConfig | None,
+    max_tokens: int,
+    temperature: float,
+    model_override: str | None,
+    stage_kwargs: dict[str, Any],
+) -> str:
+    """Call LiteLLM directly (bypassing the cached Router) for per-stage model/param overrides."""
+    if config is None:
+        config = get_llm_config()
+
+    effective_config = config.model_copy(update={"model": model_override}) if model_override else config
+    model_name = get_model_name(effective_config)
+
+    messages: list[dict[str, Any]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    # Start with stage-specific overrides (model, thinking, reasoning_effort, etc.)
+    effective_max_tokens = stage_kwargs.get("max_tokens", max_tokens)
+    extra = {k: v for k, v in stage_kwargs.items() if k != "max_tokens"}
+    kwargs: dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+        "max_tokens": effective_max_tokens,
+        "timeout": LLM_TIMEOUT_COMPLETION,
+        **extra,
+    }
+
+    _apply_provider_runtime_params(kwargs, effective_config)
+
+    if _supports_temperature(effective_config.provider, model_name):
+        kwargs.setdefault("temperature", temperature)
+
+    # Only apply default reasoning_effort if not already set by stage_kwargs
+    if "reasoning_effort" not in kwargs:
+        reasoning_effort = _get_reasoning_effort(effective_config.provider, model_name)
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
+
+    try:
+        response = await litellm.acompletion(**kwargs)
+        content = _extract_choice_text(response.choices[0])
+        if not content:
+            raise ValueError("Empty response from LLM")
+        if "<think>" in content:
+            content = _strip_thinking_tags(content)
+            if not content:
+                raise ValueError("Response contained only thinking content, no output")
+        return content
+    except Exception as e:
+        logging.error(f"LLM completion failed: {e}", extra={"model": model_name})
+        raise_if_known_llm_request_error(effective_config, e)
         raise ValueError(
             "LLM completion failed. Please check your API configuration and try again."
         ) from e

@@ -12,14 +12,13 @@ import {
   updateFeatureConfig,
   fetchOutputConfig,
   updateOutputConfig,
-  fetchPromptConfig,
-  updatePromptConfig,
+  fetchApifyKey,
+  updateApifyKey,
   clearAllApiKeys,
   PROVIDER_INFO,
   type LLMConfig,
   type LLMProvider,
   type LLMHealthCheck,
-  type PromptOption,
 } from '@/lib/api/config';
 import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
 import { FormattingControls } from '@/components/builder/formatting-controls';
@@ -39,7 +38,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Dropdown } from '@/components/ui/dropdown';
 import {
   Save,
   Key,
@@ -148,9 +146,10 @@ export default function SettingsPage() {
   const [enableOutreach, setEnableOutreach] = useState(false);
   const [preserveGeneratedResumeFacts, setPreserveGeneratedResumeFacts] = useState(true);
   const [featureConfigLoading, setFeatureConfigLoading] = useState(false);
-  const [promptConfigLoading, setPromptConfigLoading] = useState(false);
-  const [promptOptions, setPromptOptions] = useState<PromptOption[]>([]);
-  const [defaultPromptId, setDefaultPromptId] = useState('keywords');
+  const [apifyKey, setApifyKey] = useState('');
+  const [hasStoredApifyKey, setHasStoredApifyKey] = useState(false);
+  const [apifyKeyLoading, setApifyKeyLoading] = useState(false);
+  const [apifyKeySaved, setApifyKeySaved] = useState(false);
   const [defaultTemplateSettings, setDefaultTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
   const [outputConfigLoading, setOutputConfigLoading] = useState(false);
@@ -168,50 +167,6 @@ export default function SettingsPage() {
   // Translations
   const { t } = useTranslations();
   const providerInfo = PROVIDER_INFO[provider] ?? PROVIDER_INFO['openai'];
-  const fallbackPromptOptions = useMemo<PromptOption[]>(
-    () => [
-      {
-        id: 'nudge',
-        label: t('tailor.promptOptions.nudge.label'),
-        description: t('tailor.promptOptions.nudge.description'),
-      },
-      {
-        id: 'keywords',
-        label: t('tailor.promptOptions.keywords.label'),
-        description: t('tailor.promptOptions.keywords.description'),
-      },
-      {
-        id: 'full',
-        label: t('tailor.promptOptions.full.label'),
-        description: t('tailor.promptOptions.full.description'),
-      },
-    ],
-    [t]
-  );
-  const promptOptionOverrides = useMemo<Record<string, { label: string; description: string }>>(
-    () => ({
-      nudge: {
-        label: t('tailor.promptOptions.nudge.label'),
-        description: t('tailor.promptOptions.nudge.description'),
-      },
-      keywords: {
-        label: t('tailor.promptOptions.keywords.label'),
-        description: t('tailor.promptOptions.keywords.description'),
-      },
-      full: {
-        label: t('tailor.promptOptions.full.label'),
-        description: t('tailor.promptOptions.full.description'),
-      },
-    }),
-    [t]
-  );
-  const localizedPromptOptions = useMemo(() => {
-    const options = promptOptions.length ? promptOptions : fallbackPromptOptions;
-    return options.map((option) => {
-      const override = promptOptionOverrides[option.id];
-      return override ? { ...option, ...override } : option;
-    });
-  }, [promptOptions, fallbackPromptOptions, promptOptionOverrides]);
   const healthDetailItems = useMemo(() => {
     if (!healthCheck) return [];
 
@@ -259,11 +214,11 @@ export default function SettingsPage() {
 
     async function loadConfig() {
       try {
-        const [llmConfig, featureConfig, outputConfig, promptConfig] = await Promise.all([
+        const [llmConfig, featureConfig, outputConfig, apifyConfig] = await Promise.all([
           fetchLlmConfig().catch(() => null),
           fetchFeatureConfig().catch(() => null),
           fetchOutputConfig().catch(() => null),
-          fetchPromptConfig().catch(() => null),
+          fetchApifyKey().catch(() => null),
         ]);
 
         if (cancelled) return;
@@ -301,9 +256,9 @@ export default function SettingsPage() {
           );
         }
 
-        if (promptConfig) {
-          setPromptOptions(promptConfig.prompt_options || []);
-          setDefaultPromptId(promptConfig.default_prompt_id || 'keywords');
+        if (apifyConfig) {
+          setHasStoredApifyKey(apifyConfig.configured);
+          setApifyKey(apifyConfig.configured ? '' : '');
         }
 
         setStatus('idle');
@@ -459,20 +414,22 @@ export default function SettingsPage() {
     }
   };
 
-  const handlePromptConfigChange = async (value: string) => {
-    setPromptConfigLoading(true);
+  const handleApifyKeySave = async (valueOverride?: string) => {
+    const trimmed = (valueOverride ?? apifyKey).trim();
+    if (!trimmed && !hasStoredApifyKey) return;
+    setApifyKeyLoading(true);
     setError(null);
     try {
-      const updated = await updatePromptConfig({ default_prompt_id: value });
-      setDefaultPromptId(updated.default_prompt_id);
-      if (updated.prompt_options?.length) {
-        setPromptOptions(updated.prompt_options);
-      }
+      const result = await updateApifyKey(trimmed);
+      setHasStoredApifyKey(result.configured);
+      setApifyKey('');
+      setApifyKeySaved(true);
+      setTimeout(() => setApifyKeySaved(false), 2500);
     } catch (err) {
-      console.error('Failed to update prompt config', err);
+      console.error('Failed to save Apify key', err);
       setError((err as Error).message || t('settings.errors.unableToSaveConfiguration'));
     } finally {
-      setPromptConfigLoading(false);
+      setApifyKeyLoading(false);
     }
   };
 
@@ -815,6 +772,11 @@ export default function SettingsPage() {
                     model: providerInfo.defaultModel,
                   })}
                 </p>
+                <p className="text-xs text-amber-700 font-mono bg-amber-50 border border-amber-200 px-2 py-1.5">
+                  This model is used for: regenerate bullets, outreach email, cover letter, and
+                  master resume import. The tailoring pipeline uses optimized models per stage
+                  (matched to the Chrome extension).
+                </p>
               </div>
 
               {/* API Key Input */}
@@ -1034,16 +996,76 @@ export default function SettingsPage() {
                   disabled={featureConfigLoading}
                 />
               </div>
+            </div>
+          </section>
 
-              <div className="pt-4 border-t border-gray-200">
-                <Dropdown
-                  options={localizedPromptOptions}
-                  value={defaultPromptId}
-                  onChange={handlePromptConfigChange}
-                  label={t('settings.promptSettings.title')}
-                  description={t('settings.promptSettings.description')}
-                  disabled={promptConfigLoading}
+          {/* Integrations */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 border-b border-border/80 pb-2">
+              <Key className="w-4 h-4" />
+              <h2 className="font-mono text-sm font-bold uppercase tracking-wider">Integrations</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Apify API Key</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Used to extract job descriptions from LinkedIn URLs when tailoring. Get your key
+                  at{' '}
+                  <a
+                    href="https://apify.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    apify.com
+                  </a>
+                  .
+                </p>
+              </div>
+
+              {hasStoredApifyKey && (
+                <p className="font-mono text-xs text-green-700 uppercase tracking-wide">
+                  ✓ Apify key saved
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  value={apifyKey}
+                  onChange={(e) => setApifyKey(e.target.value)}
+                  placeholder={hasStoredApifyKey ? 'Enter new key to replace' : 'apify_api_…'}
+                  className="flex-1 font-mono text-sm"
+                  disabled={apifyKeyLoading}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleApifyKeySave();
+                  }}
                 />
+                <Button
+                  variant="outline"
+                  onClick={handleApifyKeySave}
+                  disabled={apifyKeyLoading || (!apifyKey.trim() && !hasStoredApifyKey)}
+                >
+                  {apifyKeyLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : apifyKeySaved ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">{apifyKeySaved ? 'Saved' : 'Save'}</span>
+                </Button>
+                {hasStoredApifyKey && (
+                  <Button
+                    variant="outline"
+                    className="text-red-600 hover:bg-red-50 hover:border-red-300"
+                    onClick={() => handleApifyKeySave('')}
+                    disabled={apifyKeyLoading}
+                  >
+                    Remove
+                  </Button>
+                )}
               </div>
             </div>
           </section>

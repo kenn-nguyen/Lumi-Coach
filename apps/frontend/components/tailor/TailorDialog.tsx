@@ -19,6 +19,7 @@ import {
   type PromptProfileId,
   type TailorStatusResponse,
 } from '@/lib/api/tailor';
+import { useStatusCache } from '@/lib/context/status-cache';
 
 // Poll every 3 seconds while running
 const POLL_INTERVAL_MS = 3000;
@@ -33,6 +34,7 @@ type Phase = 'input' | 'running' | 'done' | 'error';
 
 export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
   const router = useRouter();
+  const { status: systemStatus } = useStatusCache();
 
   // Input state
   const [jdUrl, setJdUrl] = useState('');
@@ -123,11 +125,16 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
       setPhase('running');
       startPolling(resumeId);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to start pipeline.');
+      const base = err instanceof Error ? err.message : 'Failed to start pipeline.';
+      const freeTierSuffix =
+        systemStatus?.using_free_llm && !systemStatus?.has_user_api_key
+          ? ' This may be due to free tier instability — try again or add your own API key in Settings.'
+          : '';
+      setErrorMsg(base + freeTierSuffix);
     } finally {
       setIsSubmitting(false);
     }
-  }, [jdUrl, jdText, profileId, resumeId, startPolling]);
+  }, [jdUrl, jdText, profileId, resumeId, startPolling, systemStatus]);
 
   const handleCancel = useCallback(async () => {
     stopPolling();

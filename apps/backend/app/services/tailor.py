@@ -21,6 +21,46 @@ from app.services.prompt_loader import build_prompt, load_system_prompt
 
 logger = logging.getLogger(__name__)
 
+# Per-stage model configs mirroring the Chrome extension's DEFAULT_*_API_STAGE_MODELS.
+# Provider+key come from user Settings; only the model (and provider-specific params)
+# are overridden here. If a provider has no entry, the user's configured model is used.
+TAILOR_STAGE_MODELS: dict[str, dict[str, dict]] = {
+    "openai": {
+        "prompt1": {"model": "gpt-5.4-mini", "reasoning_effort": "low"},
+        "prompt2": {"model": "gpt-5.4", "reasoning_effort": "high"},
+        "prompt3": {"model": "gpt-5.4", "reasoning_effort": "low"},
+    },
+    "anthropic": {
+        "prompt1": {"model": "claude-sonnet-4-6"},
+        "prompt2": {
+            "model": "claude-sonnet-4-6",
+            "thinking": {"type": "enabled", "budget_tokens": 8192},
+            "max_tokens": 18000,
+        },
+        "prompt3": {"model": "claude-sonnet-4-6"},
+    },
+    "deepseek": {
+        "prompt1": {"model": "deepseek-v4-pro"},
+        "prompt2": {"model": "deepseek-v4-pro", "thinking": {"type": "enabled"}, "reasoning_effort": "medium"},
+        "prompt3": {"model": "deepseek-v4-pro", "thinking": {"type": "enabled"}, "reasoning_effort": "medium"},
+    },
+    # Gemini: no stage overrides — uses the model the user configured in Settings.
+}
+
+
+def _get_stage_overrides(provider: str, stage: str) -> tuple[str | None, dict]:
+    """Return (model_override, stage_kwargs) for the given provider and stage.
+
+    Returns (None, {}) when the provider has no per-stage config, meaning the
+    user's configured model is used as-is.
+    """
+    stage_config = TAILOR_STAGE_MODELS.get(provider, {}).get(stage, {})
+    if not stage_config:
+        return None, {}
+    model = stage_config.get("model")
+    extra = {k: v for k, v in stage_config.items() if k != "model"}
+    return model, extra
+
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -141,12 +181,20 @@ async def _call_llm_with_repair(
     llm_config: LLMConfig,
     stage_label: str,
     parse_json: bool = True,
+    model_override: str | None = None,
+    stage_kwargs: dict | None = None,
 ) -> tuple[str, dict | None]:
     """
     Call LLM and optionally parse JSON. On parse failure, attempt one repair call.
     Returns (raw_text, parsed_dict_or_None).
     """
-    raw = await llm.complete(prompt, system_prompt=system_prompt, config=llm_config)
+    raw = await llm.complete(
+        prompt,
+        system_prompt=system_prompt,
+        config=llm_config,
+        model_override=model_override,
+        stage_kwargs=dict(stage_kwargs) if stage_kwargs else None,
+    )
 
     if not parse_json:
         return raw, None
@@ -162,6 +210,7 @@ async def _call_llm_with_repair(
         "Return only a valid JSON object with no markdown, explanation, or extra text.\n\n"
         f"Previous response:\n{raw}"
     )
+    # Repair call uses no special stage params — just need valid JSON output
     repaired_raw = await llm.complete(
         repair_prompt, system_prompt=system_prompt, config=llm_config
     )
@@ -244,12 +293,15 @@ async def run_tailor_pipeline(
         p2_raw = ""
         p2_json: dict[str, Any] = {}
 
+        provider = llm_config.provider
+
         # ── Stage 1: Prompt 1 — Analyze JD ────────────────────────────────
         if not is_single_stage:
             if _is_canceled(resume_id, user_id):
                 return
             _update_progress(resume_id, user_id, "prompt1")
 
+            p1_model, p1_kwargs = _get_stage_overrides(provider, "prompt1")
             p1_prompt = build_prompt("prompt1", prompt_profile_id, base_vars)
             p1_raw, p1_parsed = await _call_llm_with_repair(
                 p1_prompt,
@@ -257,6 +309,8 @@ async def run_tailor_pipeline(
                 llm_config,
                 "Prompt1",
                 parse_json=not is_freeform,
+                model_override=p1_model,
+                stage_kwargs=p1_kwargs,
             )
             if p1_parsed:
                 p1_json = p1_parsed
@@ -267,6 +321,7 @@ async def run_tailor_pipeline(
                 return
             _update_progress(resume_id, user_id, "prompt2")
 
+            p2_model, p2_kwargs = _get_stage_overrides(provider, "prompt2")
             p2_vars = {
                 **base_vars,
                 "PROMPT1_JSON": json.dumps(p1_json) if p1_json else "",
@@ -280,6 +335,8 @@ async def run_tailor_pipeline(
                 llm_config,
                 "Prompt2",
                 parse_json=not is_freeform,
+                model_override=p2_model,
+                stage_kwargs=p2_kwargs,
             )
             if p2_parsed:
                 p2_json = p2_parsed
@@ -289,6 +346,7 @@ async def run_tailor_pipeline(
             return
         _update_progress(resume_id, user_id, "prompt3")
 
+        p3_model, p3_kwargs = _get_stage_overrides(provider, "prompt3")
         p3_vars = {
             **base_vars,
             "PROMPT1_JSON": json.dumps(p1_json) if p1_json else "",
@@ -299,7 +357,13 @@ async def run_tailor_pipeline(
         }
         p3_prompt = build_prompt("prompt3", prompt_profile_id, p3_vars)
         p3_raw, _ = await _call_llm_with_repair(
-            p3_prompt, system_prompt, llm_config, "Prompt3", parse_json=True
+            p3_prompt,
+            system_prompt,
+            llm_config,
+            "Prompt3",
+            parse_json=True,
+            model_override=p3_model,
+            stage_kwargs=p3_kwargs,
         )
 
         # ── Stage 4: Post-processing ───────────────────────────────────────
