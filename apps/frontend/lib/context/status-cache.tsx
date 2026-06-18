@@ -5,7 +5,6 @@ import { useSession } from 'next-auth/react';
 import { fetchSystemStatus, type SystemStatus } from '@/lib/api/config';
 
 // Cache duration constants
-const LLM_HEALTH_CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
 const STATUS_STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes for DB stats
 
 interface CachedStatus {
@@ -38,7 +37,8 @@ interface StatusCacheContextValue {
 const StatusCacheContext = createContext<StatusCacheContextValue | null>(null);
 
 export function StatusCacheProvider({ children }: { children: React.ReactNode }) {
-  const { status: authStatus } = useSession();
+  const { data: session, status: authStatus } = useSession();
+  const currentUserIdRef = useRef<string | null>(null);
   const [cache, setCache] = useState<CachedStatus>({
     status: null,
     lastFetched: null,
@@ -47,7 +47,6 @@ export function StatusCacheProvider({ children }: { children: React.ReactNode })
     error: null,
   });
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
 
   // Fetch full status from backend
@@ -179,33 +178,31 @@ export function StatusCacheProvider({ children }: { children: React.ReactNode })
     });
   }, []);
 
-  // Initial fetch on mount
+  // Fetch on first load, and reset + re-fetch when the account changes.
   useEffect(() => {
     mountedRef.current = true;
+
     if (authStatus === 'authenticated') {
+      const userId = session?.user?.id ?? null;
+      if (userId !== currentUserIdRef.current) {
+        // Different account — clear stale data before fetching.
+        currentUserIdRef.current = userId;
+        setCache({ status: null, lastFetched: null, lastLlmCheck: null, isLoading: true, error: null });
+      }
       refreshStatus();
-    } else if (authStatus === 'loading') {
+    } else if (authStatus === 'unauthenticated') {
+      currentUserIdRef.current = null;
+      setCache({ status: null, lastFetched: null, lastLlmCheck: null, isLoading: false, error: null });
+    } else {
       setCache((prev) => ({ ...prev, isLoading: true }));
     }
 
     return () => {
       mountedRef.current = false;
     };
-  }, [authStatus, refreshStatus]);
+  }, [authStatus, session?.user?.id, refreshStatus]);
 
-  // Set up periodic LLM health check (every 30 minutes)
-  useEffect(() => {
-    if (authStatus !== 'authenticated') return;
-    intervalRef.current = setInterval(() => {
-      refreshLlmHealth();
-    }, LLM_HEALTH_CHECK_INTERVAL);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [authStatus, refreshLlmHealth]);
+  // No periodic refresh — status is fetched on first load and manually via refreshStatus/refreshLlmHealth.
 
   const value: StatusCacheContextValue = {
     status: cache.status,

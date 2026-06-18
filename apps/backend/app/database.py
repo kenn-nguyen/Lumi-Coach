@@ -21,7 +21,10 @@ from sqlalchemy import (
     Text,
     create_engine,
     delete,
+    exists,
+    func,
     inspect,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -1424,24 +1427,42 @@ class Database:
             session.refresh(run)
             return self._serialize_extension_run(run)
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self, user_id: str) -> dict[str, Any]:
+        """Return per-user counts in a single database round trip."""
         with self._session() as session:
-            total_resumes = session.query(ResumeModel).count()
-            total_jobs = session.query(JobModel).count()
-            total_improvements = session.query(ImprovementModel).count()
-            total_extension_runs = session.query(ExtensionRunModel).count()
-            has_master_resume = (
-                session.query(ResumeModel)
-                .filter(ResumeModel.is_master.is_(True))
-                .first()
-                is not None
-            )
+            row = session.execute(
+                select(
+                    select(func.count())
+                    .where(ResumeModel.user_id == user_id)
+                    .scalar_subquery()
+                    .label("total_resumes"),
+                    select(func.count())
+                    .where(JobModel.user_id == user_id)
+                    .scalar_subquery()
+                    .label("total_jobs"),
+                    select(func.count())
+                    .where(ImprovementModel.user_id == user_id)
+                    .scalar_subquery()
+                    .label("total_improvements"),
+                    select(func.count())
+                    .where(ExtensionRunModel.user_id == user_id)
+                    .scalar_subquery()
+                    .label("total_extension_runs"),
+                    exists()
+                    .where(
+                        ResumeModel.user_id == user_id,
+                        ResumeModel.is_master.is_(True),
+                    )
+                    .scalar_subquery()
+                    .label("has_master_resume"),
+                )
+            ).one()
             return {
-                "total_resumes": total_resumes,
-                "total_jobs": total_jobs,
-                "total_improvements": total_improvements,
-                "total_extension_runs": total_extension_runs,
-                "has_master_resume": has_master_resume,
+                "total_resumes": row.total_resumes,
+                "total_jobs": row.total_jobs,
+                "total_improvements": row.total_improvements,
+                "total_extension_runs": row.total_extension_runs,
+                "has_master_resume": bool(row.has_master_resume),
             }
 
     def reset_database(self) -> None:

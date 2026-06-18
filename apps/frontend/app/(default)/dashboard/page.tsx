@@ -693,9 +693,7 @@ export default function DashboardPage() {
                   onClick={() => setShowTailorDialog(true)}
                   className="h-10 min-w-[12rem] justify-start px-4 text-left"
                 >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-secondary text-foreground">
-                    <Wand2 className="h-3.5 w-3.5" />
-                  </span>
+                  <Wand2 className="h-3.5 w-3.5 mr-2" />
                   <span className="flex min-w-0 flex-col items-start">
                     <span className="truncate">Tailor to Job</span>
                     <span className="font-mono text-[9px] uppercase tracking-[0.16em] leading-none text-gray-500">

@@ -6711,20 +6711,7 @@ function renderOnboardingStep() {
             ${importStatus}
             <button type="button" class="resume-matcher-button" data-onboarding-action="upload_resume"${!providerReadyForImport || state.masterResumeImportInFlight ? " disabled" : ""}>${hasResume ? "Replace" : "Add Master Resume"}</button>
           </div>
-          <div class="resume-matcher-onboarding__file">
-            <div class="resume-matcher-onboarding__file-top">
-              <span class="resume-matcher-onboarding__label">Story bank</span>
-              ${hasStoryboard ? renderOnboardingStatusPill("Added", "complete") : renderOnboardingStatusPill("Optional", "optional")}
-            </div>
-            <p class="resume-matcher-onboarding__help">Optional. Use TXT, MD, or JSON. Saved locally in this browser for fuller bullet details and extra wins beyond your main resume.</p>
-            <a class="resume-matcher-settings-item__link" href="${STORY_BANK_GUIDE_URL}" target="_blank" rel="noopener noreferrer">Optional, but useful. Learn more.</a>
-            ${
-              hasStoryboard
-                ? `<span class="resume-matcher-onboarding__status" title="${escapeHtml(storyboardLabel)}">${escapeHtml(compactStoryboardLabel)}</span>`
-                : ""
-            }
-            <button type="button" class="resume-matcher-button" data-onboarding-action="upload_storyboard">${hasStoryboard ? "Replace" : "Upload"}</button>
-          </div>
+          <div class="resume-matcher-onboarding__file" hidden></div>
         </div>
         <div class="resume-matcher-onboarding__actions">
           ${renderPrimaryButtonMarkup("Start tailoring", "complete_onboarding", `${hasResume && !state.masterResumeImportInFlight ? "" : " disabled"}`)}
@@ -7613,7 +7600,7 @@ function renderSettings() {
       }
     `;
   }
-  if (storyboardLabel) {
+  if (storyboardLabel && !storyboardLabel.hidden) {
     const hasFile = Boolean(assets?.storyboardAsset?.filename);
     const label = assets?.storyboardAsset?.filename?.trim() || "Story bank";
     const compactLabel = truncateDisplayText(label, 28);
@@ -9739,8 +9726,8 @@ function ensureRoot() {
                     </div>
                   </div>
                 </div>
-                <div id="${STORYBOARD_LABEL_ID}" class="resume-matcher-settings-row-card"></div>
-                <input id="${STORYBOARD_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+                <div id="${STORYBOARD_LABEL_ID}" class="resume-matcher-settings-row-card" hidden></div>
+                <input id="${STORYBOARD_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" hidden />
                 <div class="resume-matcher-settings-row-card">
                   <div class="resume-matcher-settings-row-card__main">
                     <div class="resume-matcher-settings-row-card__copy">

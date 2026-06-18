@@ -1010,15 +1010,24 @@ export default function SettingsPage() {
               <div>
                 <p className="text-sm font-semibold text-foreground">Apify API Key</p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Used to extract job descriptions from LinkedIn URLs when tailoring. Get your key
-                  at{' '}
+                  Used to extract job descriptions from LinkedIn URLs when tailoring. The actor used
+                  is{' '}
                   <a
-                    href="https://apify.com"
+                    href="https://apify.com/apimaestro/linkedin-job-detail"
                     target="_blank"
                     rel="noreferrer"
                     className="underline underline-offset-2"
                   >
-                    apify.com
+                    apimaestro/linkedin-job-detail
+                  </a>
+                  . Get your API key at{' '}
+                  <a
+                    href="https://console.apify.com/settings/integrations"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    console.apify.com
                   </a>
                   .
                 </p>

@@ -55,7 +55,7 @@ async def get_status(
         and not config.is_user_config
     )
     llm_status = await check_llm_health(config)
-    db_stats = db.get_stats()
+    db_stats = db.get_stats(current_user.user_id)
 
     return StatusResponse(
         status="ready" if llm_status["healthy"] and db_stats["has_master_resume"] else "setup_required",
