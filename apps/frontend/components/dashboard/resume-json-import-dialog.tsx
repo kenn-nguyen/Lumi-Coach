@@ -78,7 +78,7 @@ export function ResumeJsonImportDialog({
     setError(null);
     try {
       const response = await importTailoredResumeJson(selectedFile, jdUrl, jdText);
-      setOpen(false);
+      handleOpenChange(false);
       resetForm();
       onImportComplete?.({ resumeId: response.resume_id });
     } catch (submitError) {
