@@ -1044,7 +1044,7 @@ export default function SettingsPage() {
                 />
                 <Button
                   variant="outline"
-                  onClick={handleApifyKeySave}
+                  onClick={() => handleApifyKeySave()}
                   disabled={apifyKeyLoading || (!apifyKey.trim() && !hasStoredApifyKey)}
                 >
                   {apifyKeyLoading ? (
