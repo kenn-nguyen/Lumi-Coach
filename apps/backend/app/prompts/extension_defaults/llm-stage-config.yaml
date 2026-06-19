@@ -1,0 +1,74 @@
+# LLM Stage Configuration
+#
+# Routes each pipeline stage to a specific AI provider and model.
+# If a stage is not listed in stageProviders, the user's configured provider is used.
+# Remove or reset this file to return to single-provider mode.
+#
+# Valid profile IDs: claude:api, deepseek:api, openai:api, gemini:api
+# API keys come from Settings or server environment variables.
+
+stageProviders:
+  prompt1: deepseek:api
+  prompt2: claude:api
+  prompt3: claude:api
+
+# Per-provider model and parameter settings for each stage.
+# Settings here override the model for the tailor pipeline only.
+profiles:
+  claude:api:
+    # Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
+    # thinking.budget_tokens: 1024–16000 (higher = deeper reasoning)
+    stageModels:
+      prompt1:
+        model: claude-sonnet-4-6
+      prompt2:
+        model: claude-sonnet-4-6
+        thinking:
+          type: enabled
+          budget_tokens: 8192
+        maxTokens: 18000
+      prompt3:
+        model: claude-sonnet-4-6
+
+  deepseek:api:
+    # DeepSeek models: deepseek-v4-pro, deepseek-chat
+    # reasoning_effort: high | max (medium silently maps to high)
+    stageModels:
+      prompt1:
+        model: deepseek-v4-pro
+      prompt2:
+        model: deepseek-v4-pro
+        thinking:
+          type: enabled
+        reasoning_effort: medium
+      prompt3:
+        model: deepseek-v4-pro
+        thinking:
+          type: enabled
+        reasoning_effort: medium
+
+  # Uncomment to enable OpenAI per-stage routing:
+  # openai:api:
+  #   # Models: gpt-5.4-mini, gpt-5.4, gpt-4.1, gpt-4o-mini
+  #   # reasoning_effort: low | medium | high
+  #   stageModels:
+  #     prompt1:
+  #       model: gpt-5.4-mini
+  #       reasoning_effort: low
+  #     prompt2:
+  #       model: gpt-5.4
+  #       reasoning_effort: high
+  #     prompt3:
+  #       model: gpt-5.4
+  #       reasoning_effort: low
+
+  # Uncomment to enable Gemini per-stage routing:
+  # gemini:api:
+  #   # Models: gemini-2.5-flash, gemini-2.5-pro
+  #   stageModels:
+  #     prompt1:
+  #       model: gemini-2.5-flash
+  #     prompt2:
+  #       model: gemini-2.5-pro
+  #     prompt3:
+  #       model: gemini-2.5-flash

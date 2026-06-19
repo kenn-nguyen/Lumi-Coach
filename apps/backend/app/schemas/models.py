@@ -220,6 +220,14 @@ class SectionMeta(BaseModel):
     isVisible: bool = True  # Whether to show in resume
     order: int = 0  # Display order (0 = first after personalInfo)
 
+    @field_validator("sectionType", mode="before")
+    @classmethod
+    def _coerce_section_type(cls, value: Any) -> Any:
+        valid = {e.value for e in SectionType}
+        if isinstance(value, str) and value not in valid:
+            return SectionType.TEXT.value
+        return value
+
 
 class CustomSectionItem(BaseModel):
     """Generic item for custom item-based sections."""
@@ -244,6 +252,14 @@ class CustomSection(BaseModel):
     items: list[CustomSectionItem] | None = None  # For ITEM_LIST
     strings: list[str] | None = None  # For STRING_LIST
     text: str | None = None  # For TEXT
+
+    @field_validator("sectionType", mode="before")
+    @classmethod
+    def _coerce_section_type(cls, value: Any) -> Any:
+        valid = {e.value for e in SectionType}
+        if isinstance(value, str) and value not in valid:
+            return SectionType.TEXT.value
+        return value
 
     @field_validator("items", mode="before")
     @classmethod

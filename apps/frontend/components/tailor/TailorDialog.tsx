@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Wand2, X } from 'lucide-react';
+import { AlertTriangle, Loader2, Wand2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -20,6 +20,7 @@ import {
   type TailorStatusResponse,
 } from '@/lib/api/tailor';
 import { useStatusCache } from '@/lib/context/status-cache';
+import { useBackgroundTailor } from '@/lib/context/background-tailor';
 
 // Poll every 3 seconds while running
 const POLL_INTERVAL_MS = 3000;
@@ -35,6 +36,7 @@ type Phase = 'input' | 'running' | 'done' | 'error';
 export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
   const router = useRouter();
   const { status: systemStatus } = useStatusCache();
+  const { setJob } = useBackgroundTailor();
 
   // Input state
   const [jdUrl, setJdUrl] = useState('');
@@ -158,7 +160,17 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
     url.trim().length === 0 || url.includes('linkedin.com/jobs');
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          if (phase === 'running') {
+            setJob({ resumeId });
+          }
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="max-w-xl">
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle>Tailor Resume to Job</DialogTitle>
@@ -233,7 +245,12 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
               </div>
 
               {/* Error */}
-              {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
+              {errorMsg && (
+                <div className="flex items-start gap-2 rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2">
@@ -331,11 +348,11 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
           {phase === 'error' && (
             <div className="space-y-4 py-4 text-center">
               <div className="flex flex-col items-center gap-2">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-                  <X className="h-6 w-6" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                  <AlertTriangle className="h-6 w-6" />
                 </div>
                 <p className="font-serif text-lg font-semibold tracking-tight">Pipeline failed</p>
-                <p className="max-w-sm text-sm text-muted-foreground">{errorMsg}</p>
+                <p className="max-w-sm text-sm text-amber-800">{errorMsg}</p>
               </div>
               <div className="flex justify-center gap-2 pt-2">
                 <Button variant="outline" onClick={onClose}>

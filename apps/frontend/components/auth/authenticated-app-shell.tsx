@@ -44,7 +44,11 @@ export function AuthenticatedAppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => onSessionInvalidated(() => void verifyCurrentSession()), [verifyCurrentSession]);
 
-  if (status !== 'authenticated') {
+  // Middleware already blocks unauthenticated users — if we reach this component,
+  // the user is authenticated. The 'loading' state is just NextAuth's client-side
+  // session initialization. Rendering the full shell during loading avoids a
+  // blank-page flash before content appears.
+  if (status === 'unauthenticated') {
     return <main className="min-h-screen bg-[#F0F0E8]" />;
   }
 

@@ -161,77 +161,88 @@ const UPLOAD_ICON_PATH = "src/assets/upload.png";
 const DOWNLOAD_ICON_PATH = "src/assets/direct-download.png";
 const DELETE_ICON_PATH = "src/assets/delete.png";
 const LOG_PREFIX = "[ResumeMatcherExt][FloatingBoard]";
-const LLM_CONFIG_TEMPLATE_JSONC = `{
-  // Determines which AI provider handles each prompt stage.
-  // Valid profile IDs: "claude:api", "deepseek:api", "openai:api", "gemini:api"
-  // Remove or reset this file to return to single-provider mode.
-  "stageProviders": {
-    "prompt1": "deepseek:api",
-    "prompt2": "claude:api",
-    "prompt3": "claude:api"
-  },
+const LLM_CONFIG_TEMPLATE_YAML = `\
+# Determines which AI provider handles each prompt stage.
+# Valid profile IDs: claude:api, deepseek:api, openai:api, gemini:api
+# Remove or reset this file to return to single-provider mode.
+stageProviders:
+  prompt1: deepseek:api
+  prompt2: claude:api
+  prompt3: claude:api
 
-  // Per-provider model and API call settings for each stage.
-  // The API key and endpoint still come from the Settings panel.
-  // Settings here override the model for the tailor pipeline only.
-  "profiles": {
-    "claude:api": {
-      // Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
-      // Thinking: budget_tokens 1024-16000 (higher = deeper reasoning)
-      "stageModels": {
-        "prompt1": { "model": "claude-sonnet-4-6" },
-        "prompt2": {
-          "model": "claude-sonnet-4-6",
-          "thinking": { "type": "enabled", "budget_tokens": 8192 },
-          "maxTokens": 18000
-        },
-        "prompt3": { "model": "claude-sonnet-4-6" }
-      }
-    },
+# Per-provider model and API call settings for each stage.
+# The API key and endpoint still come from the Settings panel.
+# Settings here override the model for the tailor pipeline only.
+profiles:
+  claude:api:
+    # Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
+    # Thinking: budget_tokens 1024-16000 (higher = deeper reasoning)
+    stageModels:
+      prompt1:
+        model: claude-sonnet-4-6
+      prompt2:
+        model: claude-sonnet-4-6
+        thinking:
+          type: enabled
+          budget_tokens: 8192
+        maxTokens: 18000
+      prompt3:
+        model: claude-sonnet-4-6
 
-    "deepseek:api": {
-      // DeepSeek models: deepseek-v4-pro, deepseek-chat
-      // reasoning_effort: "high" | "max" ("medium" silently maps to "high")
-      "stageModels": {
-        "prompt1": { "model": "deepseek-v4-pro" },
-        "prompt2": {
-          "model": "deepseek-v4-pro",
-          "thinking": { "type": "enabled" },
-          "reasoning_effort": "medium"
-        },
-        "prompt3": {
-          "model": "deepseek-v4-pro",
-          "thinking": { "type": "enabled" },
-          "reasoning_effort": "medium"
-        }
-      }
-    }
+  deepseek:api:
+    # DeepSeek models: deepseek-v4-pro, deepseek-chat
+    # reasoning_effort: high | max (medium silently maps to high)
+    stageModels:
+      prompt1:
+        model: deepseek-v4-pro
+      prompt2:
+        model: deepseek-v4-pro
+        thinking:
+          type: enabled
+        reasoning_effort: medium
+      prompt3:
+        model: deepseek-v4-pro
+        thinking:
+          type: enabled
+        reasoning_effort: medium
 
-    // Uncomment to enable OpenAI per-stage routing:
-    // ,"openai:api": {
-    //   // Models: gpt-5.4-mini, gpt-5.4, gpt-4.1, gpt-4o-mini
-    //   // reasoning.effort: "low" | "medium" | "high"
-    //   "stageModels": {
-    //     "prompt1": { "model": "gpt-5.4-mini", "reasoning": { "effort": "low" } },
-    //     "prompt2": { "model": "gpt-5.4", "reasoning": { "effort": "high" } },
-    //     "prompt3": { "model": "gpt-5.4", "reasoning": { "effort": "low" } }
-    //   }
-    // }
+  # Uncomment to enable OpenAI per-stage routing:
+  # openai:api:
+  #   # Models: gpt-5.4-mini, gpt-5.4, gpt-4.1, gpt-4o-mini
+  #   # reasoning.effort: low | medium | high
+  #   stageModels:
+  #     prompt1:
+  #       model: gpt-5.4-mini
+  #       reasoning:
+  #         effort: low
+  #     prompt2:
+  #       model: gpt-5.4
+  #       reasoning:
+  #         effort: high
+  #     prompt3:
+  #       model: gpt-5.4
+  #       reasoning:
+  #         effort: low
 
-    // Uncomment to enable Gemini per-stage routing:
-    // ,"gemini:api": {
-    //   // Models: gemini-2.5-flash, gemini-2.5-pro
-    //   // Flash: thinkingBudget 0-24576 (0 disables thinking)
-    //   // Pro: thinkingBudget 128-32768 (cannot be disabled)
-    //   // Use -1 for dynamic budget. includeThoughts: false recommended.
-    //   "stageModels": {
-    //     "prompt1": { "model": "gemini-2.5-flash", "thinkingConfig": { "thinkingBudget": 0 } },
-    //     "prompt2": { "model": "gemini-2.5-pro", "thinkingConfig": { "thinkingBudget": 8192, "includeThoughts": false } },
-    //     "prompt3": { "model": "gemini-2.5-flash" }
-    //   }
-    // }
-  }
-}`;
+  # Uncomment to enable Gemini per-stage routing:
+  # gemini:api:
+  #   # Models: gemini-2.5-flash, gemini-2.5-pro
+  #   # Flash: thinkingBudget 0-24576 (0 disables thinking)
+  #   # Pro: thinkingBudget 128-32768 (cannot be disabled)
+  #   # Use -1 for dynamic budget. includeThoughts: false recommended.
+  #   stageModels:
+  #     prompt1:
+  #       model: gemini-2.5-flash
+  #       thinkingConfig:
+  #         thinkingBudget: 0
+  #     prompt2:
+  #       model: gemini-2.5-pro
+  #       thinkingConfig:
+  #         thinkingBudget: 8192
+  #         includeThoughts: false
+  #     prompt3:
+  #       model: gemini-2.5-flash
+`;
 const EDGE_PADDING = 8;
 const VIEWPORT_PADDING = 20;
 const RUN_BOARD_WIDTH = 390;
@@ -9835,7 +9846,7 @@ function ensureRoot() {
                       <button id="${LLM_CONFIG_IMPORT_BTN_ID}" type="button" class="resume-matcher-button">Import config</button>
                       <button id="${LLM_CONFIG_RESET_ID}" type="button" class="resume-matcher-button is-quiet" hidden>Reset</button>
                     </div>
-                    <input id="${LLM_CONFIG_IMPORT_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".json,.jsonc,application/json,text/plain" />
+                    <input id="${LLM_CONFIG_IMPORT_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".yaml,.yml,text/yaml,text/plain" />
                   </div>
                   <div class="resume-matcher-advanced-actions resume-matcher-field--full">
                     <button id="${EXPORT_DATA_ID}" type="button" class="resume-matcher-button">Export run data</button>
@@ -10174,11 +10185,11 @@ function ensureRoot() {
   });
   $(LLM_CONFIG_DOWNLOAD_ID)?.addEventListener("click", () => {
     try {
-      const blob = new Blob([LLM_CONFIG_TEMPLATE_JSONC], { type: "application/json" });
+      const blob = new Blob([LLM_CONFIG_TEMPLATE_YAML], { type: "text/yaml" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "lumi-llm-config.jsonc";
+      a.download = "lumi-llm-config.yaml";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

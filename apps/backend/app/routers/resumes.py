@@ -1130,6 +1130,9 @@ ALLOWED_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/json",
     "text/json",
+    "text/plain",
+    "text/markdown",
+    "text/x-markdown",
 }
 MAX_FILE_SIZE = 4 * 1024 * 1024  # 4MB
 RESUME_DATA_JSON_KEYS = {
@@ -1327,6 +1330,41 @@ async def upload_resume(
             processing_status="ready",
             is_master=resume.get("is_master", False),
         )
+
+    # PDF / DOCX / TXT / MD — convert to markdown then LLM-parse to structured JSON
+    suffix = Path(file_name).suffix.lower()
+    is_plain_text = suffix in {".txt", ".md"} or file.content_type in {
+        "text/plain",
+        "text/markdown",
+        "text/x-markdown",
+    }
+    try:
+        if is_plain_text:
+            markdown_text = content.decode("utf-8", errors="replace")
+        else:
+            markdown_text = await parse_document(content, file_name)
+
+        llm_config = get_llm_config()
+        processed_data = await parse_resume_to_json(markdown_text, config=llm_config)
+    except Exception as e:
+        logger.error("Failed to parse uploaded resume %s: %s", file_name, e)
+        raise HTTPException(status_code=422, detail="Failed to parse resume. Please try again.")
+
+    resume = await db.create_resume_atomic_master(
+        content=markdown_text,
+        content_type="markdown",
+        filename=file_name,
+        processed_data=processed_data,
+        processing_status="ready",
+    )
+
+    return ResumeUploadResponse(
+        message=f"File {file_name} uploaded successfully",
+        request_id=str(uuid4()),
+        resume_id=resume["resume_id"],
+        processing_status="ready",
+        is_master=resume.get("is_master", False),
+    )
 
 
 @router.post("/import-tailored-json", response_model=ResumeUploadResponse)

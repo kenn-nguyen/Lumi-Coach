@@ -1,0 +1,53 @@
+# Local dev stack: Postgres + Backend (hot-reload)
+# Frontend: run separately with `npm run dev` in apps/frontend
+#
+# Usage:
+#   1. cp apps/backend/.env.dev.example apps/backend/.env.dev   (fill in secrets)
+#   2. docker compose -f docker-compose.dev.yml up
+#   3. cd apps/frontend && npm run dev
+#
+# Backend logs (including tailor pipeline debug lines) stream to this terminal.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: som_career_coach
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - dev-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d som_career_coach"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    image: ghcr.io/astral-sh/uv:python3.13-bookworm
+    container_name: dev-backend
+    working_dir: /app
+    volumes:
+      - ./apps/backend:/app
+      - dev-backend-venv:/app/.venv
+    command: >
+      uv run uvicorn app.main:app
+      --reload
+      --host 0.0.0.0
+      --port 8000
+      --log-level info
+    ports:
+      - "8000:8000"
+    env_file: apps/backend/.env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dev-postgres-data:
+  dev-backend-venv:

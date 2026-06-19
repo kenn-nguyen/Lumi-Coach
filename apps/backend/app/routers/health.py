@@ -17,11 +17,11 @@ router = APIRouter(tags=["Health"])
 @router.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """Basic health check endpoint."""
-    llm_status = await check_llm_health()
-
+    server_config = get_server_llm_config()
+    configured = bool(server_config.provider and server_config.api_key)
     return HealthResponse(
-        status="healthy" if llm_status["healthy"] else "degraded",
-        llm=llm_status,
+        status="healthy",
+        llm={"healthy": configured, "provider": server_config.provider},
     )
 
 
@@ -39,13 +39,7 @@ async def get_status(
     config = get_llm_config(current_user.user_id)
     server_config = get_server_llm_config()
     user_config = db.get_user_llm_config(current_user.user_id)
-    has_user_api_key = bool(
-        user_config
-        and (
-            str(user_config.get("provider") or "") == "ollama"
-            or user_config.get("encrypted_api_key")
-        )
-    )
+    has_user_api_key = bool(user_config and user_config.get("encrypted_api_key"))
     free_llm_available = bool(server_config.provider == "gemini" and server_config.api_key)
     using_free_llm = (
         free_llm_available

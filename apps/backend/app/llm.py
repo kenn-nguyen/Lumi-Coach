@@ -51,8 +51,7 @@ class LLMConfig(BaseModel):
 
 def _is_effective_user_llm_config(user_config: dict[str, Any]) -> bool:
     """Return whether a saved user config should override server fallback."""
-    provider = str(user_config.get("provider") or "")
-    return provider == "ollama" or bool(user_config.get("encrypted_api_key"))
+    return bool(user_config.get("encrypted_api_key"))
 
 
 SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE = (
@@ -83,8 +82,6 @@ def is_shared_gemini_fallback_config(config: LLMConfig) -> bool:
 
 def is_llm_config_configured(config: LLMConfig) -> bool:
     """Return whether the config has enough auth/context to attempt a request."""
-    if config.provider == "ollama":
-        return True
     if config.provider == "vertex_ai":
         return bool(config.vertex_project)
     return bool(config.api_key)
@@ -166,14 +163,6 @@ def _normalize_api_base(provider: str, api_base: str | None) -> str | None:
     # internally, so strip it to avoid /v1/v1.
     if provider == "openrouter" and base.endswith("/v1"):
         base = base[: -len("/v1")].rstrip("/")
-
-    # Ollama doesn't use /v1 paths. Strip common suffixes users might paste:
-    # /v1, /api/chat, /api/generate
-    if provider == "ollama":
-        for suffix in ("/v1", "/api/chat", "/api/generate", "/api"):
-            if base.endswith(suffix):
-                base = base[: -len(suffix)].rstrip("/")
-                break
 
     return base or None
 
@@ -324,8 +313,31 @@ _PROVIDER_KEY_MAP: dict[str, str] = {
     "gemini": "google",
     "openrouter": "openrouter",
     "deepseek": "deepseek",
-    "ollama": "ollama",
 }
+
+
+def resolve_extra_api_key(user_config: dict, provider: str) -> str:
+    """Resolve a per-provider API key from the user's extra_api_keys DB field.
+
+    Args:
+        user_config: Serialized dict from db.get_user_llm_config().
+        provider: LiteLLM provider name (e.g. "anthropic", "gemini").
+
+    Returns:
+        Decrypted API key string, or empty string if not found.
+    """
+    extra_api_keys = user_config.get("extra_api_keys", {}) if user_config else {}
+    if not isinstance(extra_api_keys, dict):
+        return ""
+    # extra_api_keys stores keys under the API-key provider name (e.g. "google" for gemini)
+    provider_key_name = _PROVIDER_KEY_MAP.get(provider, provider)
+    encrypted = extra_api_keys.get(provider_key_name, "")
+    if not encrypted:
+        return ""
+    try:
+        return decrypt_api_key(encrypted)
+    except Exception:
+        return ""
 
 
 def resolve_api_key(stored: dict, provider: str) -> str:
@@ -452,7 +464,6 @@ def get_model_name(config: LLMConfig) -> str:
         "openrouter": "openrouter/",
         "gemini": "gemini/",
         "deepseek": "deepseek/",
-        "ollama": "ollama_chat/",  # ollama_chat/ routes to /api/chat (supports messages array)
         "vertex_ai": "vertex_ai/",
     }
 
@@ -466,8 +477,7 @@ def get_model_name(config: LLMConfig) -> str:
         return f"openrouter/{config.model}"
 
     # For other providers, don't add prefix if model already has a known prefix
-    known_prefixes = ["openrouter/", "anthropic/",
-                      "gemini/", "deepseek/", "ollama/", "ollama_chat/", "vertex_ai/"]
+    known_prefixes = ["openrouter/", "anthropic/", "gemini/", "deepseek/", "vertex_ai/"]
     if any(config.model.startswith(p) for p in known_prefixes):
         return config.model
 
@@ -588,7 +598,7 @@ async def check_llm_health(
     if config is None:
         config = get_llm_config()
 
-    # Check if API key is configured (except for Ollama)
+    # Check if API key is configured
     if not is_llm_config_configured(config):
         return {
             "healthy": False,
@@ -819,18 +829,9 @@ def _supports_json_mode(model_name: str) -> bool:
     anthropic, etc.) so that capability is always determined from the
     registry rather than a hardcoded provider list.
 
-    Ollama models support JSON mode natively (format="json") but are
-    often not in LiteLLM's registry (custom/local models), so we
-    always return True for ollama.
-
     Args:
         model_name: LiteLLM-formatted model name (from get_model_name).
     """
-    # Ollama supports JSON mode natively via format="json" even when
-    # models aren't in LiteLLM's registry (custom, quantized, etc.)
-    if model_name.startswith(("ollama/", "ollama_chat/")):
-        return True
-
     try:
         info = litellm.get_model_info(model=model_name)
         supported_params = info.get("supported_openai_params", [])
@@ -902,7 +903,6 @@ def _calculate_timeout(
         "openai": 1.0,
         "anthropic": 1.2,
         "openrouter": 1.5,  # More variable latency
-        "ollama": 2.0,  # Local models can be slower
     }
     provider_factor = provider_factors.get(provider, 1.0)
 
@@ -912,9 +912,8 @@ def _calculate_timeout(
 def _strip_thinking_tags(content: str) -> str:
     """Strip thinking/reasoning tags from model output.
 
-    Ollama thinking models (deepseek-r1, qwq, etc.) wrap their reasoning
-    in <think>...</think> tags. The actual answer follows after the closing
-    tag. Strip these so JSON extraction finds the real output.
+    Reasoning models (deepseek-r1, qwq, etc.) wrap their reasoning in
+    <think>...</think> tags. Strip these so JSON extraction finds the real output.
     """
     # Remove <think>...</think> blocks (including multiline)
     stripped = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)

@@ -6,6 +6,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import { AuthExtensionBridgeClient } from '@/components/auth/auth-extension-bridge-client';
 import { AuthSessionProvider } from '@/components/auth/auth-session-provider';
 import { PostHogProvider } from '@/components/analytics/posthog-provider';
+import { BackgroundTailorProvider } from '@/lib/context/background-tailor';
 import { DEFAULT_OG_IMAGE_PATH, SITE_DESCRIPTION, SITE_NAME, siteUrl } from '@/lib/seo';
 import './(default)/css/globals.css';
 
@@ -96,12 +97,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className={`${geist.variable} ${spaceGrotesk.variable} antialiased bg-[#F0F0E8] text-gray-900 min-h-full`}
       >
         <AuthSessionProvider>
-          <Suspense fallback={children}>
-            <PostHogProvider>
-              <AuthExtensionBridgeClient />
-              {children}
-            </PostHogProvider>
-          </Suspense>
+          <BackgroundTailorProvider>
+            <Suspense fallback={children}>
+              <PostHogProvider>
+                <AuthExtensionBridgeClient />
+                {children}
+              </PostHogProvider>
+            </Suspense>
+          </BackgroundTailorProvider>
         </AuthSessionProvider>
         <Analytics />
         <SpeedInsights />

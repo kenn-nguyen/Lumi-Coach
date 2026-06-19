@@ -1,8 +1,23 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import { useSession } from 'next-auth/react';
 import { fetchSystemStatus, type SystemStatus } from '@/lib/api/config';
+import {
+  CACHE_KEYS,
+  CACHE_TTL,
+  readCacheEntry,
+  writeCache,
+  invalidateCache,
+} from '@/lib/cache/local-cache';
 
 // Cache duration constants
 const STATUS_STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes for DB stats
@@ -13,6 +28,20 @@ interface CachedStatus {
   lastLlmCheck: number | null;
   isLoading: boolean;
   error: string | null;
+}
+
+function readPersistedStatus(): CachedStatus {
+  const entry = readCacheEntry<SystemStatus>(CACHE_KEYS.STATUS, CACHE_TTL.STATUS);
+  if (entry) {
+    return {
+      status: entry.data,
+      lastFetched: entry.cachedAt,
+      lastLlmCheck: entry.cachedAt,
+      isLoading: false,
+      error: null,
+    };
+  }
+  return { status: null, lastFetched: null, lastLlmCheck: null, isLoading: true, error: null };
 }
 
 interface StatusCacheContextValue {
@@ -39,6 +68,8 @@ const StatusCacheContext = createContext<StatusCacheContextValue | null>(null);
 export function StatusCacheProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status: authStatus } = useSession();
   const currentUserIdRef = useRef<string | null>(null);
+  // Start with empty state so server and client render identically during hydration.
+  // The persisted (localStorage) value is loaded in useLayoutEffect before first paint.
   const [cache, setCache] = useState<CachedStatus>({
     status: null,
     lastFetched: null,
@@ -46,6 +77,13 @@ export function StatusCacheProvider({ children }: { children: React.ReactNode })
     isLoading: true,
     error: null,
   });
+
+  useLayoutEffect(() => {
+    const persisted = readPersistedStatus();
+    if (persisted.status !== null) {
+      setCache(persisted);
+    }
+  }, []);
 
   const mountedRef = useRef(true);
 
@@ -59,10 +97,11 @@ export function StatusCacheProvider({ children }: { children: React.ReactNode })
       if (!mountedRef.current) return;
 
       const now = Date.now();
+      writeCache(CACHE_KEYS.STATUS, status);
       setCache({
         status,
         lastFetched: now,
-        lastLlmCheck: now, // Full status includes LLM health
+        lastLlmCheck: now,
         isLoading: false,
         error: null,
       });
@@ -84,6 +123,7 @@ export function StatusCacheProvider({ children }: { children: React.ReactNode })
       if (!mountedRef.current) return;
 
       const now = Date.now();
+      writeCache(CACHE_KEYS.STATUS, status);
       setCache((prev) => ({
         ...prev,
         status: status,
@@ -187,15 +227,32 @@ export function StatusCacheProvider({ children }: { children: React.ReactNode })
       if (userId !== currentUserIdRef.current) {
         // Different account — clear stale data before fetching.
         currentUserIdRef.current = userId;
-        setCache({ status: null, lastFetched: null, lastLlmCheck: null, isLoading: true, error: null });
+        invalidateCache(CACHE_KEYS.STATUS);
+        setCache({
+          status: null,
+          lastFetched: null,
+          lastLlmCheck: null,
+          isLoading: true,
+          error: null,
+        });
       }
       refreshStatus();
     } else if (authStatus === 'unauthenticated') {
       currentUserIdRef.current = null;
-      setCache({ status: null, lastFetched: null, lastLlmCheck: null, isLoading: false, error: null });
-    } else {
-      setCache((prev) => ({ ...prev, isLoading: true }));
+      invalidateCache(CACHE_KEYS.STATUS);
+      setCache({
+        status: null,
+        lastFetched: null,
+        lastLlmCheck: null,
+        isLoading: false,
+        error: null,
+      });
     }
+    // authStatus === 'loading': NextAuth is still resolving the session.
+    // Middleware guarantees only authenticated users reach this shell, so
+    // don't override the useLayoutEffect's cached-data state with isLoading:true.
+    // The initial useState already captures the loading state; cached data
+    // (if any) should remain visible until auth settles.
 
     return () => {
       mountedRef.current = false;

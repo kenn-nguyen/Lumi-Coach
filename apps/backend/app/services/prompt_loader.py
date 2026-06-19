@@ -84,6 +84,42 @@ def load_system_prompt() -> str:
     return f"{guardrails}\n\n{system}"
 
 
+def get_prompt_version(template_name: str, profile_id: str) -> str | None:
+    """Extract prompt_version from the YAML frontmatter of a prompt template."""
+    path = get_template_path(template_name, profile_id)
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw.startswith("---"):
+        return None
+    end = raw.find("---", 3)
+    if end == -1:
+        return None
+    for line in raw[3:end].splitlines():
+        if line.startswith("prompt_version:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def get_system_prompt_version() -> str | None:
+    """Extract prompt_version from the system-prompt.txt frontmatter."""
+    path = PROMPTS_DIR / "system-prompt.txt"
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw.startswith("---"):
+        return None
+    end = raw.find("---", 3)
+    if end == -1:
+        return None
+    for line in raw[3:end].splitlines():
+        if line.startswith("prompt_version:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
 def build_prompt(template_name: str, profile_id: str, variables: dict[str, str]) -> str:
     """Load template (+ output contract if applicable) and render with variables."""
     template = load_template_text(template_name, profile_id)

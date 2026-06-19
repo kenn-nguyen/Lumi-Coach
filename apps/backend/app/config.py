@@ -104,7 +104,6 @@ def _get_llm_api_key_with_fallback() -> str:
         "gemini": "google",
         "openrouter": "openrouter",
         "deepseek": "deepseek",
-        "ollama": "ollama",
     }
 
     config_provider = provider_map.get(provider, provider)
@@ -122,11 +121,11 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     llm_provider: Literal[
-        "openai", "anthropic", "openrouter", "gemini", "deepseek", "ollama", "vertex_ai"
+        "openai", "anthropic", "openrouter", "gemini", "deepseek", "vertex_ai"
     ] = "gemini"
     llm_model: str = "gemini-2.5-flash-lite"
     llm_api_key: str = ""
-    llm_api_base: str | None = None  # For Ollama or custom endpoints
+    llm_api_base: str | None = None  # For custom/proxy endpoints
     vertexai_project: str | None = Field(
         default=None,
         validation_alias=AliasChoices("VERTEXAI_PROJECT", "VERTEX_PROJECT"),

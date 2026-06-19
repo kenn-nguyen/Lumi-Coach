@@ -76,7 +76,7 @@ export function ImportMasterResumeDialog({
 
         <form className="space-y-5 bg-[#faf7ef] p-6" onSubmit={handleSubmit}>
           <p className="text-sm leading-relaxed text-gray-600">
-            Upload your resume as a PDF, Markdown, or plain text file. The AI will parse and
+            Upload your resume as a PDF, DOCX, Markdown, or plain text file. The AI will parse and
             structure it automatically. Processing takes about 1–2 minutes.
           </p>
 
@@ -94,7 +94,7 @@ export function ImportMasterResumeDialog({
               <input
                 id={fileInputId}
                 type="file"
-                accept=".pdf,.md,.txt,.json,application/pdf,text/markdown,text/plain,application/json"
+                accept=".pdf,.doc,.docx,.md,.txt,.json,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/x-markdown,text/plain,application/json"
                 onChange={(event) => {
                   setError(null);
                   setSelectedFile(event.target.files?.[0] ?? null);
@@ -112,7 +112,7 @@ export function ImportMasterResumeDialog({
               </div>
             </label>
             <p className="font-mono text-[10px] uppercase tracking-wide text-gray-400">
-              PDF, MD, TXT, or JSON
+              PDF, DOCX, MD, TXT, or JSON
             </p>
           </div>
 

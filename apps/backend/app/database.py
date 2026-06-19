@@ -88,6 +88,7 @@ class UserLlmConfigModel(Base):
     model: Mapped[str] = mapped_column(Text, nullable=False)
     api_base: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extra_api_keys: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -216,6 +217,20 @@ class Database:
         self._ensure_user_schema()
         self._ensure_resume_schema()
         self._ensure_extension_runs_schema()
+        self._ensure_llm_config_schema()
+
+    def _ensure_llm_config_schema(self) -> None:
+        """Apply additive schema updates for per-provider extra API keys."""
+        inspector = inspect(self._engine)
+        if "llm_configs" not in inspector.get_table_names():
+            return
+        columns = {column["name"] for column in inspector.get_columns("llm_configs")}
+        with self._engine.begin() as connection:
+            if "extra_api_keys" not in columns:
+                connection.execute(
+                    text("ALTER TABLE llm_configs ADD COLUMN extra_api_keys JSONB")
+                )
+                logger.info("Added llm_configs.extra_api_keys column")
 
     def _ensure_user_schema(self) -> None:
         """Apply additive schema updates for encrypted user lookup."""
@@ -407,6 +422,7 @@ class Database:
             "model": config.model,
             "api_base": config.api_base,
             "encrypted_api_key": config.encrypted_api_key,
+            "extra_api_keys": config.extra_api_keys or {},
             "created_at": self._to_iso(config.created_at),
             "updated_at": self._to_iso(config.updated_at),
         }
@@ -957,6 +973,37 @@ class Database:
             config.updated_at = _utcnow()
             session.commit()
             return True
+
+    def upsert_user_extra_api_keys(self, *, user_id: str, keys: dict[str, str]) -> None:
+        """Store per-provider encrypted API keys for a user."""
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            if config is None:
+                config = UserLlmConfigModel(
+                    user_id=user_id,
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    extra_api_keys=keys,
+                )
+                session.add(config)
+            else:
+                existing = config.extra_api_keys or {}
+                merged = {**existing, **keys}
+                config.extra_api_keys = merged
+                config.updated_at = _utcnow()
+            session.commit()
+
+    def delete_user_extra_api_key(self, *, user_id: str, provider_key: str) -> None:
+        """Remove a single provider key from extra_api_keys for a user."""
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            if config is None:
+                return
+            existing = dict(config.extra_api_keys or {})
+            existing.pop(provider_key, None)
+            config.extra_api_keys = existing
+            config.updated_at = _utcnow()
+            session.commit()
 
     def create_resume(
         self,

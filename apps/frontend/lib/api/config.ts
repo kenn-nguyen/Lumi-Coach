@@ -12,7 +12,6 @@ export type LLMProvider =
   | 'openrouter'
   | 'gemini'
   | 'deepseek'
-  | 'ollama'
   | 'vertex_ai';
 
 export interface LLMConfig {
@@ -158,7 +157,6 @@ export const PROVIDER_INFO: Record<
     requiresKey: false,
   },
   deepseek: { name: 'DeepSeek', defaultModel: 'deepseek-chat', requiresKey: true },
-  ollama: { name: 'Ollama (Local)', defaultModel: 'gemma3:4b', requiresKey: false },
 };
 
 // Feature configuration types
@@ -439,5 +437,44 @@ export async function clearAllApiKeys(): Promise<void> {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || `Failed to clear API keys (status ${res.status}).`);
+  }
+}
+
+// LLM Stage Config (per-stage model overrides YAML)
+export interface LlmStageConfigResponse {
+  content: string;
+  is_override: boolean;
+}
+
+export async function fetchLlmStageConfig(template = false): Promise<LlmStageConfigResponse> {
+  const url = template ? '/config/llm-stage-config?template=true' : '/config/llm-stage-config';
+  const res = await apiFetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`Failed to load stage config (status ${res.status}).`);
+  return res.json();
+}
+
+export async function uploadLlmStageConfig(file: File): Promise<LlmStageConfigResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch('/config/llm-stage-config', {
+    method: 'PUT',
+    credentials: 'include',
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to upload stage config (status ${res.status}).`);
+  }
+  return res.json();
+}
+
+export async function deleteLlmStageConfig(): Promise<void> {
+  const res = await apiFetch('/config/llm-stage-config', {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to reset stage config (status ${res.status}).`);
   }
 }

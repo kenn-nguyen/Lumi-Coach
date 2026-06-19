@@ -17,49 +17,96 @@ from uuid import uuid4
 from app import llm
 from app.database import db
 from app.llm import LLMConfig
-from app.services.prompt_loader import build_prompt, load_system_prompt
+from app.services.prompt_loader import (
+    build_prompt,
+    get_prompt_version,
+    get_system_prompt_version,
+    load_system_prompt,
+)
+from app.services.llm_stage_config import (
+    get_stage_overrides as _get_stage_overrides_from_file,
+    get_stage_provider_config,
+)
 
 logger = logging.getLogger(__name__)
 
-# Per-stage model configs mirroring the Chrome extension's DEFAULT_*_API_STAGE_MODELS.
-# Provider+key come from user Settings; only the model (and provider-specific params)
-# are overridden here. If a provider has no entry, the user's configured model is used.
-TAILOR_STAGE_MODELS: dict[str, dict[str, dict]] = {
-    "openai": {
-        "prompt1": {"model": "gpt-5.4-mini", "reasoning_effort": "low"},
-        "prompt2": {"model": "gpt-5.4", "reasoning_effort": "high"},
-        "prompt3": {"model": "gpt-5.4", "reasoning_effort": "low"},
-    },
-    "anthropic": {
-        "prompt1": {"model": "claude-sonnet-4-6"},
-        "prompt2": {
-            "model": "claude-sonnet-4-6",
-            "thinking": {"type": "enabled", "budget_tokens": 8192},
-            "max_tokens": 18000,
-        },
-        "prompt3": {"model": "claude-sonnet-4-6"},
-    },
-    "deepseek": {
-        "prompt1": {"model": "deepseek-v4-pro"},
-        "prompt2": {"model": "deepseek-v4-pro", "thinking": {"type": "enabled"}, "reasoning_effort": "medium"},
-        "prompt3": {"model": "deepseek-v4-pro", "thinking": {"type": "enabled"}, "reasoning_effort": "medium"},
-    },
-    # Gemini: no stage overrides — uses the model the user configured in Settings.
+# Map LiteLLM provider names to config.json key names (same as _PROVIDER_KEY_MAP in llm.py)
+_PROVIDER_CONFIG_KEY: dict[str, str] = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "gemini": "google",
+    "openrouter": "openrouter",
+    "deepseek": "deepseek",
 }
 
 
-def _get_stage_overrides(provider: str, stage: str) -> tuple[str | None, dict]:
-    """Return (model_override, stage_kwargs) for the given provider and stage.
+def _resolve_stage_llm_config(
+    stage: str,
+    default_config: LLMConfig,
+    user_id: str | None = None,
+) -> tuple[LLMConfig, dict]:
+    """Return (llm_config, extra_kwargs) for a pipeline stage.
 
-    Returns (None, {}) when the provider has no per-stage config, meaning the
-    user's configured model is used as-is.
+    Extension schema: resolves the stage-specific provider, model, and API key.
+    Legacy schema: applies model/kwargs override within the same provider.
+    Falls back to default_config on any resolution failure.
+
+    Key resolution order for a different provider:
+    1. User's extra_api_keys from the DB (per-user, per-provider keys).
+    2. Server config.json api_keys dict.
+    3. LiteLLM environment variables.
     """
-    stage_config = TAILOR_STAGE_MODELS.get(provider, {}).get(stage, {})
-    if not stage_config:
-        return None, {}
-    model = stage_config.get("model")
-    extra = {k: v for k, v in stage_config.items() if k != "model"}
-    return model, extra
+    provider, model, extra_kwargs = get_stage_provider_config(stage)
+
+    if provider is None:
+        # Legacy schema — model/kwargs override within the same provider
+        model_override, kwargs = _get_stage_overrides_from_file(default_config.provider, stage)
+        if model_override:
+            return default_config.model_copy(update={"model": model_override}), kwargs
+        return default_config, kwargs
+
+    if provider == default_config.provider:
+        # Same provider — only model/params differ
+        cfg = default_config.model_copy(update={"model": model}) if model else default_config
+        return cfg, extra_kwargs
+
+    # Different provider — resolve API key
+    api_key = ""
+
+    # 1. Try user's per-provider extra_api_keys from DB
+    if user_id:
+        try:
+            user_config = db.get_user_llm_config(user_id)
+            if user_config:
+                api_key = llm.resolve_extra_api_key(user_config, provider)
+        except Exception:
+            pass
+
+    # 2. Fall back to config.json
+    if not api_key:
+        try:
+            from app.config import get_api_keys_from_config
+            config_keys = get_api_keys_from_config()
+            api_key = config_keys.get(_PROVIDER_CONFIG_KEY.get(provider, provider), "")
+        except Exception:
+            pass
+
+    if not api_key:
+        logger.info(
+            "Stage %s routes to provider %r — no explicit key found, "
+            "LiteLLM will use environment variables.",
+            stage,
+            provider,
+        )
+
+    stage_config = LLMConfig(
+        provider=provider,
+        model=model or "",
+        api_key=api_key,
+        api_base=None,
+        is_user_config=bool(api_key),
+    )
+    return stage_config, extra_kwargs
 
 
 def _utcnow_iso() -> str:
@@ -249,7 +296,7 @@ async def run_tailor_pipeline(
     jd_url = jd_url.strip() if jd_url else None
     jd_text = jd_text.strip() if jd_text else None
 
-    logger.info(
+    logger.warning(
         "Tailor pipeline start: resume=%s jd_url=%s jd_text_len=%s",
         resume_id,
         repr(jd_url),
@@ -258,6 +305,7 @@ async def run_tailor_pipeline(
 
     try:
         system_prompt = load_system_prompt()
+        apify_title: str | None = None  # set when Apify extraction succeeds
 
         # ── Stage 0: JD extraction ─────────────────────────────────────────
         if jd_url and not jd_text:
@@ -269,6 +317,14 @@ async def run_tailor_pipeline(
             try:
                 jd_data = await fetch_linkedin_job_detail_via_apify(jd_url, api_key=apify_api_key)
                 jd_text = jd_data.get("raw_text") or ""
+                job_title = jd_data.get("title", "").strip()
+                company = jd_data.get("company", "").strip()
+                if company and job_title:
+                    apify_title = f"{company} - {job_title}"
+                elif job_title:
+                    apify_title = job_title
+                elif company:
+                    apify_title = company
             except Exception as exc:
                 _set_failed(resume_id, user_id, str(exc))
                 return
@@ -304,23 +360,20 @@ async def run_tailor_pipeline(
         p2_raw = ""
         p2_json: dict[str, Any] = {}
 
-        provider = llm_config.provider
-
         # ── Stage 1: Prompt 1 — Analyze JD ────────────────────────────────
         if not is_single_stage:
             if _is_canceled(resume_id, user_id):
                 return
             _update_progress(resume_id, user_id, "prompt1")
 
-            p1_model, p1_kwargs = _get_stage_overrides(provider, "prompt1")
+            p1_config, p1_kwargs = _resolve_stage_llm_config("prompt1", llm_config, user_id)
             p1_prompt = build_prompt("prompt1", prompt_profile_id, base_vars)
             p1_raw, p1_parsed = await _call_llm_with_repair(
                 p1_prompt,
                 system_prompt,
-                llm_config,
+                p1_config,
                 "Prompt1",
                 parse_json=not is_freeform,
-                model_override=p1_model,
                 stage_kwargs=p1_kwargs,
             )
             if p1_parsed:
@@ -332,7 +385,7 @@ async def run_tailor_pipeline(
                 return
             _update_progress(resume_id, user_id, "prompt2")
 
-            p2_model, p2_kwargs = _get_stage_overrides(provider, "prompt2")
+            p2_config, p2_kwargs = _resolve_stage_llm_config("prompt2", llm_config, user_id)
             p2_vars = {
                 **base_vars,
                 "PROMPT1_JSON": json.dumps(p1_json) if p1_json else "",
@@ -343,10 +396,9 @@ async def run_tailor_pipeline(
             p2_raw, p2_parsed = await _call_llm_with_repair(
                 p2_prompt,
                 system_prompt,
-                llm_config,
+                p2_config,
                 "Prompt2",
                 parse_json=not is_freeform,
-                model_override=p2_model,
                 stage_kwargs=p2_kwargs,
             )
             if p2_parsed:
@@ -357,7 +409,7 @@ async def run_tailor_pipeline(
             return
         _update_progress(resume_id, user_id, "prompt3")
 
-        p3_model, p3_kwargs = _get_stage_overrides(provider, "prompt3")
+        p3_config, p3_kwargs = _resolve_stage_llm_config("prompt3", llm_config, user_id)
         p3_vars = {
             **base_vars,
             "PROMPT1_JSON": json.dumps(p1_json) if p1_json else "",
@@ -370,10 +422,9 @@ async def run_tailor_pipeline(
         p3_raw, _ = await _call_llm_with_repair(
             p3_prompt,
             system_prompt,
-            llm_config,
+            p3_config,
             "Prompt3",
             parse_json=True,
-            model_override=p3_model,
             stage_kwargs=p3_kwargs,
         )
 
@@ -392,7 +443,37 @@ async def run_tailor_pipeline(
         job_record = db.create_job(content=jd_text, resume_id=resume_id, user_id=user_id)
         job_id = job_record["job_id"]
 
+        # Attach prompt provenance so the viewer can show version info
+        prompt_setup: dict[str, Any] = {
+            "prompt_profile_id": prompt_profile_id,
+            "prompt1_version_id": get_prompt_version("prompt1", prompt_profile_id),
+            "prompt2_version_id": get_prompt_version("prompt2", prompt_profile_id),
+            "prompt3_version_id": get_prompt_version("prompt3", prompt_profile_id),
+            "system_prompt_version_id": get_system_prompt_version(),
+        }
+        if generation_feedback is None:
+            generation_feedback = {}
+        generation_feedback["prompt_setup"] = prompt_setup
+
         generation_artifacts: dict[str, Any] = {"prompt2": p2_json} if p2_json else {}
+
+        # Apify path: "Company - Job Title" from parsed JD metadata.
+        # Text-paste path: same format using P1's extracted company_context + target_role.
+        # Fallback for single-stage profiles (profile4) that skip P1/P2: P2's recommended_title.
+        if not apify_title and p1_json:
+            p1_company = (p1_json.get("company_context") or "").strip()
+            p1_role = (p1_json.get("target_role") or "").strip()
+            if p1_company and p1_role:
+                apify_title = f"{p1_company} - {p1_role}"
+            elif p1_role:
+                apify_title = p1_role
+            elif p1_company:
+                apify_title = p1_company
+        resume_title: str | None = apify_title or (
+            (p2_json.get("recommended_title") or "").strip() or None
+            if p2_json
+            else None
+        )
 
         tailored = db.create_resume(
             content=resume_content,
@@ -403,6 +484,7 @@ async def run_tailor_pipeline(
             linked_master_resume_id=resume_id,
             is_master=False,
             processing_status="completed",
+            title=resume_title,
             user_id=user_id,
         )
         tailored_resume_id = tailored["resume_id"]

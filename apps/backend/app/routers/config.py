@@ -5,10 +5,11 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
 from app.config import settings
 from app.llm import check_llm_health, get_llm_config, LLMConfig
+from app.services.llm_stage_config import delete_override, is_using_override, read_active_config, read_default_config, save_override
 from app.llm_config_crypto import (
     LLMConfigEncryptionError,
     decrypt_api_key,
@@ -249,8 +250,6 @@ def _user_config_has_effective_key(user_config: dict | None) -> bool:
     """Return true when the user has their own usable LLM key saved."""
     if not user_config:
         return False
-    if str(user_config.get("provider") or "") == "ollama":
-        return True
     return bool(user_config.get("encrypted_api_key"))
 
 
@@ -313,7 +312,7 @@ async def update_llm_config(
     if request.api_base is not None:
         resolved_api_base = request.api_base
     elif provider_changed:
-        resolved_api_base = "http://localhost:11434" if resolved_provider == "ollama" else None
+        resolved_api_base = None
     else:
         resolved_api_base = existing.get("api_base") if existing else fallback.api_base
 
@@ -358,7 +357,7 @@ async def update_llm_config(
         model=test_config.model,
         api_key=_mask_api_key(test_config.api_key),
         api_base=test_config.api_base,
-        is_user_config=bool(test_config.api_key) or test_config.provider == "ollama",
+        is_user_config=bool(test_config.api_key),
     )
 
 
@@ -643,26 +642,29 @@ def _mask_key_short(key: str | None) -> str | None:
 async def get_api_keys_status(
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> ApiKeyStatusResponse:
-    """Get status of the current user's saved API key.
-
-    Legacy compatibility endpoint. It intentionally does not expose shared
-    server fallback key status because user LLM settings are account scoped.
-    """
+    """Get status of the current user's saved API keys across all providers."""
     user_config = db.get_user_llm_config(current_user.user_id)
     configured_provider = str(user_config.get("provider")) if user_config else ""
     configured_key = _decrypt_user_api_key(
         user_config.get("encrypted_api_key") if user_config else None
     )
+    extra_api_keys: dict = user_config.get("extra_api_keys", {}) if user_config else {}
 
     providers = []
     for provider in SUPPORTED_PROVIDERS:
         llm_provider = API_KEY_PROVIDER_TO_LLM_PROVIDER.get(provider, provider)
-        key = configured_key if llm_provider == configured_provider else ""
+        # Primary key: primary encrypted_api_key matches this provider
+        primary_key = configured_key if llm_provider == configured_provider else ""
+        # Extra key: stored in extra_api_keys dict under provider name
+        extra_encrypted = extra_api_keys.get(provider, "")
+        extra_key = _decrypt_user_api_key(extra_encrypted) if extra_encrypted else ""
+        # Use whichever is available for display; extra_keys take precedence for multi-key display
+        display_key = extra_key or primary_key
         providers.append(
             ApiKeyProviderStatus(
                 provider=provider,
-                configured=bool(key),
-                masked_key=_mask_key_short(key),
+                configured=bool(display_key),
+                masked_key=_mask_key_short(display_key),
             )
         )
 
@@ -670,12 +672,26 @@ async def get_api_keys_status(
 
 
 @router.post("/api-keys", response_model=ApiKeysUpdateResponse)
-async def update_api_keys(request: ApiKeysUpdateRequest) -> ApiKeysUpdateResponse:
-    """Reject legacy multi-key writes to avoid mutating shared server config."""
-    _ = request
-    raise HTTPException(
-        status_code=410,
-        detail="Use /config/llm-api-key to manage your account LLM key.",
+async def update_api_keys(
+    request: ApiKeysUpdateRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> ApiKeysUpdateResponse:
+    """Save API keys for one or more providers, stored per-user."""
+    keys_to_store: dict[str, str] = {}
+    updated: list[str] = []
+
+    for provider, key_value in request.model_dump(exclude_none=True).items():
+        trimmed = (key_value or "").strip()
+        if trimmed:
+            keys_to_store[provider] = encrypt_api_key(trimmed)
+            updated.append(provider)
+
+    if keys_to_store:
+        db.upsert_user_extra_api_keys(user_id=current_user.user_id, keys=keys_to_store)
+
+    return ApiKeysUpdateResponse(
+        message="API keys saved.",
+        updated_providers=updated,
     )
 
 
@@ -709,7 +725,10 @@ async def delete_api_key(
     provider: str,
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> dict:
-    """Delete the current user's saved API key if it belongs to this provider.
+    """Delete the current user's saved API key for a specific provider.
+
+    Clears from both the primary encrypted_api_key (if it belongs to this
+    provider) and from extra_api_keys.
 
     Args:
         provider: The provider name (openai, anthropic, google, openrouter, deepseek)
@@ -724,13 +743,17 @@ async def delete_api_key(
         )
 
     user_config = db.get_user_llm_config(current_user.user_id)
-    provider_matches = (
-        bool(user_config)
-        and API_KEY_PROVIDER_TO_LLM_PROVIDER.get(provider, provider)
-        == str(user_config.get("provider"))
-    )
-    if provider_matches:
-        db.clear_user_llm_api_key(current_user.user_id)
+    if user_config:
+        # Clear primary key if it belongs to this provider
+        provider_matches = (
+            API_KEY_PROVIDER_TO_LLM_PROVIDER.get(provider, provider)
+            == str(user_config.get("provider"))
+        )
+        if provider_matches and user_config.get("encrypted_api_key"):
+            db.clear_user_llm_api_key(current_user.user_id)
+
+        # Always clear from extra_api_keys
+        db.delete_user_extra_api_key(user_id=current_user.user_id, provider_key=provider)
 
     return {"message": f"Your saved API key for {provider} has been cleared"}
 
@@ -755,6 +778,40 @@ async def update_apify_key(request: dict) -> dict:
     _save_config(stored)
     token = str(stored.get("apify_api_token", ""))
     return {"api_key": _mask_api_key(token), "configured": bool(token)}
+
+
+@router.get("/llm-stage-config")
+async def get_llm_stage_config(template: bool = False) -> dict:
+    """Return the active LLM stage config YAML and whether an override is in use.
+
+    Pass ?template=true to always get the bundled default regardless of any override.
+    """
+    content = read_default_config() if template else read_active_config()
+    return {
+        "content": content,
+        "is_override": False if template else is_using_override(),
+    }
+
+
+@router.put("/llm-stage-config")
+async def upload_llm_stage_config(file: UploadFile = File(...)) -> dict:
+    """Upload a YAML file to override the bundled LLM stage config."""
+    if file.content_type not in {"application/x-yaml", "text/yaml", "text/plain", "application/octet-stream"}:
+        # be lenient — browsers may send application/octet-stream for .yaml
+        pass
+    content = (await file.read()).decode("utf-8")
+    try:
+        save_override(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": "LLM stage config updated", "is_override": True}
+
+
+@router.delete("/llm-stage-config")
+async def reset_llm_stage_config() -> dict:
+    """Remove the override and revert to the bundled default config."""
+    deleted = delete_override()
+    return {"message": "Override removed" if deleted else "No override was active", "is_override": False}
 
 
 @router.post("/reset")
