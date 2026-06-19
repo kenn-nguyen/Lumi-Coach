@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, field_validator
 
 VALID_PROMPT_PROFILES = {"profile1", "profile2", "profile3", "profile4"}
@@ -11,6 +13,13 @@ class TailorRequest(BaseModel):
     prompt_profile_id: str = "profile2"
     jd_url: str | None = None
     jd_text: str | None = None
+
+    @field_validator("jd_url", "jd_text", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator("prompt_profile_id")
     @classmethod

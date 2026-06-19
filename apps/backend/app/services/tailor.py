@@ -245,6 +245,17 @@ async def run_tailor_pipeline(
     is_single_stage = prompt_profile_id == "profile4"
     is_freeform = prompt_profile_id == "profile3"
 
+    # Normalise empty strings so the routing condition below is unambiguous
+    jd_url = jd_url.strip() if jd_url else None
+    jd_text = jd_text.strip() if jd_text else None
+
+    logger.info(
+        "Tailor pipeline start: resume=%s jd_url=%s jd_text_len=%s",
+        resume_id,
+        repr(jd_url),
+        len(jd_text) if jd_text else 0,
+    )
+
     try:
         system_prompt = load_system_prompt()
 
