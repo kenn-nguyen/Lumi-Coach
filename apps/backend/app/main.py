@@ -22,11 +22,13 @@ from app.routers import (
     admin_router,
     config_router,
     enrichment_router,
+    evals_router,
     extension_router,
     health_router,
     jobs_router,
     resumes_router,
     tailor_router,
+    user_evals_router,
 )
 
 
@@ -85,6 +87,8 @@ app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(enrichment_router, prefix="/api/v1")
 app.include_router(extension_router, prefix="/api/v1")
 app.include_router(tailor_router, prefix="/api/v1")
+app.include_router(evals_router, prefix="/api/v1")
+app.include_router(user_evals_router, prefix="/api/v1")
 
 
 @app.get("/")

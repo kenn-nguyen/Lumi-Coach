@@ -25,6 +25,8 @@ import { fetchOutputConfig } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
 import { ArrowLeft, Edit, Download, Loader2, AlertCircle, Pencil, Wand2 } from 'lucide-react';
 import { TailorDialog } from '@/components/tailor/TailorDialog';
+import { SaveEvalCaseModal } from '@/components/evals/SaveEvalCaseModal';
+import { isAdminEmail } from '@/lib/admin';
 import { useTranslations } from '@/lib/i18n';
 import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
@@ -120,7 +122,7 @@ function buildPromptSetupFooterText(generationFeedback: GenerationFeedback | nul
 }
 
 export default function ResumeViewerPage() {
-  const { status: authStatus } = useSession();
+  const { data: session, status: authStatus } = useSession();
   const { t } = useTranslations();
   const { uiLanguage } = useLanguage();
   const params = useParams();
@@ -133,6 +135,8 @@ export default function ResumeViewerPage() {
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus | null>(null);
   const [isMasterResume, setIsMasterResume] = useState(false);
   const [showTailorDialog, setShowTailorDialog] = useState(false);
+  const [showEvalModal, setShowEvalModal] = useState(false);
+  const [linkedMasterResumeId, setLinkedMasterResumeId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showDeleteSuccessDialog, setShowDeleteSuccessDialog] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -380,6 +384,7 @@ export default function ResumeViewerPage() {
         // Capture title for editable display (always set to clear stale state)
         setResumeTitle(buildViewerResumeTitle(data));
         setGenerationFeedback(data.generation_feedback ?? null);
+        setLinkedMasterResumeId(data.raw_resume?.linked_master_resume_id ?? null);
 
         // Prioritize processed_resume if available (structured JSON)
         if (data.processed_resume) {
@@ -744,6 +749,16 @@ export default function ResumeViewerPage() {
                 Tailor to Job
               </Button>
             )}
+            {session?.user?.email && isAdminEmail(session.user.email) && linkedMasterResumeId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEvalModal(true)}
+                className="font-mono text-xs"
+              >
+                Save as eval case
+              </Button>
+            )}
             <QuickLayoutControls
               dateDisplay={templateSettings.dateDisplay}
               experienceHeaderOrder={templateSettings.experienceHeaderOrder}
@@ -1013,6 +1028,12 @@ export default function ResumeViewerPage() {
           onClose={() => setShowTailorDialog(false)}
         />
       )}
+
+      <SaveEvalCaseModal
+        isOpen={showEvalModal}
+        onClose={() => setShowEvalModal(false)}
+        tailoredResumeId={resumeId}
+      />
     </div>
   );
 }

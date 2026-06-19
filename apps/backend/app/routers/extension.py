@@ -91,3 +91,13 @@ async def upsert_extension_run(
         run_id=saved["run_id"],
         status=saved["status"],
     )
+
+
+@router.get("/runs")
+async def list_user_extension_runs(
+    limit: int = 50,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Return the current user's extension runs, newest first."""
+    runs = db.list_extension_runs_for_user(user_id=current_user.user_id, limit=limit)
+    return {"items": runs, "total": len(runs)}

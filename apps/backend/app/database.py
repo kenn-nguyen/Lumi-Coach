@@ -192,6 +192,39 @@ class ExtensionRunModel(Base):
     )
 
 
+class EvalCaseModel(Base):
+    __tablename__ = "eval_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    tags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_profile_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    jd_source: Mapped[str] = mapped_column(String(32), nullable=False)
+    jd_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    jd_text: Mapped[str] = mapped_column(Text, nullable=False)
+    master_resume: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    tailored_resume: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    source_resume_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    tailored_resume_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    tailor_job_id: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class EvalRunModel(Base):
+    __tablename__ = "eval_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("eval_cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    step: Mapped[str] = mapped_column(String(32), nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    scores: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class Database:
     """PostgreSQL-backed repository for SOM Career Coach data."""
 
@@ -218,6 +251,39 @@ class Database:
         self._ensure_resume_schema()
         self._ensure_extension_runs_schema()
         self._ensure_llm_config_schema()
+        self._ensure_evals_schema()
+
+    def _ensure_evals_schema(self) -> None:
+        """Additive migrations for eval tables."""
+        inspector = inspect(self._engine)
+        table_names = inspector.get_table_names()
+        if "eval_cases" not in table_names:
+            return
+        columns = {c["name"] for c in inspector.get_columns("eval_cases")}
+        with self._engine.begin() as connection:
+            if "user_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE eval_cases ADD COLUMN user_id VARCHAR(255)")
+                )
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_eval_cases_user_id ON eval_cases (user_id)"
+                    )
+                )
+                logger.info("Added eval_cases.user_id column")
+
+        if "eval_runs" not in table_names:
+            return
+        existing_fks = {fk["referred_table"] for fk in inspector.get_foreign_keys("eval_runs")}
+        if "eval_cases" not in existing_fks:
+            with self._engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE eval_runs ADD CONSTRAINT fk_eval_runs_case_id "
+                        "FOREIGN KEY (case_id) REFERENCES eval_cases(id) ON DELETE CASCADE"
+                    )
+                )
+            logger.info("Added eval_runs.case_id FK with ON DELETE CASCADE")
 
     def _ensure_llm_config_schema(self) -> None:
         """Apply additive schema updates for per-provider extra API keys."""
@@ -1524,6 +1590,138 @@ class Database:
         if uploads_dir.exists():
             shutil.rmtree(uploads_dir)
             uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_resume_admin(self, resume_id: str) -> dict[str, Any] | None:
+        """Load a resume by ID without user-scope filtering (admin only)."""
+        with self._session() as session:
+            resume = session.get(ResumeModel, resume_id)
+            return self._serialize_resume(resume) if resume else None
+
+    def _serialize_eval_case(self, row: EvalCaseModel) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "created_at": self._to_iso(row.created_at),
+            "user_id": getattr(row, "user_id", None),
+            "tags": row.tags or [],
+            "notes": row.notes,
+            "prompt_profile_id": row.prompt_profile_id,
+            "jd_source": row.jd_source,
+            "jd_url": row.jd_url,
+            "jd_text": row.jd_text,
+            "master_resume": row.master_resume,
+            "tailored_resume": row.tailored_resume,
+            "source_resume_id": row.source_resume_id,
+            "tailored_resume_id": row.tailored_resume_id,
+            "tailor_job_id": row.tailor_job_id,
+        }
+
+    def _serialize_eval_run(self, row: EvalRunModel) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "case_id": row.case_id,
+            "created_at": self._to_iso(row.created_at),
+            "step": row.step,
+            "passed": row.passed,
+            "scores": row.scores or {},
+            "error": row.error,
+        }
+
+    def create_eval_case(self, case: dict[str, Any]) -> dict[str, Any]:
+        with self._session() as session:
+            row = EvalCaseModel(**case)
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return self._serialize_eval_case(row)
+
+    def list_eval_cases(
+        self,
+        profile: str | None = None,
+        tag: str | None = None,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        with self._session() as session:
+            query = session.query(EvalCaseModel).order_by(EvalCaseModel.created_at.desc())
+            if user_id:
+                query = query.filter(EvalCaseModel.user_id == user_id)
+            if profile:
+                query = query.filter(EvalCaseModel.prompt_profile_id == profile)
+            if tag:
+                query = query.filter(EvalCaseModel.tags.contains([tag]))
+            return [self._serialize_eval_case(r) for r in query.all()]
+
+    def get_eval_case(self, case_id: str, user_id: str | None = None) -> dict[str, Any] | None:
+        with self._session() as session:
+            row = session.get(EvalCaseModel, case_id)
+            if row is None:
+                return None
+            if user_id and row.user_id != user_id:
+                return None
+            return self._serialize_eval_case(row)
+
+    def delete_eval_case(self, case_id: str, user_id: str | None = None) -> bool:
+        with self._session() as session:
+            row = session.get(EvalCaseModel, case_id)
+            if not row:
+                return False
+            if user_id and row.user_id != user_id:
+                return False
+            session.query(EvalRunModel).filter(EvalRunModel.case_id == case_id).delete()
+            session.delete(row)
+            session.commit()
+            return True
+
+    def list_extension_runs_for_user(
+        self,
+        user_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Return the current user's extension runs, newest first."""
+        with self._session() as session:
+            rows = (
+                session.query(ExtensionRunModel)
+                .filter(ExtensionRunModel.user_id == user_id)
+                .order_by(
+                    ExtensionRunModel.generated_at.desc().nullslast(),
+                    ExtensionRunModel.updated_at.desc(),
+                )
+                .limit(max(1, min(limit, 200)))
+                .all()
+            )
+            return [
+                self._serialize_extension_run(row, include_summary=False, include_prompt_artifacts=False)
+                for row in rows
+            ]
+
+    def create_eval_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        with self._session() as session:
+            row = EvalRunModel(**run)
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return self._serialize_eval_run(row)
+
+    def get_latest_eval_runs_for_cases(
+        self, case_ids: list[str]
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        """Return {case_id: {step: latest_run}} for a list of case IDs."""
+        if not case_ids:
+            return {}
+        with self._session() as session:
+            rows = (
+                session.query(EvalRunModel)
+                .filter(EvalRunModel.case_id.in_(case_ids))
+                .order_by(EvalRunModel.created_at.desc())
+                .all()
+            )
+        result: dict[str, dict[str, dict[str, Any]]] = {}
+        for row in rows:
+            cid = row.case_id
+            if cid not in result:
+                result[cid] = {}
+            if row.step not in result[cid]:
+                result[cid][row.step] = self._serialize_eval_run(row)
+        return result
 
 
 db = Database()

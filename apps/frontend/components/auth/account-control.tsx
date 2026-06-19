@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { signOut, useSession } from 'next-auth/react';
+import Link from 'next/link';
 import User from 'lucide-react/dist/esm/icons/user';
 import LogOut from 'lucide-react/dist/esm/icons/log-out';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import { broadcastSessionInvalidation, markSignOutInProgress } from '@/lib/auth/cross-tab-session';
 import { cn } from '@/lib/utils';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
+import { isAdminEmail } from '@/lib/admin';
 
 export function AccountControl({ compact = false }: { compact?: boolean }) {
   const { data: session } = useSession();
@@ -31,6 +33,7 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
   }, [open]);
 
   const user = session?.user;
+  const isAdmin = isAdminEmail(user?.email);
   const initials = useMemo(() => {
     const source = user?.name || user?.email || 'U';
     return source
@@ -89,6 +92,43 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
               <p className="truncate text-xs text-muted-foreground">{user.email}</p>
             ) : null}
           </div>
+          <div className="border-b border-border py-1">
+            <Link
+              href="/runs"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
+            >
+              My Runs
+            </Link>
+            <Link
+              href="/evals"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
+            >
+              My Evals
+            </Link>
+          </div>
+          {isAdmin ? (
+            <div className="border-b border-border py-1">
+              <p className="px-4 pt-2 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Admin
+              </p>
+              <Link
+                href="/admin/extension-runs"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
+              >
+                All Runs
+              </Link>
+              <Link
+                href="/admin/evals"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
+              >
+                All Evals
+              </Link>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => {

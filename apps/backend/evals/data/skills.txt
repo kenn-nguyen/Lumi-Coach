@@ -1,0 +1,100 @@
+python
+javascript
+typescript
+react
+nextjs
+nodejs
+sql
+postgresql
+mysql
+mongodb
+redis
+docker
+kubernetes
+aws
+gcp
+azure
+terraform
+ansible
+git
+linux
+bash
+java
+golang
+rust
+c++
+swift
+kotlin
+android
+ios
+machine learning
+deep learning
+tensorflow
+pytorch
+scikit-learn
+pandas
+numpy
+spark
+kafka
+airflow
+dbt
+bigquery
+snowflake
+elasticsearch
+graphql
+rest
+grpc
+fastapi
+django
+flask
+spring
+rails
+vue
+angular
+figma
+sketch
+product management
+agile
+scrum
+roadmap
+okr
+a/b testing
+user research
+data analysis
+excel
+tableau
+looker
+powerbi
+etl
+data engineering
+data science
+analytics
+growth
+marketing
+seo
+sem
+paid acquisition
+crm
+salesforce
+hubspot
+b2b
+saas
+fundraising
+investor relations
+operations
+supply chain
+finance
+accounting
+revenue
+enterprise
+startup
+leadership
+cross-functional
+stakeholder
+communication
+presentation
+strategy
+devops
+sre
+nlp
+llm
