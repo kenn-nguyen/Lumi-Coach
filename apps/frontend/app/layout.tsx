@@ -95,6 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en-US" className="h-full" suppressHydrationWarning>
       <body
         className={`${geist.variable} ${spaceGrotesk.variable} antialiased bg-[#F0F0E8] text-gray-900 min-h-full`}
+        suppressHydrationWarning
       >
         <AuthSessionProvider>
           <BackgroundTailorProvider>
