@@ -4,6 +4,7 @@ import { logWarn } from "./log.js";
 const DEFAULT_SYNC_TIMEOUT_MS = 4000;
 const TEXT_LIMITS = {
   company: 500,
+  jd_text: 10000,
   job_source: 64,
   location: 500,
   preview_url: 2000,
@@ -219,6 +220,7 @@ export function toServerRunSummary(entry) {
     location: textOrNull(entry?.location, TEXT_LIMITS.location),
     source_url: textOrNull(entry?.sourceUrl, TEXT_LIMITS.source_url),
     job_source: textOrNull(entry?.jobSource, TEXT_LIMITS.job_source),
+    jd_text: textOrNull(entry?.jobDescriptionText, TEXT_LIMITS.jd_text),
     resume_id: textOrNull(entry?.resumeId, TEXT_LIMITS.resume_id),
     preview_url: textOrNull(entry?.previewUrl, TEXT_LIMITS.preview_url),
     provider_id: textOrNull(entry?.providerId, TEXT_LIMITS.provider_id),

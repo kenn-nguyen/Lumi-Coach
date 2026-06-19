@@ -15,6 +15,7 @@ import {
   downloadAdminExtensionRunsExport,
   fetchAdminExtensionRunItem,
   fetchAdminExtensionRuns,
+  fetchUserExtensionRunItem,
   fetchUserExtensionRuns,
   type ExtensionRunAdminItem,
   type ExtensionRunAdminListResponse,
@@ -217,7 +218,9 @@ export default function RunsPage() {
     setDownloadingRunId(item.run_id);
     setError(null);
     try {
-      const run = await fetchAdminExtensionRunItem(item.user_id, item.run_id);
+      const run = isAdmin
+        ? await fetchAdminExtensionRunItem(item.user_id, item.run_id)
+        : await fetchUserExtensionRunItem(item.run_id);
       const blob = new Blob([JSON.stringify(run, null, 2)], { type: 'application/json' });
       downloadBlobAsFile(blob, buildAdminExtensionRunFilename(run.company, run.title, item.run_id));
     } catch (downloadError) {
@@ -227,7 +230,7 @@ export default function RunsPage() {
     }
   }
 
-  const colSpan = isAdmin ? 8 : 6;
+  const colSpan = isAdmin ? 8 : 5;
 
   return (
     <>
@@ -404,7 +407,7 @@ export default function RunsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 align-top font-mono text-xs text-muted-foreground">
-                          {resolveRunSource(item.run_source)}
+                          {resolveRunSource(item.source)}
                         </td>
                         {isAdmin ? (
                           <>
@@ -434,21 +437,19 @@ export default function RunsPage() {
                                 </Link>
                               </>
                             ) : null}
-                            {isAdmin ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => void handleDownloadRun(item)}
-                                disabled={downloadingRunId === item.run_id}
-                              >
-                                {downloadingRunId === item.run_id ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Download className="mr-2 h-4 w-4" />
-                                )}
-                                JSON
-                              </Button>
-                            ) : null}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void handleDownloadRun(item)}
+                              disabled={downloadingRunId === item.run_id}
+                            >
+                              {downloadingRunId === item.run_id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Download className="mr-2 h-4 w-4" />
+                              )}
+                              JSON
+                            </Button>
                           </div>
                         </td>
                       </tr>

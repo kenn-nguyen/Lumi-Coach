@@ -1,11 +1,11 @@
-# LLM Stage Configuration
+# LLM Stage Configuration — ADVANCED MODE
 #
-# Routes each pipeline stage to a specific AI provider and model.
-# If a stage is not listed in stageProviders, the user's configured provider is used.
-# Remove or reset this file to return to single-provider mode.
+# Upload this file to enable per-stage provider routing.
+# API keys can be pasted directly in this file under each profile's `apiKey:` field.
+# Alternatively, save keys in Settings → Advanced → Stage Routing Keys.
 #
-# Valid profile IDs: claude:api, deepseek:api, openai:api, gemini:api
-# API keys come from Settings or server environment variables.
+# Valid profile IDs: claude:api, deepseek:api, openai:api, gemini:api, openrouter:api
+# Delete this file or click "Reset to default" in Settings to return to single-provider mode.
 
 stageProviders:
   prompt1: deepseek:api
@@ -15,22 +15,10 @@ stageProviders:
 # Per-provider model and parameter settings for each stage.
 # Settings here override the model for the tailor pipeline only.
 profiles:
-  claude:api:
-    # Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
-    # thinking.budget_tokens: 1024–16000 (higher = deeper reasoning)
-    stageModels:
-      prompt1:
-        model: claude-sonnet-4-6
-      prompt2:
-        model: claude-sonnet-4-6
-        thinking:
-          type: enabled
-          budget_tokens: 8192
-        maxTokens: 18000
-      prompt3:
-        model: claude-sonnet-4-6
-
   deepseek:api:
+    # Paste your DeepSeek API key here — get yours at platform.deepseek.com/api_keys
+    # Leave blank ("") to use the key saved in Settings → Advanced → Stage Routing Keys
+    apiKey: ""
     # DeepSeek models: deepseek-v4-pro, deepseek-chat
     # reasoning_effort: high | max (medium silently maps to high)
     stageModels:
@@ -47,8 +35,27 @@ profiles:
           type: enabled
         reasoning_effort: medium
 
+  claude:api:
+    # Paste your Anthropic API key here — get yours at console.anthropic.com/settings/keys
+    # Leave blank ("") to use the key saved in Settings → Advanced → Stage Routing Keys
+    apiKey: ""
+    # Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
+    # thinking.budget_tokens: 1024–16000 (higher = deeper reasoning)
+    stageModels:
+      prompt1:
+        model: claude-sonnet-4-6
+      prompt2:
+        model: claude-sonnet-4-6
+        thinking:
+          type: enabled
+          budget_tokens: 8192
+        maxTokens: 18000
+      prompt3:
+        model: claude-sonnet-4-6
+
   # Uncomment to enable OpenAI per-stage routing:
   # openai:api:
+  #   apiKey: ""
   #   # Models: gpt-5.4-mini, gpt-5.4, gpt-4.1, gpt-4o-mini
   #   # reasoning_effort: low | medium | high
   #   stageModels:
@@ -64,6 +71,7 @@ profiles:
 
   # Uncomment to enable Gemini per-stage routing:
   # gemini:api:
+  #   apiKey: ""
   #   # Models: gemini-2.5-flash, gemini-2.5-pro
   #   stageModels:
   #     prompt1:

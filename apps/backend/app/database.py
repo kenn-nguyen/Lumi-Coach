@@ -198,6 +198,8 @@ class ExtensionRunModel(Base):
     prompt2_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     prompt3_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     system_prompt_version_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    jd_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="extension")
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     prompt_artifacts: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     prompt_artifacts_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
@@ -437,6 +439,19 @@ class Database:
                     )
                 )
                 logger.info("Added extension_runs.system_prompt_version_id column")
+            if "jd_text" not in columns:
+                connection.execute(
+                    text("ALTER TABLE extension_runs ADD COLUMN jd_text TEXT")
+                )
+                logger.info("Added extension_runs.jd_text column")
+            if "source" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE extension_runs "
+                        "ADD COLUMN source VARCHAR(32) DEFAULT 'extension'"
+                    )
+                )
+                logger.info("Added extension_runs.source column")
             connection.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS "
@@ -621,7 +636,7 @@ class Database:
             "location": decrypt_text(run.location),
             "source_url": decrypt_text(run.source_url),
             "job_source": run.job_source,
-            "run_source": "web" if run.job_source == "web" else "extension",
+            "source": run.source or "extension",
             "resume_id": run.resume_id,
             "preview_url": decrypt_text(run.preview_url),
             "provider_id": run.provider_id,
@@ -820,6 +835,7 @@ class Database:
             ExtensionRunModel.location,
             ExtensionRunModel.source_url,
             ExtensionRunModel.job_source,
+            ExtensionRunModel.source,
             ExtensionRunModel.resume_id,
             ExtensionRunModel.preview_url,
             ExtensionRunModel.provider_id,
@@ -861,9 +877,9 @@ class Database:
             if normalized_status and normalized_status != "all":
                 query = query.filter(ExtensionRunModel.status == normalized_status)
             if normalized_run_source == "web":
-                query = query.filter(ExtensionRunModel.job_source == "web")
+                query = query.filter(ExtensionRunModel.source == "web")
             elif normalized_run_source == "extension":
-                query = query.filter(ExtensionRunModel.job_source != "web")
+                query = query.filter(ExtensionRunModel.source == "extension")
 
             candidates = query.limit(bounded_scan_limit).all()
 
@@ -1404,6 +1420,8 @@ class Database:
                     "prompt_profile_id": run.prompt_profile_id,
                     "title": decrypt_text(run.title),
                     "company": decrypt_text(run.company),
+                    "jd_text": run.jd_text or "",
+                    "source": run.source or "extension",
                 }
             return metadata_by_resume_id
 
@@ -1552,8 +1570,11 @@ class Database:
         provider_label: str | None = None,
         generated_at: datetime | None = None,
         total_duration_ms: int | None = None,
+        jd_text: str | None = None,
+        source: str = "extension",
         summary: dict[str, Any] | None = None,
         prompt_artifacts: dict[str, Any] | None = None,
+        prompt_setup: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         resolved_user_id = self._resolve_user_scope(user_id)
         if not resolved_user_id:
@@ -1569,16 +1590,19 @@ class Database:
                 )
                 session.add(run)
 
-            prompt_setup = self._extract_prompt_setup_from_payload(
-                summary=summary,
-                prompt_artifacts=prompt_artifacts,
-            )
+            if not prompt_setup:
+                prompt_setup = self._extract_prompt_setup_from_payload(
+                    summary=summary,
+                    prompt_artifacts=prompt_artifacts,
+                ) or {}
             run.status = status
             run.title = encrypt_text(title)
             run.company = encrypt_text(company)
             run.location = encrypt_text(location)
             run.source_url = encrypt_text(source_url)
             run.job_source = job_source
+            run.jd_text = jd_text
+            run.source = source
             run.resume_id = resume_id
             run.preview_url = encrypt_text(preview_url)
             run.provider_id = provider_id

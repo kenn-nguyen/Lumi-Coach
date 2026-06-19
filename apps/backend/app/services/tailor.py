@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -39,6 +40,74 @@ _PROVIDER_CONFIG_KEY: dict[str, str] = {
     "deepseek": "deepseek",
 }
 
+# Environment variable names that LiteLLM accepts per provider
+_PROVIDER_ENV_VARS: dict[str, list[str]] = {
+    "anthropic": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+    "openai": ["OPENAI_API_KEY"],
+    "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    "openrouter": ["OPENROUTER_API_KEY"],
+    "deepseek": ["DEEPSEEK_API_KEY"],
+}
+
+_TAILOR_STAGES = ["prompt1", "prompt2", "prompt3"]
+
+
+def _provider_has_key(provider: str, user_id: str | None, default_config: LLMConfig) -> bool:
+    """Return True if any key source can supply a key for this provider."""
+    if default_config.provider == provider and default_config.api_key:
+        return True
+    if user_id:
+        try:
+            user_config = db.get_user_llm_config(user_id)
+            if user_config and llm.resolve_extra_api_key(user_config, provider):
+                return True
+        except Exception:
+            pass
+    try:
+        from app.config import get_api_keys_from_config
+        config_key = _PROVIDER_CONFIG_KEY.get(provider, provider)
+        if get_api_keys_from_config().get(config_key):
+            return True
+    except Exception:
+        pass
+    # Check YAML-embedded apiKey (advanced mode: user pasted key directly in the YAML file)
+    try:
+        from app.services.llm_stage_config import get_yaml_api_key_for_provider
+        if get_yaml_api_key_for_provider(provider):
+            return True
+    except Exception:
+        pass
+    return any(os.environ.get(v) for v in _PROVIDER_ENV_VARS.get(provider, []))
+
+
+def check_stage_readiness(
+    user_id: str | None, default_config: LLMConfig
+) -> list[dict[str, Any]]:
+    """Return [{stage, provider, configured}] for each pipeline stage."""
+    result = []
+    for stage in _TAILOR_STAGES:
+        provider, _, _ = get_stage_provider_config(stage)
+        if provider is None:
+            provider = default_config.provider
+        result.append({
+            "stage": stage,
+            "provider": provider,
+            "configured": _provider_has_key(provider, user_id, default_config),
+        })
+    return result
+
+
+def _preflight_check_stage_keys(user_id: str | None, default_config: LLMConfig) -> None:
+    """Raise ValueError listing all stages that are missing API keys."""
+    missing = [r for r in check_stage_readiness(user_id, default_config) if not r["configured"]]
+    if not missing:
+        return
+    details = ", ".join(f"{r['stage']} ({r['provider']})" for r in missing)
+    raise ValueError(
+        f"Missing API key for: {details}. "
+        f"Go to Settings → API Keys to add the required key(s)."
+    )
+
 
 def _resolve_stage_llm_config(
     stage: str,
@@ -52,29 +121,36 @@ def _resolve_stage_llm_config(
     Falls back to default_config on any resolution failure.
 
     Key resolution order for a different provider:
+    0. YAML-embedded apiKey in the uploaded stage config file.
     1. User's extra_api_keys from the DB (per-user, per-provider keys).
     2. Server config.json api_keys dict.
     3. LiteLLM environment variables.
     """
     provider, model, extra_kwargs = get_stage_provider_config(stage)
 
+    # Pop the internal YAML-embedded key before it reaches LiteLLM
+    yaml_api_key = extra_kwargs.pop("_api_key", None)
+
     if provider is None:
-        # Legacy schema — model/kwargs override within the same provider
+        # Simple/legacy mode — model/kwargs override within the same provider
         model_override, kwargs = _get_stage_overrides_from_file(default_config.provider, stage)
         if model_override:
             return default_config.model_copy(update={"model": model_override}), kwargs
         return default_config, kwargs
 
     if provider == default_config.provider:
-        # Same provider — only model/params differ
+        # Same provider — only model/params differ; apply YAML key if present
         cfg = default_config.model_copy(update={"model": model}) if model else default_config
+        if yaml_api_key:
+            cfg = cfg.model_copy(update={"api_key": yaml_api_key})
         return cfg, extra_kwargs
 
     # Different provider — resolve API key
-    api_key = ""
+    # Priority 0: YAML-embedded key (user pasted it in the config file)
+    api_key = yaml_api_key or ""
 
-    # 1. Try user's per-provider extra_api_keys from DB
-    if user_id:
+    # Priority 1: User's per-provider extra_api_keys from DB
+    if not api_key and user_id:
         try:
             user_config = db.get_user_llm_config(user_id)
             if user_config:
@@ -82,7 +158,7 @@ def _resolve_stage_llm_config(
         except Exception:
             pass
 
-    # 2. Fall back to config.json
+    # Priority 2: Fall back to config.json
     if not api_key:
         try:
             from app.config import get_api_keys_from_config
@@ -296,6 +372,11 @@ async def run_tailor_pipeline(
     jd_url = jd_url.strip() if jd_url else None
     jd_text = jd_text.strip() if jd_text else None
 
+    run_started_at = datetime.now(timezone.utc)
+    p1_duration_ms: int | None = None
+    p2_duration_ms: int | None = None
+    p3_duration_ms: int | None = None
+
     logger.warning(
         "Tailor pipeline start: resume=%s jd_url=%s jd_text_len=%s",
         resume_id,
@@ -303,9 +384,22 @@ async def run_tailor_pipeline(
         len(jd_text) if jd_text else 0,
     )
 
+    # ── Preflight: validate all stage API keys before doing any work ───────
+    try:
+        _preflight_check_stage_keys(user_id, llm_config)
+    except ValueError as exc:
+        _update_tailor_job(resume_id, user_id, {
+            "status": "failed",
+            "error_message": str(exc),
+            "error_code": "missing_api_key",
+            "completed_at": _utcnow_iso(),
+        })
+        return
+
     try:
         system_prompt = load_system_prompt()
         apify_title: str | None = None  # set when Apify extraction succeeds
+        apify_location: str | None = None
 
         # ── Stage 0: JD extraction ─────────────────────────────────────────
         if jd_url and not jd_text:
@@ -319,6 +413,7 @@ async def run_tailor_pipeline(
                 jd_text = jd_data.get("raw_text") or ""
                 job_title = jd_data.get("title", "").strip()
                 company = jd_data.get("company", "").strip()
+                apify_location = jd_data.get("location", "").strip() or None
                 if company and job_title:
                     apify_title = f"{company} - {job_title}"
                 elif job_title:
@@ -332,6 +427,13 @@ async def run_tailor_pipeline(
         if not jd_text:
             _set_failed(resume_id, user_id, "No job description text available.")
             return
+
+        # Persist JD metadata so eval collector can retrieve it later
+        _update_tailor_job(resume_id, user_id, {
+            "jd_url": jd_url,
+            "jd_text": jd_text,
+            "jd_source": "url" if jd_url else "raw_text",
+        })
 
         # Load master resume for this user
         master_resume = db.get_master_resume(user_id)
@@ -371,6 +473,7 @@ async def run_tailor_pipeline(
 
             p1_config, p1_kwargs = _resolve_stage_llm_config("prompt1", llm_config, user_id)
             p1_prompt = build_prompt("prompt1", prompt_profile_id, base_vars)
+            _p1_start = datetime.now(timezone.utc)
             p1_raw, p1_parsed = await _call_llm_with_repair(
                 p1_prompt,
                 system_prompt,
@@ -379,6 +482,7 @@ async def run_tailor_pipeline(
                 parse_json=not is_freeform,
                 stage_kwargs=p1_kwargs,
             )
+            p1_duration_ms = int((datetime.now(timezone.utc) - _p1_start).total_seconds() * 1000)
             if p1_parsed:
                 p1_json = p1_parsed
 
@@ -396,6 +500,7 @@ async def run_tailor_pipeline(
                 "PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES": "",
             }
             p2_prompt = build_prompt("prompt2", prompt_profile_id, p2_vars)
+            _p2_start = datetime.now(timezone.utc)
             p2_raw, p2_parsed = await _call_llm_with_repair(
                 p2_prompt,
                 system_prompt,
@@ -404,6 +509,7 @@ async def run_tailor_pipeline(
                 parse_json=not is_freeform,
                 stage_kwargs=p2_kwargs,
             )
+            p2_duration_ms = int((datetime.now(timezone.utc) - _p2_start).total_seconds() * 1000)
             if p2_parsed:
                 p2_json = p2_parsed
 
@@ -422,6 +528,7 @@ async def run_tailor_pipeline(
             "PROMPT2_RESPONSE": p2_raw,
         }
         p3_prompt = build_prompt("prompt3", prompt_profile_id, p3_vars)
+        _p3_start = datetime.now(timezone.utc)
         p3_raw, _ = await _call_llm_with_repair(
             p3_prompt,
             system_prompt,
@@ -430,6 +537,7 @@ async def run_tailor_pipeline(
             parse_json=True,
             stage_kwargs=p3_kwargs,
         )
+        p3_duration_ms = int((datetime.now(timezone.utc) - _p3_start).total_seconds() * 1000)
 
         # ── Stage 4: Post-processing ───────────────────────────────────────
         _update_progress(resume_id, user_id, "postprocess")
@@ -454,9 +562,7 @@ async def run_tailor_pipeline(
             "prompt3_version_id": get_prompt_version("prompt3", prompt_profile_id),
             "system_prompt_version_id": get_system_prompt_version(),
         }
-        if generation_feedback is None:
-            generation_feedback = {}
-        generation_feedback["prompt_setup"] = prompt_setup
+        # prompt_setup is passed explicitly to upsert_extension_run — do not embed in feedback
 
         generation_artifacts: dict[str, Any] = {"prompt2": p2_json} if p2_json else {}
 
@@ -502,20 +608,36 @@ async def run_tailor_pipeline(
 
         _set_completed(resume_id, user_id, tailored_resume_id)
 
-        # Record the web tailor run in extension_runs so it appears in My Runs.
+        # Record the web tailor run in extension_runs (unified log — same table as extension).
+        _total_ms = int((datetime.now(timezone.utc) - run_started_at).total_seconds() * 1000)
         p1_company = (p1_json.get("company_context") or "").strip() if p1_json else ""
         try:
+            _summary: dict[str, Any] = {}
+            if p1_duration_ms is not None:
+                _summary["prompt1_duration_ms"] = p1_duration_ms
+            if p2_duration_ms is not None:
+                _summary["prompt2_duration_ms"] = p2_duration_ms
+            if p3_duration_ms is not None:
+                _summary["prompt3_duration_ms"] = p3_duration_ms
             db.upsert_extension_run(
                 run_id=job_id,
                 status="generated",
                 user_id=user_id,
+                source="web",
                 title=resume_title,
                 company=p1_company or None,
+                location=apify_location,
                 source_url=jd_url,
+                jd_text=jd_text,
                 job_source="web",
                 resume_id=tailored_resume_id,
+                preview_url=f"/builder/{tailored_resume_id}",
+                provider_id=llm_config.provider,
+                provider_label=llm_config.model,
                 generated_at=datetime.now(timezone.utc),
-                summary={
+                total_duration_ms=_total_ms,
+                summary=_summary,
+                prompt_setup={
                     "prompt_profile_id": prompt_profile_id,
                     "prompt1_version_id": get_prompt_version("prompt1", prompt_profile_id),
                     "prompt2_version_id": get_prompt_version("prompt2", prompt_profile_id),
@@ -523,11 +645,10 @@ async def run_tailor_pipeline(
                     "system_prompt_version_id": get_system_prompt_version(),
                 },
                 prompt_artifacts={
-                    "prompt1": {"input": p1_prompt, "raw": p1_raw, "result": p1_json},
-                    "prompt2": {"input": p2_prompt, "raw": p2_raw, "result": p2_json},
+                    "prompt1": {"input": p1_prompt, "parsed": p1_json},
+                    "prompt2": {"input": p2_prompt, "parsed": p2_json},
                     "prompt3": {
                         "input": p3_prompt,
-                        "raw": p3_raw,
                         "parsed": resume_data,
                         "feedback": generation_feedback,
                     },

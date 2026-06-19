@@ -12,6 +12,7 @@ import {
   type EvalCase,
   type EvalRunSummary,
 } from '@/lib/api/evals';
+import { isAdminEmail } from '@/lib/admin';
 
 const PROFILE_LABELS: Record<string, string> = {
   profile1: 'Safe',
@@ -44,8 +45,9 @@ function StepBadge({
 }
 
 export default function UserEvalsPage() {
-  const { status: authStatus } = useSession();
+  const { data: session, status: authStatus } = useSession();
   const router = useRouter();
+  const isAdmin = isAdminEmail(session?.user?.email);
 
   const [cases, setCases] = useState<EvalCase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,9 +69,10 @@ export default function UserEvalsPage() {
   }, []);
 
   useEffect(() => {
-    if (authStatus === 'authenticated') loadCases();
     if (authStatus === 'unauthenticated') router.replace('/sign-in');
-  }, [authStatus, loadCases, router]);
+    if (authStatus === 'authenticated' && !isAdmin) router.replace('/dashboard');
+    if (authStatus === 'authenticated' && isAdmin) loadCases();
+  }, [authStatus, isAdmin, loadCases, router]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {

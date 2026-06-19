@@ -18,7 +18,7 @@ export interface ExtensionRunAdminItem {
   location?: string | null;
   source_url?: string | null;
   job_source?: string | null;
-  run_source?: string | null;
+  source?: string | null;
   resume_id?: string | null;
   preview_url?: string | null;
   provider_id?: string | null;
@@ -91,6 +91,16 @@ export async function fetchAdminExtensionRunItem(
   );
   if (!response.ok) {
     throw new Error(await readApiErrorMessage(response, 'Failed to load extension run.'));
+  }
+  return response.json();
+}
+
+export async function fetchUserExtensionRunItem(runId: string): Promise<ExtensionRunAdminItem> {
+  const response = await apiFetch(`/extension/runs/${encodeURIComponent(runId)}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error(await readApiErrorMessage(response, 'Failed to load run.'));
   }
   return response.json();
 }

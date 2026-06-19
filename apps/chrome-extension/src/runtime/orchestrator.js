@@ -2106,6 +2106,7 @@ export async function generateResumeForLinkedInJob(
       company: jobSnapshot.company,
       location: jobSnapshot.location ?? null,
       datePosted: jobSnapshot.datePosted ?? null,
+      jobDescriptionText: jobSnapshot.rawText ?? "",
       generatedAt: new Date().toISOString(),
       resumeId,
       previewUrl,

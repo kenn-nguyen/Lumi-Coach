@@ -294,34 +294,25 @@ export function resolveLlmStageSettings(profile, promptStage = "") {
 }
 
 export const TEMPLATE_YAML = `\
-# Determines which AI provider handles each prompt stage.
-# Valid profile IDs: claude:api, deepseek:api, openai:api, gemini:api
+# LLM Stage Configuration — ADVANCED MODE
+#
+# Upload this file to enable per-stage provider routing.
+# API keys can be pasted directly in this file under each profile's apiKey: field.
+# Alternatively, save keys in the extension Settings panel.
+#
+# Valid profile IDs: claude:api, deepseek:api, chatgpt:api (openai:api), gemini:api
 # Remove or reset this file to return to single-provider mode.
+
 stageProviders:
   prompt1: deepseek:api
   prompt2: claude:api
   prompt3: claude:api
 
-# Per-provider model and API call settings for each stage.
-# The API key and endpoint still come from the Settings panel.
-# Settings here override the model for the tailor pipeline only.
 profiles:
-  claude:api:
-    # Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
-    # Thinking: budget_tokens 1024-16000 (higher = deeper reasoning)
-    stageModels:
-      prompt1:
-        model: claude-sonnet-4-6
-      prompt2:
-        model: claude-sonnet-4-6
-        thinking:
-          type: enabled
-          budget_tokens: 8192
-        maxTokens: 18000
-      prompt3:
-        model: claude-sonnet-4-6
-
   deepseek:api:
+    # Paste your DeepSeek API key here — get yours at platform.deepseek.com/api_keys
+    # Leave blank ("") to use the key saved in extension Settings
+    apiKey: ""
     # DeepSeek models: deepseek-v4-pro, deepseek-chat
     # reasoning_effort: high | max (medium silently maps to high)
     stageModels:
@@ -338,8 +329,27 @@ profiles:
           type: enabled
         reasoning_effort: medium
 
+  claude:api:
+    # Paste your Anthropic API key here — get yours at console.anthropic.com/settings/keys
+    # Leave blank ("") to use the key saved in extension Settings
+    apiKey: ""
+    # Claude models: claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001
+    # Thinking: budget_tokens 1024-16000 (higher = deeper reasoning)
+    stageModels:
+      prompt1:
+        model: claude-sonnet-4-6
+      prompt2:
+        model: claude-sonnet-4-6
+        thinking:
+          type: enabled
+          budget_tokens: 8192
+        maxTokens: 18000
+      prompt3:
+        model: claude-sonnet-4-6
+
   # Uncomment to enable OpenAI per-stage routing:
-  # openai:api:
+  # chatgpt:api:
+  #   apiKey: ""
   #   # Models: gpt-5.4-mini, gpt-5.4, gpt-4.1, gpt-4o-mini
   #   # reasoning.effort: low | medium | high
   #   stageModels:
@@ -358,6 +368,7 @@ profiles:
 
   # Uncomment to enable Gemini per-stage routing:
   # gemini:api:
+  #   apiKey: ""
   #   # Models: gemini-2.5-flash, gemini-2.5-pro
   #   # Flash: thinkingBudget 0-24576 (0 disables thinking)
   #   # Pro: thinkingBudget 128-32768 (cannot be disabled)
@@ -427,10 +438,20 @@ export function resolveProfileForStage(stage, importedConfig, llmSettings) {
     return getActiveLlmProfile(llmSettings);
   }
   const importedProfileConfig = importedConfig.profiles?.[profileId];
+
+  // If the YAML profile includes an apiKey, prefer it over the Settings-stored key
+  const yamlApiKey =
+    typeof importedProfileConfig?.apiKey === "string" &&
+    importedProfileConfig.apiKey.trim()
+      ? importedProfileConfig.apiKey.trim()
+      : null;
+
   const stageOverrides =
     importedProfileConfig?.stageModels?.[stage] ?? null;
   if (!stageOverrides || typeof stageOverrides !== "object") {
-    return { ...cloneValue(baseProfile), stageModels: {}, promptStage: stage };
+    const result = { ...cloneValue(baseProfile), stageModels: {}, promptStage: stage };
+    if (yamlApiKey) result.apiKey = yamlApiKey;
+    return result;
   }
   const merged = {
     ...cloneValue(baseProfile),
@@ -438,6 +459,9 @@ export function resolveProfileForStage(stage, importedConfig, llmSettings) {
     stageModels: {},
     promptStage: stage,
   };
+  if (yamlApiKey) {
+    merged.apiKey = yamlApiKey;
+  }
   if (stageOverrides.thinking && typeof stageOverrides.thinking === "object") {
     merged.thinking = cloneValue(stageOverrides.thinking);
   }

@@ -100,19 +100,19 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
             >
               My Runs
             </Link>
-            <Link
-              href="/evals"
-              onClick={() => setOpen(false)}
-              className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
-            >
-              My Evals
-            </Link>
           </div>
           {isAdmin ? (
             <div className="border-b border-border py-1">
               <p className="px-4 pt-2 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                 Admin
               </p>
+              <Link
+                href="/evals"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
+              >
+                My Evals
+              </Link>
               <Link
                 href="/admin/evals"
                 onClick={() => setOpen(false)}

@@ -376,6 +376,23 @@ export interface ApiKeysUpdateResponse {
   updated_providers: string[];
 }
 
+export interface StageReadinessItem {
+  stage: string;
+  provider: string;
+  configured: boolean;
+}
+
+export interface StageReadinessResponse {
+  stages: StageReadinessItem[];
+  is_override: boolean;
+}
+
+export async function fetchStageReadiness(): Promise<StageReadinessResponse> {
+  const res = await apiFetch('/config/stage-readiness', { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to load stage readiness');
+  return res.json();
+}
+
 // Provider display names for API keys
 export const API_KEY_PROVIDER_INFO: Record<ApiKeyProvider, { name: string; description: string }> =
   {

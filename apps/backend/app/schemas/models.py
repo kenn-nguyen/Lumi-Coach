@@ -698,6 +698,8 @@ class ExtensionRunUpsertRequest(BaseModel):
     provider_label: str | None = Field(default=None, max_length=256)
     generated_at: datetime | None = None
     total_duration_ms: int | None = Field(default=None, ge=0)
+    jd_text: str | None = Field(default=None, max_length=10000)
+    source: str = Field(default="extension", pattern="^(extension|web)$")
     summary: dict[str, Any] = Field(default_factory=dict)
     prompt_artifacts: dict[str, Any] = Field(default_factory=dict)
 

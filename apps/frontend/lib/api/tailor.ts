@@ -28,6 +28,7 @@ export interface TailorStatusResponse {
   completed_at: string | null;
   tailored_resume_id: string | null;
   error_message: string | null;
+  error_code: string | null;
 }
 
 export interface StartTailorRequest {

@@ -118,7 +118,14 @@ def get_stage_provider_config(
 
     lm_provider is a LiteLLM provider name (e.g. "anthropic", "deepseek").
     Returns (None, None, {}) when using the legacy schema or no override exists.
+
+    When a custom YAML is active and a profile has an `apiKey` field, the key
+    is injected into extra_kwargs as "_api_key" (stripped before any LiteLLM call).
     """
+    # Simple mode: no custom YAML uploaded → all stages use the user's primary provider
+    if not is_using_override():
+        return None, None, {}
+
     config = _load_raw()
     if not _is_extension_schema(config):
         return None, None, {}
@@ -144,6 +151,9 @@ def get_stage_provider_config(
     if not isinstance(profile_cfg, dict):
         return provider, None, {}
 
+    # Extract profile-level API key (user can paste it directly in the YAML)
+    yaml_api_key = profile_cfg.get("apiKey") or None
+
     stage_models = profile_cfg.get("stageModels", {})
     if not isinstance(stage_models, dict):
         return provider, None, {}
@@ -153,7 +163,30 @@ def get_stage_provider_config(
         return provider, None, {}
 
     model, extra_kwargs = _extract_stage_settings(stage_cfg)
+    if yaml_api_key:
+        extra_kwargs["_api_key"] = yaml_api_key
     return provider, model, extra_kwargs
+
+
+def get_yaml_api_key_for_provider(provider: str) -> str | None:
+    """Return the first embedded apiKey for profiles that map to this provider, or None.
+
+    Only active when a custom YAML override is uploaded.
+    """
+    if not is_using_override():
+        return None
+    config = _load_raw()
+    if not _is_extension_schema(config):
+        return None
+    profiles = config.get("profiles", {}) or {}
+    for profile_id, profile_cfg in profiles.items():
+        if not isinstance(profile_cfg, dict):
+            continue
+        if _PROFILE_ID_TO_PROVIDER.get(str(profile_id)) == provider:
+            key = profile_cfg.get("apiKey") or None
+            if key:
+                return key
+    return None
 
 
 def save_override(content: str) -> None:

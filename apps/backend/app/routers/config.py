@@ -784,6 +784,18 @@ async def update_apify_key(request: dict) -> dict:
     return {"api_key": _mask_api_key(token), "configured": bool(token)}
 
 
+@router.get("/stage-readiness")
+async def get_stage_readiness(
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Return per-stage provider and API key readiness for the current user."""
+    from app.services.tailor import check_stage_readiness
+    user_config = db.get_user_llm_config(current_user.user_id) or {}
+    llm_config = get_llm_config(user_config)
+    stages = check_stage_readiness(current_user.user_id, llm_config)
+    return {"stages": stages, "is_override": is_using_override()}
+
+
 @router.get("/llm-stage-config")
 async def get_llm_stage_config(template: bool = False) -> dict:
     """Return the active LLM stage config YAML and whether an override is in use.

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { AlertTriangle, Loader2, Wand2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +20,7 @@ import {
   type PromptProfileId,
   type TailorStatusResponse,
 } from '@/lib/api/tailor';
+import { fetchStageReadiness, type StageReadinessItem } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
 import { useBackgroundTailor } from '@/lib/context/background-tailor';
 
@@ -49,6 +51,10 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Stage key readiness
+  const [missingStages, setMissingStages] = useState<StageReadinessItem[]>([]);
+  const [isOverride, setIsOverride] = useState(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Stop polling on unmount
@@ -58,7 +64,7 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
     };
   }, []);
 
-  // Reset state when dialog opens/closes
+  // Reset state when dialog opens/closes; fetch readiness on open
   useEffect(() => {
     if (!isOpen) {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -68,6 +74,15 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
       setIsSubmitting(false);
       setJdUrl('');
       setJdText('');
+      setMissingStages([]);
+      setIsOverride(false);
+    } else {
+      fetchStageReadiness()
+        .then((r) => {
+          setMissingStages(r.stages.filter((s) => !s.configured));
+          setIsOverride(r.is_override);
+        })
+        .catch(() => {});
     }
   }, [isOpen]);
 
@@ -184,6 +199,50 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
           {/* ── Input phase ─────────────────────────────────── */}
           {phase === 'input' && (
             <div className="space-y-4">
+              {/* Missing API key warning */}
+              {missingStages.length > 0 && !isOverride && (
+                <div className="flex items-start gap-2 rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <span>
+                    No {missingStages[0]?.provider} API key set — tailoring will fail.{' '}
+                    <Link href="/settings" className="font-semibold underline underline-offset-2">
+                      Add it in Settings
+                    </Link>
+                    .
+                  </span>
+                </div>
+              )}
+              {missingStages.length > 0 && isOverride && (
+                <div className="flex items-start gap-2 rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <span>
+                    Stage{missingStages.length > 1 ? 's' : ''}{' '}
+                    {missingStages.map((s) => `${s.stage} (${s.provider})`).join(', ')}{' '}
+                    {missingStages.length > 1 ? 'are' : 'is'} missing an API key — paste it in the
+                    YAML&apos;s <code className="font-mono text-xs">apiKey</code> field or{' '}
+                    <Link href="/settings" className="font-semibold underline underline-offset-2">
+                      add it in Settings
+                    </Link>
+                    .
+                  </span>
+                </div>
+              )}
+              {/* Soft notice when using system shared key */}
+              {missingStages.length === 0 &&
+                !isOverride &&
+                systemStatus?.using_free_llm &&
+                !systemStatus?.has_user_api_key && (
+                  <div className="flex items-start gap-2 rounded-none border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-blue-400" />
+                    <span>
+                      Running on the system&apos;s shared key — may be slow or unstable.{' '}
+                      <Link href="/settings" className="font-semibold underline underline-offset-2">
+                        Add your own key in Settings
+                      </Link>
+                      .
+                    </span>
+                  </div>
+                )}
               {/* LinkedIn URL */}
               <div>
                 <label className="mb-1 block text-xs font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground">
@@ -353,6 +412,15 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                 </div>
                 <p className="font-serif text-lg font-semibold tracking-tight">Pipeline failed</p>
                 <p className="max-w-sm text-sm text-amber-800">{errorMsg}</p>
+                {statusData?.error_code === 'missing_api_key' && (
+                  <Link
+                    href="/settings"
+                    className="text-sm font-semibold text-primary underline underline-offset-2"
+                    onClick={onClose}
+                  >
+                    Go to Settings → API Keys
+                  </Link>
+                )}
               </div>
               <div className="flex justify-center gap-2 pt-2">
                 <Button variant="outline" onClick={onClose}>

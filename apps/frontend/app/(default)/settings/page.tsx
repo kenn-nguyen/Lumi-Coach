@@ -22,6 +22,7 @@ import {
   uploadEvalConfig,
   deleteEvalConfig,
   fetchApiKeyStatus,
+  fetchStageReadiness,
   updateApiKeys,
   deleteApiKey,
   PROVIDER_INFO,
@@ -30,6 +31,7 @@ import {
   type LLMProvider,
   type LLMHealthCheck,
   type ApiKeyProvider,
+  type StageReadinessItem,
 } from '@/lib/api/config';
 import { DEFAULT_TEMPLATE_SETTINGS, type TemplateSettings } from '@/lib/types/template-settings';
 import { FormattingControls } from '@/components/builder/formatting-controls';
@@ -151,6 +153,7 @@ export default function SettingsPage() {
   const [stageConfigError, setStageConfigError] = useState<string | null>(null);
   const [stageConfigSaved, setStageConfigSaved] = useState(false);
   const stageFileRef = useRef<HTMLInputElement>(null);
+  const [stageReadiness, setStageReadiness] = useState<StageReadinessItem[]>([]);
 
   // Eval config state
   const [evalConfigIsOverride, setEvalConfigIsOverride] = useState(false);
@@ -331,6 +334,7 @@ export default function SettingsPage() {
           stageConfig,
           apiKeyStatus,
           evalConfig,
+          stageReadinessData,
         ] = await Promise.all([
           fetchLlmConfig().catch(() => null),
           fetchFeatureConfig().catch(() => null),
@@ -339,6 +343,7 @@ export default function SettingsPage() {
           fetchLlmStageConfig().catch(() => null),
           fetchApiKeyStatus().catch(() => null),
           fetchEvalConfig().catch(() => null),
+          fetchStageReadiness().catch(() => null),
         ]);
 
         if (cancelled) return;
@@ -375,6 +380,10 @@ export default function SettingsPage() {
 
         if (evalConfig) {
           setEvalConfigIsOverride(evalConfig.is_override);
+        }
+
+        if (stageReadinessData) {
+          setStageReadiness(stageReadinessData.stages);
         }
 
         if (apiKeyStatus) {
@@ -1343,6 +1352,51 @@ export default function SettingsPage() {
                     <p className="text-xs text-red-600 font-mono">{evalConfigError}</p>
                   )}
                 </div>
+
+                {/* ── Pipeline Routing ────────────────────────────────────── */}
+                {stageConfigIsOverride && stageReadiness.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="font-mono text-xs font-bold uppercase tracking-wider text-gray-700">
+                      Pipeline Routing
+                    </span>
+                    <div className="rounded-2xl border border-border bg-white/60 overflow-hidden">
+                      <table className="w-full text-xs font-mono">
+                        <thead>
+                          <tr className="border-b border-border bg-secondary/40">
+                            <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wider text-gray-500">
+                              Stage
+                            </th>
+                            <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wider text-gray-500">
+                              Provider
+                            </th>
+                            <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wider text-gray-500">
+                              Key
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stageReadiness.map((s) => (
+                            <tr key={s.stage} className="border-b border-border/50 last:border-0">
+                              <td className="px-3 py-2 text-gray-700">{s.stage}</td>
+                              <td className="px-3 py-2 text-gray-700">{s.provider}</td>
+                              <td className="px-3 py-2">
+                                {s.configured ? (
+                                  <span className="flex items-center gap-1 text-green-700">
+                                    <CheckCircle2 className="h-3 w-3" /> ready
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-red-600">
+                                    <XCircle className="h-3 w-3" /> missing key
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {/* ── Stage Routing Keys ──────────────────────────────────── */}
                 <div className="space-y-3 rounded-2xl border border-border bg-white/60 p-4">
