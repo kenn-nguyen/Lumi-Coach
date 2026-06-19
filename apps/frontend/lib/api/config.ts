@@ -478,3 +478,42 @@ export async function deleteLlmStageConfig(): Promise<void> {
     throw new Error(data.detail || `Failed to reset stage config (status ${res.status}).`);
   }
 }
+
+// Eval Config (per-user eval pipeline settings YAML)
+export interface EvalConfigResponse {
+  content: string;
+  is_override: boolean;
+}
+
+export async function fetchEvalConfig(template = false): Promise<EvalConfigResponse> {
+  const url = template ? '/config/eval-config?template=true' : '/config/eval-config';
+  const res = await apiFetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`Failed to load eval config (status ${res.status}).`);
+  return res.json();
+}
+
+export async function uploadEvalConfig(file: File): Promise<EvalConfigResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch('/config/eval-config', {
+    method: 'PUT',
+    credentials: 'include',
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to upload eval config (status ${res.status}).`);
+  }
+  return res.json();
+}
+
+export async function deleteEvalConfig(): Promise<void> {
+  const res = await apiFetch('/config/eval-config', {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to reset eval config (status ${res.status}).`);
+  }
+}

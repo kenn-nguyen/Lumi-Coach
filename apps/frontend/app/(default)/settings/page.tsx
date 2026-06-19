@@ -18,6 +18,9 @@ import {
   fetchLlmStageConfig,
   uploadLlmStageConfig,
   deleteLlmStageConfig,
+  fetchEvalConfig,
+  uploadEvalConfig,
+  deleteEvalConfig,
   fetchApiKeyStatus,
   updateApiKeys,
   deleteApiKey,
@@ -148,6 +151,13 @@ export default function SettingsPage() {
   const [stageConfigError, setStageConfigError] = useState<string | null>(null);
   const [stageConfigSaved, setStageConfigSaved] = useState(false);
   const stageFileRef = useRef<HTMLInputElement>(null);
+
+  // Eval config state
+  const [evalConfigIsOverride, setEvalConfigIsOverride] = useState(false);
+  const [evalConfigLoading, setEvalConfigLoading] = useState(false);
+  const [evalConfigError, setEvalConfigError] = useState<string | null>(null);
+  const [evalConfigSaved, setEvalConfigSaved] = useState(false);
+  const evalFileRef = useRef<HTMLInputElement>(null);
 
   // System status (collapsible)
   const [showSystemStatus, setShowSystemStatus] = useState(true);
@@ -313,15 +323,23 @@ export default function SettingsPage() {
     // 2. Always fetch fresh in background
     async function loadConfig() {
       try {
-        const [llmConfig, featureConfig, outputConfig, apifyConfig, stageConfig, apiKeyStatus] =
-          await Promise.all([
-            fetchLlmConfig().catch(() => null),
-            fetchFeatureConfig().catch(() => null),
-            fetchOutputConfig().catch(() => null),
-            fetchApifyKey().catch(() => null),
-            fetchLlmStageConfig().catch(() => null),
-            fetchApiKeyStatus().catch(() => null),
-          ]);
+        const [
+          llmConfig,
+          featureConfig,
+          outputConfig,
+          apifyConfig,
+          stageConfig,
+          apiKeyStatus,
+          evalConfig,
+        ] = await Promise.all([
+          fetchLlmConfig().catch(() => null),
+          fetchFeatureConfig().catch(() => null),
+          fetchOutputConfig().catch(() => null),
+          fetchApifyKey().catch(() => null),
+          fetchLlmStageConfig().catch(() => null),
+          fetchApiKeyStatus().catch(() => null),
+          fetchEvalConfig().catch(() => null),
+        ]);
 
         if (cancelled) return;
 
@@ -353,6 +371,10 @@ export default function SettingsPage() {
 
         if (stageConfig) {
           setStageConfigIsOverride(stageConfig.is_override);
+        }
+
+        if (evalConfig) {
+          setEvalConfigIsOverride(evalConfig.is_override);
         }
 
         if (apiKeyStatus) {
@@ -639,6 +661,54 @@ export default function SettingsPage() {
       setStageConfigError((err as Error).message || 'Failed to reset config');
     } finally {
       setStageConfigLoading(false);
+    }
+  };
+
+  // Eval config handlers
+  const handleEvalConfigUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEvalConfigLoading(true);
+    setEvalConfigError(null);
+    try {
+      const result = await uploadEvalConfig(file);
+      setEvalConfigIsOverride(result.is_override);
+      setEvalConfigSaved(true);
+      setTimeout(() => setEvalConfigSaved(false), 2500);
+    } catch (err) {
+      setEvalConfigError((err as Error).message || 'Failed to upload eval config');
+    } finally {
+      setEvalConfigLoading(false);
+      if (evalFileRef.current) evalFileRef.current.value = '';
+    }
+  };
+
+  const handleEvalConfigDownload = async () => {
+    setEvalConfigError(null);
+    try {
+      const result = await fetchEvalConfig(true);
+      const blob = new Blob([result.content], { type: 'text/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'eval-config.yaml';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setEvalConfigError((err as Error).message || 'Failed to download eval config');
+    }
+  };
+
+  const handleEvalConfigReset = async () => {
+    setEvalConfigLoading(true);
+    setEvalConfigError(null);
+    try {
+      await deleteEvalConfig();
+      setEvalConfigIsOverride(false);
+    } catch (err) {
+      setEvalConfigError((err as Error).message || 'Failed to reset eval config');
+    } finally {
+      setEvalConfigLoading(false);
     }
   };
 
@@ -1202,6 +1272,75 @@ export default function SettingsPage() {
                   </div>
                   {stageConfigError && (
                     <p className="text-xs text-red-600 font-mono">{stageConfigError}</p>
+                  )}
+                </div>
+
+                {/* ── Eval Pipeline ──────────────────────────────────────── */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Eval Pipeline</Label>
+                    <span
+                      className={`font-mono text-xs px-2 py-0.5 border ${
+                        evalConfigIsOverride
+                          ? 'border-blue-200 bg-blue-50 text-blue-700'
+                          : 'border-border bg-secondary text-gray-500'
+                      }`}
+                    >
+                      {evalConfigIsOverride ? 'Custom active' : 'Default'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 font-mono">
+                    YAML file controlling judge weights, heuristics thresholds, and structural
+                    requirements for your eval runs.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      ref={evalFileRef}
+                      type="file"
+                      accept=".yaml,.yml"
+                      className="hidden"
+                      onChange={handleEvalConfigUpload}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => evalFileRef.current?.click()}
+                      disabled={evalConfigLoading}
+                      className="gap-1.5"
+                    >
+                      {evalConfigLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : evalConfigSaved ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5" />
+                      )}
+                      {evalConfigSaved ? 'Uploaded' : 'Upload YAML'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleEvalConfigDownload}
+                      className="gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download template
+                    </Button>
+                    {evalConfigIsOverride && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleEvalConfigReset}
+                        disabled={evalConfigLoading}
+                        className="gap-1.5 text-gray-600 hover:text-red-600 hover:border-red-200"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Reset to default
+                      </Button>
+                    )}
+                  </div>
+                  {evalConfigError && (
+                    <p className="text-xs text-red-600 font-mono">{evalConfigError}</p>
                   )}
                 </div>
 

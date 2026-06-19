@@ -95,6 +95,21 @@ class UserLlmConfigModel(Base):
     )
 
 
+class UserEvalConfigModel(Base):
+    __tablename__ = "user_eval_configs"
+
+    user_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    eval_config_yaml: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class ResumeModel(Base):
     __tablename__ = "resumes"
 
@@ -252,6 +267,7 @@ class Database:
         self._ensure_extension_runs_schema()
         self._ensure_llm_config_schema()
         self._ensure_evals_schema()
+        self._ensure_eval_config_schema()
 
     def _ensure_evals_schema(self) -> None:
         """Additive migrations for eval tables."""
@@ -284,6 +300,13 @@ class Database:
                     )
                 )
             logger.info("Added eval_runs.case_id FK with ON DELETE CASCADE")
+
+    def _ensure_eval_config_schema(self) -> None:
+        """Create user_eval_configs table if it does not yet exist (idempotent)."""
+        inspector = inspect(self._engine)
+        if "user_eval_configs" not in inspector.get_table_names():
+            UserEvalConfigModel.__table__.create(self._engine, checkfirst=True)
+            logger.info("Created user_eval_configs table")
 
     def _ensure_llm_config_schema(self) -> None:
         """Apply additive schema updates for per-provider extra API keys."""
@@ -768,6 +791,7 @@ class Database:
     def list_extension_runs_for_admin(
         self,
         *,
+        user_id: str | None = None,
         status: str | None = None,
         prompt_profile_id: str | None = None,
         search: str | None = None,
@@ -829,6 +853,8 @@ class Database:
                     ExtensionRunModel.created_at.desc(),
                 )
             )
+            if user_id:
+                query = query.filter(ExtensionRunModel.user_id == user_id)
             if normalized_status and normalized_status != "all":
                 query = query.filter(ExtensionRunModel.status == normalized_status)
 
@@ -994,6 +1020,34 @@ class Database:
             session.commit()
             session.refresh(user)
             return self._serialize_user(user)
+
+    def get_user_eval_config(self, user_id: str) -> str | None:
+        """Return the user's custom eval config YAML, or None if they have none."""
+        with self._session() as session:
+            row = session.get(UserEvalConfigModel, user_id)
+            return row.eval_config_yaml if row else None
+
+    def upsert_user_eval_config(self, user_id: str, yaml_content: str) -> None:
+        """Save or replace the user's eval config YAML."""
+        with self._session() as session:
+            row = session.get(UserEvalConfigModel, user_id)
+            if row is None:
+                row = UserEvalConfigModel(user_id=user_id, eval_config_yaml=yaml_content)
+                session.add(row)
+            else:
+                row.eval_config_yaml = yaml_content
+                row.updated_at = _utcnow()
+            session.commit()
+
+    def delete_user_eval_config(self, user_id: str) -> bool:
+        """Delete the user's custom eval config. Returns True if something was deleted."""
+        with self._session() as session:
+            row = session.get(UserEvalConfigModel, user_id)
+            if row is None:
+                return False
+            session.delete(row)
+            session.commit()
+            return True
 
     def get_user_llm_config(self, user_id: str) -> dict[str, Any] | None:
         with self._session() as session:

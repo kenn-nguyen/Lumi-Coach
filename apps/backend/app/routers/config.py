@@ -10,6 +10,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 from app.config import settings
 from app.llm import check_llm_health, get_llm_config, LLMConfig
 from app.services.llm_stage_config import delete_override, is_using_override, read_active_config, read_default_config, save_override
+from app.services.eval_config import (
+    read_default_eval_config,
+    validate_eval_config_yaml,
+)
 from app.llm_config_crypto import (
     LLMConfigEncryptionError,
     decrypt_api_key,
@@ -812,6 +816,47 @@ async def reset_llm_stage_config() -> dict:
     """Remove the override and revert to the bundled default config."""
     deleted = delete_override()
     return {"message": "Override removed" if deleted else "No override was active", "is_override": False}
+
+
+@router.get("/eval-config")
+async def get_eval_config(
+    template: bool = False,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Return the user's eval config YAML (or the default template if template=true or none saved)."""
+    if template:
+        return {"content": read_default_eval_config(), "is_override": False}
+    user_yaml = db.get_user_eval_config(current_user.user_id)
+    if user_yaml:
+        return {"content": user_yaml, "is_override": True}
+    return {"content": read_default_eval_config(), "is_override": False}
+
+
+@router.put("/eval-config")
+async def upload_eval_config(
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Upload a YAML file to set the user's custom eval config."""
+    content = (await file.read()).decode("utf-8")
+    try:
+        validate_eval_config_yaml(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.upsert_user_eval_config(current_user.user_id, content)
+    return {"message": "Eval config updated", "is_override": True}
+
+
+@router.delete("/eval-config")
+async def reset_eval_config(
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Delete the user's custom eval config and revert to the default."""
+    deleted = db.delete_user_eval_config(current_user.user_id)
+    return {
+        "message": "Custom config removed" if deleted else "No custom config was active",
+        "is_override": False,
+    }
 
 
 @router.post("/reset")

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import db
 from app.schemas import ExtensionRunUpsertRequest, ExtensionRunUpsertResponse
@@ -95,9 +96,38 @@ async def upsert_extension_run(
 
 @router.get("/runs")
 async def list_user_extension_runs(
-    limit: int = 50,
+    status: str | None = Query(None),
+    search: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
     current_user: AuthenticatedUser = Depends(require_current_user),
 ) -> dict:
-    """Return the current user's extension runs, newest first."""
-    runs = db.list_extension_runs_for_user(user_id=current_user.user_id, limit=limit)
-    return {"items": runs, "total": len(runs)}
+    """Return the current user's extension runs, newest first, with optional filters."""
+
+    def _parse_start(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    def _parse_end(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+        except ValueError:
+            return None
+
+    return db.list_extension_runs_for_admin(
+        user_id=current_user.user_id,
+        status=status,
+        search=search,
+        date_from=_parse_start(date_from),
+        date_to=_parse_end(date_to),
+        limit=limit,
+        offset=offset,
+    )

@@ -93,6 +93,18 @@ export async function fetchAdminExtensionRunItem(
   return response.json();
 }
 
+export async function fetchUserExtensionRuns(
+  filters: ExtensionRunAdminFilters
+): Promise<ExtensionRunAdminListResponse> {
+  const response = await apiFetch(`/extension/runs${buildQuery(filters)}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error(await readApiErrorMessage(response, 'Failed to load runs.'));
+  }
+  return response.json();
+}
+
 export async function downloadAdminExtensionRunsExport(
   filters: ExtensionRunAdminFilters
 ): Promise<Blob> {

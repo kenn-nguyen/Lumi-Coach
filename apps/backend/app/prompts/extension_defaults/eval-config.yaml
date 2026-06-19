@@ -1,0 +1,26 @@
+version: "1"
+
+# LLM judge: scoring dimensions and pass threshold
+judge:
+  weights:
+    relevance: 0.35      # Resume-to-JD keyword and skill alignment
+    impact: 0.30         # Quantified achievements, strong action verbs
+    clarity: 0.20        # Concise, readable language
+    completeness: 0.15   # All expected sections present and non-empty
+  pass_threshold: 6.5    # Out of 10 — runs below this are flagged
+
+# Heuristics: rule-based checks on the tailored text
+heuristics:
+  bullet_min_words: 8
+  bullet_max_words: 30
+  min_bullets_per_role: 2
+  require_quantified_achievements: true
+  quantified_ratio_threshold: 0.25   # ≥25% of bullets must contain a number
+
+# Structural: required sections and size limits
+structural:
+  required_sections:
+    - experience
+    - education
+    - skills
+  max_resume_chars: 8000

@@ -114,13 +114,6 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
                 Admin
               </p>
               <Link
-                href="/admin/extension-runs"
-                onClick={() => setOpen(false)}
-                className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
-              >
-                All Runs
-              </Link>
-              <Link
                 href="/admin/evals"
                 onClick={() => setOpen(false)}
                 className="flex w-full items-center px-4 py-2 text-left text-sm hover:bg-secondary"
