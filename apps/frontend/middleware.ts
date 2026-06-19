@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 
-const PROTECTED_PATH_PREFIXES = ['/dashboard', '/builder', '/tailor', '/settings', '/resumes'];
+const PROTECTED_PATH_PREFIXES = [
+  '/dashboard',
+  '/builder',
+  '/tailor',
+  '/settings',
+  '/resumes',
+  '/runs',
+  '/evals',
+  '/admin',
+];
 
 export default auth((req) => {
   const { nextUrl } = req;
@@ -31,5 +40,10 @@ export const config = {
     '/tailor/:path*',
     '/settings/:path*',
     '/resumes/:path*',
+    '/runs/:path*',
+    '/runs',
+    '/evals/:path*',
+    '/evals',
+    '/admin/:path*',
   ],
 };

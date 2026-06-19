@@ -498,6 +498,31 @@ async def run_tailor_pipeline(
         )
 
         _set_completed(resume_id, user_id, tailored_resume_id)
+
+        # Record the web tailor run in extension_runs so it appears in My Runs.
+        p1_company = (p1_json.get("company_context") or "").strip() if p1_json else ""
+        try:
+            db.upsert_extension_run(
+                run_id=job_id,
+                status="generated",
+                user_id=user_id,
+                title=resume_title,
+                company=p1_company or None,
+                source_url=jd_url,
+                job_source="web",
+                resume_id=tailored_resume_id,
+                generated_at=datetime.now(timezone.utc),
+                summary={
+                    "prompt_profile_id": prompt_profile_id,
+                    "prompt1_version_id": get_prompt_version("prompt1", prompt_profile_id),
+                    "prompt2_version_id": get_prompt_version("prompt2", prompt_profile_id),
+                    "prompt3_version_id": get_prompt_version("prompt3", prompt_profile_id),
+                    "system_prompt_version_id": get_system_prompt_version(),
+                },
+            )
+        except Exception as run_exc:
+            logger.warning("Failed to record web tailor run in extension_runs: %s", run_exc)
+
         logger.info(
             "Tailor pipeline completed: resume %s → tailored %s",
             resume_id,

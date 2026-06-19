@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
 import { apiFetch, readApiErrorMessage } from '@/lib/api/client';
+import { SaveEvalCaseModal } from '@/components/evals/SaveEvalCaseModal';
 
 interface ExtensionRun {
   run_id: string;
@@ -54,6 +55,7 @@ export default function MyRunsPage() {
   const [runs, setRuns] = useState<ExtensionRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [evalResumeId, setEvalResumeId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,7 +88,7 @@ export default function MyRunsPage() {
           </button>
           <div>
             <h1 className="font-serif text-2xl font-bold tracking-tight">My Runs</h1>
-            <p className="font-mono text-xs text-gray-500">Extension tailor pipeline history</p>
+            <p className="font-mono text-xs text-gray-500">Tailor pipeline history</p>
           </div>
         </div>
 
@@ -104,7 +106,7 @@ export default function MyRunsPage() {
           <div className="rounded-2xl border border-border bg-white/40 py-16 text-center">
             <p className="font-mono text-sm text-gray-400">No runs yet.</p>
             <p className="font-mono text-xs text-gray-400">
-              Use the Chrome extension to tailor a resume.
+              Use the tailor feature or Chrome extension to generate a resume.
             </p>
           </div>
         ) : (
@@ -115,6 +117,11 @@ export default function MyRunsPage() {
                   <div className="flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status={run.status} />
+                      {run.job_source && (
+                        <span className="font-mono text-[10px] text-gray-400">
+                          via {run.job_source}
+                        </span>
+                      )}
                       <span className="font-mono text-[10px] text-gray-400">
                         {formatDate(run.generated_at || run.created_at)}
                       </span>
@@ -128,14 +135,22 @@ export default function MyRunsPage() {
                       <p className="font-mono text-xs text-gray-500">{run.location}</p>
                     )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
                     {run.resume_id && run.status === 'generated' && (
-                      <Link
-                        href={`/resumes/${run.resume_id}`}
-                        className="font-mono text-xs text-blue-600 hover:underline"
-                      >
-                        View resume
-                      </Link>
+                      <>
+                        <button
+                          onClick={() => setEvalResumeId(run.resume_id!)}
+                          className="font-mono text-xs text-gray-500 hover:text-foreground"
+                        >
+                          Save as eval
+                        </button>
+                        <Link
+                          href={`/resumes/${run.resume_id}`}
+                          className="font-mono text-xs text-blue-600 hover:underline"
+                        >
+                          View resume
+                        </Link>
+                      </>
                     )}
                     {run.source_url && (
                       <a
@@ -154,6 +169,12 @@ export default function MyRunsPage() {
           </div>
         )}
       </div>
+
+      <SaveEvalCaseModal
+        isOpen={evalResumeId !== null}
+        onClose={() => setEvalResumeId(null)}
+        tailoredResumeId={evalResumeId ?? ''}
+      />
     </div>
   );
 }
