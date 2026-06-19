@@ -384,7 +384,7 @@ export default function ResumeViewerPage() {
         // Capture title for editable display (always set to clear stale state)
         setResumeTitle(buildViewerResumeTitle(data));
         setGenerationFeedback(data.generation_feedback ?? null);
-        setLinkedMasterResumeId(data.raw_resume?.linked_master_resume_id ?? null);
+        setLinkedMasterResumeId(data.linked_master_resume_id ?? null);
 
         // Prioritize processed_resume if available (structured JSON)
         if (data.processed_resume) {
