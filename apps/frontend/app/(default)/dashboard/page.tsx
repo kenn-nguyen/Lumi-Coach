@@ -118,8 +118,9 @@ export default function DashboardPage() {
     Boolean(masterResumeId) &&
     processingStatus === 'ready' &&
     !statusLoading &&
+    systemStatus !== null &&
     !isLlmNoticeDismissed &&
-    (isFreeModeAvailable || !systemStatus?.llm_configured) &&
+    (isFreeModeAvailable || !systemStatus.llm_configured) &&
     !hasUserApiKey;
 
   const formatDate = (value: string) => {

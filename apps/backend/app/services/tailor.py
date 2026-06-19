@@ -256,7 +256,7 @@ async def run_tailor_pipeline(
             from app.services.apify_linkedin import fetch_linkedin_job_detail_via_apify
 
             try:
-                jd_data = await fetch_linkedin_job_detail_via_apify(jd_url)
+                jd_data = await fetch_linkedin_job_detail_via_apify(jd_url, api_key=apify_api_key)
                 jd_text = jd_data.get("raw_text") or ""
             except Exception as exc:
                 _set_failed(resume_id, user_id, str(exc))

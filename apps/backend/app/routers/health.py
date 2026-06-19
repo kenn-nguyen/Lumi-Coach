@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends
 
 from app.database import db
 from app.llm import (
-    check_llm_health,
     get_llm_config,
     get_server_llm_config,
     is_llm_config_configured,
@@ -54,13 +53,13 @@ async def get_status(
         and config.provider == "gemini"
         and not config.is_user_config
     )
-    llm_status = await check_llm_health(config)
+    llm_configured = is_llm_config_configured(config)
     db_stats = db.get_stats(current_user.user_id)
 
     return StatusResponse(
-        status="ready" if llm_status["healthy"] and db_stats["has_master_resume"] else "setup_required",
-        llm_configured=is_llm_config_configured(config),
-        llm_healthy=llm_status["healthy"],
+        status="ready" if llm_configured and db_stats["has_master_resume"] else "setup_required",
+        llm_configured=llm_configured,
+        llm_healthy=llm_configured,
         has_user_api_key=has_user_api_key,
         free_llm_available=free_llm_available,
         using_free_llm=using_free_llm,

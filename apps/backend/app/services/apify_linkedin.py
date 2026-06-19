@@ -220,14 +220,32 @@ def normalize_apify_job_record(record: dict[str, Any], source_url: str) -> dict[
     }
 
 
-async def fetch_linkedin_job_detail_via_apify(source_url: str) -> dict[str, Any]:
+_APIFY_CRAWL_ERROR_PATTERNS = (
+    "dns_hostname_resolved_private",
+    "the page could not be found",
+    "access denied",
+    "blocked by",
+    "robot check",
+    "page not found",
+    "404 not found",
+)
+
+
+def _looks_like_crawl_error(text: str) -> bool:
+    lower = text.lower()
+    return any(pat in lower for pat in _APIFY_CRAWL_ERROR_PATTERNS)
+
+
+async def fetch_linkedin_job_detail_via_apify(
+    source_url: str, api_key: str | None = None
+) -> dict[str, Any]:
     normalized_source_url = _normalize_url(source_url)
     if not normalized_source_url:
         raise ValueError("LinkedIn job URL is required.")
 
-    api_token = _normalize_text(settings.apify_api_token)
+    api_token = _normalize_text(api_key or settings.apify_api_token)
     if not api_token:
-        raise RuntimeError("Server-side Apify token is not configured.")
+        raise RuntimeError("Apify API token is not configured. Add your key in Settings.")
 
     source_job_id = _extract_job_id_from_url(normalized_source_url)
     if not source_job_id:
@@ -277,8 +295,14 @@ async def fetch_linkedin_job_detail_via_apify(source_url: str) -> dict[str, Any]
         reverse=True,
     )[0]
     normalized = normalize_apify_job_record(best_record, normalized_source_url)
-    if not _normalize_text(normalized.get("raw_text")):
-        raise RuntimeError("Apify fallback returned a record without a readable description.")
+    raw_text = _normalize_text(normalized.get("raw_text"))
+    if not raw_text:
+        raise RuntimeError("Apify could not extract job details. Try pasting the job description text directly.")
+    if _looks_like_crawl_error(raw_text):
+        raise RuntimeError(
+            f"Apify could not reach the LinkedIn page ({raw_text[:120]}). "
+            "Try again or paste the job description text directly."
+        )
 
     normalized["diagnostics"] = {
         **normalized.get("diagnostics", {}),

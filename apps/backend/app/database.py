@@ -21,7 +21,6 @@ from sqlalchemy import (
     Text,
     create_engine,
     delete,
-    exists,
     func,
     inspect,
     select,
@@ -1448,7 +1447,7 @@ class Database:
                     .where(ExtensionRunModel.user_id == user_id)
                     .scalar_subquery()
                     .label("total_extension_runs"),
-                    exists()
+                    select(func.count())
                     .where(
                         ResumeModel.user_id == user_id,
                         ResumeModel.is_master.is_(True),
