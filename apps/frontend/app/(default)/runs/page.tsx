@@ -8,6 +8,7 @@ import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
 import Download from 'lucide-react/dist/esm/icons/download';
 import Search from 'lucide-react/dist/esm/icons/search';
 import ShieldAlert from 'lucide-react/dist/esm/icons/shield-alert';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left';
 import { SwissGrid } from '@/components/home/swiss-grid';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +25,12 @@ import { SaveEvalCaseModal } from '@/components/evals/SaveEvalCaseModal';
 
 type FilterStatus = 'all' | 'generated' | 'failed' | 'canceled' | 'running';
 type FilterProfile = 'all' | 'profile1' | 'profile2' | 'profile3';
+type FilterSource = 'all' | 'web' | 'extension';
+
+function resolveRunSource(runSource?: string | null): string {
+  if (!runSource) return '-';
+  return runSource === 'web' ? 'Web' : 'Extension';
+}
 
 function toInputDateValue(date: Date): string {
   const year = date.getUTCFullYear();
@@ -99,6 +106,7 @@ export default function RunsPage() {
     total: 0,
   });
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
+  const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
   const [profileFilter, setProfileFilter] = useState<FilterProfile>('all');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -126,7 +134,7 @@ export default function RunsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, profileFilter, searchQuery, dateFrom, dateTo]);
+  }, [statusFilter, sourceFilter, profileFilter, searchQuery, dateFrom, dateTo]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
@@ -137,6 +145,7 @@ export default function RunsPage() {
       try {
         const filters = {
           status: statusFilter === 'all' ? undefined : statusFilter,
+          run_source: sourceFilter === 'all' ? undefined : sourceFilter,
           prompt_profile_id: isAdmin && profileFilter !== 'all' ? profileFilter : undefined,
           search: searchQuery || undefined,
           date_from: dateFrom || undefined,
@@ -160,7 +169,17 @@ export default function RunsPage() {
     return () => {
       cancelled = true;
     };
-  }, [authStatus, isAdmin, statusFilter, profileFilter, searchQuery, dateFrom, dateTo, offset]);
+  }, [
+    authStatus,
+    isAdmin,
+    statusFilter,
+    sourceFilter,
+    profileFilter,
+    searchQuery,
+    dateFrom,
+    dateTo,
+    offset,
+  ]);
 
   const rows = runsResponse.items;
   const rangeStart = runsResponse.total === 0 ? 0 : offset + 1;
@@ -180,6 +199,7 @@ export default function RunsPage() {
     try {
       const blob = await downloadAdminExtensionRunsExport({
         status: statusFilter === 'all' ? undefined : statusFilter,
+        run_source: sourceFilter === 'all' ? undefined : sourceFilter,
         prompt_profile_id: profileFilter === 'all' ? undefined : profileFilter,
         search: searchQuery || undefined,
         date_from: dateFrom || undefined,
@@ -207,18 +227,29 @@ export default function RunsPage() {
     }
   }
 
-  const colSpan = isAdmin ? 7 : 5;
+  const colSpan = isAdmin ? 8 : 6;
 
   return (
     <>
-      <SwissGrid title={isAdmin ? 'All Runs' : 'My Runs'} subtitle={subtitle}>
+      <SwissGrid
+        title={isAdmin ? 'All Runs' : 'My Runs'}
+        subtitle={subtitle}
+        headerActions={
+          <Link href="/dashboard">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="h-4 w-4" />
+              Dashboard
+            </Button>
+          </Link>
+        }
+      >
         <div className="space-y-6">
           <section className="border border-border bg-card p-4 shadow-sw-sm">
             <div
               className={
                 isAdmin
-                  ? 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_9rem_9rem]'
-                  : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_9rem]'
+                  ? 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_8rem_8rem_8rem]'
+                  : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_8rem_8rem]'
               }
             >
               <label className="flex items-center gap-2 border border-border bg-white px-3 py-2 text-sm text-foreground">
@@ -252,6 +283,15 @@ export default function RunsPage() {
                 <option value="failed">Failed</option>
                 <option value="canceled">Canceled</option>
                 <option value="running">Running</option>
+              </select>
+              <select
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value as FilterSource)}
+                className="border border-border bg-white px-3 py-2 text-sm text-foreground"
+              >
+                <option value="all">All sources</option>
+                <option value="web">Web</option>
+                <option value="extension">Extension</option>
               </select>
               {isAdmin ? (
                 <select
@@ -300,14 +340,13 @@ export default function RunsPage() {
                     ) : null}
                     <th className="border-b border-border px-4 py-3 text-left">Company / Role</th>
                     <th className="border-b border-border px-4 py-3 text-left">Status</th>
+                    <th className="border-b border-border px-4 py-3 text-left">Source</th>
                     {isAdmin ? (
                       <>
                         <th className="border-b border-border px-4 py-3 text-left">Profile</th>
                         <th className="border-b border-border px-4 py-3 text-left">Prompt setup</th>
                       </>
-                    ) : (
-                      <th className="border-b border-border px-4 py-3 text-left">Source</th>
-                    )}
+                    ) : null}
                     <th className="border-b border-border px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
@@ -364,6 +403,9 @@ export default function RunsPage() {
                             {item.status}
                           </span>
                         </td>
+                        <td className="px-4 py-3 align-top font-mono text-xs text-muted-foreground">
+                          {resolveRunSource(item.run_source)}
+                        </td>
                         {isAdmin ? (
                           <>
                             <td className="px-4 py-3 align-top font-mono text-xs text-primary">
@@ -373,11 +415,7 @@ export default function RunsPage() {
                               {formatPromptSetup(item)}
                             </td>
                           </>
-                        ) : (
-                          <td className="px-4 py-3 align-top font-mono text-xs text-muted-foreground">
-                            {item.job_source || '-'}
-                          </td>
-                        )}
+                        ) : null}
                         <td className="px-4 py-3 text-right align-top">
                           <div className="flex items-center justify-end gap-2">
                             {item.status === 'generated' && item.resume_id ? (

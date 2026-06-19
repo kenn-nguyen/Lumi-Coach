@@ -355,10 +355,13 @@ async def run_tailor_pipeline(
             "STORYBOARD": "",
         }
 
+        p1_prompt = ""
         p1_raw = ""
         p1_json: dict[str, Any] = {}
+        p2_prompt = ""
         p2_raw = ""
         p2_json: dict[str, Any] = {}
+        p3_prompt = ""
 
         # ── Stage 1: Prompt 1 — Analyze JD ────────────────────────────────
         if not is_single_stage:
@@ -518,6 +521,16 @@ async def run_tailor_pipeline(
                     "prompt2_version_id": get_prompt_version("prompt2", prompt_profile_id),
                     "prompt3_version_id": get_prompt_version("prompt3", prompt_profile_id),
                     "system_prompt_version_id": get_system_prompt_version(),
+                },
+                prompt_artifacts={
+                    "prompt1": {"input": p1_prompt, "raw": p1_raw, "result": p1_json},
+                    "prompt2": {"input": p2_prompt, "raw": p2_raw, "result": p2_json},
+                    "prompt3": {
+                        "input": p3_prompt,
+                        "raw": p3_raw,
+                        "parsed": resume_data,
+                        "feedback": generation_feedback,
+                    },
                 },
             )
         except Exception as run_exc:

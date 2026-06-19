@@ -97,6 +97,7 @@ async def upsert_extension_run(
 @router.get("/runs")
 async def list_user_extension_runs(
     status: str | None = Query(None),
+    run_source: str | None = Query(None),
     search: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
@@ -125,6 +126,7 @@ async def list_user_extension_runs(
     return db.list_extension_runs_for_admin(
         user_id=current_user.user_id,
         status=status,
+        run_source=run_source,
         search=search,
         date_from=_parse_start(date_from),
         date_to=_parse_end(date_to),

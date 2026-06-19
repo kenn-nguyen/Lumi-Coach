@@ -722,6 +722,7 @@ class ExtensionRunAdminItem(BaseModel):
     location: str | None = None
     source_url: str | None = None
     job_source: str | None = None
+    run_source: str | None = None
     resume_id: str | None = None
     preview_url: str | None = None
     provider_id: str | None = None

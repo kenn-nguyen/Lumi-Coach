@@ -56,6 +56,7 @@ def _json_download_response(filename: str, payload: Any) -> Response:
 @router.get("/extension-runs", response_model=ExtensionRunAdminListResponse)
 async def list_extension_runs(
     status: str | None = Query(default=None),
+    run_source: str | None = Query(default=None),
     prompt_profile_id: str | None = Query(default=None),
     search: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
@@ -67,6 +68,7 @@ async def list_extension_runs(
     _require_admin_user(current_user)
     result = db.list_extension_runs_for_admin(
         status=status,
+        run_source=run_source,
         prompt_profile_id=prompt_profile_id,
         search=search,
         date_from=_parse_date_start(date_from),
@@ -98,6 +100,7 @@ async def get_extension_run_item(
 @router.get("/extension-runs/export")
 async def export_extension_runs(
     status: str | None = Query(default=None),
+    run_source: str | None = Query(default=None),
     prompt_profile_id: str | None = Query(default=None),
     search: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
@@ -107,6 +110,7 @@ async def export_extension_runs(
     _require_admin_user(current_user)
     result = db.list_extension_runs_for_admin(
         status=status,
+        run_source=run_source,
         prompt_profile_id=prompt_profile_id,
         search=search,
         date_from=_parse_date_start(date_from),

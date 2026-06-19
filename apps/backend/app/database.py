@@ -621,6 +621,7 @@ class Database:
             "location": decrypt_text(run.location),
             "source_url": decrypt_text(run.source_url),
             "job_source": run.job_source,
+            "run_source": "web" if run.job_source == "web" else "extension",
             "resume_id": run.resume_id,
             "preview_url": decrypt_text(run.preview_url),
             "provider_id": run.provider_id,
@@ -793,6 +794,7 @@ class Database:
         *,
         user_id: str | None = None,
         status: str | None = None,
+        run_source: str | None = None,
         prompt_profile_id: str | None = None,
         search: str | None = None,
         date_from: datetime | None = None,
@@ -803,6 +805,7 @@ class Database:
         scan_limit: int = ADMIN_EXTENSION_RUN_SCAN_LIMIT,
     ) -> dict[str, Any]:
         normalized_status = (status or "").strip().lower()
+        normalized_run_source = (run_source or "").strip().lower()
         normalized_profile = (prompt_profile_id or "").strip().lower()
         normalized_search = (search or "").strip().lower()
         bounded_limit = max(1, min(limit, 500))
@@ -857,6 +860,10 @@ class Database:
                 query = query.filter(ExtensionRunModel.user_id == user_id)
             if normalized_status and normalized_status != "all":
                 query = query.filter(ExtensionRunModel.status == normalized_status)
+            if normalized_run_source == "web":
+                query = query.filter(ExtensionRunModel.job_source == "web")
+            elif normalized_run_source == "extension":
+                query = query.filter(ExtensionRunModel.job_source != "web")
 
             candidates = query.limit(bounded_scan_limit).all()
 
@@ -1390,8 +1397,11 @@ class Database:
                 if not run.resume_id or run.resume_id in metadata_by_resume_id:
                     continue
                 metadata_by_resume_id[run.resume_id] = {
+                    "run_id": run.run_id,
+                    "user_id": run.user_id,
                     "source_url": decrypt_text(run.source_url),
                     "job_source": run.job_source,
+                    "prompt_profile_id": run.prompt_profile_id,
                     "title": decrypt_text(run.title),
                     "company": decrypt_text(run.company),
                 }

@@ -18,6 +18,7 @@ export interface ExtensionRunAdminItem {
   location?: string | null;
   source_url?: string | null;
   job_source?: string | null;
+  run_source?: string | null;
   resume_id?: string | null;
   preview_url?: string | null;
   provider_id?: string | null;
@@ -38,6 +39,7 @@ export interface ExtensionRunAdminListResponse {
 
 export interface ExtensionRunAdminFilters {
   status?: string;
+  run_source?: string;
   prompt_profile_id?: string;
   search?: string;
   date_from?: string;
