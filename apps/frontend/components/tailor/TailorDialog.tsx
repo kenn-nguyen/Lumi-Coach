@@ -346,6 +346,8 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                     setPhase('input');
                     setErrorMsg('');
                     setStatusData(null);
+                    setJdUrl('');
+                    setJdText('');
                   }}
                 >
                   Try Again
