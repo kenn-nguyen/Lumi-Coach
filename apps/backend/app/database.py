@@ -880,6 +880,14 @@ class Database:
                 query = query.filter(ExtensionRunModel.source == "web")
             elif normalized_run_source == "extension":
                 query = query.filter(ExtensionRunModel.source == "extension")
+            if date_from:
+                query = query.filter(ExtensionRunModel.generated_at >= date_from)
+            if date_to:
+                query = query.filter(ExtensionRunModel.generated_at < date_to)
+            if normalized_profile and normalized_profile != "all":
+                query = query.filter(
+                    ExtensionRunModel.prompt_profile_id == normalized_profile
+                )
 
             candidates = query.limit(bounded_scan_limit).all()
 
@@ -891,42 +899,6 @@ class Database:
                 include_summary=False,
                 include_prompt_artifacts=include_prompt_artifacts,
             )
-            event_timestamp = (
-                serialized.get("generated_at")
-                or serialized.get("updated_at")
-                or serialized.get("created_at")
-            )
-            event_datetime = None
-            if isinstance(event_timestamp, str) and event_timestamp:
-                try:
-                    event_datetime = datetime.fromisoformat(
-                        event_timestamp.replace("Z", "+00:00")
-                    )
-                except ValueError:
-                    event_datetime = None
-            if date_from and event_datetime and event_datetime < date_from:
-                continue
-            if date_to and event_datetime and event_datetime >= date_to:
-                continue
-
-            prompt_setup = serialized.get("prompt_setup")
-            prompt_setup_profile_id = (
-                prompt_setup.get("prompt_profile_id")
-                if isinstance(prompt_setup, dict)
-                else None
-            )
-            summary_profile_id = (
-                serialized.get("summary", {}).get("prompt_profile_id")
-                if isinstance(serialized.get("summary"), dict)
-                else None
-            )
-            effective_profile_id = (
-                prompt_setup_profile_id or summary_profile_id or ""
-            ).strip().lower()
-            if normalized_profile and normalized_profile != "all":
-                if effective_profile_id != normalized_profile:
-                    continue
-
             if normalized_search:
                 haystacks = [
                     serialized.get("user_email"),
@@ -1309,12 +1281,15 @@ class Database:
     def list_resumes(
         self,
         user_id: str | None = None,
-        limit: int | None = None,
+        limit: int = 10,
+        offset: int = 0,
         include_master: bool = False,
         search: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         resolved_user_id = self._resolve_user_scope(user_id)
         normalized_search = self._normalize_resume_title_search(search)
+        bounded_limit = max(1, min(limit, 100))
+        bounded_offset = max(0, offset)
         with self._session() as session:
             list_item_columns = load_only(
                 ResumeModel.resume_id,
@@ -1338,28 +1313,34 @@ class Database:
                 return query
 
             if normalized_search:
-                search_query = _scoped_resume_query().filter(
-                    ResumeModel.title_search.like(f"%{normalized_search}%")
+                base_q = _scoped_resume_query().filter(
+                    ResumeModel.title_search.like(f"%{normalized_search}%"),
+                    ResumeModel.is_master.is_(False),
                 )
-                if not include_master:
-                    search_query = search_query.filter(ResumeModel.is_master.is_(False))
-                search_query = search_query.order_by(ResumeModel.updated_at.desc())
-                if limit is not None:
-                    search_query = search_query.limit(max(1, limit))
-                search_resumes = search_query.all()
-                return [self._serialize_resume_list_item(resume) for resume in search_resumes]
+                total: int = base_q.count()
+                results = (
+                    base_q.order_by(ResumeModel.updated_at.desc())
+                    .offset(bounded_offset)
+                    .limit(bounded_limit)
+                    .all()
+                )
+                return {
+                    "items": [self._serialize_resume_list_item(r) for r in results],
+                    "total": total,
+                }
 
-            non_master_query = _scoped_resume_query().filter(ResumeModel.is_master.is_(False))
-            non_master_query = non_master_query.order_by(ResumeModel.updated_at.desc())
-            if limit is not None:
-                non_master_query = non_master_query.limit(max(1, limit))
-            non_master_resumes = non_master_query.all()
-            serialized_resumes = [
-                self._serialize_resume_list_item(resume) for resume in non_master_resumes
-            ]
+            non_master_base = _scoped_resume_query().filter(ResumeModel.is_master.is_(False))
+            total = non_master_base.count()
+            non_master_resumes = (
+                non_master_base.order_by(ResumeModel.updated_at.desc())
+                .offset(bounded_offset)
+                .limit(bounded_limit)
+                .all()
+            )
+            serialized_resumes = [self._serialize_resume_list_item(r) for r in non_master_resumes]
 
             if not include_master:
-                return serialized_resumes
+                return {"items": serialized_resumes, "total": total}
 
             master_resume = (
                 _scoped_resume_query()
@@ -1368,9 +1349,12 @@ class Database:
                 .first()
             )
             if master_resume is None:
-                return serialized_resumes
+                return {"items": serialized_resumes, "total": total}
 
-            return [self._serialize_resume_list_item(master_resume), *serialized_resumes]
+            return {
+                "items": [self._serialize_resume_list_item(master_resume), *serialized_resumes],
+                "total": total,
+            }
 
     def get_extension_run_source_urls_by_resume_ids(
         self,

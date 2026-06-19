@@ -263,15 +263,15 @@ export async function fetchResume(resumeId: string): Promise<ResumeResponse['dat
 
 export async function fetchResumeList(
   includeMaster = false,
-  limit?: number,
+  limit = 10,
+  offset = 0,
   search?: string
-): Promise<ResumeListItem[]> {
+): Promise<{ data: ResumeListItem[]; total: number }> {
   const params = new URLSearchParams({
     include_master: includeMaster ? 'true' : 'false',
+    limit: String(limit),
+    offset: String(offset),
   });
-  if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
-    params.set('limit', String(limit));
-  }
   if (typeof search === 'string' && search.trim()) {
     params.set('search', search.trim());
   }
@@ -279,8 +279,8 @@ export async function fetchResumeList(
   if (!res.ok) {
     throw new Error(`Failed to load resumes list (status ${res.status}).`);
   }
-  const payload = (await res.json()) as { data: ResumeListItem[] };
-  return payload.data;
+  const payload = (await res.json()) as { data: ResumeListItem[]; total: number };
+  return { data: payload.data, total: payload.total ?? 0 };
 }
 
 export async function importTailoredResumeJson(

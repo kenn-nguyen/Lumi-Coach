@@ -645,6 +645,7 @@ class ResumeListResponse(BaseModel):
 
     request_id: str
     data: list[ResumeSummary]
+    total: int = 0
 
 
 # Job Description Models

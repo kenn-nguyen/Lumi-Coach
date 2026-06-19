@@ -59,6 +59,7 @@ interface ResumeListCache {
   resumes: ResumeListItem[];
   masterId: string | null;
   masterItem: ResumeListItem | null;
+  total: number;
 }
 import { ResumeJsonImportDialog } from '@/components/dashboard/resume-json-import-dialog';
 import { ImportMasterResumeDialog } from '@/components/dashboard/import-master-resume-dialog';
@@ -113,6 +114,7 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
   const [tailoredResumes, setTailoredResumes] = useState<ResumeListItem[]>(
     initialData?.tailoredResumes ?? []
   );
+  const [tailoredTotal, setTailoredTotal] = useState<number>(0);
   const [searchInput, setSearchInput] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'title'>('updated');
@@ -243,7 +245,7 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
   }, [clearBrowserInjectedSearchValue]);
 
   const applyResumeList = useCallback(
-    (data: ResumeListItem[], includeMaster: boolean, fromCache: boolean) => {
+    (data: ResumeListItem[], total: number, includeMaster: boolean, fromCache: boolean) => {
       if (includeMaster) {
         const masterFromList = data.find((r) => r.is_master);
         const resolvedMasterId = masterFromList?.resume_id || null;
@@ -276,38 +278,46 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
           jobSnippet: jobSnippetCacheRef.current[resume.resume_id] || resume.jobSnippet || '',
         }));
       setTailoredResumes(filtered);
+      setTailoredTotal(total);
       setResumesLoaded(true);
     },
     [checkResumeStatus]
   );
 
   const loadTailoredResumes = useCallback(
-    async (searchTerm: string = submittedSearchRef.current) => {
+    async (searchTerm: string = submittedSearchRef.current, page: number = 1) => {
       const normalizedSearch = searchTerm.trim();
       const includeMaster = normalizedSearch.length === 0;
+      const offset = (page - 1) * DASHBOARD_RESUME_LIST_LIMIT;
       const requestId = ++loadRequestIdRef.current;
 
-      // Serve from cache immediately for the unfiltered list
-      if (includeMaster) {
+      // Serve from cache immediately for page 1 unfiltered list
+      if (includeMaster && page === 1) {
         const cached = readCache<ResumeListCache>(CACHE_KEYS.RESUME_LIST, CACHE_TTL.RESUME_LIST);
         if (cached) {
-          applyResumeList(cached.resumes, true, true);
+          applyResumeList(cached.resumes, cached.total ?? 0, true, true);
         }
       }
 
       // Always fetch fresh in background
       try {
-        const data = await fetchResumeList(includeMaster, undefined, normalizedSearch);
+        const result = await fetchResumeList(
+          includeMaster,
+          DASHBOARD_RESUME_LIST_LIMIT,
+          offset,
+          normalizedSearch
+        );
         if (requestId !== loadRequestIdRef.current) return;
 
-        applyResumeList(data, includeMaster, false);
+        applyResumeList(result.data, result.total, includeMaster, false);
 
-        if (includeMaster) {
-          const masterFromList = data.find((r) => r.is_master) ?? null;
+        if (includeMaster && page === 1) {
+          const masterFromList = result.data.find((r) => r.is_master) ?? null;
           writeCache<ResumeListCache>(CACHE_KEYS.RESUME_LIST, {
-            resumes: data,
+            resumes: result.data,
             masterId: masterFromList?.resume_id ?? null,
             masterItem: masterFromList,
+            total: result.total,
           });
         }
       } catch (err) {
@@ -488,12 +498,9 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
   }, [getResumeTitle, sortBy, tailoredResumes]);
 
   const hasActiveSearch = submittedSearch.trim().length > 0;
-  const totalTailoredResumeCount = sortedTailoredResumes.length;
+  const totalTailoredResumeCount = tailoredTotal;
   const totalPages = Math.max(1, Math.ceil(totalTailoredResumeCount / DASHBOARD_RESUME_LIST_LIMIT));
-  const paginatedTailoredResumes = useMemo(() => {
-    const start = (currentPage - 1) * DASHBOARD_RESUME_LIST_LIMIT;
-    return sortedTailoredResumes.slice(start, start + DASHBOARD_RESUME_LIST_LIMIT);
-  }, [currentPage, sortedTailoredResumes]);
+  const paginatedTailoredResumes = sortedTailoredResumes;
   const pageRangeStart = totalTailoredResumeCount
     ? (currentPage - 1) * DASHBOARD_RESUME_LIST_LIMIT + 1
     : 0;
@@ -1190,7 +1197,11 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
                     variant="outline"
                     size="sm"
                     className="min-w-[6.5rem]"
-                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    onClick={() => {
+                      const next = Math.max(1, currentPage - 1);
+                      setCurrentPage(next);
+                      void loadTailoredResumes(submittedSearchRef.current, next);
+                    }}
                     disabled={currentPage === 1}
                   >
                     {t('common.previous')}
@@ -1206,7 +1217,11 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
                     variant="outline"
                     size="sm"
                     className="min-w-[6.5rem]"
-                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    onClick={() => {
+                      const next = Math.min(totalPages, currentPage + 1);
+                      setCurrentPage(next);
+                      void loadTailoredResumes(submittedSearchRef.current, next);
+                    }}
                     disabled={currentPage >= totalPages}
                   >
                     {t('common.next')}
