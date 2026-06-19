@@ -804,13 +804,11 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2 lg:justify-end">
-                {isFreeModeAvailable ? (
-                  <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer">
-                    <Button size="sm" className="min-w-[8.5rem]">
-                      {t('dashboard.freeModeAvailableExtensionCta')}
-                    </Button>
-                  </a>
-                ) : null}
+                <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer">
+                  <Button size="sm" className="min-w-[8.5rem]">
+                    {t('dashboard.freeModeAvailableExtensionCta')}
+                  </Button>
+                </a>
                 <Link href="/settings">
                   <Button variant="outline" size="sm" className="min-w-[7.5rem]">
                     <Settings className="mr-2 h-4 w-4" />

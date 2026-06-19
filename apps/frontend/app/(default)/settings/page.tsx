@@ -134,6 +134,7 @@ export default function SettingsPage() {
   const {
     status: systemStatus,
     isLoading: statusLoading,
+    error: statusError,
     lastFetched,
     refreshStatus,
   } = useStatusCache();
@@ -594,6 +595,11 @@ export default function SettingsPage() {
                 <p className="font-mono text-xs text-gray-600">
                   {t('settings.systemStatus.expectedAt', { apiUrl: API_URL })}
                 </p>
+                {statusError && (
+                  <p className="font-mono text-xs text-red-500 text-center max-w-sm break-words">
+                    {statusError}
+                  </p>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
