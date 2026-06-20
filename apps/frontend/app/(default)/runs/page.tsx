@@ -50,7 +50,7 @@ function buildDefaultDateTo(): string {
   return toInputDateValue(new Date());
 }
 
-const RUN_LIST_LIMIT = 20;
+const RUN_LIST_LIMIT = 10;
 
 function formatTimestamp(value?: string | null): string {
   if (!value) return '-';
