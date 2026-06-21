@@ -695,6 +695,17 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
   return (
     <SwissGrid
       title={t('dashboard.myResumes')}
+      footerContent={
+        <a
+          href={CHROME_EXTENSION_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity"
+        >
+          <img src="/extension-icon-32.png" alt="" width={13} height={13} />
+          <span>Chrome Extension</span>
+        </a>
+      }
       headerActions={
         <>
           <div className="relative group" ref={masterMenuRef}>
@@ -1230,21 +1241,6 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
               </div>
             </>
           )}
-        </div>
-
-        <div className="flex items-center justify-center gap-2 border-t border-border py-4">
-          <img src="/extension-icon-32.png" alt="" width={14} height={14} className="opacity-60" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
-            Automate on LinkedIn with the{' '}
-            <a
-              href={CHROME_EXTENSION_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-700 underline underline-offset-2"
-            >
-              Chrome extension
-            </a>
-          </span>
         </div>
       </div>
 
