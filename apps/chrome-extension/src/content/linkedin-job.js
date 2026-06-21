@@ -1111,8 +1111,10 @@ function isLlmProfileReady(profile) {
 
 function getDefaultProviderDraftProfileId(settings) {
   const activeProfile = getSavedProfileById(settings?.activeProfileId, settings);
-  if (!isLlmProfileReady(activeProfile)) return "";
-  return activeProfile.id || "";
+  if (isLlmProfileReady(activeProfile)) return activeProfile.id || "";
+  const chatgptWeb = getSavedProfileById("chatgpt:web_automation", settings);
+  if (chatgptWeb) return "chatgpt:web_automation";
+  return "";
 }
 
 function createProviderDraftState(profileId = null, settings = null) {
@@ -6655,12 +6657,8 @@ function renderOnboardingStep() {
   }
 
   const hasResume = hasBackendMasterResume();
-  const hasStoryboard = Boolean(state.assets?.storyboardAsset?.filename);
   const masterLabel = getBackendMasterResumeLabel();
   const compactMasterLabel = truncateDisplayText(masterLabel, 28);
-  const storyboardLabel =
-    state.assets?.storyboardAsset?.filename?.trim() || "Story bank added";
-  const compactStoryboardLabel = truncateDisplayText(storyboardLabel, 28);
   const providerReadyForImport = isProviderReadyForMasterImport();
   let importStatus = "";
   if (state.masterResumeImportInFlight || state.masterResumeImportMessage) {
@@ -6712,7 +6710,7 @@ function renderOnboardingStep() {
             ${
               hasResume
                 ? ""
-                : '<p class="resume-matcher-onboarding__help">Add your Master Resume to Lumi Coach. Use TXT, MD, or JSON.</p>'
+                : '<p class="resume-matcher-onboarding__help">Add your Master Resume to Lumi Coach. Use PDF, DOCX, TXT, MD, or JSON.</p>'
             }
             ${
               hasResume
@@ -6722,7 +6720,6 @@ function renderOnboardingStep() {
             ${importStatus}
             <button type="button" class="resume-matcher-button" data-onboarding-action="upload_resume"${!providerReadyForImport || state.masterResumeImportInFlight ? " disabled" : ""}>${hasResume ? "Replace" : "Add Master Resume"}</button>
           </div>
-          <div class="resume-matcher-onboarding__file" hidden></div>
         </div>
         <div class="resume-matcher-onboarding__actions">
           ${renderPrimaryButtonMarkup("Start tailoring", "complete_onboarding", `${hasResume && !state.masterResumeImportInFlight ? "" : " disabled"}`)}
@@ -6796,7 +6793,7 @@ function getVisibleExplicitRunStatus() {
   const isDifferentJob =
     state.activeRunJob &&
     !state.isCanceling &&
-    (state.isRunning || state.awaitingStoryboard || state.awaitingAuth) &&
+    (state.isRunning || state.awaitingAuth) &&
     !doesActiveRunMatchCurrentJob();
 
   if (!isDifferentJob) {
@@ -6815,12 +6812,8 @@ function getVisibleExplicitRunStatus() {
     return {
       ...explicitStatus,
       tone: "info",
-      title: state.awaitingStoryboard
-        ? "Story bank needed for another job"
-        : "Sign-in needed for another job",
-      detail: state.awaitingStoryboard
-        ? `Continue or upload a story bank for ${getJobDisplayLabel(state.activeRunJob)}.`
-        : `Sign in to continue ${getJobDisplayLabel(state.activeRunJob)}.`,
+      title: "Sign-in needed for another job",
+      detail: `Sign in to continue ${getJobDisplayLabel(state.activeRunJob)}.`,
     };
   }
 
@@ -8752,12 +8745,18 @@ async function importMasterResumeFile(file) {
   clearExplicitRunStatus("master-resume-import-start");
   render();
   try {
-    const content = await file.text();
-    const response = await sendMessage("IMPORT_MASTER_RESUME_CONTEXT", {
-      filename: file.name,
-      content,
-      replaceExisting: true,
-    });
+    const isBinary = /\.(pdf|docx|doc)$/i.test(file.name);
+    let payload;
+    if (isBinary) {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      bytes.forEach((b) => (binary += String.fromCharCode(b)));
+      payload = { filename: file.name, base64: btoa(binary), replaceExisting: true };
+    } else {
+      payload = { filename: file.name, content: await file.text(), replaceExisting: true };
+    }
+    const response = await sendMessage("IMPORT_MASTER_RESUME_CONTEXT", payload);
     if (!response?.ok) {
       throw new Error(response?.error || "Failed to save Master Resume.");
     }
@@ -9277,15 +9276,14 @@ async function handleGenerateClick() {
       return;
     }
     if (response?.awaitingStoryboard) {
-      state.isRunning = false;
-      state.awaitingStoryboard = true;
-      setExplicitRunStatus(
-        "interrupted",
-        "warning",
-        "Story bank missing",
-        response.message || "Continue without a story bank?",
-        [{ id: "continue-storyboard", label: "Continue", variant: "primary" }],
+      const continueResponse = await sendMessage(
+        "CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD",
       );
+      if (!continueResponse?.ok) {
+        throw new Error(
+          continueResponse?.error || "Failed to continue run.",
+        );
+      }
       return;
     }
     if (response?.canceled) {
@@ -9398,15 +9396,6 @@ async function handleStatusAction(actionId) {
     return;
   }
 
-  if (actionId === "upload_storyboard") {
-    if (isSignedOutNavigationLocked()) {
-      openBoard("run");
-      return;
-    }
-    $(STORYBOARD_INPUT_ID)?.click();
-    return;
-  }
-
   if (actionId === "configure_provider") {
     openBoard("settings");
     if (state.currentView !== "settings") {
@@ -9460,65 +9449,6 @@ async function handleStatusAction(actionId) {
     return;
   }
 
-  if (actionId === "continue-storyboard") {
-    const connected = await reconcileConnectionStatus("run");
-    if (!connected) {
-      state.awaitingStoryboard = false;
-      state.isRunning = false;
-      return;
-    }
-    state.awaitingStoryboard = false;
-    state.isCanceling = false;
-    state.isRunning = true;
-    state.previewHandoffComplete = false;
-    clearScrapeRecoveryState();
-    setExplicitRunStatus(
-      "running",
-      "running",
-      "Continuing run",
-      "Running without a story bank.",
-    );
-    try {
-      const response = await sendMessage(
-        "CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD",
-      );
-      if (response?.runId) {
-        state.activeRunId = response.runId;
-        claimOwnedRun(response.runId);
-      }
-      if (response?.canceled) {
-        applyCanceledRunState(response.runId || state.activeRunId);
-        await refreshBoardData();
-        return;
-      }
-      if (!response?.ok) {
-        throw new Error(
-          response?.error || "Failed to continue without story bank.",
-        );
-      }
-    } catch (error) {
-      state.isRunning = false;
-      state.isCanceling = false;
-      state.activeRunId = null;
-      state.activeRunJob = null;
-      clearOwnedRun();
-      setExplicitRunStatus(
-        "error",
-        "error",
-        "Run failed",
-        formatErrorText(
-          error instanceof Error
-            ? error.message
-            : "Failed to continue without story bank.",
-        ),
-      );
-    }
-    return;
-  }
-
-  if (actionId === "cancel-storyboard") {
-    await requestCancelActiveRun();
-  }
 }
 
 async function handleOnboardingAction(actionId, nextStep = "") {
@@ -9536,11 +9466,6 @@ async function handleOnboardingAction(actionId, nextStep = "") {
     if (state.masterResumeImportInFlight) return;
     if (!(await ensureProviderReadyForMasterResumeImport())) return;
     $(MASTER_RESUME_INPUT_ID)?.click();
-    return;
-  }
-
-  if (actionId === "upload_storyboard") {
-    $(STORYBOARD_INPUT_ID)?.click();
     return;
   }
 
@@ -9694,7 +9619,7 @@ function ensureRoot() {
               <div id="${SETTINGS_HEALTH_ID}" class="resume-matcher-settings-health" data-state="incomplete">Finish setup</div>
               <div class="resume-matcher-settings-list">
                 <div id="${MASTER_RESUME_LABEL_ID}" class="resume-matcher-settings-row-card"></div>
-                <input id="${MASTER_RESUME_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" />
+                <input id="${MASTER_RESUME_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".pdf,.docx,.doc,.txt,.md,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain,text/markdown,application/json" />
                 <div id="${PROVIDER_ROW_ID}" class="resume-matcher-settings-row-card">
                   <div class="resume-matcher-settings-row-card__main">
                     <div class="resume-matcher-settings-row-card__copy">
@@ -11035,22 +10960,12 @@ function handleRuntimeMessage(message, _sender, sendResponse) {
   }
 
   if (message?.type === "EXTENSION_STORYBOARD_RECOMMENDATION") {
-    if (!shouldHandleRunScopedMessage(message.payload?.runId ?? null)) {
-      sendResponse({ ok: true });
-      return true;
+    if (shouldHandleRunScopedMessage(message.payload?.runId ?? null)) {
+      state.activeRunId = message.payload?.runId || state.activeRunId;
+      sendMessage("CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD").catch(
+        () => {},
+      );
     }
-    state.isRunning = false;
-    state.isCanceling = false;
-    state.awaitingStoryboard = true;
-    state.activeRunId = message.payload?.runId || state.activeRunId;
-    openBoard("run");
-    setExplicitRunStatus(
-      "interrupted",
-      "warning",
-      "Story bank missing",
-      message.payload?.message || "Continue without story bank?",
-      [{ id: "continue-storyboard", label: "Continue", variant: "primary" }],
-    );
     sendResponse({ ok: true });
     return true;
   }

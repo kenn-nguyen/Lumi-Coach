@@ -15,6 +15,7 @@ import {
   clearWebsiteSessionCache,
   openWebsiteSignInTab,
   openWebsiteSignOutTab,
+  parseDocumentForImport,
   syncExtensionPromptDefaults,
   verifyWebsiteSession,
 } from "./runtime/api.js";
@@ -1491,9 +1492,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true };
 
       case "IMPORT_MASTER_RESUME_CONTEXT": {
+        let content = message.payload?.content;
+        if (!content && message.payload?.base64) {
+          const bytes = Uint8Array.from(
+            atob(message.payload.base64),
+            (c) => c.charCodeAt(0),
+          );
+          content = await parseDocumentForImport(
+            message.payload?.filename || "upload",
+            bytes,
+          );
+        }
         const masterResume = await importMasterResumeFromTextAsset({
           filename: message.payload?.filename,
-          content: message.payload?.content,
+          content,
           replaceExisting: message.payload?.replaceExisting !== false,
         });
         const assets = await getUserAssets();

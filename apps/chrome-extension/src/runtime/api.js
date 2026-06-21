@@ -1081,3 +1081,40 @@ export async function openWebsiteSignOutTab() {
   const url = `${appOrigin}/extension-sign-out?ts=${Date.now()}`;
   return chrome.tabs.create({ url, active: true });
 }
+
+export async function parseDocumentForImport(filename, fileBytes, requestOptions = {}) {
+  const { apiBase } = await getRuntimeEndpoints();
+  const endpoint = `${apiBase}/extension/parse-document`;
+  const safeFilename = typeof filename === "string" && filename.trim() ? filename.trim() : "upload";
+  const formData = new FormData();
+  formData.append("file", new File([fileBytes], safeFilename));
+
+  logInfo("ResumeApi", "Parsing binary document for master resume import.", {
+    endpoint,
+    filename: safeFilename,
+    size: fileBytes.byteLength ?? fileBytes.length ?? 0,
+  });
+
+  let response;
+  try {
+    response = await fetchWithAuth(endpoint, {
+      ...requestOptions,
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    logError("ResumeApi", "Document parse request failed before response.", { endpoint, error: message });
+    throw new Error(`Document parse failed before response at ${endpoint}: ${message}`);
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    logError("ResumeApi", "Document parse returned a non-OK status.", { endpoint, status: response.status, body: text });
+    throw new Error(`Failed to parse document (status ${response.status}): ${text}`);
+  }
+
+  const payload = await response.json();
+  return payload.text || "";
+}

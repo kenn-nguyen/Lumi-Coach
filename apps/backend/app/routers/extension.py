@@ -7,11 +7,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 
 from app.database import db
 from app.schemas import ExtensionRunUpsertRequest, ExtensionRunUpsertResponse
 from app.security import AuthenticatedUser, require_current_user
+from app.services.parser import parse_document
 
 logger = logging.getLogger(__name__)
 
@@ -231,3 +232,28 @@ async def get_user_extension_run(
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found.")
     return run
+
+
+@router.post("/parse-document")
+async def parse_document_for_import(
+    file: UploadFile,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict[str, str]:
+    """Extract plain text from a PDF, DOCX, or DOC file for master resume import."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
+    try:
+        text = await parse_document(content, file.filename or "upload")
+    except Exception as e:
+        logger.error(f"Document parse failed for {file.filename}: {e}")
+        raise HTTPException(
+            status_code=422,
+            detail="Failed to extract text from the file. Try a TXT, MD, or JSON file instead.",
+        )
+    if not text or not text.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="No text could be extracted from the file.",
+        )
+    return {"text": text}
