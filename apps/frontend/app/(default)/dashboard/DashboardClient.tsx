@@ -1231,6 +1231,21 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
             </>
           )}
         </div>
+
+        <div className="flex items-center justify-center gap-2 border-t border-border py-4">
+          <img src="/extension-icon-32.png" alt="" width={14} height={14} className="opacity-60" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-gray-400">
+            Automate on LinkedIn with the{' '}
+            <a
+              href={CHROME_EXTENSION_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-700 underline underline-offset-2"
+            >
+              Chrome extension
+            </a>
+          </span>
+        </div>
       </div>
 
       {masterResumeId && showTailorDialog && (
