@@ -670,6 +670,65 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     };
   }
 
+  // Visibility instrumentation — a hidden popup (minimized or fully occluded)
+  // is throttled by Chrome: timers fire at most ~once/second and rendering
+  // freezes, so the MutationObserver and idle poll below can miss streaming
+  // updates and declare a false timeout. Tracking visibility lets us tell a
+  // genuine ChatGPT stall apart from "the user hid the window."
+  const visibilityMarks = {
+    initialState:
+      typeof document !== 'undefined' ? document.visibilityState : 'visible',
+    hiddenCount: 0,
+    accumulatedHiddenMs: 0,
+    hiddenSinceTs: null,
+    currentlyHidden: false,
+    lastBecameHiddenMs: null,
+    lastBecameVisibleMs: null,
+  };
+  if (visibilityMarks.initialState === 'hidden') {
+    visibilityMarks.currentlyHidden = true;
+    visibilityMarks.hiddenSinceTs = timingMarks.startedAt;
+  }
+
+  function handleVisibilityChange() {
+    const now = Date.now();
+    if (document.visibilityState === 'hidden') {
+      visibilityMarks.hiddenCount += 1;
+      visibilityMarks.currentlyHidden = true;
+      visibilityMarks.hiddenSinceTs = now;
+      visibilityMarks.lastBecameHiddenMs = Math.max(0, now - timingMarks.startedAt);
+    } else {
+      if (visibilityMarks.hiddenSinceTs != null) {
+        visibilityMarks.accumulatedHiddenMs += now - visibilityMarks.hiddenSinceTs;
+        visibilityMarks.hiddenSinceTs = null;
+      }
+      visibilityMarks.currentlyHidden = false;
+      visibilityMarks.lastBecameVisibleMs = Math.max(0, now - timingMarks.startedAt);
+    }
+  }
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  function buildVisibilitySummary() {
+    let totalHiddenMs = visibilityMarks.accumulatedHiddenMs;
+    if (visibilityMarks.currentlyHidden && visibilityMarks.hiddenSinceTs != null) {
+      totalHiddenMs += Date.now() - visibilityMarks.hiddenSinceTs;
+    }
+    const elapsedMs = Math.max(1, Date.now() - timingMarks.startedAt);
+    return {
+      initialState: visibilityMarks.initialState,
+      everHidden:
+        visibilityMarks.hiddenCount > 0 ||
+        visibilityMarks.initialState === 'hidden',
+      hiddenCount: visibilityMarks.hiddenCount,
+      totalHiddenMs,
+      hiddenFraction: Math.min(1, Math.round((totalHiddenMs / elapsedMs) * 100) / 100),
+      hiddenAtEnd: visibilityMarks.currentlyHidden,
+      lastBecameHiddenMs: visibilityMarks.lastBecameHiddenMs,
+      lastBecameVisibleMs: visibilityMarks.lastBecameVisibleMs,
+    };
+  }
+
   function currentConversationUrl() {
     return window.location.href.startsWith('https://chatgpt.com/') || window.location.href.startsWith('https://chat.openai.com/')
       ? window.location.href
@@ -872,6 +931,23 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     });
   }
 
+  function scrapeAssistantTextLenient() {
+    // Gate-free last resort: the single longest assistant-looking text block.
+    // Used to resolve and to rescue on timeout so a finished answer is never
+    // lost just because the structural selectors drifted.
+    const seen = new Set();
+    let best = '';
+    for (const selector of ASSISTANT_TEXT_SELECTORS) {
+      for (const node of document.querySelectorAll(selector)) {
+        if (seen.has(node)) continue;
+        seen.add(node);
+        const text = node.textContent?.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim() ?? '';
+        if (text.length > best.length) best = text;
+      }
+    }
+    return best;
+  }
+
   function getAssistantSnapshot() {
     const seen = new Set();
     const candidates = ASSISTANT_TEXT_SELECTORS.flatMap((selector) => Array.from(document.querySelectorAll(selector)))
@@ -888,6 +964,12 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       })
       .filter((item) => item.text);
     const latest = candidates.at(-1);
+    if (!latest?.text) {
+      const lenientText = scrapeAssistantTextLenient();
+      if (lenientText) {
+        return { count: 1, latestKey: 'lenient-fallback', latestText: lenientText };
+      }
+    }
     return {
       count: candidates.length,
       latestKey: latest?.key ?? null,
@@ -1078,7 +1160,22 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   }
 
   async function submitPrompt(composer) {
-    await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
+    // Yield one frame so the composer DOM settles before checking send
+    // readiness. requestAnimationFrame is FROZEN while the popup is hidden or
+    // occluded (Chrome pauses rendering on background tabs), which would hang
+    // the entire run until the user manually focuses the window. Race it
+    // against a timer that still fires in the background so the run proceeds
+    // unattended: rAF wins (~16ms) when visible, the timer wins when hidden.
+    await new Promise((resolve) => {
+      let settled = false;
+      const proceed = () => {
+        if (settled) return;
+        settled = true;
+        resolve(undefined);
+      };
+      window.requestAnimationFrame(proceed);
+      window.setTimeout(proceed, 100);
+    });
     const readiness = await waitForSendReady(composer);
     if (!readiness.ready) {
       const form = composer instanceof HTMLTextAreaElement ? composer.form : composer.closest('form');
@@ -1167,6 +1264,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     return new Promise((resolve, reject) => {
       let stableTimer = null;
       let sawNewTurn = hasNewAssistantTurn(previousAssistant, existingSnapshot);
+      let sawStopButton = hasStopButton();
       let lastProgressAt = Date.now();
       let lastSnapshot = existingSnapshot;
 
@@ -1178,14 +1276,26 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       };
 
       const failForTimeout = () => {
-        const latestSnapshot = getAssistantSnapshot();
+        // Rescue: hand back whatever text is on the page (gate-free) so a
+        // finished answer can still be salvaged by canUsePartialJson.
+        const snapshotText = getAssistantSnapshot().latestText.trim();
+        const partialText = snapshotText || scrapeAssistantTextLenient().trim();
         cleanup();
-        reject(new Error(latestSnapshot.latestText.trim() ? `dom_changed:Timed out waiting for the ChatGPT response.|partial=${latestSnapshot.latestText.trim()}` : 'dom_changed:Timed out waiting for the ChatGPT response.'));
+        reject(new Error(partialText ? `dom_changed:Timed out waiting for the ChatGPT response.|partial=${partialText}` : 'dom_changed:Timed out waiting for the ChatGPT response.'));
       };
 
       const maybeResolve = () => {
         const latestSnapshot = getAssistantSnapshot();
         const isNewTurn = hasNewAssistantTurn(previousAssistant, latestSnapshot);
+        const stopPresent = hasStopButton();
+        if (stopPresent) {
+          sawStopButton = true;
+        }
+        // Primary completion signal: the Send button became Stop while
+        // generating and has now reverted (Stop gone) -> generation finished,
+        // independent of the message-text DOM.
+        const finishedByButton = sawStopButton && !stopPresent;
+
         const changed =
           latestSnapshot.count !== lastSnapshot.count ||
           latestSnapshot.latestKey !== lastSnapshot.latestKey ||
@@ -1199,7 +1309,10 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
 
         lastSnapshot = latestSnapshot;
 
-        if (!isNewTurn || hasStopButton()) {
+        // Settle when EITHER the button transition says finished OR a new turn
+        // was seen — but only once the Stop button is gone.
+        const readyToSettle = (finishedByButton || isNewTurn) && !stopPresent;
+        if (!readyToSettle) {
           if (stableTimer !== null) {
             window.clearTimeout(stableTimer);
             stableTimer = null;
@@ -1212,9 +1325,12 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         }
 
         stableTimer = window.setTimeout(() => {
+          const resolvedText = latestSnapshot.latestText.trim()
+            ? latestSnapshot.latestText
+            : scrapeAssistantTextLenient();
           cleanup();
           markTiming('responseCompletedAt');
-          resolve(latestSnapshot.latestText);
+          resolve(resolvedText);
         }, 900);
       };
 
@@ -1253,6 +1369,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
           message: 'ChatGPT returned an empty assistant response after prompt submission.',
           conversationUrl: currentConversationUrl(),
           timings: buildTimingSummary(),
+          visibility: buildVisibilitySummary(),
         };
       }
       return {
@@ -1260,6 +1377,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         rawText,
         conversationUrl: currentConversationUrl(),
         timings: buildTimingSummary(),
+        visibility: buildVisibilitySummary(),
       };
     })
     .catch((error) => {
@@ -1270,6 +1388,7 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
           message: 'Please log into ChatGPT in a normal browser tab first.',
           conversationUrl: currentConversationUrl(),
           timings: buildTimingSummary(),
+          visibility: buildVisibilitySummary(),
         };
       }
 
@@ -1288,7 +1407,15 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         submitDebug,
         conversationUrl: currentConversationUrl(),
         timings: buildTimingSummary(),
+        visibility: buildVisibilitySummary(),
       };
+    })
+    .finally(() => {
+      try {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      } catch {
+        // Best-effort — the listener dies with the page context anyway.
+      }
     });
 }
 
@@ -1534,6 +1661,19 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       } catch {
         // ignore transient tab lookup errors while popup is active
       }
+      // Cheap live read of the popup's visibility so a stall caused by the
+      // window being hidden/minimized shows up in the in-progress logs.
+      let visibilityState = null;
+      try {
+        const [{ result: vis } = {}] =
+          (await chrome.scripting.executeScript({
+            target: { tabId: session.tabId },
+            func: () => document.visibilityState,
+          })) ?? [];
+        visibilityState = vis ?? null;
+      } catch {
+        // ignore — popup may be mid-navigation or closing
+      }
       logInfo('ChatGptAutomation', 'ChatGPT prompt runner in progress.', {
         promptLabel,
         tabId: session.tabId,
@@ -1542,6 +1682,7 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
         phase: getElapsedPhaseKey(elapsedMs),
         phaseText: getElapsedPhaseLabel(elapsedMs, pollCount),
         tab: tabSnapshot,
+        visibilityState,
       });
     }, 4000);
     try {
@@ -1587,6 +1728,7 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     hasResult: Boolean(result),
     status: result?.status ?? null,
     timings: result?.timings ?? null,
+    visibility: result?.visibility ?? null,
   });
 
   if (!result) {

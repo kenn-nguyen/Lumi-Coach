@@ -2537,7 +2537,25 @@ async def warm_resume_pdf_endpoint(
 
 @router.delete("/{resume_id}")
 async def delete_resume(resume_id: str) -> dict:
-    """Delete a resume by ID."""
+    """Delete a resume by ID.
+
+    Refuses to delete the master resume: it is the source of truth for every
+    tailored resume, so deleting it must be a deliberate act (set a different
+    master first) rather than a one-click mistake on the dashboard.
+    """
+    resume = db.get_resume(resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    if resume.get("is_master"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This is your master resume and can't be deleted. "
+                "Set a different resume as master first."
+            ),
+        )
+
     if not db.delete_resume(resume_id):
         raise HTTPException(status_code=404, detail="Resume not found")
 

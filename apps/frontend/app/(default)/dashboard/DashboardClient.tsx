@@ -477,9 +477,21 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
   };
 
   const getResumeTitle = useCallback(
-    (resume: ResumeListItem) =>
-      resume.title || resume.jobSnippet || resume.filename || t('dashboard.tailoredResume'),
-    [t]
+    (resume: ResumeListItem) => {
+      // Tailored resumes that never received a job-specific title (e.g. a run
+      // that failed before titling) can otherwise fall through to the master's
+      // name or filename and look identical to the real master. Never let a
+      // tailored entry impersonate the master: if it has no distinct title,
+      // use its job snippet or a neutral label — and never its filename, which
+      // mirrors the master's.
+      const masterTitle = masterResumeItem?.title?.trim();
+      const jobTitle = resume.title?.trim();
+      if (jobTitle && jobTitle !== masterTitle) {
+        return jobTitle;
+      }
+      return resume.jobSnippet || t('dashboard.tailoredResume');
+    },
+    [t, masterResumeItem]
   );
 
   const sortedTailoredResumes = useMemo(() => {
@@ -686,7 +698,11 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
       setResumePendingDelete(null);
     } catch (error) {
       console.error('Failed to delete resume from dashboard:', error);
-      setDeleteError(t('resumeViewer.errors.failedToDelete'));
+      setDeleteError(
+        error instanceof Error && error.message
+          ? error.message
+          : t('resumeViewer.errors.failedToDelete')
+      );
     } finally {
       setIsDeletingResume(false);
     }

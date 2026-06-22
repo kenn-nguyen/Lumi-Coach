@@ -35,13 +35,13 @@ const CLAUDE_WEB_CONFIG = {
     'button[data-testid*="stop"]',
   ],
   responseBusySelectors: [
+    // Only explicit "actively streaming" states. Bare-presence matches like
+    // [data-is-streaming] (matches data-is-streaming="false") and broad
+    // [data-testid*="stream"]/"typing" could latch "busy" forever and block
+    // completion, so they are intentionally excluded.
     '#main-content [data-is-streaming="true"]',
-    '#main-content [data-is-streaming]',
     '#main-content [aria-busy="true"]',
-    '#main-content [data-testid*="stream"]',
-    '#main-content [data-testid*="typing"]',
     'main [data-is-streaming="true"]',
-    'main [data-is-streaming]',
     'main [aria-busy="true"]',
   ],
   responseSettleDelayMs: 2200,

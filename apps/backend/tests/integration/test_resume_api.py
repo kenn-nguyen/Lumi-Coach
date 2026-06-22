@@ -441,6 +441,7 @@ class TestDeleteResume:
 
     @patch("app.routers.resumes.db")
     async def test_delete_existing_resume(self, mock_db, client):
+        mock_db.get_resume.return_value = {"resume_id": "res-123", "is_master": False}
         mock_db.delete_resume.return_value = True
         async with client:
             resp = await client.delete("/api/v1/resumes/res-123")
@@ -448,10 +449,18 @@ class TestDeleteResume:
 
     @patch("app.routers.resumes.db")
     async def test_delete_nonexistent_returns_404(self, mock_db, client):
-        mock_db.delete_resume.return_value = False
+        mock_db.get_resume.return_value = None
         async with client:
             resp = await client.delete("/api/v1/resumes/nonexistent")
         assert resp.status_code == 404
+
+    @patch("app.routers.resumes.db")
+    async def test_delete_master_returns_409(self, mock_db, client):
+        mock_db.get_resume.return_value = {"resume_id": "m1", "is_master": True}
+        async with client:
+            resp = await client.delete("/api/v1/resumes/m1")
+        assert resp.status_code == 409
+        mock_db.delete_resume.assert_not_called()
 
 
 class TestUploadResume:

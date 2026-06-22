@@ -412,6 +412,79 @@ describe('injectedProviderPromptEntry completion detection', () => {
     expect(result.rawText).not.toContain('You said: abcde');
     await runPromise;
   });
+
+  it('self-heals a stale role-heading via the lenient scrape and the Stop->Send transition', async () => {
+    const CLAUDE_TEST_CONFIG = {
+      providerLabel: 'Claude',
+      urlMatchers: [`${window.location.origin}/`],
+      inputSelectors: ['#composer'],
+      sendButtonSelectors: ['#send-button'],
+      stopButtonSelectors: ['button[aria-label*="Stop"]'],
+      responseBusySelectors: ['[data-is-streaming="true"]'],
+      assistantTextSelectors: ['.standard-markdown'],
+      assistantTurnContainerSelectors: ['[data-test-render-count]'],
+      assistantTurnRoleHeadingSelectors: ['h2.sr-only'],
+      // The DOM heading below intentionally does NOT match this pattern,
+      // simulating Claude changing its accessibility heading. The gated
+      // snapshot will find nothing; the run must still heal.
+      assistantTurnRoleHeadingPattern: '^Claude responded:',
+      assistantContentSelectors: ['.font-claude-response .standard-markdown'],
+      loginSelectors: [],
+      authRequiredMessage: 'Please log into Claude in a normal browser tab first.',
+    };
+    const composer = document.getElementById('composer');
+    const sendButton = document.getElementById('send-button');
+    const messages = document.getElementById('messages');
+
+    sendButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      composer.value = '';
+      // Generating: Send becomes Stop, answer streams in.
+      sendButton.setAttribute('aria-label', 'Stop');
+      messages.innerHTML = `
+        <div data-test-render-count="1">
+          <div data-is-streaming="true" class="group">
+            <h2 class="sr-only">Assistant said: stale heading</h2>
+            <div class="font-claude-response">
+              <div class="standard-markdown"><p>{"summary":"healed"}</p></div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    let settled = false;
+    let result = null;
+    const runPromise = injectedProviderPromptEntry('Return valid JSON only.', CLAUDE_TEST_CONFIG, {
+      responseTimeoutMs: 30000,
+      responseIdleTimeoutMs: 30000,
+      responseFirstTokenTimeoutMs: 30000,
+      composeReadyTimeoutMs: 1000,
+      sendReadyTimeoutMs: 1000,
+      responseSettleDelayMs: 500,
+    }).then((value) => {
+      settled = true;
+      result = value;
+      return value;
+    });
+
+    // Still streaming (Stop shown, data-is-streaming=true) -> must not settle.
+    await vi.advanceTimersByTimeAsync(1500);
+    await flushMicrotasks();
+    expect(settled).toBe(false);
+
+    // Finished: streaming stops and Stop reverts to Send.
+    const streamingNode = messages.querySelector('[data-is-streaming]');
+    streamingNode.setAttribute('data-is-streaming', 'false');
+    sendButton.setAttribute('aria-label', 'Send');
+
+    await vi.advanceTimersByTimeAsync(1500);
+    await flushMicrotasks();
+
+    expect(settled).toBe(true);
+    expect(result).toMatchObject({ status: 'success' });
+    expect(result.rawText).toContain('{"summary":"healed"}');
+  });
 });
 
 function createChromeMock() {

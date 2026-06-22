@@ -160,4 +160,47 @@ describe("extractJsonFromText", () => {
 
     expect(parsed).toEqual(resumeData);
   });
+
+  describe("lenient repair of web-UI JSON corruptions", () => {
+    it("repairs smart/curly double quotes used as delimiters", () => {
+      const corrupted = "{“name”: “Jane Doe”, “role”: “PM”}";
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ name: "Jane Doe", role: "PM" });
+    });
+
+    it("repairs curly quotes inside a fenced code block", () => {
+      const corrupted = "```json\n{“skill”: “SQL”}\n```";
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ skill: "SQL" });
+    });
+
+    it("repairs trailing commas before closing braces and brackets", () => {
+      const corrupted = '{"skills": ["SQL", "Python",], "name": "Jane",}';
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ skills: ["SQL", "Python"], name: "Jane" });
+    });
+
+    it("repairs non-breaking spaces between tokens", () => {
+      const corrupted = '{ "name": "Jane" }';
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ name: "Jane" });
+    });
+
+    it("repairs corrupted JSON surrounded by prose", () => {
+      const corrupted =
+        "Sure! Here is the JSON:\n{“summary”: “Done”,}\nLet me know if you need changes.";
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ summary: "Done" });
+    });
+
+    it("does not corrupt URLs (no naive // comment stripping)", () => {
+      const text = '{"website": "https://example.com/path", "n": 1}';
+      const parsed = extractJsonFromText(text);
+      expect(parsed).toEqual({ website: "https://example.com/path", n: 1 });
+    });
+
+    it("still throws when there is genuinely no JSON", () => {
+      expect(() => extractJsonFromText("no json here at all")).toThrow();
+    });
+  });
 });

@@ -478,7 +478,13 @@ export async function deleteResume(resumeId: string): Promise<void> {
   const res = await apiDelete(`/resumes/${encodeURIComponent(resumeId)}`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to delete resume (status ${res.status}): ${text}`);
+    let detail = '';
+    try {
+      detail = JSON.parse(text)?.detail ?? '';
+    } catch {
+      detail = '';
+    }
+    throw new Error(detail || `Failed to delete resume (status ${res.status}): ${text}`);
   }
 }
 

@@ -788,6 +788,10 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
     if (!ASSISTANT_TURN_ROLE_HEADING_PATTERN) {
       return containers[0];
     }
+    // Keep the role heading authoritative here — it is what distinguishes the
+    // real assistant turn from an echoed prompt. The stale-heading fallback is
+    // handled at the snapshot level (getAssistantSnapshot), which only drops
+    // the gate when it finds NOTHING.
     return (
       containers.find((container) => containerHasAssistantRoleMarker(container)) ??
       null
@@ -843,11 +847,43 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
     );
     const candidates = primaryCandidates.length ? primaryCandidates : fallbackCandidates;
     const latest = candidates.at(-1);
+    // Gate-free fallback: when the role-gated selectors found NOTHING (e.g. the
+    // provider changed its assistant-role heading), recover the longest
+    // assistant-looking block so a finished answer isn't lost. This only runs
+    // when the gate is empty, so it never overrides a correctly-gated turn
+    // (which is what keeps an echoed prompt from being mistaken for the answer).
+    if (!latest?.text) {
+      const lenientText = scrapeAssistantTextLenient();
+      if (lenientText) {
+        return { count: 1, latestKey: 'lenient-fallback', latestText: lenientText };
+      }
+    }
     return {
       count: candidates.length,
       latestKey: latest?.key ?? null,
       latestText: latest?.text ?? '',
     };
+  }
+
+  function scrapeAssistantTextLenient() {
+    // Gate-free last resort: the single longest assistant-looking text block,
+    // ignoring role headings, turn containers, and busy state. Used to resolve
+    // and to rescue on timeout so a finished answer is never lost just because
+    // the structural selectors drifted.
+    const selectors = PRIMARY_ASSISTANT_TEXT_SELECTORS.length
+      ? [...PRIMARY_ASSISTANT_TEXT_SELECTORS, ...ASSISTANT_TEXT_SELECTORS]
+      : ASSISTANT_TEXT_SELECTORS;
+    const seen = new Set();
+    let best = '';
+    for (const selector of selectors) {
+      for (const node of document.querySelectorAll(selector)) {
+        if (seen.has(node)) continue;
+        seen.add(node);
+        const text = normalizeAssistantText(readNodeText(node));
+        if (text.length > best.length) best = text;
+      }
+    }
+    return best;
   }
 
   function hasNewAssistantTurn(previous, next) {
@@ -1049,7 +1085,22 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
       latestTextLength: 0,
       conversationUrl: currentConversationUrl(),
     });
-    await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
+    // Yield one frame so the composer DOM settles before checking send
+    // readiness. requestAnimationFrame is FROZEN while the popup is hidden or
+    // occluded (Chrome pauses rendering on background tabs), which would hang
+    // the entire run until the user manually focuses the window. Race it
+    // against a timer that still fires in the background so the run proceeds
+    // unattended: rAF wins (~16ms) when visible, the timer wins when hidden.
+    await new Promise((resolve) => {
+      let settled = false;
+      const proceed = () => {
+        if (settled) return;
+        settled = true;
+        resolve(undefined);
+      };
+      window.requestAnimationFrame(proceed);
+      window.setTimeout(proceed, 100);
+    });
     const readiness = await waitForSendReady(composer);
     const form = composer instanceof HTMLTextAreaElement ? composer.form : composer.closest('form');
     const sendButton = findSendButton(form);
@@ -1129,6 +1180,7 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
     return new Promise((resolve, reject) => {
       let stableTimer = null;
       let sawNewTurn = hasNewAssistantTurn(previousAssistant, existingSnapshot);
+      let sawStopButton = hasStopButton();
       let lastProgressAt = Date.now();
       let lastSnapshot = existingSnapshot;
       let lastBusyState = hasStopButton() || hasResponseBusyIndicator();
@@ -1141,14 +1193,16 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
       };
 
       const failForTimeout = () => {
-        const latestSnapshot = getAssistantSnapshot();
-        const partialText = latestSnapshot.latestText.trim();
+        // Rescue: even on a hard timeout, hand back whatever text is on the
+        // page (gate-free) so canUsePartialJson can salvage a finished answer.
+        const snapshotText = getAssistantSnapshot().latestText.trim();
+        const partialText = snapshotText || scrapeAssistantTextLenient().trim();
         publishWatchdogState({
           phase: 'timed_out',
           resultStatus: 'timeout',
           busy: false,
           rawText: partialText,
-          latestTextLength: latestSnapshot.latestText.length,
+          latestTextLength: partialText.length,
           conversationUrl: currentConversationUrl(),
         });
         cleanup();
@@ -1164,7 +1218,18 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
       const maybeResolve = () => {
         const latestSnapshot = getAssistantSnapshot();
         const isNewTurn = hasNewAssistantTurn(previousAssistant, latestSnapshot);
-        const busyState = hasStopButton() || hasResponseBusyIndicator();
+        const stopPresent = hasStopButton();
+        const busyState = stopPresent || hasResponseBusyIndicator();
+
+        if (stopPresent) {
+          sawStopButton = true;
+        }
+        // Primary completion signal: the Send button became a Stop button while
+        // generating and has now reverted (Stop gone). This is independent of
+        // the message-text DOM, so it heals runs where the text selectors are
+        // stale — we no longer require the gated isNewTurn to fire.
+        const finishedByButton = sawStopButton && !busyState;
+
         const changed =
           latestSnapshot.count !== lastSnapshot.count ||
           latestSnapshot.latestKey !== lastSnapshot.latestKey ||
@@ -1191,7 +1256,10 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
           conversationUrl: currentConversationUrl(),
         });
 
-        if (!isNewTurn || busyState) {
+        // Settle when EITHER the button transition says finished OR we saw a
+        // new assistant turn — but only once nothing is busy.
+        const readyToSettle = (finishedByButton || isNewTurn) && !busyState;
+        if (!readyToSettle) {
           if (stableTimer !== null) {
             window.clearTimeout(stableTimer);
             stableTimer = null;
@@ -1208,16 +1276,21 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
 
         if (stableTimer === null) {
           stableTimer = window.setTimeout(() => {
+            // Prefer the structured snapshot text; fall back to the gate-free
+            // scrape when the structural selectors found nothing.
+            const resolvedText = latestSnapshot.latestText.trim()
+              ? latestSnapshot.latestText
+              : scrapeAssistantTextLenient();
             publishWatchdogState({
               phase: 'completed',
               resultStatus: 'success',
               busy: false,
-              rawText: latestSnapshot.latestText,
-              latestTextLength: latestSnapshot.latestText.length,
+              rawText: resolvedText,
+              latestTextLength: resolvedText.length,
               conversationUrl: currentConversationUrl(),
             });
             cleanup();
-            resolve(latestSnapshot.latestText);
+            resolve(resolvedText);
           }, responseSettleDelayMs);
         }
       };

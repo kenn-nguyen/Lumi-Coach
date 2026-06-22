@@ -99,7 +99,51 @@ function tryParseJson(text, validator) {
     }
   }
 
+  // Last resort: repair the JSON corruptions ChatGPT's web UI commonly
+  // introduces (smart/curly quotes substituted for ASCII quotes, exotic
+  // whitespace, trailing commas) and retry. This runs ONLY after every strict
+  // attempt above has already failed, so it can salvage otherwise-unparseable
+  // web-automation output without a model round-trip, and can never alter a
+  // response that already parsed cleanly.
+  const repairedText = repairLenientJson(sanitizedText);
+  if (repairedText !== text && repairedText !== sanitizedText) {
+    try {
+      const parsed = JSON.parse(repairedText);
+      if (matchesValidator(parsed, validator)) {
+        return parsed;
+      }
+    } catch {}
+
+    const repairedSlice = sliceLikelyJsonBlock(repairedText, validator);
+    if (repairedSlice) {
+      return JSON.parse(repairedSlice);
+    }
+  }
+
   return undefined;
+}
+
+function repairLenientJson(text) {
+  if (typeof text !== "string" || !text) {
+    return text;
+  }
+
+  return (
+    text
+      // Typographic double quotes -> straight ". The web UI substitutes these
+      // for ASCII quotes when JSON is rendered outside a fenced code block,
+      // which is the single most common reason JSON.parse fails on web output.
+      .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+      // Typographic single quotes / primes -> straight '
+      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+      // Non-breaking and other exotic Unicode spaces -> normal space
+      .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000\u2028\u2029]/g, " ")
+      // Trailing commas before a closing brace or bracket. A comma inside a
+      // string is followed by string content, not `}`/`]`, so this targets
+      // only structural trailing commas. (We deliberately do NOT strip `//`
+      // comments because that would corrupt URLs like "https://...".)
+      .replace(/,(\s*[}\]])/g, "$1")
+  );
 }
 
 function normalizeGenerationFeedback(value) {
