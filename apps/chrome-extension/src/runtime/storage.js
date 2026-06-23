@@ -22,8 +22,6 @@ const PROMPT_PROFILE_IDS = [
 ];
 const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
 const PROMPT_DEFAULTS_MODES = ["server", "extension"];
-const TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL =
-  "kenn.nguyen@aya.yale.edu";
 const ONBOARDING_STEPS = ["intro", "sign_in", "provider", "assets", "done"];
 const ACCOUNT_STORAGE_VERSION = 1;
 const STORAGE_LOCAL_QUOTA_BYTES = 10_485_760;
@@ -126,21 +124,8 @@ function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function normalizeAccountIdentityEmail(email) {
-  return typeof email === "string" ? email.trim().toLowerCase() : "";
-}
-
-function getDefaultPromptDefaultsModeForEmail(email) {
-  return normalizeAccountIdentityEmail(email) ===
-    TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL
-    ? "extension"
-    : "server";
-}
-
-function normalizePromptDefaultsMode(storedMode, email = "") {
-  return PROMPT_DEFAULTS_MODES.includes(storedMode)
-    ? storedMode
-    : getDefaultPromptDefaultsModeForEmail(email);
+function normalizePromptDefaultsMode(storedMode) {
+  return PROMPT_DEFAULTS_MODES.includes(storedMode) ? storedMode : "server";
 }
 
 function getDefaultExtensionState() {
@@ -791,7 +776,6 @@ export async function getUserAssets() {
   const extensionAuth = globalData[STORAGE_KEYS.extensionAuth] ?? null;
   const promptDefaultsMode = normalizePromptDefaultsMode(
     scopedData[STORAGE_KEYS.promptDefaultsMode],
-    extensionAuth?.user?.email ?? "",
   );
   return {
     activeAccountKey: accountKey,

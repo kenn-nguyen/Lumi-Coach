@@ -139,8 +139,6 @@ const APIFY_TOKEN_INPUT_ID = "resume-matcher-apify-token-input";
 const APIFY_TOKEN_TOGGLE_ID = "resume-matcher-apify-token-toggle";
 const APIFY_SAVE_ID = "resume-matcher-apify-save";
 const PROMPT_REFRESH_ID = "resume-matcher-prompt-refresh";
-const PROMPT_SOURCE_ROW_ID = "resume-matcher-prompt-source-row";
-const PROMPT_SOURCE_INPUT_ID = "resume-matcher-prompt-source-input";
 const PROMPT_PROFILE_TABS_ID = "resume-matcher-prompt-profile-tabs";
 const PROMPT_PROFILE_DETAIL_ID = "resume-matcher-prompt-profile-detail";
 const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
@@ -260,7 +258,6 @@ const EXTENSION_VERSION = (() => {
 })();
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
 const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
-const TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL = "kenn.nguyen@aya.yale.edu";
 const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
 const PROVIDER_SAVE_REQUIRED_MESSAGE =
   "Save your AI setup before uploading your Master Resume.";
@@ -581,17 +578,6 @@ function profileHasCustomPromptBodies(promptTemplateProfiles, profileId) {
       asset &&
       typeof asset === "object" &&
       (typeof asset.content === "string" || typeof asset.filename === "string"),
-  );
-}
-
-function normalizeAccountEmail(email) {
-  return typeof email === "string" ? email.trim().toLowerCase() : "";
-}
-
-function canUseDeveloperPromptSourceOverride(assets = state.assets) {
-  return (
-    normalizeAccountEmail(assets?.extensionAuth?.user?.email) ===
-    TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL
   );
 }
 
@@ -7544,8 +7530,6 @@ function renderProviderFields() {
 function renderSettings() {
   const assets = state.assets;
   const accountLabel = assets?.extensionAuth?.user?.email?.trim() || "";
-  const canUsePromptSourceOverride =
-    canUseDeveloperPromptSourceOverride(assets);
   const usingExtensionPromptDefaults =
     isUsingExtensionPromptDefaultsMode(assets);
   const hasMaster = hasBackendMasterResume();
@@ -7837,16 +7821,6 @@ function renderSettings() {
       Boolean(state.promptSyncPromise) ||
       usingExtensionPromptDefaults;
   }
-  const promptSourceRow = $(PROMPT_SOURCE_ROW_ID);
-  if (promptSourceRow instanceof HTMLElement) {
-    promptSourceRow.hidden = !canUsePromptSourceOverride;
-  }
-  const promptSourceInput = $(PROMPT_SOURCE_INPUT_ID);
-  if (promptSourceInput instanceof HTMLInputElement) {
-    promptSourceInput.checked = usingExtensionPromptDefaults;
-    promptSourceInput.disabled = accountControlsDisabled;
-  }
-
   $(MASTER_RESUME_ACTION_ID)?.addEventListener("click", async () => {
     if (
       accountControlsDisabled ||
@@ -7990,46 +7964,6 @@ function renderSettings() {
         );
     }
   });
-  $(PROMPT_SOURCE_INPUT_ID)?.addEventListener("change", async (event) => {
-    if (accountControlsDisabled) return;
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    try {
-      const response = await persistPromptDefaultsMode(
-        target.checked ? "extension" : "server",
-      );
-      if (response.promptDefaultsMode === "extension") {
-        setRunStatus(
-          "success",
-          "Extension prompts active",
-          "Lumi Coach will use the packaged extension prompts for this account.",
-        );
-      } else if (response.degraded) {
-        setRunStatus(
-          "interrupted",
-          "Using cached prompts",
-          "Prompt sync was unavailable, so Lumi Coach kept the current cached server prompts.",
-        );
-      } else {
-        setRunStatus(
-          "success",
-          "Server prompts active",
-          "Lumi Coach will use the synced server prompts for this account.",
-        );
-      }
-      renderSettings();
-      renderRunView();
-    } catch (error) {
-      setRunStatus(
-        "error",
-        "Save failed",
-        error instanceof Error
-          ? error.message
-          : "Failed to save prompt source.",
-      );
-    }
-  });
-
   renderProviderFields();
   syncProviderSaveButtonState();
   syncApifySaveButtonState();
@@ -8926,25 +8860,6 @@ async function persistPromptProfileSelection(profileId, { refresh = true } = {})
   return true;
 }
 
-async function persistPromptDefaultsMode(mode) {
-  const nextMode = mode === "extension" ? "extension" : "server";
-  const response = await sendMessage("SAVE_PROMPT_DEFAULTS_MODE", {
-    mode: nextMode,
-  });
-  if (!response?.ok) {
-    throw new Error(response?.error || "Failed to save prompt source.");
-  }
-  if (response.assets && typeof response.assets === "object") {
-    state.assets = {
-      ...(state.assets || {}),
-      ...response.assets,
-    };
-    applyPromptTemplateProfilesState(state.assets.promptTemplateProfiles);
-  }
-  await refreshBoardData();
-  return response;
-}
-
 async function ensureProviderReadyForMasterResumeImport() {
   let readiness = getSavedProviderImportReadiness();
   if (readiness.ready) {
@@ -9746,15 +9661,6 @@ function ensureRoot() {
                     <div class="resume-matcher-settings-item__detail">Upload .txt only. Edit the main prompt wording only. Output contracts and guardrails stay fixed.</div>
                     <div id="${PROMPT_PROFILE_DETAIL_ID}" class="resume-matcher-settings-item__detail"></div>
                     <div class="resume-matcher-settings-substack">
-                      <div id="${PROMPT_SOURCE_ROW_ID}" class="resume-matcher-settings-item" hidden>
-                        <div class="resume-matcher-settings-item__title">Prompt source</div>
-                        <div class="resume-matcher-settings-item__detail">Temporary developer override. When enabled, Lumi Coach uses the packaged extension prompts instead of synced server prompts.</div>
-                        <label class="resume-matcher-inline-action resume-matcher-inline-action--compact" for="${PROMPT_SOURCE_INPUT_ID}">
-                          <span class="resume-matcher-inline-action__label">Use extension prompts</span>
-                          <input id="${PROMPT_SOURCE_INPUT_ID}" class="resume-matcher-checkbox" type="checkbox" />
-                          <span class="resume-matcher-toggle" aria-hidden="true"></span>
-                        </label>
-                      </div>
                       <div class="resume-matcher-settings-item">
                         <div class="resume-matcher-settings-item__title">Active style</div>
                         <div class="resume-matcher-settings-item__detail">These uploaded prompt bodies apply to the selected style.</div>

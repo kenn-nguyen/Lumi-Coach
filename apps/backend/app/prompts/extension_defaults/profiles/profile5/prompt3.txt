@@ -1,7 +1,7 @@
 ---
 prompt_artifact: profile5.prompt3.template
-prompt_version: v3.6.0
-prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level-aligned-summary-concrete-execution-bullet-length
+prompt_version: v3.7.0
+prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level-aligned-summary-concrete-execution-bullet-length-upstream-judgment
 prompt_notes: Executes Prompt 2 into final resume JSON with execution-heavy PM/Senior PM bullet writing, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned attribution for technical depth, ATS balance, bridge-title handling, and preservation of distinct JD-relevant outcome, diagnosis, and mechanism anchors when simplifying dense bullets; adds jd-implied-level calibration (writes summary/bullet altitude to Prompt 2's implied level using only source-supported scope, keeps scope signals forward, and protects them from trimming; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
@@ -260,6 +260,7 @@ XYZ example execution pattern:
   - triggering insight
   - named constraint
 - Do not let all top bullets in the same role default to the same mechanism shape if a stronger supported shape exists.
+- When choosing which Z to foreground, prefer the highest-leverage one: a source-proven problem reframing or direction bet is the strongest signal; otherwise pick the execution decision with the widest blast radius (scope, irreversibility, and how much downstream work it determines), not merely any lever.
 
 Direct-JD-match ordering execution:
 - Within each role, if one bullet maps almost verbatim to a core JD responsibility and has a concrete metric/mechanism, place it before less direct achievements.
@@ -282,7 +283,7 @@ For each bullet, synthesize:
 - A strong bullet may retain up to 3 non-redundant anchors when it still reads as one coherent execution story: 1 primary result, 1 primary mechanism, and 1 supporting diagnosis, tradeoff, constraint, or outcome anchor.
 
 Use the metric early, but omit secondary metrics when they make the bullet feel crowded.
-- Lead achievement bullets with a directional result verb when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`, `Built`.
+- Lead achievement bullets with a directional result verb when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`, `Redirected`, `Refocused`, `Pivoted`, `Built`.
 - Treat `Led`, `Owned`, or `Managed` as fallback verbs, not preferred openers.
 - Use them only for genuinely scope-setting bullets or cases where the outcome is already explicit and cannot truthfully lead.
 - When two adjacent bullets in the same role would naturally open with the same verb, vary the opener if a similarly strong truthful alternative exists.
@@ -337,7 +338,7 @@ Causal-Z execution rule:
 - Apply that preference from the hiring manager's product standpoint:
   - for PM and senior PM targets, the top 2-3 bullets should remain execution-heavy: lead with the shipped change, operating choice, workflow redesign, rollout pattern, packaging decision, threshold, or other concrete lever, then preserve diagnosis, insight, or tradeoff when it materially strengthens credibility;
   - for more strategy-heavy director/head-of-product targets, diagnosis or tradeoff may lead when the source clearly supports it and execution still appears as proof.
-- If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof.
+- If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof. But a source-proven problem reframing or direction bet is not secondary rationale: keep it in the main clause (encoded in the verb and what changed, with the outcome attached); do not bury it in a trailing clause or drop it.
 - Exception: when a scope, cross-team, or org-influence signal substantiates the JD-implied level, treat it as primary proof — do not trim or drop it as a lower-value specific or secondary detail.
 - Use the bare mechanism form when the thing built or changed is itself the differentiator, or when rationale-heavy framing would sound inflated in an interview.
 - Avoid final mechanisms that read like `by refining A, B, C, and D` unless the list itself is the product strategy.
@@ -751,7 +752,7 @@ Additional schema rules:
 - Use `flex_notes` only for small non-critical writer notes needed by future prompt variants.
 - Do not place `flex_notes` inside `resume_data`; it is prompt metadata only.
 - Do not use the em dash character `—` anywhere in the JSON output. Use a normal hyphen `-` instead.
-- `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences, target 45-50 words, soft maximum 60 words.
+- `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences.
 - For resume bullet arrays such as experience bullets, project bullets, and custom-section bullets, do not end items with a period `.`.
 - If `generation_feedback` is present:
   - `summary` should be one short sentence

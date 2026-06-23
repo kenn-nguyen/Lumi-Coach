@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile2.prompt3.template
-prompt_version: v5.2.0
+prompt_version: v5.2.1
 prompt_label: hard-stretch-resume-writer-source-bullet-rewrite-jd-implied-level-bullet-length
 prompt_notes: Executes Prompt 2 into final resume JSON with source-bullet selection, explicit role bullet budgets, stronger summary proof selection, and reinforcement of coverage-set selection so uncovered proof categories survive in strong roles; adds jd-implied-level calibration (writes summary/scope altitude to Prompt 2's implied level using only source-supported scope, surfaces scope signals rather than burying them, and protects scope proof from the cut-order; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -264,7 +264,7 @@ Bullet writing rule:
 - When the source bullet's strongest PM signal is diagnosis, unmet-need discovery, or product judgment, lead with that insight instead of burying it in a trailing `by ...` clause.
 - Do not rewrite a diagnosis-led PM bullet into an implementation-led checklist of modules, rules, or artifacts if that would make the bullet sound more junior or more execution-only.
 - If a launch, productization, or deployment bullet becomes implementation-heavy after compression, restore the strongest source-supported problem thesis or unmet-need insight to the opening clause.
-- Prefer starting with a verb that shows direction of change when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`, `Built`.
+- Prefer starting with a verb that shows direction of change when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`, `Redirected`, `Refocused`, `Pivoted`, `Built`.
 - If no directional-result opener is clean, use the clearest strong verb available.
 - When two adjacent bullets in the same role would naturally open with the same verb, vary the opener if a similarly strong truthful alternative exists.
 - Do not force weak or awkward synonym swaps only to avoid repetition.

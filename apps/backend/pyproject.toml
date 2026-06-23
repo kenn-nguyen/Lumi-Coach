@@ -1,6 +1,6 @@
 [project]
 name = "rm-backend"
-version = "2.2.6"
+version = "2.2.7"
 description = "SOM Career Coach Backend API"
 requires-python = ">=3.13"
 dependencies = [

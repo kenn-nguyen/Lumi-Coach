@@ -332,7 +332,7 @@ describe("account-scoped extension storage", () => {
     expect((await getUserAssets()).prompt1TemplateAsset).toBeNull();
   });
 
-  it("defaults prompt source mode to extension for the temporary developer account", async () => {
+  it("defaults prompt source mode to server for all accounts", async () => {
     await setExtensionAuth(
       createAuth({
         id: "admin-user",
@@ -346,7 +346,7 @@ describe("account-scoped extension storage", () => {
       name: "Kenn",
     });
 
-    expect((await getUserAssets()).promptDefaultsMode).toBe("extension");
+    expect((await getUserAssets()).promptDefaultsMode).toBe("server");
   });
 
   it("defaults prompt source mode to server for normal accounts and persists explicit changes", async () => {
