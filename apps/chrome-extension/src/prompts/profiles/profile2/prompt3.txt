@@ -1,7 +1,7 @@
 ---
 prompt_artifact: profile2.prompt3.template
-prompt_version: v5.1.0
-prompt_label: hard-stretch-resume-writer-source-bullet-rewrite-jd-implied-level
+prompt_version: v5.2.0
+prompt_label: hard-stretch-resume-writer-source-bullet-rewrite-jd-implied-level-bullet-length
 prompt_notes: Executes Prompt 2 into final resume JSON with source-bullet selection, explicit role bullet budgets, stronger summary proof selection, and reinforcement of coverage-set selection so uncovered proof categories survive in strong roles; adds jd-implied-level calibration (writes summary/scope altitude to Prompt 2's implied level using only source-supported scope, surfaces scope signals rather than burying them, and protects scope proof from the cut-order; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
@@ -297,8 +297,10 @@ Bullet writing rule:
 - Exception: when a scope, cross-team, or org-influence signal is the proof substantiating the JD-implied level, do not cut it first; treat it as an ownership anchor, not background context.
 - Resolve Prompt 2 conflicts in favor of guardrails and clean readability.
 
-Target bullets at 30-50 words.
-Lead bullets or dense high-value proof bullets may use the 50-55 word range when readability stays strong.
+Target normal bullets at 30-46 words; aim to stay within ~2 resume lines.
+High-value bullets may run 45-52 words, but use at most 2 per role and do not overuse them.
+Compressed current-role bullets: 38-43 words (~2 resume lines).
+Older or long-past roles: 25-45 words.
 Do not shorten a bullet below usefulness just to hit the low end of the range.
 If the bullet is still easy to scan, keep the extra distinct proof detail.
 If a bullet reads like Prompt 2 fields pasted together, rewrite it into a sharper natural resume bullet.

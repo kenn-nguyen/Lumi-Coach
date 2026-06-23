@@ -1,7 +1,7 @@
 ---
 prompt_artifact: profile5.prompt3.template
-prompt_version: v3.3.0
-prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level
+prompt_version: v3.6.0
+prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level-aligned-summary-concrete-execution-bullet-length
 prompt_notes: Executes Prompt 2 into final resume JSON with execution-heavy PM/Senior PM bullet writing, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned attribution for technical depth, ATS balance, bridge-title handling, and preservation of distinct JD-relevant outcome, diagnosis, and mechanism anchors when simplifying dense bullets; adds jd-implied-level calibration (writes summary/bullet altitude to Prompt 2's implied level using only source-supported scope, keeps scope signals forward, and protects them from trimming; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
@@ -190,6 +190,8 @@ Company/team label naturalization:
 Summary execution:
 - One short paragraph; preferably one sentence.
 - Target 45-50 words; soft maximum 60 words when the extra room materially improves differentiation.
+- Read like a buyer-facing positioning pitch, not a neutral overview.
+- The first clause should make a strong hiring-manager-facing promise.
 - Lead with the strongest validated target arena identity; when the exact JD role identity is not close enough for the title, use a portable bridge identity plus the most differentiating supported proof cluster.
 - PM summaries should read execution/result-forward.
 - Senior PM summaries should read broader in product arena or customer/problem-space ownership plus scaled execution or operating leverage, while staying concrete and shipped-proof-based.
@@ -205,6 +207,7 @@ Summary/excitement-anchor execution:
 - Do not reduce a risk/infrastructure story to pure adoption scale when Prompt 2 gave success, reliability, false rejection, fraud, or quality metrics as the distinctive proof.
 - Maximum 3 numbers in the summary unless the phrase is exceptionally clean.
 - If multiple metrics compete, prioritize the metric cluster that most directly proves the target role's core arena.
+- Prefer exact production, deployment, adoption, success, or quality proof over a broader summary phrase when both fit naturally.
 - Make the final phrase land as a hook, not a list.
 
 Summary hook compression:
@@ -216,6 +219,8 @@ Summary hook compression:
 - Prefer `Senior PM` or the user's source seniority wording when it reads cleaner than `Senior product leader`.
 - Do not make Senior PM summaries vague, leadership-only, or strategy-only.
 - Do not include both a long product-surface list and several metrics in the same summary.
+- The summary should carry one direct builder or shipped-work proof and one strongest deployment or production proof.
+- If the summary can support a sharper concrete proof without becoming crowded, keep the proof and drop umbrella wording first.
 
 Summary naturalization:
 - If Prompt 2 `summary_lead` uses an internal company/team label, rewrite it into the market-natural equivalent when that sounds more credible.
@@ -277,12 +282,16 @@ For each bullet, synthesize:
 - A strong bullet may retain up to 3 non-redundant anchors when it still reads as one coherent execution story: 1 primary result, 1 primary mechanism, and 1 supporting diagnosis, tradeoff, constraint, or outcome anchor.
 
 Use the metric early, but omit secondary metrics when they make the bullet feel crowded.
-- Lead achievement bullets with a directional result verb when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`.
+- Lead achievement bullets with a directional result verb when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`, `Built`.
 - Treat `Led`, `Owned`, or `Managed` as fallback verbs, not preferred openers.
 - Use them only for genuinely scope-setting bullets or cases where the outcome is already explicit and cannot truthfully lead.
+- When two adjacent bullets in the same role would naturally open with the same verb, vary the opener if a similarly strong truthful alternative exists.
+- Do not force weak or awkward synonym swaps only to avoid repetition.
 
-Target bullets at 25-43 words.
-Compressed current-role bullets may use the 38-43 word range when they must combine result, primary execution pattern, and up to 1-2 supporting details without dropping the strongest falsifiable proof.
+Target normal bullets at 30-46 words; aim to stay within ~2 resume lines.
+High-value bullets may run 45-52 words, but use at most 2 per role and do not overuse them.
+Compressed current-role bullets: 38-43 words (~2 resume lines), combining result, primary execution pattern, and up to 1-2 supporting details without dropping the strongest falsifiable proof.
+Older or long-past roles: 25-45 words.
 If a bullet reads like an instruction turned into a sentence, rewrite it into a sharper resume bullet.
 
 Final bullet clarity gate:
@@ -297,6 +306,9 @@ Final bullet clarity gate:
 - If two details do the same job, keep the sharper and more JD-relevant one.
 - Do not rewrite a concrete anchor into generic abstraction when a sharper supported noun or outcome exists.
 - Do not collapse named unmet needs, failure patterns, tradeoff streams, held-constant metrics, or strong business outcomes into vague phrases such as `patterns`, `direction`, `needs`, `capabilities`, or `delivery` when one sharp anchor can be preserved.
+- If CURRENT_RESUME or a Prompt 2 instruction names a deployment surface, production signal, customer signal, or unusually specific proof detail, preserve at least one such named specific when it still fits naturally.
+- Avoid inflated wrapper phrasing such as `measurable business impact`, `hands-on building`, `enterprise scale`, or `workflow automation` when a sharper concrete source detail exists; use such phrasing only when no stronger concrete proof fits.
+- When synthesizing from a Prompt 2 instruction, anchor the named concrete specific (metric, deployment surface, customer, production signal) from CURRENT_RESUME; do not let synthesis flatten a concrete source detail into a generic phrase. Reframe source-supported substance only, never invent.
 
 Decision-over-artifact execution rule:
 - When writing final bullets, make the Z mechanism a product decision or operating choice, not a list of work artifacts.
@@ -739,7 +751,7 @@ Additional schema rules:
 - Use `flex_notes` only for small non-critical writer notes needed by future prompt variants.
 - Do not place `flex_notes` inside `resume_data`; it is prompt metadata only.
 - Do not use the em dash character `—` anywhere in the JSON output. Use a normal hyphen `-` instead.
-- `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences, target 35-45 words, and hard maximum 50 words.
+- `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences, target 45-50 words, soft maximum 60 words.
 - For resume bullet arrays such as experience bullets, project bullets, and custom-section bullets, do not end items with a period `.`.
 - If `generation_feedback` is present:
   - `summary` should be one short sentence

@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile5.prompt2.template
-prompt_version: v2.2.0
-prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level
-prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned technical attribution, seniority-shaped summary hooks, bridge-title logic, and preservation of distinct JD-relevant mechanism, diagnosis, and outcome anchors when compressing dense proof; adds jd-implied-level calibration (positions summary/scope/proof to Prompt 1 target_seniority/LEVEL_SIGNAL when the stated title is lower, bounded by source scope evidence, with a scope gap question when evidence is thin; headline title level unchanged).
+prompt_version: v2.5.0
+prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v14-distinct-anchor-compression-hm-value-driven-aligned-summary-concrete-execution
+prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, seniority-shaped summary hooks, bridge-title logic, and preservation of distinct JD-relevant anchors when compressing dense proof; adds jd-implied-level calibration and hiring-manager value-driven proof selection (P2, as the hiring manager, builds a value function around the standout axis — preferred_qualifications/near_gate_qualifications/hiring_manager_proof/hardest responsibilities — treats must-haves as table stakes, ranks the candidate's real proofs by standout match, and uses the generic evidence-strength list only as a tiebreak).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Resolved hiring manager persona from Prompt 1:
@@ -15,6 +15,8 @@ Persona resolution:
 - If both sources are empty or weak, use this fallback: a skeptical but persuadable hiring manager who trusts concrete mechanisms, metrics, scope, and defensible adjacent-to-native translation, and rejects unsupported target-role overclaims.
 
 Adopt the resolved hiring manager persona as the reader and decision maker for the entire brief. Do not write for a generic recruiter. Every recommendation must answer: would this specific hiring manager believe the wording if the candidate defended it in an interview with concrete evidence?
+
+- You are this hiring manager — do the weighting yourself. Before selecting proof, build his value function from Prompt 1 (all raw, unranked input). Separate two tiers: TABLE STAKES = `gating_requirements`/`gating_qualifications` (must be covered to pass the screen, but they do NOT make a candidate stand out); STANDOUT AXIS = `preferred_qualifications`, `near_gate_qualifications`, `hiring_manager_proof`, and the most demanding `core_responsibilities` — the qualities that make this hiring manager choose one candidate over another. Name the 3-5 standout qualities he weights most and why. Then score the candidate's real, source-supported proofs by how strongly each satisfies those standout qualities with credible evidence. Proofs that hit the standout qualities lead the title, summary, and first bullets of the most relevant role; table-stakes are covered somewhere but do not lead; weak matches support or drop. For each promoted proof, make clear which standout quality it answers and how to surface it (lead vs support, framing/altitude).
 
 Your job:
 Convert Prompt 1's JD intelligence plus the current resume plus the story bank into a ranked, hard-stretch editorial brief that Prompt 3 can execute without improvising.
@@ -163,15 +165,18 @@ Summary-lead compression rule:
   - title carries explicit level;
   - summary carries level-shaped positioning;
   - lead bullet carries the strongest proof, while scope proof can move to bullet 2 when that sells better.
+- The summary should read like the reason to hire this candidate, not a neutral background overview.
 - For PM targets, make the summary execution/result-forward.
 - For Senior PM targets, make the summary broader in product arena ownership plus scaled execution or operating-leverage proof; do not make it a PM summary plus the word `Senior`.
 - Calibrate to the JD's implied level, not its literal title: treat Prompt 1 `target_seniority` and any `LEVEL_SIGNAL` note as the level to position toward. When the stated title is lower than the implied level, calibrate summary breadth, scope-bullet framing, proof ordering, and top skills to the implied level. Do NOT raise the headline title's role family or level — only the positioning altitude of summary/scope/proof.
 - Defensible calibration vs invented seniority: calibrating altitude to the implied level is allowed only when the candidate's own source evidence shows scope at or near that level (multi-team, multi-product, platform, cross-functional, or org ownership). If the evidence is thin, position at the highest level the evidence defends and raise a scope gap question; never assert a higher employment seniority, team size, or org scope than the evidence supports.
 - If the exact JD role identity is not close enough for the title, let `summary_lead` bridge into the target arena through a portable PM identity plus the strongest differentiating proof cluster.
 - Choose the proof cluster that most differentiates the candidate for this role, not merely the biggest raw number.
+- Make one strong hiring-manager-facing promise, then prove it with the smallest believable proof cluster.
 - Use at most 2 metric clusters in `summary_lead`, and keep them role-coherent. If the strongest proof comes from different employers or time periods, either make the boundary explicit or keep the summary anchored to one role.
 - Allow a slightly longer summary hook when the extra room materially improves differentiation, as long as it still reads like one clean hiring-manager-facing sentence.
 - Do not force education, transition language, or every product surface into `summary_lead`.
+- If the summary reads like a category list, biography, or balanced abstract, rewrite it into a sharper claim -> proof pitch.
 
 Scope-bullet polish rule:
 - When a scope bullet is used, it should be bold, readable, and worth the weaker verb form.
@@ -268,8 +273,9 @@ Competitiveness/safety scoring before output:
 - If reliability is below 9 because instructions are too vague, make bullet instructions more componentized and deterministic.
 - Do not output the scores unless the schema has a place for them; use the audit to revise.
 
-Evidence-strength ranking:
-- Rank proof by hiring-manager force:
+Evidence-strength ranking (default/tiebreak only):
+- The primary ranking is match to this hiring manager's value function (the standout axis above). Use the generic order below only when the JD/persona gives no clear preference, or to break ties between proofs that match the value function equally. Do not let it override a proof the hiring manager values more for this specific role.
+- Generic proof order by hiring-manager force:
   1. target-native product/domain ownership with scale
   2. 0-to-1 launch/adoption in target-adjacent arena
   3. measurable friction/reliability/security/adoption improvement
@@ -545,6 +551,7 @@ Bullet instruction rules:
 - `optional_context` may contain `FUNCTIONALLY_EQUIVALENT:` defense and guardrails.
 - `do_not_include` should block unsupported subclaims.
 - Every instruction must give Prompt 3 XYZ materials: X result/claim, Y proof/metric/scope, Z mechanism.
+- Keep the named concrete specifics from the source (named deployment surface, production/customer signal, specific metric, unusually specific detail) inside `primary_message`/`primary_metric`; do not abstract them into generic wrappers — Prompt 3 needs the specific to write concretely.
 
 Hard XYZ example pattern:
 - Some bullets have hidden XYZ that is easy to miss. Prompt 2 must expose it clearly for Prompt 3.
