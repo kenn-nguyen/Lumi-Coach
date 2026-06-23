@@ -30,6 +30,46 @@ describe("stripEditorNotes", () => {
     expect(stripEditorNotes(null)).toBe(null);
     expect(stripEditorNotes(42)).toBe(42);
   });
+
+  // Real-world forms found in stored master resumes (entity-encoded comments,
+  // <em> wrappers, and plain-text parentheticals).
+  it("strips an entity-encoded comment wrapped in <em>", () => {
+    expect(
+      stripEditorNotes(
+        "reusable risk-decisioning features <em>&lt;!--Don't keep writer's note in the final bullet. Writer's note: suitable for trust roles--&gt;</em>",
+      ),
+    ).toBe("reusable risk-decisioning features");
+  });
+
+  it("strips an entity-encoded comment with the <em> opening inside it", () => {
+    expect(
+      stripEditorNotes(
+        "where the durable revenue and margin sat&lt;!--<em> Don't keep writer's note. Writer's note: proves P&L ownership --&gt;</em>",
+      ),
+    ).toBe("where the durable revenue and margin sat");
+  });
+
+  it("strips a plain-text writer's-note parenthetical", () => {
+    expect(
+      stripEditorNotes(
+        "scaled to 500K daily requests. (Don't keep writer's note in the final bullet. Writer's note: highly relevant for client-facing positions)",
+      ),
+    ).toBe("scaled to 500K daily requests.");
+  });
+
+  it("preserves a genuine parenthetical that is not a note", () => {
+    const text =
+      "delivered a prioritized roadmap to Asia product leadership (MBA consulting project)";
+    expect(stripEditorNotes(text)).toBe(text);
+  });
+
+  it("strips the note but keeps an adjacent genuine parenthetical", () => {
+    expect(
+      stripEditorNotes(
+        "delivered roadmap (MBA consulting project) <em>&lt;!--Writer's note: preserve MBA info--&gt;</em>",
+      ),
+    ).toBe("delivered roadmap (MBA consulting project)");
+  });
 });
 
 describe("stripEditorNotesDeep", () => {

@@ -1551,6 +1551,49 @@ function canUsePartialJson(result) {
   }
 }
 
+// Runs in the page's MAIN world: makes the popup always report itself as
+// visible/focused so the provider (Claude/Gemini) does not pause streaming or
+// rendering when the window is backgrounded (another app focused, or covered by
+// the main window). Without this the run stalls until the user clicks back.
+function injectedVisibilityKeepAlive() {
+  if (window.__rmVisibilityKeepAlive) return;
+  window.__rmVisibilityKeepAlive = true;
+  try {
+    const force = (obj, prop, value) => {
+      try {
+        Object.defineProperty(obj, prop, { configurable: true, get: () => value });
+      } catch {}
+    };
+    force(document, 'hidden', false);
+    force(document, 'visibilityState', 'visible');
+    force(document, 'webkitHidden', false);
+    force(document, 'webkitVisibilityState', 'visible');
+    try {
+      document.hasFocus = () => true;
+    } catch {}
+    // Swallow page-level visibility events so the site's own pause handlers
+    // never fire. Scoped to visibilitychange only — not blur/focus — to avoid
+    // interfering with the composer's input handling.
+    const swallow = (event) => event.stopImmediatePropagation();
+    for (const name of ['visibilitychange', 'webkitvisibilitychange']) {
+      document.addEventListener(name, swallow, true);
+      window.addEventListener(name, swallow, true);
+    }
+  } catch {}
+}
+
+async function installVisibilityKeepAlive(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: injectedVisibilityKeepAlive,
+    });
+  } catch {
+    // Best-effort — never block the run if the keep-alive can't be installed.
+  }
+}
+
 async function openWebAutomationSession(config, options = {}) {
   const requestedTargetUrl = options.targetUrl ?? config.defaultTargetUrl;
   const promptLabel = options.promptLabel ?? 'Prompt';
@@ -1589,6 +1632,7 @@ async function openWebAutomationSession(config, options = {}) {
     logInfo(config.scope, config.waitForTabMessage, { promptLabel, popupWindowId });
     const tabId = await waitForProviderTab(popupWindowId, config);
     logInfo(config.scope, config.tabReadyMessage, { promptLabel, popupWindowId, tabId });
+    await installVisibilityKeepAlive(tabId);
     if (warmupDelayMs > 0) {
       logInfo(config.scope, config.waitForHydrationMessage, { promptLabel, tabId, warmupDelayMs });
       const readiness = await waitForWebAutomationStartupReady(

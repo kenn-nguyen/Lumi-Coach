@@ -38,3 +38,44 @@ def test_preserves_markdown_hard_break_double_space() -> None:
 def test_non_string_returned_unchanged() -> None:
     assert strip_editor_notes(None) is None
     assert strip_editor_notes(42) == 42
+
+
+# Real-world forms found in stored master resumes: entity-encoded comments,
+# <em> wrappers, and plain-text writer's-note parentheticals.
+def test_strips_entity_encoded_comment_wrapped_in_em() -> None:
+    text = (
+        "reusable risk-decisioning features "
+        "<em>&lt;!--Don't keep writer's note in the final bullet. "
+        "Writer's note: suitable for trust roles--&gt;</em>"
+    )
+    assert strip_editor_notes(text) == "reusable risk-decisioning features"
+
+
+def test_strips_entity_comment_with_em_opening_inside() -> None:
+    text = (
+        "where the durable revenue and margin sat"
+        "&lt;!--<em> Don't keep writer's note. Writer's note: proves P&L --&gt;</em>"
+    )
+    assert strip_editor_notes(text) == "where the durable revenue and margin sat"
+
+
+def test_strips_plain_text_writer_note_parenthetical() -> None:
+    text = (
+        "scaled to 500K daily requests. "
+        "(Don't keep writer's note in the final bullet. "
+        "Writer's note: highly relevant for client-facing positions)"
+    )
+    assert strip_editor_notes(text) == "scaled to 500K daily requests."
+
+
+def test_preserves_genuine_parenthetical() -> None:
+    text = "delivered a prioritized roadmap to Asia product leadership (MBA consulting project)"
+    assert strip_editor_notes(text) == text
+
+
+def test_strips_note_but_keeps_adjacent_genuine_parenthetical() -> None:
+    text = (
+        "delivered roadmap (MBA consulting project) "
+        "<em>&lt;!--Writer's note: preserve MBA info--&gt;</em>"
+    )
+    assert strip_editor_notes(text) == "delivered roadmap (MBA consulting project)"

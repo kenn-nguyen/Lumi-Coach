@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile5.prompt3.template
-prompt_version: v3.8.0
+prompt_version: v3.8.1
 prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level-aligned-summary-concrete-execution-bullet-length-upstream-judgment
 prompt_notes: Executes Prompt 2 into final resume JSON with execution-heavy PM/Senior PM bullet writing, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned attribution for technical depth, ATS balance, bridge-title handling, and preservation of distinct JD-relevant outcome, diagnosis, and mechanism anchors when simplifying dense bullets; adds jd-implied-level calibration (writes summary/bullet altitude to Prompt 2's implied level using only source-supported scope, keeps scope signals forward, and protects them from trimming; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -337,7 +337,7 @@ Causal-Z execution rule:
 - Apply that preference from the hiring manager's product standpoint:
   - for PM and senior PM targets, the top 2-3 bullets should remain execution-heavy: lead with the shipped change, operating choice, workflow redesign, rollout pattern, packaging decision, threshold, or other concrete lever, then preserve diagnosis, insight, or tradeoff when it materially strengthens credibility;
   - for more strategy-heavy director/head-of-product targets, diagnosis or tradeoff may lead when the source clearly supports it and execution still appears as proof.
-- If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof. But a source-proven problem reframing or direction bet is not secondary rationale: keep it in the main clause; do not bury it in a trailing clause or drop it. When the source uses a contrast ('rather than X', 'instead of X'), preserve that contrast — it proves the judgment was deliberate, not the default path.
+- If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof. But a source-proven problem reframing or direction bet is not secondary rationale: keep it in the main clause; do not bury it in a trailing clause or drop it. When the source names the chosen path against a rejected or prior alternative — in any form — preserve that contrast; it proves the judgment was deliberate, not the default path.
 - Exception: when a scope, cross-team, or org-influence signal substantiates the JD-implied level, treat it as primary proof — do not trim or drop it as a lower-value specific or secondary detail.
 - Use the bare mechanism form when the thing built or changed is itself the differentiator, or when rationale-heavy framing would sound inflated in an interview.
 - Avoid final mechanisms that read like `by refining A, B, C, and D` unless the list itself is the product strategy.

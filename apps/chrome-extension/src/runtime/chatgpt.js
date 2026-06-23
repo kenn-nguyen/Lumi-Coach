@@ -1438,6 +1438,49 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     });
 }
 
+// Runs in the page's MAIN world: makes the popup always report itself as
+// visible/focused so ChatGPT does not pause streaming/rendering when the window
+// is backgrounded (another app focused, or covered by the main window). Without
+// this the run stalls until the user clicks back to the popup.
+function injectedVisibilityKeepAlive() {
+  if (window.__rmVisibilityKeepAlive) return;
+  window.__rmVisibilityKeepAlive = true;
+  try {
+    const force = (obj, prop, value) => {
+      try {
+        Object.defineProperty(obj, prop, { configurable: true, get: () => value });
+      } catch {}
+    };
+    force(document, 'hidden', false);
+    force(document, 'visibilityState', 'visible');
+    force(document, 'webkitHidden', false);
+    force(document, 'webkitVisibilityState', 'visible');
+    try {
+      document.hasFocus = () => true;
+    } catch {}
+    // Swallow the page-level visibility events so the site's own pause handlers
+    // never fire. Scoped to visibilitychange only — not blur/focus — to avoid
+    // interfering with the composer's input handling.
+    const swallow = (event) => event.stopImmediatePropagation();
+    for (const name of ['visibilitychange', 'webkitvisibilitychange']) {
+      document.addEventListener(name, swallow, true);
+      window.addEventListener(name, swallow, true);
+    }
+  } catch {}
+}
+
+async function installVisibilityKeepAlive(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: injectedVisibilityKeepAlive,
+    });
+  } catch {
+    // Best-effort — never block the run if the keep-alive can't be installed.
+  }
+}
+
 async function openChatGptSession(options = {}) {
   const requestedTargetUrl = options.targetUrl ?? DEFAULT_CHATGPT_TARGET_URL;
   const promptLabel = options.promptLabel ?? 'Prompt';
@@ -1472,6 +1515,7 @@ async function openChatGptSession(options = {}) {
     logInfo('ChatGptAutomation', 'Waiting for ChatGPT tab to become reachable.', { promptLabel, popupWindowId });
     const tabId = await waitForChatGptTab(popupWindowId);
     logInfo('ChatGptAutomation', 'ChatGPT tab reachable.', { promptLabel, popupWindowId, tabId });
+    await installVisibilityKeepAlive(tabId);
     if (warmupDelayMs > 0) {
       logInfo('ChatGptAutomation', 'Probing ChatGPT startup readiness.', {
         promptLabel,
@@ -1564,6 +1608,8 @@ async function performChatGptRunSessionReset(normalizedRunId, session, options =
   const updatedTab = await chrome.tabs.update(session.tabId, { url: targetUrl });
   const nextTabId = updatedTab?.id ?? session.tabId;
   await waitForChatGptTabById(nextTabId);
+  // The navigation above dropped the MAIN-world override; re-install it.
+  await installVisibilityKeepAlive(nextTabId);
   if (warmupDelayMs > 0) {
     const readiness = await waitForChatGptStartupReady(nextTabId, warmupDelayMs, {
       acceptAnyProbeResult: true,
