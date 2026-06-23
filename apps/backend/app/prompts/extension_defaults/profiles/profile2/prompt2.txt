@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v4.1.0
-prompt_label: hiring-manager-hard-stretch-brief-source-bullet-selection
-prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with explicit role budgets, source-bullet selection metadata, stronger summary proof ranking, and coverage-set bullet selection so major roles preserve distinct proof categories.
+prompt_version: v4.2.0
+prompt_label: hiring-manager-hard-stretch-brief-source-bullet-selection-jd-implied-level
+prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with explicit role budgets, source-bullet selection metadata, stronger summary proof ranking, and coverage-set bullet selection so major roles preserve distinct proof categories; adds jd-implied-level calibration (positions summary/scope/proof to Prompt 1 target_seniority/LEVEL_SIGNAL when the stated title is lower, bounded by source scope evidence, with a scope gap question when evidence is thin; headline title level unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Resolved hiring manager persona from Prompt 1:
@@ -86,7 +86,7 @@ Calibrated boldness ladder:
 - Tier 1 - supported bridge: translates source work into target-domain language but remains visibly cautious. Use for genuinely adjacent evidence.
 - Tier 2 - functionally equivalent target-native: use clean JD-native language because the source evidence maps to the same product surface, user workflow, risk surface, customer problem, system capability, or business outcome. This is the default target for strong resumes.
 - Tier 3 - bold positioning headline: uses the JD's strongest clean domain/team/category phrase in title, summary, or lead bullet. Use when the candidate can defend the arena through multiple concrete proof points.
-- Forbidden - invented: implies unsupported ownership, tools, protocols, technical implementation, customer type, regulation, seniority, or system authority. Block it.
+- Forbidden - invented: implies unsupported ownership, tools, protocols, technical implementation, customer type, regulation, seniority or scope beyond what source evidence defends, or system authority. Block it.
 
 Default stance:
 - For the top 2-3 role-winning JD phrases, attempt Tier 2 or Tier 3 first.
@@ -164,6 +164,8 @@ Summary-lead compression rule:
 - The summary should read like the reason to hire this candidate, not a neutral background overview.
 - For PM targets, make the summary execution/result-forward.
 - For Senior PM targets, make the summary broader in product arena ownership plus scaled execution or operating-leverage proof; do not make it a PM summary plus the word `Senior`.
+- Calibrate to the JD's implied level, not its literal title: treat Prompt 1 `target_seniority` and any `LEVEL_SIGNAL` note as the level to position toward. When the stated title is lower than the implied level, calibrate summary breadth, scope-bullet framing, proof ordering, and top skills to the implied level. Do NOT raise the headline title's role family or level — only the positioning altitude of summary/scope/proof.
+- Defensible calibration vs invented seniority: calibrating altitude to the implied level is allowed only when the candidate's own source evidence shows scope at or near that level (multi-team, multi-product, platform, cross-functional, or org ownership). If the evidence is thin, position at the highest level the evidence defends and raise a scope gap question; never assert a higher employment seniority, team size, or org scope than the evidence supports.
 - If the exact JD role identity is not close enough for the title, let `summary_lead` bridge into the target arena through a portable PM identity plus the strongest differentiating proof cluster.
 - Choose the proof cluster that most differentiates the candidate for this role, not merely the biggest raw number.
 - Make one strong hiring-manager-facing promise, then prove it with the smallest believable proof cluster.
@@ -177,7 +179,7 @@ Scope-bullet strategy:
 - A scope bullet should justify itself through arena, customer/user context, scale, and seniority.
 - Prefer one umbrella product/domain category over a taxonomy list of sub-products.
 - If the same truth is stronger as an achievement/result bullet, do not force a scope bullet.
-- Keep team/org scope only when it materially improves seniority credibility.
+- Keep team/org scope only when it materially improves seniority credibility, or when the JD's implied level is higher than the stated title and a scope signal is needed to substantiate that level.
 - Do not overload a scope bullet with every true scale, workflow, team, revenue, or architecture detail.
 - Resolve scope-bullet overpacking in Prompt 2 before passing instructions to Prompt 3.
 
@@ -671,6 +673,7 @@ Examples of tagged gaps:
 - `[gap_type=near_gate | impact=high | action=must_add_if_true | resume_action=strengthen_existing_bullet | target=payment-authentication success bullet] Would strengthen the existing bullet: can you provide the 1-2 workflow or technical details that make the metric improvement more believable?`
 - `[gap_type=differentiator | impact=medium | action=optional_storybank_add | resume_action=replace_existing_bullet | target=weakest lower-priority bullet] Could replace a weaker bullet only if strong: do you have a candidate-owned story showing [capability], [customer/user], and [metric/outcome] with concrete proof?`
 - `[gap_type=interview_prep | impact=low | action=interview_prep_only | resume_action=interview_prep_only | target=interview defense] Prepare an interview explanation of [boundary/unsupported surface] without forcing it into the resume.`
+- `[gap_type=differentiator | impact=high | action=optional_storybank_add | resume_action=summary_title_or_skill_unlock | target=seniority scope] Would unlock positioning at the level this JD implies: do you have a candidate-owned story showing cross-team, multi-product, platform, or org-level scope (teams influenced, products owned, scale) with concrete proof?`
 
 Final context-leak audit:
 - Remove any company-wide metric from proof_points, summary_lead, excitement_anchor, and selected bullets unless it appears in candidate-owned bullet/project evidence.

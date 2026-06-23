@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile5.prompt3.template
-prompt_version: v3.2.2
-prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression
-prompt_notes: Executes Prompt 2 into final resume JSON with execution-heavy PM/Senior PM bullet writing, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned attribution for technical depth, ATS balance, bridge-title handling, and preservation of distinct JD-relevant outcome, diagnosis, and mechanism anchors when simplifying dense bullets.
+prompt_version: v3.3.0
+prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level
+prompt_notes: Executes Prompt 2 into final resume JSON with execution-heavy PM/Senior PM bullet writing, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned attribution for technical depth, ATS balance, bridge-title handling, and preservation of distinct JD-relevant outcome, diagnosis, and mechanism anchors when simplifying dense bullets; adds jd-implied-level calibration (writes summary/bullet altitude to Prompt 2's implied level using only source-supported scope, keeps scope signals forward, and protects them from trimming; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 You are a top-tier PM resume writer for competitive product roles.
@@ -193,6 +193,7 @@ Summary execution:
 - Lead with the strongest validated target arena identity; when the exact JD role identity is not close enough for the title, use a portable bridge identity plus the most differentiating supported proof cluster.
 - PM summaries should read execution/result-forward.
 - Senior PM summaries should read broader in product arena or customer/problem-space ownership plus scaled execution or operating leverage, while staying concrete and shipped-proof-based.
+- When Prompt 2 calibrates to a JD-implied level higher than the candidate's stated title, write the summary and scope-bullet altitude to that implied level using only source-supported scope; keep the headline title's role family and level truthful (do not bump the title).
 - Include the excitement anchor if Prompt 2 placement is `summary` or `both`.
 - No gap disclaimers, no transition language, no hedge words.
 - If Prompt 2 summary language contains defense wording, rewrite to the clean positive substitute.
@@ -292,6 +293,7 @@ Final bullet clarity gate:
 - If a bullet is accurate but hard to parse, it is not finished.
 - When simplifying a dense bullet, keep the strongest set of non-redundant source-supported anchors and drop lower-value specifics first.
 - Usually preserve 1 primary result, 1 primary mechanism, and 1 supporting diagnosis, tradeoff, constraint, or outcome anchor when that extra detail materially improves credibility for this JD.
+- When a Prompt 2 instruction carries cross-team, multi-product, platform, or org-influence scope and calibrates to a higher implied level, keep that scope detail forward in the bullet — reframing supported substance only, never inventing scope not in the source.
 - If two details do the same job, keep the sharper and more JD-relevant one.
 - Do not rewrite a concrete anchor into generic abstraction when a sharper supported noun or outcome exists.
 - Do not collapse named unmet needs, failure patterns, tradeoff streams, held-constant metrics, or strong business outcomes into vague phrases such as `patterns`, `direction`, `needs`, `capabilities`, or `delivery` when one sharp anchor can be preserved.
@@ -324,6 +326,7 @@ Causal-Z execution rule:
   - for PM and senior PM targets, the top 2-3 bullets should remain execution-heavy: lead with the shipped change, operating choice, workflow redesign, rollout pattern, packaging decision, threshold, or other concrete lever, then preserve diagnosis, insight, or tradeoff when it materially strengthens credibility;
   - for more strategy-heavy director/head-of-product targets, diagnosis or tradeoff may lead when the source clearly supports it and execution still appears as proof.
 - If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof.
+- Exception: when a scope, cross-team, or org-influence signal substantiates the JD-implied level, treat it as primary proof — do not trim or drop it as a lower-value specific or secondary detail.
 - Use the bare mechanism form when the thing built or changed is itself the differentiator, or when rationale-heavy framing would sound inflated in an interview.
 - Avoid final mechanisms that read like `by refining A, B, C, and D` unless the list itself is the product strategy.
 - If a role's first two bullets use the same Z shape and another supported shape exists, vary them.
