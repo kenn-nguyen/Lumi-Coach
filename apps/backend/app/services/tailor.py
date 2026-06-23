@@ -28,6 +28,7 @@ from app.services.llm_stage_config import (
     get_stage_overrides as _get_stage_overrides_from_file,
     get_stage_provider_config,
 )
+from app.services.editor_notes import strip_editor_notes
 
 logger = logging.getLogger(__name__)
 
@@ -519,13 +520,19 @@ async def run_tailor_pipeline(
         _update_progress(resume_id, user_id, "prompt3")
 
         p3_config, p3_kwargs = _resolve_stage_llm_config("prompt3", llm_config, user_id)
+        # Editor-note firewall: Prompt 2 saw the raw resume so it could interpret
+        # author directives; Prompt 3 must never see a `<!-- ... -->` span, or it
+        # could surface in the final resume. Strip every source Prompt 3 reads.
+        _stripped_resume = strip_editor_notes(resume_content)
         p3_vars = {
             **base_vars,
+            "CURRENT_RESUME": _stripped_resume,
+            "MASTER_RESUME": _stripped_resume,
             "PROMPT1_JSON": json.dumps(p1_json) if p1_json else "",
             "PROMPT1_RESPONSE": p1_raw,
             "PROMPT1_HIRING_MANAGER_PERSONA_FROM_FLEX_NOTES": "",
-            "PROMPT2_JSON": json.dumps(p2_json) if p2_json else "",
-            "PROMPT2_RESPONSE": p2_raw,
+            "PROMPT2_JSON": strip_editor_notes(json.dumps(p2_json)) if p2_json else "",
+            "PROMPT2_RESPONSE": strip_editor_notes(p2_raw),
         }
         p3_prompt = build_prompt("prompt3", prompt_profile_id, p3_vars)
         _p3_start = datetime.now(timezone.utc)

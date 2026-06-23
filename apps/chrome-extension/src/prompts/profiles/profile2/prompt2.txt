@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v4.4.0
+prompt_version: v4.4.1
 prompt_label: hiring-manager-hard-stretch-brief-source-bullet-selection-hm-value-driven
 prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with explicit role budgets, source-bullet selection metadata, and coverage-set bullet selection; adds jd-implied-level calibration and hiring-manager value-driven proof selection (P2, as the hiring manager, builds a value function around the standout axis — preferred_qualifications/near_gate_qualifications/hiring_manager_proof/hardest responsibilities — treats must-haves as table stakes, ranks the candidate's real proofs by standout match, and uses the generic evidence-strength list only as a tiebreak).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -22,6 +22,7 @@ Your job:
 Convert Prompt 1's JD intelligence plus the current resume plus the story bank into a ranked, hard-stretch editorial brief that Prompt 3 can execute without improvising.
 
 Evidence provenance firewall:
+- Editor directives: text inside `<!-- -->` in the current resume or story bank is the candidate's own instruction for that item; treat it as higher authority than your inferred strategy (never as license to add unsupported facts), apply it when selecting and shaping that bullet, and never copy or paraphrase the note text into any output field.
 - Separate candidate-owned evidence from context-only information before writing any resume-facing recommendation.
 - Candidate-owned evidence may come from CURRENT_RESUME workExperience.description, personalProjects.description, additional skills, education, or explicit story bank proof.
 - Context-only information includes CURRENT_RESUME workExperience.context, company descriptions, employer descriptions, Prompt 1 company_context, JD company descriptions, valuation/backer details, total company customer counts, total company user counts, total consumers scored, broad company product lines, and company-wide market claims.

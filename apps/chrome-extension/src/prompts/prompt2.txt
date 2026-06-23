@@ -1,6 +1,6 @@
 ---
 prompt_artifact: prompt2.template
-prompt_version: v4.0.3
+prompt_version: v4.0.4
 prompt_label: positioning-brief-source-bullet-selection
 prompt_notes: Simplifies Prompt 2 into a story-selection brief that ranks positioning, selects source bullets and merge candidates, frames the summary as a buyer-facing wedge, and preserves stronger signature and credibility anchors for Prompt 3.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -24,6 +24,7 @@ Inputs:
 - Story bank = upstream proof inventory that must be converted here into writer-ready guidance
 
 Core principles:
+- Editor directives: text inside `<!-- -->` in the current resume or story bank is the candidate's own instruction for that item; treat it as higher authority than your inferred strategy (never as license to add unsupported facts), apply it when selecting and shaping that bullet, and never copy or paraphrase the note text into any output field.
 - Prompt 2 is the last stage that may read the story bank.
 - Any story-bank value needed downstream must be converted here into explicit JSON fields.
 - Do not rely on Prompt 3 to infer missing proof, ownership nuance, or story placement from the story bank.

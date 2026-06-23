@@ -16,6 +16,7 @@ import {
   renderPrompt4WithMetadata,
 } from "./prompt-loader.js";
 import { scrapeLinkedInJob } from "./linkedin.js";
+import { stripEditorNotes, stripEditorNotesDeep } from "./editor-notes.js";
 import {
   normalizePrompt1Data,
   normalizePrompt2Data,
@@ -1944,6 +1945,15 @@ export async function generateResumeForLinkedInJob(
         stage_label: "strategize_positioning",
       });
     }
+
+    // Editor-note firewall: Prompt 2 has already rendered with raw notes (so it
+    // could interpret author directives). Strip every `<!-- ... -->` span from
+    // everything Prompt 3 will see so a directive can never surface in the final
+    // resume. Mutating promptContext here only affects Prompt 3.
+    promptContext.currentResume = stripEditorNotesDeep(promptContext.currentResume);
+    promptContext.storyboard = stripEditorNotesDeep(promptContext.storyboard);
+    promptContext.prompt2Response = stripEditorNotes(promptContext.prompt2Response);
+    promptContext.prompt2Json = stripEditorNotesDeep(promptContext.prompt2Json);
 
     logInfo("Orchestrator", "Rendering Prompt 3.");
     const prompt3Rendered = await renderPrompt3WithMetadata(
