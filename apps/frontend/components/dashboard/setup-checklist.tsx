@@ -3,7 +3,7 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { Loader2, AlertTriangle, AlertCircle, Check } from 'lucide-react';
+import { Loader2, AlertTriangle, AlertCircle, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SystemStatus } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
@@ -53,7 +53,13 @@ export function SetupChecklist({
 
   const stepsComplete = [step1Done, step2Done].filter(Boolean).length;
 
-  const shouldShowModal = hasFreshApiData && systemStatus !== null && !isSetupDone;
+  // Let the user dismiss the modal (e.g. signed in with the wrong Google
+  // account) so they can reach the account menu and log out / switch. Setup
+  // isn't complete, so the modal returns on the next load — dismissing only
+  // unblocks the current view, it doesn't skip setup.
+  const [dismissed, setDismissed] = useState(false);
+
+  const shouldShowModal = hasFreshApiData && systemStatus !== null && !isSetupDone && !dismissed;
 
   // Lock scroll while setup modal is open
   useEffect(() => {
@@ -65,11 +71,14 @@ export function SetupChecklist({
     };
   }, [shouldShowModal]);
 
-  // Absorb Escape key so it doesn't close other things
+  // Escape dismisses this modal (and is stopped from closing anything else).
   useEffect(() => {
     if (!shouldShowModal) return;
     const block = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') e.stopImmediatePropagation();
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        setDismissed(true);
+      }
     };
     document.addEventListener('keydown', block, true);
     return () => document.removeEventListener('keydown', block, true);
@@ -85,13 +94,24 @@ export function SetupChecklist({
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <div className="relative w-full max-w-lg animate-in fade-in-0 zoom-in-95 duration-200 overflow-hidden rounded-3xl border border-border bg-card shadow-sw-card">
           {/* Header */}
-          <div className="border-b border-border px-6 pt-6 pb-4">
+          <div className="border-b border-border px-6 pt-6 pb-4 pr-14">
             <h2 className="font-serif text-2xl font-semibold leading-none tracking-[-0.04em]">
               Welcome — let&apos;s get you set up
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Complete these two steps before you can start tailoring resumes.
             </p>
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+              Wrong account? Close this and use the account menu to switch or log out.
+            </p>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setDismissed(true)}
+              className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition hover:bg-secondary/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Steps */}
