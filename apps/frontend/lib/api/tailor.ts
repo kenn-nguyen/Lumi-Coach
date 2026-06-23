@@ -11,7 +11,12 @@ import { apiFetch, readApiErrorMessage } from './client';
 
 export type TailorStatus = 'running' | 'completed' | 'failed' | 'canceled';
 
-export type PromptProfileId = 'profile1' | 'profile2' | 'profile3' | 'profile4';
+export type PromptProfileId =
+  | 'profile1'
+  | 'profile2'
+  | 'profile3'
+  | 'profile4'
+  | 'profile5';
 
 export interface TailorStartResponse {
   job_id: string;

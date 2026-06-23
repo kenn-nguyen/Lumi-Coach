@@ -13,7 +13,13 @@ import {
 import { logWarn } from "./log.js";
 import { isUserEditablePromptTemplateName } from "./prompt-defaults.js";
 
-const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3", "profile4"];
+const PROMPT_PROFILE_IDS = [
+  "profile1",
+  "profile2",
+  "profile3",
+  "profile4",
+  "profile5",
+];
 const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
 const PROMPT_DEFAULTS_MODES = ["server", "extension"];
 const TEMPORARY_EXTENSION_PROMPT_DEFAULT_EMAIL =

@@ -529,6 +529,16 @@ class TestExtensionPromptSync:
             "prompt3": "profiles/profile4/prompt3.txt",
         }
 
+    def test_profile5_sync_paths_use_backend_profile5_prompts(self):
+        paths = _get_extension_prompt_profile_paths()
+
+        assert paths["profile5"] == {
+            "prompt1": "profiles/profile5/prompt1.txt",
+            "prompt2": "profiles/profile5/prompt2.txt",
+            "prompt3": "profiles/profile5/prompt3.txt",
+            "systemPrompt": "system-prompt.txt",
+        }
+
     @patch("app.routers.config._get_extension_prompt_artifacts")
     async def test_returns_only_changed_artifacts(self, mock_artifacts, client):
         mock_artifacts.return_value = {

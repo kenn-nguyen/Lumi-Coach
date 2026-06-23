@@ -29,12 +29,21 @@ _PROFILE_OVERRIDES: dict[str, dict[str, str]] = {
     "profile4": {
         "prompt3": "profiles/profile4/prompt3.txt",
     },
+    "profile5": {
+        "prompt1": "profiles/profile5/prompt1.txt",
+        "prompt2": "profiles/profile5/prompt2.txt",
+        "prompt3": "profiles/profile5/prompt3.txt",
+    },
 }
 
 # profile3 prompt1/prompt2 return plain text — no output contract appended.
+# profile5 prompt2/prompt3 bake the previous-method (instruction-shape) contract
+# directly into the prompt body, so the shared contract must not be appended.
 _NO_CONTRACT_COMBOS: set[tuple[str, str]] = {
     ("prompt1", "profile3"),
     ("prompt2", "profile3"),
+    ("prompt2", "profile5"),
+    ("prompt3", "profile5"),
 }
 
 

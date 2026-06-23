@@ -298,7 +298,7 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                 >
                   <option value="profile1">Safe</option>
                   <option value="profile2">Competitive (recommended)</option>
-                  <option value="profile3">Lean</option>
+                  <option value="profile5">Competitive+</option>
                   <option value="profile4">Direct</option>
                 </select>
               </div>

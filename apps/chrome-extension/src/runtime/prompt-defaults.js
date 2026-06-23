@@ -1,7 +1,13 @@
 import { STORAGE_KEYS } from "./constants.js";
 
 export const SYSTEM_GUARDRAILS_ARTIFACT_KEY = "system.guardrails";
-export const PROMPT_PROFILE_IDS = ["profile1", "profile2", "profile3", "profile4"];
+export const PROMPT_PROFILE_IDS = [
+  "profile1",
+  "profile2",
+  "profile3",
+  "profile4",
+  "profile5",
+];
 export const USER_EDITABLE_PROMPT_TEMPLATE_NAMES = [
   "prompt1",
   "prompt2",
@@ -53,6 +59,12 @@ const PROFILE_DEFAULT_PROMPT_PATHS = {
   },
   profile4: {
     prompt3: "src/prompts/profiles/profile4/prompt3.txt",
+  },
+  profile5: {
+    prompt1: "src/prompts/profiles/profile5/prompt1.txt",
+    prompt2: "src/prompts/profiles/profile5/prompt2.txt",
+    prompt3: "src/prompts/profiles/profile5/prompt3.txt",
+    systemPrompt: "src/prompts/system-prompt.txt",
   },
 };
 
@@ -194,6 +206,15 @@ export function shouldAppendSharedPromptOutputContract(
   promptProfileId = null,
 ) {
   if (templateName === "systemPrompt") {
+    return false;
+  }
+
+  if (
+    promptProfileId === "profile5" &&
+    (templateName === "prompt2" || templateName === "prompt3")
+  ) {
+    // profile5 bakes the previous-method (instruction-shape) output contract
+    // directly into its prompt bodies, so the shared contract must not be appended.
     return false;
   }
 

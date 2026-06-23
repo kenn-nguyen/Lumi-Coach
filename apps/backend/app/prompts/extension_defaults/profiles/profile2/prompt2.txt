@@ -240,7 +240,7 @@ Competitiveness/safety scoring before output:
   - hiring-manager fit
   - truth safety
   - generic reliability
-- If competitiveness is below 9 or hiring-manager fit is below 9, revise title, summary_lead, excitement_anchor, lead bullet, and top skills before output.
+- If competitiveness is below 9.5 or hiring-manager fit is below 9, revise title, summary_lead, excitement_anchor, lead bullet, and top skills before output.
 - If truth safety is below 8, pull back only the specific unsupported implication, not the whole target-native phrase.
 - If reliability is below 9 because instructions are too vague, make bullet selections and guardrails clearer and less crowded.
 - Do not output the scores unless the schema has a place for them; use the audit to revise.

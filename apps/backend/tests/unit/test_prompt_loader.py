@@ -78,6 +78,33 @@ def test_has_output_contract_all_profiles_prompt3_true():
         assert has_output_contract("prompt3", profile) is True
 
 
+def test_get_template_path_profile5_overrides_all_prompts():
+    from app.services.prompt_loader import get_template_path, PROMPTS_DIR
+
+    for template in ("prompt1", "prompt2", "prompt3"):
+        path = get_template_path(template, "profile5")
+        assert path == PROMPTS_DIR / "profiles" / "profile5" / f"{template}.txt"
+
+
+def test_has_output_contract_profile5_bakes_contract_inline():
+    from app.services.prompt_loader import has_output_contract
+
+    # profile5 bakes the previous-method contract into prompt2/prompt3 bodies,
+    # so the shared contract must not be appended; prompt1 still uses the shared one.
+    assert has_output_contract("prompt1", "profile5") is True
+    assert has_output_contract("prompt2", "profile5") is False
+    assert has_output_contract("prompt3", "profile5") is False
+
+
+def test_load_template_text_profile5_prompt2_includes_instruction_contract():
+    from app.services.prompt_loader import load_template_text
+
+    text = load_template_text("prompt2", "profile5")
+    # previous-method instruction schema is baked into the body
+    assert "primary_message" in text
+    assert "bullet_rewrite_instructions" in text
+
+
 def test_load_template_text_profile1_prompt1_loads_file():
     """Smoke test: profile1/prompt1 loads without error and has content."""
     from app.services.prompt_loader import load_template_text

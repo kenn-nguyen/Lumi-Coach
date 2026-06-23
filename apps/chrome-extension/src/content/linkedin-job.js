@@ -468,7 +468,33 @@ const PROMPT_PROFILE_UI = {
   profile4: {
     label: "Direct",
   },
+  profile5: {
+    label: "Competitive+",
+  },
 };
+
+// Prompt profiles that remain loadable/selectable in storage but are hidden
+// from the tailoring-style picker UI. Existing selections still resolve.
+const HIDDEN_PROMPT_PROFILE_IDS = new Set(["profile3"]);
+
+// Display order for the tailoring-style picker. Profiles not listed here are
+// appended after, in their existing key order. Hidden profiles still respect
+// this order if they are surfaced (e.g. when currently selected).
+const PROMPT_PROFILE_DISPLAY_ORDER = [
+  "profile1",
+  "profile2",
+  "profile5",
+  "profile4",
+  "profile3",
+];
+
+function comparePromptProfileDisplayOrder(left, right) {
+  const leftIndex = PROMPT_PROFILE_DISPLAY_ORDER.indexOf(left);
+  const rightIndex = PROMPT_PROFILE_DISPLAY_ORDER.indexOf(right);
+  const leftRank = leftIndex === -1 ? Number.POSITIVE_INFINITY : leftIndex;
+  const rightRank = rightIndex === -1 ? Number.POSITIVE_INFINITY : rightIndex;
+  return leftRank - rightRank;
+}
 
 const TAILORING_STYLE_INFO = [
   {
@@ -496,18 +522,17 @@ const TAILORING_STYLE_INFO = [
     ],
   },
   {
-    profileId: "profile3",
-    title: "Lean",
+    profileId: "profile5",
+    title: "Competitive+",
     lines: [
-      "Shorter prompts and lighter handoffs.",
-      "Stretch: High",
-      "Token spend: Low",
-      "Prompt structure: Freeform for Prompt 1 and Prompt 2",
-      "Prompt 3: Still strict JSON",
-      "Model freedom: High",
-      "This is the stretch profile.",
-      "Review carefully before submission.",
-      "Best when you want faster, cheaper tailoring and can tolerate looser intermediate guidance.",
+      "Previous Competitive method (instruction/synthesis).",
+      "Stretch: Medium-high",
+      "Truth safety: 8-8.5/10",
+      "Hiring-manager fit: 9-9.5/10",
+      "Prompt 2 writes bullet instructions; Prompt 3 synthesizes them.",
+      "Freely rewritten, mechanism-forward phrasing (review closely).",
+      "Strong senior-level positioning (senior, not over-inflated).",
+      "Best when you want bolder phrasing than source-bullet rewriting.",
     ],
   },
   {
@@ -6500,6 +6525,12 @@ function renderPromptProfileTabs(
 ) {
   const normalizedSelectedProfileId = String(selectedProfileId || "");
   const buttons = Object.keys(promptTemplateProfiles?.profiles || {})
+    .filter(
+      (profileId) =>
+        !HIDDEN_PROMPT_PROFILE_IDS.has(profileId) ||
+        profileId === normalizedSelectedProfileId,
+    )
+    .sort(comparePromptProfileDisplayOrder)
     .map((profileId) => {
       const profileSelectable = allowDisabledSelection
         ? true

@@ -6,7 +6,13 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
-VALID_PROMPT_PROFILES = {"profile1", "profile2", "profile3", "profile4"}
+VALID_PROMPT_PROFILES = {
+    "profile1",
+    "profile2",
+    "profile3",
+    "profile4",
+    "profile5",
+}
 
 
 class TailorRequest(BaseModel):
