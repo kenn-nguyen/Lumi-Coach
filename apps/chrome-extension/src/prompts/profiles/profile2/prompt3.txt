@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile2.prompt3.template
-prompt_version: v5.2.1
+prompt_version: v5.3.0
 prompt_label: hard-stretch-resume-writer-source-bullet-rewrite-jd-implied-level-bullet-length
 prompt_notes: Executes Prompt 2 into final resume JSON with source-bullet selection, explicit role bullet budgets, stronger summary proof selection, and reinforcement of coverage-set selection so uncovered proof categories survive in strong roles; adds jd-implied-level calibration (writes summary/scope altitude to Prompt 2's implied level using only source-supported scope, surfaces scope signals rather than burying them, and protects scope proof from the cut-order; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -86,11 +86,10 @@ Allowed:
 - Bullets may use candidate-owned metrics from CURRENT_RESUME descriptions, e.g. active users, daily verifications, bank deployments, revenue growth, API volume growth, cost-to-serve reduction, completion lift, conversion lift, integration time reduction.
 
 Blocked unless candidate-owned evidence explicitly supports it:
-- Company-wide customer counts such as `300+ financial institutions`;
-- company-wide scored population such as `650M+ scored consumers`;
-- broad company product lines such as co-lending or AI-agent infrastructure;
+- company-wide customer or client counts the candidate did not personally win;
+- company-wide user, population, or volume-processed figures;
 - valuation, funding, investors, or company scale as achievement proof;
-- any employer-wide product suite that the candidate did not personally own.
+- any employer-wide product line or suite the candidate did not personally own.
 
 If Prompt 2 tells you to use a context-only company-wide metric in a bullet, override Prompt 2 and use the strongest candidate-owned metric from CURRENT_RESUME instead.
 
@@ -240,6 +239,7 @@ Experience execution:
 - Do not reorder roles.
 - One scope bullet per major role is allowed when Prompt 2 requests it.
 - Non-scope bullets should be concise resume bullets: strongest result first, metric early when it helps, strongest supporting proof detail when it fits naturally.
+- For PM and senior PM bullets, name the concrete execution lever that caused the result — the shipped change, threshold set, workflow redesigned, rollout sequenced, packaging decision, or self-serve tool defined. Do not let compression reduce it to a process description ('defined requirements', 'led rollout', 'worked with Data Science').
 
 Direct-JD-match ordering execution:
 - Within each role, if one bullet maps almost verbatim to a core JD responsibility and has concrete proof, place it before less direct achievements.
@@ -259,11 +259,12 @@ Bullet writing rule:
 - Role type helps choose proof priority; hiring-manager-native language helps choose wording depth.
 - Keep business or workflow ownership forward when that is the trust signal; keep systems, integration, evaluation, or production detail forward when that is the trust signal.
 - Prefer the sharpest concrete proof from the source bullet over a broader summary phrase when both prove the same point.
-- If the source bullet contains a named deployment surface, production signal, customer signal, or unusually specific proof detail, preserve at least one of those details when it still fits naturally.
+- If the source bullet contains a named deployment surface, production signal, customer signal, or unusually specific proof detail, preserve it when it directly answers a hiring-manager doubt or standout quality from Prompt 2. Do not abstract a named specific to a category label if the name itself is what earns credibility with this hiring manager.
 - If a source bullet carries cross-team, multi-product, platform, or org-influence detail and the brief calibrates to a higher implied level, surface that scope detail rather than burying it — reframing existing substance only, never inventing scope not in the source.
 - When the source bullet's strongest PM signal is diagnosis, unmet-need discovery, or product judgment, lead with that insight instead of burying it in a trailing `by ...` clause.
 - Do not rewrite a diagnosis-led PM bullet into an implementation-led checklist of modules, rules, or artifacts if that would make the bullet sound more junior or more execution-only.
 - If a launch, productization, or deployment bullet becomes implementation-heavy after compression, restore the strongest source-supported problem thesis or unmet-need insight to the opening clause.
+- When the source bullet expresses a direction bet using a contrast ('rather than X', 'instead of X'), preserve that contrast. It proves the judgment was deliberate — without it the bullet reads as execution, not strategy.
 - Prefer starting with a verb that shows direction of change when truthful: `Raised`, `Reduced`, `Cut`, `Scaled`, `Launched`, `Expanded`, `Standardized`, `Repositioned`, `Redirected`, `Refocused`, `Pivoted`, `Built`.
 - If no directional-result opener is clean, use the clearest strong verb available.
 - When two adjacent bullets in the same role would naturally open with the same verb, vary the opener if a similarly strong truthful alternative exists.
@@ -295,11 +296,12 @@ Bullet writing rule:
   6. background context.
 - Preserve the main outcome or decision thesis, main metric cluster, strongest ownership anchor, and strongest signature detail before cutting those.
 - Exception: when a scope, cross-team, or org-influence signal is the proof substantiating the JD-implied level, do not cut it first; treat it as an ownership anchor, not background context.
+- Exception: a trailing diagnosis clause that reveals root cause or what the PM identified, and any named specific that answers a hiring-manager doubt, cut after secondary artifacts — not before them.
 - Resolve Prompt 2 conflicts in favor of guardrails and clean readability.
 
 Target normal bullets at 30-46 words; aim to stay within ~2 resume lines.
 High-value bullets may run 45-52 words, but use at most 2 per role and do not overuse them.
-Compressed current-role bullets: 38-43 words (~2 resume lines).
+Condensed current-role bullets: 38-43 words (~2 resume lines); the 38-word floor exists to prevent over-compression, not as a target to pad toward.
 Older or long-past roles: 25-45 words.
 Do not shorten a bullet below usefulness just to hit the low end of the range.
 If the bullet is still easy to scan, keep the extra distinct proof detail.
@@ -350,7 +352,7 @@ Hiring-manager-native wording pass:
 Adaptive technical-language execution rule:
 - Do not automatically simplify technical jargon in final resume text.
 - Preserve source-supported technical terms when the JD, Prompt 1 hiring-manager persona, or Prompt 2 strategy signals a technical reader.
-- Keep terms such as `FRR/FAR`, `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `liveness`, `behavioral biometrics`, `risk decisioning`, `thresholds`, `latency`, `false rejection`, and similar terms when they are supported and strengthen technical credibility.
+- Keep source-supported technical terms that strengthen credibility: cross-domain ones such as `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `thresholds`, `latency`, plus domain-specific terms the resume supports (e.g. `FRR/FAR`/`liveness` for identity, `error-rate`/`uptime` for infra, `CAC`/`LTV` for growth).
 - For less technical roles, translate technical terms into plain product/business language:
   - `FRR/FAR thresholds` -> `fraud thresholds to reduce false rejections and protect legitimate users`
   - `GCP/AWS multi-tenant deployment` -> `standardized cloud deployment models`
@@ -475,7 +477,7 @@ Final QA gate:
 Before returning JSON, silently verify:
 
 Technical-language final gate:
-- If the role is technical and a supported term like FRR/FAR, SDK, API, SLA, GCP, AWS, multi-tenant, model deployment, liveness, or risk decisioning would strengthen credibility, do not remove it merely for simplicity.
+- If the role is technical and a supported term (cross-domain such as SDK, API, SLA, GCP, AWS, multi-tenant, model deployment, or a domain-specific term the resume supports) would strengthen credibility, do not remove it merely for simplicity.
 - If the role is not technical, simplify jargon unless the term is required for ATS or central to the proof.
 - A bullet with jargon must still pass the clarity gate: a recruiter can understand the result, and a hiring manager can trust the supporting proof.
 - Skills should preserve technical depth for technical roles and use plainer product/business wording for non-technical roles.
@@ -495,6 +497,7 @@ Technical-language final gate:
 - Every non-scope bullet is concise, readable, and proof-bearing.
 - Final bullets avoid process or artifact lists unless the list itself is the proof.
 - Each bullet is easy to understand, straightforward, and convincing after a hiring-manager reread.
+- Do not use a hyphen ` - `, em dash `—`, or semicolon `;` as a sentence connector or separator within bullet text or the summary. Use a comma instead. Hyphens within compound words (e.g. `cross-functional`, `AI-powered`) are fine.
 
 - Competitive-stretch approved broad categories are used confidently when supported by concrete source proof and do not imply exact forbidden subclaims.
 - Final bullets are centered on outcomes and proof, not work-artifact lists.

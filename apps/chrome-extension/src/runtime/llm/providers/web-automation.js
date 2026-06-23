@@ -115,31 +115,33 @@ function getElapsedPhaseLabel(elapsedMs, pollCount, config) {
   return `${phrase} ${formatElapsedSeconds(elapsedMs)}.`;
 }
 
+function truncateForLog(value, max = 300) {
+  if (typeof value !== 'string') return value;
+  return value.length > max ? `${value.slice(0, max)}… (${value.length} chars)` : value;
+}
+
 function normalizeResultForLogging(result) {
   if (!result || typeof result !== 'object') {
     return result;
   }
 
-  let normalized = result;
-  if (typeof normalized.submitDebug === 'string') {
-    try {
-      normalized = {
-        ...normalized,
-        submitDebug: JSON.parse(normalized.submitDebug),
-      };
-    } catch {
-      normalized = {
-        ...normalized,
-        submitDebugText: normalized.submitDebug,
-      };
-    }
+  // Trim the large fields before logging. The full model output (rawText /
+  // partialRawText) and submitDebug sample arrays are multi-KB; logging them
+  // verbatim retains them in the console and bloats every LOG_EVENT relay
+  // message. Keep capped previews — enough to debug, cheap to carry.
+  const normalized = { ...result };
+  if (typeof normalized.rawText === 'string') {
+    normalized.rawText = truncateForLog(normalized.rawText);
   }
-
-  if (normalized.submitDebug && typeof normalized.submitDebug === 'object') {
-    normalized = {
-      ...normalized,
-      submitDebugText: JSON.stringify(normalized.submitDebug),
-    };
+  if (typeof normalized.partialRawText === 'string') {
+    normalized.partialRawText = truncateForLog(normalized.partialRawText);
+  }
+  if (normalized.submitDebug != null) {
+    const debugText =
+      typeof normalized.submitDebug === 'string'
+        ? normalized.submitDebug
+        : JSON.stringify(normalized.submitDebug);
+    normalized.submitDebug = truncateForLog(debugText, 600);
   }
 
   return normalized;
@@ -847,17 +849,11 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
     );
     const candidates = primaryCandidates.length ? primaryCandidates : fallbackCandidates;
     const latest = candidates.at(-1);
-    // Gate-free fallback: when the role-gated selectors found NOTHING (e.g. the
-    // provider changed its assistant-role heading), recover the longest
-    // assistant-looking block so a finished answer isn't lost. This only runs
-    // when the gate is empty, so it never overrides a correctly-gated turn
-    // (which is what keeps an echoed prompt from being mistaken for the answer).
-    if (!latest?.text) {
-      const lenientText = scrapeAssistantTextLenient();
-      if (lenientText) {
-        return { count: 1, latestKey: 'lenient-fallback', latestText: lenientText };
-      }
-    }
+    // NOTE: the gate-free lenient scrape is intentionally NOT called here.
+    // getAssistantSnapshot runs on every (throttled) mutation, so it must stay
+    // cheap. The stale-heading recovery lives in the settle and timeout-rescue
+    // branches of waitForAssistantResponse, which call scrapeAssistantTextLenient
+    // only once, not per scan.
     return {
       count: candidates.length,
       latestKey: latest?.key ?? null,
@@ -1185,11 +1181,28 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
       let lastSnapshot = existingSnapshot;
       let lastBusyState = hasStopButton() || hasResponseBusyIndicator();
 
+      let finished = false;
+      let scheduleId = null;
+
       const cleanup = () => {
+        finished = true;
         observer.disconnect();
         window.clearTimeout(hardTimeoutId);
         window.clearInterval(idlePollId);
         if (stableTimer !== null) window.clearTimeout(stableTimer);
+        if (scheduleId !== null) window.clearTimeout(scheduleId);
+      };
+
+      // Coalesce mutation bursts: while the model streams, the DOM mutates per
+      // token (hundreds-thousands of times). Running the O(response-size)
+      // snapshot synchronously on every mutation is what freezes the popup, so
+      // we run it at most once per ~200ms. The 1s idle poll is the backstop.
+      const scheduleResolve = () => {
+        if (finished || scheduleId !== null) return;
+        scheduleId = window.setTimeout(() => {
+          scheduleId = null;
+          if (!finished) maybeResolve();
+        }, 200);
       };
 
       const failForTimeout = () => {
@@ -1304,12 +1317,14 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
         }
       }, 1000);
 
-      const observer = new MutationObserver(() => maybeResolve());
+      const observer = new MutationObserver(scheduleResolve);
+      // Watch text/structure only. attributes:true fires on every cursor blink,
+      // hover, and spinner change in the provider's UI — pure overhead for
+      // response detection — so it is intentionally omitted.
       observer.observe(document.documentElement, {
         subtree: true,
         childList: true,
         characterData: true,
-        attributes: true,
       });
     });
   }

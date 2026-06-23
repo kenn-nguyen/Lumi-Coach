@@ -130,6 +130,14 @@ function repairLenientJson(text) {
 
   return (
     text
+      // Zero-width and BOM characters (zero-width space/joiner, word joiner,
+      // byte-order mark). These are invisible, never valid JSON syntax, and
+      // LLM web output occasionally sprinkles them between tokens — a complete,
+      // correct-looking response that still won't JSON.parse is the fingerprint.
+      .replace(/[\u200B\u200C\u200D\u2060\uFEFF]/g, "")
+      // Stray control characters (excluding tab/newline/CR, which are valid
+      // JSON whitespace between tokens). Raw control chars are invalid JSON.
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
       // Typographic double quotes -> straight ". The web UI substitutes these
       // for ASCII quotes when JSON is rendered outside a fenced code block,
       // which is the single most common reason JSON.parse fails on web output.

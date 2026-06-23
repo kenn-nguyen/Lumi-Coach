@@ -768,6 +768,7 @@ const ICONS = {
 
 let selectedJobDetailObserver = null;
 let selectedJobDetailObservedRoot = null;
+let selectedJobDetailObserverThrottle = null;
 let lastUrl = location.href;
 let routePollTimer = null;
 let lastRouteSignature = "";
@@ -10380,6 +10381,10 @@ function handlePromptStyleInfoOutsideClick(event) {
 }
 
 function stopSelectedJobDetailWatcher() {
+  if (selectedJobDetailObserverThrottle !== null) {
+    window.clearTimeout(selectedJobDetailObserverThrottle);
+    selectedJobDetailObserverThrottle = null;
+  }
   if (!selectedJobDetailObserver) {
     selectedJobDetailObservedRoot = null;
     return;
@@ -10675,17 +10680,28 @@ function startSelectedJobDetailWatcher() {
 
   selectedJobDetailObservedRoot = nextRoot;
   selectedJobDetailObserver = new MutationObserver(() => {
-    const nextJob = extractCurrentJob();
-    if (
-      getCurrentJobSignature(nextJob) ===
-      getCurrentJobSignature(state.currentJob)
-    ) {
+    // Throttle: LinkedIn's job pane mutates constantly (lazy images, hover,
+    // dynamic sections). extractCurrentJob() is expensive (querySelectorAll
+    // sweeps + reading the full JD text), so coalesce bursts and run it at most
+    // once per ~350ms instead of on every mutation. The 260ms refresh debounce
+    // below already absorbs the added latency.
+    if (selectedJobDetailObserverThrottle !== null) {
       return;
     }
-    scheduleSelectedJobRefresh({
-      expectedSourceUrl: nextJob?.sourceUrl || "",
-      delayMs: 260,
-    });
+    selectedJobDetailObserverThrottle = window.setTimeout(() => {
+      selectedJobDetailObserverThrottle = null;
+      const nextJob = extractCurrentJob();
+      if (
+        getCurrentJobSignature(nextJob) ===
+        getCurrentJobSignature(state.currentJob)
+      ) {
+        return;
+      }
+      scheduleSelectedJobRefresh({
+        expectedSourceUrl: nextJob?.sourceUrl || "",
+        delayMs: 260,
+      });
+    }, 350);
   });
   selectedJobDetailObserver.observe(nextRoot, {
     childList: true,

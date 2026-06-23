@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile5.prompt2.template
-prompt_version: v2.5.0
+prompt_version: v2.5.2
 prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v14-distinct-anchor-compression-hm-value-driven-aligned-summary-concrete-execution
 prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, seniority-shaped summary hooks, bridge-title logic, and preservation of distinct JD-relevant anchors when compressing dense proof; adds jd-implied-level calibration and hiring-manager value-driven proof selection (P2, as the hiring manager, builds a value function around the standout axis — preferred_qualifications/near_gate_qualifications/hiring_manager_proof/hardest responsibilities — treats must-haves as table stakes, ranks the candidate's real proofs by standout match, and uses the generic evidence-strength list only as a tiebreak).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -105,8 +105,7 @@ Role-winning phrase promotion:
   3. lead-bullet instruction or another top-2 bullet instruction for the most relevant role
   4. top 5 `final_skills_list`
 - If a role-winning phrase is excluded from all top surfaces, revise before output.
-- If excluded from one of title/summary/lead-bullet surfaces, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
-
+- If excluded from one of title/summary/lead-bullet surfaces, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail.
 Title competitiveness floor:
 - The title should be the cleanest bold positioning headline, not a conservative source-title paraphrase.
 - A title fails if it would be equally appropriate for many candidates outside the JD's core domain.
@@ -236,7 +235,7 @@ Adaptive technical-language calibration rule:
 - `Signal jargon` = source-supported technical language that improves credibility, ATS match, or hiring-manager confidence.
 - `Noise jargon` = technical language that adds complexity without improving fit, credibility, ATS coverage, or defensibility.
 - Preserve source-supported technical terms when the JD or hiring-manager persona expects technical literacy, especially for technical PM, platform, AI/ML, risk, fraud, security, identity, infrastructure, data, API, developer-tooling, fintech, or enterprise-integration roles.
-- Examples of terms that may be signal jargon in technical roles: `FRR/FAR`, `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `liveness`, `behavioral biometrics`, `risk decisioning`, `thresholds`, `latency`, `false rejection`, `false positive`, `data science`, `cloud cost`, and similar source-supported terms.
+- Examples of terms that may be signal jargon in technical roles: cross-domain ones such as `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `thresholds`, `latency`, `data science`, `cloud cost`, plus domain-specific terms the resume supports (e.g. `FRR/FAR`/`liveness` for identity, `error-rate`/`uptime` for infra, `CAC`/`LTV` for growth).
 - For less technical, growth, generalist, business, GTM, or customer-facing roles, translate technical terms into plain product/business language while preserving the underlying proof.
 - Do not add unsupported jargon just to sound technical. Preserve or translate only terms supported by the current resume, story bank, or JD.
 - When preserving jargon, keep the bullet understandable: result first, business/product meaning clear, technical mechanism second.
@@ -268,7 +267,7 @@ Competitiveness/safety scoring before output:
   - hiring-manager fit
   - truth safety
   - generic reliability
-- If competitiveness is below 9 or hiring-manager fit is below 9, revise title, summary_lead, excitement_anchor, lead bullet, and top skills before output.
+- If competitiveness is below 9.5 or hiring-manager fit is below 9, revise title, summary_lead, excitement_anchor, lead bullet, and top skills before output.
 - If truth safety is below 8, pull back only the specific unsupported implication, not the whole target-native phrase.
 - If reliability is below 9 because instructions are too vague, make bullet instructions more componentized and deterministic.
 - Do not output the scores unless the schema has a place for them; use the audit to revise.
@@ -330,8 +329,7 @@ Skill implication safety:
 - Treat the source resume as an evidence pool, not output structure. Collapse overlapping bullets into distinct PM proof stories that answer the JD's main hiring-manager doubts. Prefer hiring-manager-natural phrasing in `recommended_title`, `summary_lead`, and bullet instructions; preserve ATS phrases selectively enough to remain searchable, not as the dominant writing style.
 - Source-native labels are proof anchors, not default headline language. If a source-native category and a JD-native category are both defensible, prefer the JD-native category in resume-facing fields and use the source-native category as proof/mechanism.
 - If two phrases are equally defensible, choose the one closer to the JD’s native domain language and hiring-manager vocabulary.
-- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the lead bullet / another top-2 bullet instruction of the most relevant role. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
-- Do not let a related unsupported subclaim suppress a clean supported target-native category. Block the subclaim; promote the category.
+- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the lead bullet / another top-2 bullet instruction of the most relevant role. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail.- Do not let a related unsupported subclaim suppress a clean supported target-native category. Block the subclaim; promote the category.
 
 Validated-domain rule:
 - `validated_domain` must contain only positive domains that are direct or functionally equivalent and safe for title, summary, or scope bullets.
@@ -520,7 +518,7 @@ Skills rules for this brief:
 
 Chronology-preserving current-role compression:
 - Preserve chronological/source order by default.
-- If the current role is less relevant than a prior role, recommend compressing it to 1-2 bullets.
+- If the current role is less relevant than a prior role, recommend compressing it to exactly 1 bullet unless a second bullet adds direct or functionally equivalent target-domain proof.
 - Do not recommend moving it down unless the user explicitly enables relevance-first ordering.
 - Make the most relevant prior role dominate through headline, summary, lead bullet, bullet order within role, and bullet strength.
 
@@ -551,7 +549,7 @@ Bullet instruction rules:
 - `optional_context` may contain `FUNCTIONALLY_EQUIVALENT:` defense and guardrails.
 - `do_not_include` should block unsupported subclaims.
 - Every instruction must give Prompt 3 XYZ materials: X result/claim, Y proof/metric/scope, Z mechanism.
-- Keep the named concrete specifics from the source (named deployment surface, production/customer signal, specific metric, unusually specific detail) inside `primary_message`/`primary_metric`; do not abstract them into generic wrappers — Prompt 3 needs the specific to write concretely.
+- Keep named concrete specifics from the source inside `primary_message`/`primary_metric` when they answer a hiring-manager doubt or standout quality — Prompt 3 needs them to write concretely. Abstract them when they do not: a specific that earns credibility with a risk PM reader may be noise to a growth PM reader.
 
 Hard XYZ example pattern:
 - Some bullets have hidden XYZ that is easy to miss. Prompt 2 must expose it clearly for Prompt 3.
@@ -586,7 +584,7 @@ Decision-mechanism rule:
 - Drop lower-value specifics before dropping a distinct high-value anchor.
 - If two details do the same job, keep the sharper and more JD-relevant one.
 - Do not rewrite a concrete anchor into abstract umbrella nouns such as `capabilities`, `solutions`, `strategy`, or `delivery` when a sharper supported anchor exists.
-- Do not flatten sharp outcomes or diagnoses into abstract evaluative phrasing when the source supports a more concrete unmet need, failure pattern, held-constant metric, adoption outcome, or business result.
+- Do not flatten sharp outcomes or diagnoses into abstract evaluative phrasing when the source supports a more concrete unmet need, failure pattern, held-constant metric, adoption outcome, or business result. When a source bullet contains a diagnosis clause ('recognizing that X', 'by identifying that Y'), include its core in `mechanism` — not `optional_context`. It is the PM judgment that makes the bullet convincing, not filler.
 - Include at least one falsifiable detail when available: named signal, threshold, failure mode, held-constant metric, or beneficiary bottleneck.
 - Do not use work artifacts such as PRDs, API requirements, stakeholder alignment, roadmap ownership, or documentation as the primary mechanism unless the actual decision inside that artifact is named.
 - Strong mechanism pattern: `sequenced [rollout/customer/workflow] around [highest-value constraint]`, `calibrated [threshold/policy/model/product rule] to balance [tradeoff]`, `standardized [platform/packaging/process] to reduce [cost/time/risk]`, `pivoted [roadmap/product direction] toward [emerging customer/risk/market need]`.
@@ -760,7 +758,7 @@ Final audit before output:
 - Broad JD terms are scope-limited when only part of the broad system/lifecycle/platform is supported.
 - Bullet instructions are compressed enough that Prompt 3 can synthesize clean bullets instead of concatenating instruction fragments.
 - If the current role is less relevant, Prompt 2 creates exactly 1 bullet instruction for it unless a second bullet has direct/functionally equivalent target-domain proof.
-- `summary_lead` is compact enough for Prompt 3 to write a 35-45 word hook sentence without stuffing every metric.
+- `summary_lead` is compact enough for Prompt 3 to write a 45-50 word hook sentence without stuffing every metric.
 - Team-scope bullets use clean human wording and are omitted when product/metric bullets already establish seniority.
 - Skill labels avoid implying formal program ownership or engineering infrastructure authority unless explicitly supported.
 - Company/team-specific labels are converted into market-natural equivalents for `recommended_title` unless the exact label is externally recognizable and natural.
@@ -778,8 +776,7 @@ A++ final promotion audit:
 - Identify the strongest 1-2 central JD-native promotion phrases the hiring manager most wants to see.
 - If they are direct/functionally equivalent, confirm they appear in `recommended_title`, `summary_lead`, and the lead bullet or another top-2 bullet instruction of the most relevant role.
 - Identify the next 3-5 most important truth-safe preservation phrases and confirm they remain in `phrases_to_mirror`, relevant bullet instructions, or `final_skills_list` so Prompt 3 can preserve them in final resume text.
-- If any promotion or preservation phrase is excluded, the reason must be captured in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for promotion rationale.
-- If a source-native term crowds out a stronger target-native term, revise the resume-facing field before output.
+- If any promotion or preservation phrase is excluded, the reason must be captured in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail.- If a source-native term crowds out a stronger target-native term, revise the resume-facing field before output.
 
 Natural-language polish audit:
 - If `recommended_title`, `summary_lead`, or the lead-bullet instruction reads like a keyword list, rewrite it into cleaner human language while preserving the strongest validated signals.

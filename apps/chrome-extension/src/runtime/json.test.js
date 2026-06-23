@@ -193,6 +193,20 @@ describe("extractJsonFromText", () => {
       expect(parsed).toEqual({ summary: "Done" });
     });
 
+    it("recovers JSON with invisible zero-width / BOM characters between tokens", () => {
+      // BOM (U+FEFF), zero-width space (U+200B), word joiner (U+2060) between
+      // tokens — invisible, valid-looking, but rejected by JSON.parse.
+      const corrupted = '{\uFEFF"name":\u200B "Jane", "role":\u2060 "PM"}';
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ name: "Jane", role: "PM" });
+    });
+
+    it("recovers JSON with a stray control character between tokens", () => {
+      const corrupted = '{"name": "Jane",\u0007 "role": "PM"}';
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ name: "Jane", role: "PM" });
+    });
+
     it("does not corrupt URLs (no naive // comment stripping)", () => {
       const text = '{"website": "https://example.com/path", "n": 1}';
       const parsed = extractJsonFromText(text);

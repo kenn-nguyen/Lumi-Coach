@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile5.prompt3.template
-prompt_version: v3.7.0
+prompt_version: v3.8.0
 prompt_label: hard-stretch-resume-writer-storybank-feedback-v14-distinct-anchor-compression-jd-implied-level-aligned-summary-concrete-execution-bullet-length-upstream-judgment
 prompt_notes: Executes Prompt 2 into final resume JSON with execution-heavy PM/Senior PM bullet writing, stronger directional-result lead preference, weaker generic-ownership openers, PM-owned attribution for technical depth, ATS balance, bridge-title handling, and preservation of distinct JD-relevant outcome, diagnosis, and mechanism anchors when simplifying dense bullets; adds jd-implied-level calibration (writes summary/bullet altitude to Prompt 2's implied level using only source-supported scope, keeps scope signals forward, and protects them from trimming; headline/employment titles unchanged).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -88,11 +88,10 @@ Allowed:
 - Bullets may use candidate-owned metrics from CURRENT_RESUME descriptions, e.g. active users, daily verifications, bank deployments, revenue growth, API volume growth, cost-to-serve reduction, completion lift, conversion lift, integration time reduction.
 
 Blocked unless candidate-owned evidence explicitly supports it:
-- Company-wide customer counts such as `300+ financial institutions`;
-- company-wide scored population such as `650M+ scored consumers`;
-- broad company product lines such as co-lending or AI-agent infrastructure;
+- company-wide customer or client counts the candidate did not personally win;
+- company-wide user, population, or volume-processed figures;
 - valuation, funding, investors, or company scale as achievement proof;
-- any employer-wide product suite that the candidate did not personally own.
+- any employer-wide product line or suite the candidate did not personally own.
 
 If Prompt 2 tells you to use a context-only company-wide metric in a bullet, override Prompt 2 and use the strongest candidate-owned metric from CURRENT_RESUME instead.
 
@@ -291,7 +290,7 @@ Use the metric early, but omit secondary metrics when they make the bullet feel 
 
 Target normal bullets at 30-46 words; aim to stay within ~2 resume lines.
 High-value bullets may run 45-52 words, but use at most 2 per role and do not overuse them.
-Compressed current-role bullets: 38-43 words (~2 resume lines), combining result, primary execution pattern, and up to 1-2 supporting details without dropping the strongest falsifiable proof.
+Condensed current-role bullets: 38-43 words (~2 resume lines), combining result, primary execution pattern, and up to 1-2 supporting details without dropping the strongest falsifiable proof; the 38-word floor exists to prevent over-compression, not as a target to pad toward.
 Older or long-past roles: 25-45 words.
 If a bullet reads like an instruction turned into a sentence, rewrite it into a sharper resume bullet.
 
@@ -307,7 +306,7 @@ Final bullet clarity gate:
 - If two details do the same job, keep the sharper and more JD-relevant one.
 - Do not rewrite a concrete anchor into generic abstraction when a sharper supported noun or outcome exists.
 - Do not collapse named unmet needs, failure patterns, tradeoff streams, held-constant metrics, or strong business outcomes into vague phrases such as `patterns`, `direction`, `needs`, `capabilities`, or `delivery` when one sharp anchor can be preserved.
-- If CURRENT_RESUME or a Prompt 2 instruction names a deployment surface, production signal, customer signal, or unusually specific proof detail, preserve at least one such named specific when it still fits naturally.
+- If CURRENT_RESUME or a Prompt 2 instruction names a deployment surface, production signal, customer signal, or unusually specific proof detail, preserve it when it directly answers a hiring-manager doubt or standout quality from Prompt 2. Do not abstract a named specific to a category label if the name itself is what earns credibility with this hiring manager.
 - Avoid inflated wrapper phrasing such as `measurable business impact`, `hands-on building`, `enterprise scale`, or `workflow automation` when a sharper concrete source detail exists; use such phrasing only when no stronger concrete proof fits.
 - When synthesizing from a Prompt 2 instruction, anchor the named concrete specific (metric, deployment surface, customer, production signal) from CURRENT_RESUME; do not let synthesis flatten a concrete source detail into a generic phrase. Reframe source-supported substance only, never invent.
 
@@ -338,7 +337,7 @@ Causal-Z execution rule:
 - Apply that preference from the hiring manager's product standpoint:
   - for PM and senior PM targets, the top 2-3 bullets should remain execution-heavy: lead with the shipped change, operating choice, workflow redesign, rollout pattern, packaging decision, threshold, or other concrete lever, then preserve diagnosis, insight, or tradeoff when it materially strengthens credibility;
   - for more strategy-heavy director/head-of-product targets, diagnosis or tradeoff may lead when the source clearly supports it and execution still appears as proof.
-- If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof. But a source-proven problem reframing or direction bet is not secondary rationale: keep it in the main clause (encoded in the verb and what changed, with the outcome attached); do not bury it in a trailing clause or drop it.
+- If a PM or senior PM top bullet contains both execution and rationale, preserve the execution lever first and trim secondary rationale detail before removing the strongest falsifiable proof. But a source-proven problem reframing or direction bet is not secondary rationale: keep it in the main clause; do not bury it in a trailing clause or drop it. When the source uses a contrast ('rather than X', 'instead of X'), preserve that contrast — it proves the judgment was deliberate, not the default path.
 - Exception: when a scope, cross-team, or org-influence signal substantiates the JD-implied level, treat it as primary proof — do not trim or drop it as a lower-value specific or secondary detail.
 - Use the bare mechanism form when the thing built or changed is itself the differentiator, or when rationale-heavy framing would sound inflated in an interview.
 - Avoid final mechanisms that read like `by refining A, B, C, and D` unless the list itself is the product strategy.
@@ -385,7 +384,7 @@ Hiring-manager-native wording pass:
 Adaptive technical-language execution rule:
 - Do not automatically simplify technical jargon in final resume text.
 - Preserve source-supported technical terms when the JD, Prompt 1 hiring-manager persona, or Prompt 2 strategy signals a technical reader.
-- Keep terms such as `FRR/FAR`, `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `liveness`, `behavioral biometrics`, `risk decisioning`, `thresholds`, `latency`, `false rejection`, and similar terms when they are supported and strengthen technical credibility.
+- Keep source-supported technical terms that strengthen credibility: cross-domain ones such as `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `thresholds`, `latency`, plus domain-specific terms the resume supports (e.g. `FRR/FAR`/`liveness` for identity, `error-rate`/`uptime` for infra, `CAC`/`LTV` for growth).
 - For less technical roles, translate technical terms into plain product/business language:
   - `FRR/FAR thresholds` -> `fraud thresholds to reduce false rejections and protect legitimate users`
   - `GCP/AWS multi-tenant deployment` -> `standardized cloud deployment models`
@@ -522,7 +521,7 @@ Final QA gate:
 Before returning JSON, silently verify:
 
 Technical-language final gate:
-- If the role is technical and a supported term like FRR/FAR, SDK, API, SLA, GCP, AWS, multi-tenant, model deployment, liveness, or risk decisioning would strengthen credibility, do not remove it merely for simplicity.
+- If the role is technical and a supported term (cross-domain such as SDK, API, SLA, GCP, AWS, multi-tenant, model deployment, or a domain-specific term the resume supports) would strengthen credibility, do not remove it merely for simplicity.
 - If the role is not technical, simplify jargon unless the term is required for ATS or central to the proof.
 - A bullet with jargon must still pass the clarity gate: a recruiter can understand the result, and a hiring manager can trust the mechanism.
 - Skills should preserve technical depth for technical roles and use plainer product/business wording for non-technical roles.
@@ -542,6 +541,7 @@ Technical-language final gate:
 - Every non-scope bullet passes the causal-Z test.
 - Final bullets avoid list-like mechanisms unless the list itself is the strategy.
 - Each bullet is easy to understand, straightforward, and convincing after a hiring-manager reread.
+- Do not use a hyphen ` - `, em dash `—`, or semicolon `;` as a sentence connector or separator within bullet text or the summary. Use a comma instead. Hyphens within compound words (e.g. `cross-functional`, `AI-powered`) are fine.
 
 - Competitive-stretch approved broad categories are used confidently when supported by concrete mechanisms and do not imply exact forbidden subclaims.
 - Final bullet mechanisms are decisions or operating choices, not work-artifact lists.

@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile2.prompt2.template
-prompt_version: v4.3.0
+prompt_version: v4.4.0
 prompt_label: hiring-manager-hard-stretch-brief-source-bullet-selection-hm-value-driven
 prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with explicit role budgets, source-bullet selection metadata, and coverage-set bullet selection; adds jd-implied-level calibration and hiring-manager value-driven proof selection (P2, as the hiring manager, builds a value function around the standout axis — preferred_qualifications/near_gate_qualifications/hiring_manager_proof/hardest responsibilities — treats must-haves as table stakes, ranks the candidate's real proofs by standout match, and uses the generic evidence-strength list only as a tiebreak).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -103,8 +103,7 @@ Role-winning phrase promotion:
   3. the lead selected bullet or another top-2 selected bullet of the most relevant role
   4. top 5 `final_skills_list`
 - If a role-winning phrase is excluded from all top surfaces, revise before output.
-- If excluded from one of title/summary/lead-bullet surfaces, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
-
+- If excluded from one of title/summary/lead-bullet surfaces, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail.
 Title competitiveness floor:
 - The title should be the cleanest bold positioning headline, not a conservative source-title paraphrase.
 - A title fails if it would be equally appropriate for many candidates outside the JD's core domain.
@@ -212,7 +211,7 @@ Adaptive technical-language calibration rule:
 - `Signal jargon` = source-supported technical language that improves credibility, ATS match, or hiring-manager confidence.
 - `Noise jargon` = technical language that adds complexity without improving fit, credibility, ATS coverage, or defensibility.
 - Preserve source-supported technical terms when the JD or hiring-manager persona expects technical literacy, especially for technical PM, platform, AI/ML, risk, fraud, security, identity, infrastructure, data, API, developer-tooling, fintech, or enterprise-integration roles.
-- Examples of terms that may be signal jargon in technical roles: `FRR/FAR`, `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `liveness`, `behavioral biometrics`, `risk decisioning`, `thresholds`, `latency`, `false rejection`, `false positive`, `data science`, `cloud cost`, and similar source-supported terms.
+- Examples of terms that may be signal jargon in technical roles: cross-domain ones such as `SDK`, `API`, `SLA`, `GCP`, `AWS`, `Azure`, `multi-tenant`, `model deployment`, `thresholds`, `latency`, `data science`, `cloud cost`, plus domain-specific terms the resume supports (e.g. `FRR/FAR`/`liveness` for identity, `error-rate`/`uptime` for infra, `CAC`/`LTV` for growth).
 - For less technical, growth, generalist, business, GTM, or customer-facing roles, translate technical terms into plain product/business language while preserving the underlying proof.
 - Do not add unsupported jargon just to sound technical. Preserve or translate only terms supported by the current resume, story bank, or JD.
 - When preserving jargon, keep the bullet understandable: result first, business/product meaning clear, technical detail second.
@@ -306,8 +305,7 @@ Skill implication safety:
 - Treat the source resume as an evidence pool, not output structure. Collapse overlapping bullets into distinct PM proof stories that answer the JD's main hiring-manager doubts. Prefer hiring-manager-natural phrasing in `recommended_title` and `summary_lead`; for bullets, choose source-bullet selections and placement that let Prompt 3 preserve ATS phrases selectively without turning the final resume into keyword-heavy prose.
 - Source-native labels are proof anchors, not default headline language. If a source-native category and a JD-native category are both defensible, prefer the JD-native category in resume-facing fields and use the source-native category as supporting proof.
 - If two phrases are equally defensible, choose the one closer to the JD’s native domain language and hiring-manager vocabulary.
-- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the lead bullet / another top-2 selected bullet of the most relevant role. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for title or promotion rationale.
-- Do not let a related unsupported subclaim suppress a clean supported target-native category. Block the subclaim; promote the category.
+- If a phrase appears in `summary_focus`, `selected_storylines`, `phrases_to_mirror`, or `final_skills_list`, explicitly decide whether it is a promotion phrase, a preservation phrase, or blocked. Promotion phrases belong in `recommended_title`, `summary_lead`, or the lead bullet / another top-2 selected bullet of the most relevant role. Preservation phrases must survive in bullets or skills. If blocked, the reason must be represented in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail.- Do not let a related unsupported subclaim suppress a clean supported target-native category. Block the subclaim; promote the category.
 
 Validated-domain rule:
 - `validated_domain` must contain only positive domains that are direct or functionally equivalent and safe for title, summary, or scope bullets.
@@ -734,8 +732,7 @@ A++ final promotion audit:
 - Identify the strongest 1-2 central JD-native promotion phrases the hiring manager most wants to see.
 - If they are direct/functionally equivalent, confirm they appear in `recommended_title`, `summary_lead`, and the lead bullet or another top-2 selected bullet of the most relevant role.
 - Identify the next 3-5 most important truth-safe preservation phrases and confirm they remain in `phrases_to_mirror`, relevant bullet selections, or `final_skills_list` so Prompt 3 can preserve them in final resume text.
-- If any promotion or preservation phrase is excluded, the reason must be captured in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail. Do not use `flex_notes` for promotion rationale.
-- If a source-native term crowds out a stronger target-native term, revise the resume-facing field before output.
+- If any promotion or preservation phrase is excluded, the reason must be captured in explicit fields such as `cannot_claim`, `signals_to_avoid`, `gaps`, or the relevant guardrail.- If a source-native term crowds out a stronger target-native term, revise the resume-facing field before output.
 
 Natural-language polish audit:
 - If `recommended_title`, `summary_lead`, or lead-bullet direction reads like a keyword pile, reduce redundant promoted modifiers before output.
