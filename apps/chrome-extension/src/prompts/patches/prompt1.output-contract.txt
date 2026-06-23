@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt1.output_contract
-prompt_version: v2.1.1
+prompt_version: v2.1.2
 prompt_label: jd-analysis-output-contract-target-native-phrases
-prompt_notes: Defines the Prompt 1 JSON contract with gated, high-signal, and medium-signal requirement buckets plus reserved flexible notes, using target-native phrase validation language.
+prompt_notes: Defines the Prompt 1 JSON contract with gated, high-signal, and medium-signal requirement buckets plus reserved flexible notes, using target-native phrase validation language. Adds a hard rule forbidding raw double quotes inside string values (use single quotes) to prevent invalid JSON from quoted phrases in jd_notes.
 ai_update_notes: When changing this admin-owned output contract manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new contract behavior. User prompt uploads cannot update output contract headers. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 Output contract:
@@ -77,6 +77,7 @@ Additional output rules:
 - `priority` must be an integer from 1 to 10.
 - `type` must be either `exact` or `inferred`.
 - All other list fields must contain short strings only.
+- Inside a string value, never use the double-quote character `"`. If you must quote a phrase inside a value, use single quotes instead, for example: stated title 'Product Manager'. A raw double quote inside a value silently breaks JSON parsing, so this rule is mandatory for every string (especially `jd_notes` entries).
 - `flex_notes` is optional and must be a string or null; use `""` when unused.
 - Use `flex_notes` only for small non-critical stage notes needed by future prompt variants.
 - Order all arrays from highest to lowest importance.

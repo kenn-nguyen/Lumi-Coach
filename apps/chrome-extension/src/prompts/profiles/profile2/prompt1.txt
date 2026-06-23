@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile2.prompt1.template
-prompt_version: v2.2.0
+prompt_version: v2.2.1
 prompt_label: jd-scanner-persona-only-no-title-hint-storybank-feedback-v12-jd-implied-level
 prompt_notes: Extracts screening signals, role-winning phrases, and a defensible hiring-manager persona into flex_notes while preserving the shared JD signal contract and no-title-hint boundary; adds jd-implied-level extraction (target_seniority resolves title-vs-scope conflict toward the scope-implied level, recorded via a neutral LEVEL_SIGNAL jd_notes label).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -79,7 +79,7 @@ A++ calibrated-boldness extraction:
 
 - Prompt 1 must not produce title-candidate labels, headline recommendations, or final-resume placement guidance.
 - In `jd_notes`, use only neutral extraction labels such as `ROLE_WINNING_PHRASE`, `POSITIONING_PHRASE_TO_VALIDATE`, `MIXED_SUPPORT_RISK`, `LEVEL_SIGNAL`, or `CONTEXT_ONLY`.
-- `LEVEL_SIGNAL` format (neutral extraction, not a title recommendation): `LEVEL_SIGNAL: stated title "<title>" but scope implies <higher level> — <evidence from JD>`.
+- `LEVEL_SIGNAL` format (neutral extraction, not a title recommendation): `LEVEL_SIGNAL: stated title '<title>' but scope implies <higher level> - <evidence from JD>`. Use single quotes only inside this note — never double quotes, which would break the JSON.
 
 - Examples inside Prompt 1 must stay domain-neutral. Do not include reusable examples that name a specific company, candidate, product domain, tool, protocol, or employer from a prior run.
 - If an example is needed, use bracketed placeholders such as `[role/domain]`, `[ownership surface]`, `[candidate-owned evidence]`, and `[unsupported system]`.
@@ -108,7 +108,7 @@ Company-context provenance firewall:
 
 Field guidance:
 - `target_role`: concise role title from the JD.
-- `target_seniority`: seniority implied by title, scope, requirements, and ownership language. When the stated title and the scope/ownership language disagree (e.g. a "Product Manager" title described with multi-team, multi-product, platform, or org-level ownership), set this to the scope-implied level, not the literal title, and record the basis as a `LEVEL_SIGNAL` note in `jd_notes`.
+- `target_seniority`: seniority implied by title, scope, requirements, and ownership language. When the stated title and the scope/ownership language disagree (e.g. a 'Product Manager' title described with multi-team, multi-product, platform, or org-level ownership), set this to the scope-implied level, not the literal title, and record the basis as a `LEVEL_SIGNAL` note in `jd_notes`.
 - `target_domain`: broad target domain in JD-native language; this is the JD's domain, not validated candidate fit.
 - `company_context`: concise description of the hiring company/team context from the JD only.
 - `role_archetype`: generic archetype of the role, such as platform PM, growth PM, AI product PM, infra PM, marketplace PM, security PM, enterprise SaaS PM.
