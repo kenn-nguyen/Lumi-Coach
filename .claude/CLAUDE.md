@@ -78,6 +78,36 @@ Resume Matcher is an AI-powered application for tailoring resumes to job descrip
 
 ---
 
+## Coding Behavior
+
+### Think Before Coding
+- State assumptions explicitly before implementing. If uncertain, ask.
+- If multiple interpretations exist, present them — don't pick silently.
+- If something is unclear, stop. Name what's confusing. Ask.
+- Push back when a simpler approach exists.
+
+### Simplicity First
+- Minimum code that solves the problem. Nothing speculative.
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No error handling for impossible scenarios.
+- Ask: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### Surgical Changes
+- Touch only what you must. Don't improve adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken. Match existing style.
+- If you notice unrelated dead code, mention it — don't delete it.
+- Remove imports/variables/functions that **your** changes made unused. Don't remove pre-existing dead code unless asked.
+
+### Goal-Driven Execution
+For multi-step tasks, state a brief plan before coding:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+```
+
+---
+
 ## Essential Commands
 
 ```bash

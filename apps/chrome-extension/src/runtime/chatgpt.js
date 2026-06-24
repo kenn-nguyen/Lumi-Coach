@@ -620,6 +620,13 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     'button[aria-label="Stop"]',
     'button[aria-label*="Stop loading"]',
   ];
+  // ChatGPT renders a Regenerate button when a message fails (e.g. "Conversation not found").
+  const ERROR_STATE_SELECTORS = [
+    'button[data-testid="regenerate-response-button"]',
+    'button[data-testid*="regenerate"]',
+    'button[aria-label*="Regenerate"]',
+    'button[aria-label*="Retry"]',
+  ];
   const ASSISTANT_TEXT_SELECTORS = [
     '[data-message-author-role="assistant"] .markdown',
     '[data-message-author-role="assistant"] [class*="markdown"]',
@@ -913,24 +920,50 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     );
   }
 
-  function hasStopButton() {
-    if (STOP_BUTTON_SELECTORS.some((selector) => document.querySelector(selector))) {
-      return true;
+  function isElementVisible(el) {
+    if (!(el instanceof HTMLElement)) return false;
+    // checkVisibility (Chrome 105+) honours display:none, visibility:hidden,
+    // content-visibility and opacity. Fall back to layout boxes if unavailable.
+    if (typeof el.checkVisibility === 'function') {
+      return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
     }
+    return el.getClientRects().length > 0;
+  }
 
+  function findStopButton() {
+    for (const selector of STOP_BUTTON_SELECTORS) {
+      const node = document.querySelector(selector);
+      if (node instanceof HTMLElement && isElementVisible(node)) {
+        return node;
+      }
+    }
     const buttons = Array.from(document.querySelectorAll('button')).filter((node) => node instanceof HTMLButtonElement);
-    return buttons.some((button) => {
-      const aria = (button.getAttribute('aria-label') ?? '').toLowerCase();
-      const text = (button.textContent ?? '').toLowerCase();
-      const testId = (button.getAttribute('data-testid') ?? '').toLowerCase();
-      return (
-        aria.includes('stop') ||
-        aria.includes('loading') ||
-        text.includes('stop') ||
-        text.includes('loading') ||
-        testId.includes('stop')
-      );
-    });
+    return (
+      buttons.find((button) => {
+        const aria = (button.getAttribute('aria-label') ?? '').toLowerCase();
+        const testId = (button.getAttribute('data-testid') ?? '').toLowerCase();
+        // Match on aria-label / data-testid only — the real stop control always
+        // carries one (aria "Stop answering", testId "stop-button"). The
+        // textContent scan was dropped: ChatGPT's reasoning models render a
+        // "Stopped thinking" collapse toggle whose text contains "stop", which
+        // was falsely read as "still generating". Exclude the past-tense
+        // "stopped" so a reasoning toggle labelled via aria can't match either.
+        const matchesStop =
+          (aria.includes('stop') && !aria.includes('stopped')) || testId.includes('stop');
+        // Require the control to be actually visible. ChatGPT leaves a hidden
+        // stop button in the DOM after generation finishes; counting it kept the
+        // watcher "still generating" forever and the run never settled.
+        return matchesStop && isElementVisible(button);
+      }) ?? null
+    );
+  }
+
+  function hasStopButton() {
+    return findStopButton() !== null;
+  }
+
+  function hasErrorState() {
+    return ERROR_STATE_SELECTORS.some((selector) => document.querySelector(selector));
   }
 
   function scrapeAssistantTextLenient() {
@@ -1269,6 +1302,17 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       let lastSnapshot = existingSnapshot;
 
       let finished = false;
+
+      // Expose live watcher state for the background progress poll.
+      window.__rmWatcherState = {
+        sawStopButton,
+        sawNewTurn,
+        hasStop: hasStopButton(),
+        hasError: hasErrorState(),
+        textLen: existingSnapshot.latestText.length,
+        stableTimerActive: false,
+        stopBtn: null,
+      };
       let scheduleId = null;
 
       const cleanup = () => {
@@ -1305,6 +1349,22 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         const latestSnapshot = getAssistantSnapshot();
         const isNewTurn = hasNewAssistantTurn(previousAssistant, latestSnapshot);
         const stopPresent = hasStopButton();
+        if (window.__rmWatcherState) {
+          const stopBtn = findStopButton();
+          window.__rmWatcherState.sawStopButton = sawStopButton;
+          window.__rmWatcherState.sawNewTurn = sawNewTurn;
+          window.__rmWatcherState.hasStop = stopPresent;
+          window.__rmWatcherState.hasError = hasErrorState();
+          window.__rmWatcherState.textLen = latestSnapshot.latestText.length;
+          window.__rmWatcherState.stableTimerActive = stableTimer !== null;
+          window.__rmWatcherState.stopBtn = stopBtn
+            ? {
+                aria: stopBtn.getAttribute('aria-label'),
+                testId: stopBtn.getAttribute('data-testid'),
+                text: (stopBtn.textContent ?? '').trim().slice(0, 20),
+              }
+            : null;
+        }
         if (stopPresent) {
           sawStopButton = true;
         }
@@ -1326,11 +1386,26 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
 
         lastSnapshot = latestSnapshot;
 
-        // Settle when EITHER the button transition says finished OR a new turn
-        // was seen — but only once the Stop button is gone.
-        const readyToSettle = (finishedByButton || isNewTurn) && !stopPresent;
+        const hasResponseText = latestSnapshot.latestText.trim().length > 0;
+        // Backstop: if response text is non-empty and hasn't grown for a quiet
+        // period, generation has finished even if a (phantom/hidden) Stop button
+        // is still detected. ChatGPT can leave a stop control in the DOM after a
+        // run, which otherwise hangs the watcher for the full timeout.
+        const quietForSettle =
+          sawNewTurn && hasResponseText && Date.now() - lastProgressAt >= 12000;
+
+        // Settle when the button transition says finished, or a new turn was seen
+        // with the Stop button gone, or the text has gone quiet (backstop).
+        const readyToSettle =
+          finishedByButton || (isNewTurn && !stopPresent) || quietForSettle;
         if (!readyToSettle) {
-          if (stableTimer !== null) {
+          // Don't cancel a running settle timer if we already have response text.
+          // ChatGPT's "Conversation not found" React-Query loop re-renders the
+          // page repeatedly, briefly reflashing the Stop button even after
+          // generation is done — which would otherwise cancel and restart the
+          // settle timer for minutes. If latestText is non-empty the response is
+          // captured; let the timer run through the transient flicker.
+          if (stableTimer !== null && !hasResponseText) {
             window.clearTimeout(stableTimer);
             stableTimer = null;
           }
@@ -1351,9 +1426,20 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         }, 900);
       };
 
+      const waitStartedAt = Date.now();
       const hardTimeoutId = window.setTimeout(() => failForTimeout(), timeoutMs);
       const idlePollId = window.setInterval(() => {
         maybeResolve();
+        // Fast-fail when ChatGPT shows an error state (Regenerate button) and
+        // no response text has been captured yet. The "Conversation not found"
+        // React-Query loop can start mid-generation, causing constant DOM
+        // re-renders that flicker the Stop button — so we guard on sawNewTurn
+        // (response text appeared) rather than sawStopButton (Stop was seen).
+        if (!sawNewTurn && Date.now() - waitStartedAt >= 3000 && hasErrorState()) {
+          cleanup();
+          reject(new Error('dom_changed:ChatGPT failed to respond (error state detected — possibly "Conversation not found"). The run will retry.'));
+          return;
+        }
         const timeoutWindow = sawNewTurn ? responseIdleTimeoutMs : Math.min(responseFirstTokenTimeoutMs, timeoutMs);
         if (Date.now() - lastProgressAt >= timeoutWindow) {
           failForTimeout();
@@ -1726,16 +1812,20 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       } catch {
         // ignore transient tab lookup errors while popup is active
       }
-      // Cheap live read of the popup's visibility so a stall caused by the
-      // window being hidden/minimized shows up in the in-progress logs.
+      // Cheap live read of popup visibility + watcher state for stall diagnosis.
       let visibilityState = null;
+      let watcherState = null;
       try {
-        const [{ result: vis } = {}] =
+        const [{ result: probe } = {}] =
           (await chrome.scripting.executeScript({
             target: { tabId: session.tabId },
-            func: () => document.visibilityState,
+            func: () => ({
+              visibilityState: document.visibilityState,
+              watcher: window.__rmWatcherState ?? null,
+            }),
           })) ?? [];
-        visibilityState = vis ?? null;
+        visibilityState = probe?.visibilityState ?? null;
+        watcherState = probe?.watcher ?? null;
       } catch {
         // ignore — popup may be mid-navigation or closing
       }
@@ -1748,6 +1838,7 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
         phaseText: getElapsedPhaseLabel(elapsedMs, pollCount),
         tab: tabSnapshot,
         visibilityState,
+        watcher: watcherState,
       });
     }, 4000);
     try {
@@ -1843,7 +1934,8 @@ function shouldRetryPromptRun(result) {
     result.message.includes('Prompt submission control never became ready after filling the ChatGPT composer.') ||
     result.message.includes('Timed out waiting for the ChatGPT response.') ||
     result.message.includes('Unable to locate the ChatGPT composer.') ||
-    result.message.includes('ChatGPT composer never became interactive.')
+    result.message.includes('ChatGPT composer never became interactive.') ||
+    result.message.includes('ChatGPT failed to respond (error state detected')
   );
 }
 
