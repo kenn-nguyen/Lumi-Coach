@@ -6,6 +6,12 @@ import {
 import { closeOrphanedChatGptWindows } from "./runtime/chatgpt.js";
 import { captureExtensionEvent } from "./runtime/analytics.js";
 import { logError, logInfo, logWarn, setLogRelayTabId } from "./runtime/log.js";
+import {
+  clearBufferedLogs,
+  formatLogsForExport,
+  getPersistableSnapshot,
+  getRawEmissions,
+} from "./runtime/log-buffer.js";
 import { clearPromptTemplateCache } from "./runtime/prompt-loader.js";
 import {
   fetchResumeById,
@@ -19,7 +25,7 @@ import {
   syncExtensionPromptDefaults,
   verifyWebsiteSession,
 } from "./runtime/api.js";
-import { SESSION_STATUS } from "./runtime/constants.js";
+import { SESSION_STATUS, STORAGE_KEYS } from "./runtime/constants.js";
 import {
   areSameAccountUsers,
   deriveAccountKeyFromUser,
@@ -1401,6 +1407,25 @@ chrome.action.onClicked.addListener(async (tab) => {
   // Nothing else to show on non-injectable browser pages.
 });
 
+// Persist a single overwriting diagnostics snapshot at the end of every run
+// (success or failure) so the most recent run's logs remain downloadable from
+// advanced settings even after a service-worker restart. One key, overwritten
+// each run — it can never accumulate. The in-memory buffer is the live copy and
+// is cleared only when the next run starts.
+async function persistRunDiagnostics() {
+  try {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.lastRunDiagnostics]: {
+        savedAt: new Date().toISOString(),
+        version: chrome.runtime.getManifest().version,
+        snapshot: getPersistableSnapshot(),
+      },
+    });
+  } catch {
+    // best-effort: never let diagnostics persistence break a run
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const run = async () => {
     logInfo("Background", "Received message.", {
@@ -1415,6 +1440,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "REGISTER_LOG_VIEWER":
         setLogRelayTabId(sender?.tab?.id ?? null);
         return { ok: true };
+
+      case "EXPORT_LOGS": {
+        // Never clear here — logs stay available until the next run starts.
+        let persisted = null;
+        try {
+          const stored = await chrome.storage.local.get(
+            STORAGE_KEYS.lastRunDiagnostics,
+          );
+          persisted = stored?.[STORAGE_KEYS.lastRunDiagnostics] ?? null;
+        } catch {
+          persisted = null;
+        }
+        // Prefer the persisted last-run snapshot over the in-memory buffer.
+        // After a service-worker restart the in-memory buffer refills with
+        // ambient background messages (connection checks, prefetch, sync) that
+        // would otherwise mask the real run. Exception: a live failing run still
+        // in memory (rawEmissions present) is the freshest, full-fidelity copy —
+        // use it. If nothing was ever persisted, fall back to memory.
+        const memoryHasLiveRun = getRawEmissions().length > 0;
+        if (memoryHasLiveRun || !persisted) {
+          return formatLogsForExport({
+            version: chrome.runtime.getManifest().version,
+            source: "memory",
+          });
+        }
+        return {
+          appName: "Lumi Coach",
+          format: "log-export-v1",
+          exportedAt: new Date().toISOString(),
+          version:
+            persisted?.version ?? chrome.runtime.getManifest().version,
+          source: "persisted",
+          savedAt: persisted?.savedAt ?? null,
+          entryCount: persisted?.snapshot?.entries?.length ?? 0,
+          rawEmissionCount: persisted?.snapshot?.rawEmissions?.length ?? 0,
+          entries: persisted?.snapshot?.entries ?? [],
+          rawEmissions: persisted?.snapshot?.rawEmissions ?? [],
+        };
+      }
 
       case "GET_STATE":
         return getRuntimeSnapshot({
@@ -1765,6 +1829,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           };
         }
         try {
+          // Scope diagnostics to this run: the next run is the only thing that
+          // clears the previous run's logs. Reset the live buffer here so a saved
+          // log reflects only the current run.
+          clearBufferedLogs();
           updateActiveRun(runId, { phase: "running", inFlight: true });
           await setExtensionState({
             sessionId: runId,
@@ -1795,6 +1863,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           );
           markRunTerminal(runId, "completed");
           clearActiveRun(runId);
+          await persistRunDiagnostics();
           return { ok: true, result, runId };
         } catch (error) {
           if (isRunCanceledError(error)) {
@@ -1829,6 +1898,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   await clearPendingExtensionAction();
                   markRunTerminal(runId, "completed");
                   clearActiveRun(runId);
+                  await persistRunDiagnostics();
                   return { ok: true, result, runId };
                 }
               } catch (syncError) {
@@ -1859,6 +1929,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             };
           }
           clearActiveRun(runId);
+          await persistRunDiagnostics();
           throw error;
         }
       }

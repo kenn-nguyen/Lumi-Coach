@@ -145,6 +145,7 @@ const ADVANCED_TOGGLE_ID = "resume-matcher-advanced-toggle";
 const RESET_LOCAL_ID = "resume-matcher-reset-local";
 const RESET_DEFAULTS_ID = "resume-matcher-reset-defaults";
 const EXPORT_DATA_ID = "resume-matcher-export-data";
+const EXPORT_LOGS_ID = "resume-matcher-export-logs";
 const LLM_CONFIG_BADGE_ID = "resume-matcher-llm-config-badge";
 const LLM_CONFIG_DOWNLOAD_ID = "resume-matcher-llm-config-download";
 const LLM_CONFIG_IMPORT_BTN_ID = "resume-matcher-llm-config-import-btn";
@@ -1742,6 +1743,17 @@ function downloadJsonFile(filename, payload) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+// Fetch the most recent run's diagnostic logs from the background and download
+// them as JSON. Used by the inline "Save logs" link on failure cards and the
+// "Download logs" button in advanced settings.
+async function downloadDiagnosticLogs() {
+  const payload = await sendMessage("EXPORT_LOGS", {});
+  downloadJsonFile(
+    `lumi-coach-logs-${sanitizeDownloadTimestamp()}.json`,
+    payload,
+  );
 }
 
 function getMatchingCurrentSession(entry) {
@@ -3429,6 +3441,21 @@ function injectStyles() {
       color: inherit;
       opacity: 0.92;
       overflow-wrap: anywhere;
+    }
+
+    .resume-matcher-status-savelogs {
+      display: inline;
+      font-size: 13px;
+      font-weight: 600;
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
+      opacity: 0.85;
+    }
+
+    .resume-matcher-status-savelogs:hover {
+      opacity: 1;
     }
 
     .resume-matcher-status-spinner {
@@ -7201,13 +7228,7 @@ function applyExplicitRunStatus(nextStatus, options = {}) {
 
 function setExplicitRunStatus(kind, tone, title, detail = "", actions = []) {
   applyExplicitRunStatus(
-    runStatusHelpers.createExplicitRunStatus(
-      kind,
-      tone,
-      title,
-      detail,
-      actions,
-    ),
+    runStatusHelpers.createExplicitRunStatus(kind, tone, title, detail, actions),
     { source: kind === "running" ? "stage" : "explicit" },
   );
 }
@@ -8318,10 +8339,14 @@ function renderRunView() {
         Boolean(status),
     );
     statusRoot.dataset.tone = status?.tone || "neutral";
+    const saveLogsLink =
+      status && (status.kind === "error" || status.kind === "interrupted")
+        ? `<span class="resume-matcher-status-savelogs" data-status-action="save_logs" role="button" tabindex="0">Save logs</span>`
+        : "";
     statusRoot.innerHTML = status
       ? `
         <div class="resume-matcher-status-title">${status.tone === "info" && isLoadingJob ? '<span class="resume-matcher-status-spinner" aria-hidden="true"></span>' : ""}${escapeHtml(status.title)}</div>
-        ${status.detail ? `<div class="resume-matcher-status-detail">${escapeHtml(status.detail)}</div>` : ""}
+        ${status.detail || saveLogsLink ? `<div class="resume-matcher-status-detail">${escapeHtml(status.detail)}${status.detail && saveLogsLink ? " " : ""}${saveLogsLink}</div>` : ""}
       `
       : "";
     statusActions.innerHTML =
@@ -9300,6 +9325,15 @@ async function handleGenerateClick() {
 }
 
 async function handleStatusAction(actionId) {
+  if (actionId === "save_logs") {
+    try {
+      await downloadDiagnosticLogs();
+    } catch (error) {
+      // Best-effort: a failed export must never disrupt the error card.
+      console.error("[ResumeMatcherExt] Failed to save logs.", error);
+    }
+    return;
+  }
   if (actionId === "open_settings" || actionId === "open-settings") {
     openBoard("settings");
     if (state.currentView !== "settings") {
@@ -9713,6 +9747,7 @@ function ensureRoot() {
                   </div>
                   <div class="resume-matcher-advanced-actions resume-matcher-field--full">
                     <button id="${EXPORT_DATA_ID}" type="button" class="resume-matcher-button">Export run data</button>
+                    <button id="${EXPORT_LOGS_ID}" type="button" class="resume-matcher-button">Download logs</button>
                     <button id="${RESET_DEFAULTS_ID}" type="button" class="resume-matcher-button">Reset settings</button>
                     <button id="${RESET_LOCAL_ID}" type="button" class="resume-matcher-button is-danger">Clear local storage</button>
                   </div>
@@ -10043,6 +10078,22 @@ function ensureRoot() {
         "error",
         "Export failed",
         error instanceof Error ? error.message : "Unable to export run data.",
+      );
+    }
+  });
+  $(EXPORT_LOGS_ID)?.addEventListener("click", async () => {
+    try {
+      await downloadDiagnosticLogs();
+      setRunStatus(
+        "info",
+        "Logs downloaded",
+        "Downloaded the most recent run's diagnostic logs as JSON.",
+      );
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Log download failed",
+        error instanceof Error ? error.message : "Unable to download logs.",
       );
     }
   });
