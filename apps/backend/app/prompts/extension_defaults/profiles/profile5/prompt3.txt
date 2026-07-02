@@ -572,7 +572,7 @@ Storyline-to-surface audit:
   - domain/scope + scale either in that lead bullet or within the first 2 bullets when breadth is important for the JD
   - the top 2-3 role-winning proof categories in the first 2-3 bullets of the most relevant role
 - If a stronger proof category is missing or buried, reorder or swap before polishing lower-priority content.
-- Title, summary, lead bullet / scope bullets, and skills use market-natural labels rather than target-company-internal team labels when appropriate.
+- Title, summary, lead bullet / scope bullets, and skills use terms the target role's domain recognizes: translate labels the target audience will not recognize — company-internal or region/jurisdiction-specific — into the domain's accepted equivalent, and keep terms the domain already recognizes and values (including local terms when the role sits in that market or the JD/persona signals familiarity). This governs setting and entity labels (a place, org, regulator, or internal team), not the concrete execution lever, metrics, or named proof specifics that earn credibility — keep those, and gloss a proof term once if the target market may not recognize it rather than abstracting it away.
 - `generation_feedback`, if present, is useful for story-bank expansion: pros = strong proof, cons = resume-actionable questions, caveats = interview-prep-only topics, conditional low-priority ideas, and do-not-claim boundaries.
 - `generation_feedback` does not invent experiences, assert unsupported future bullet claims as facts, or ask low-impact questions that would not change the next resume.
 - Valid JSON only.
