@@ -1,3 +1,5 @@
+import { recordLog } from './log-buffer.js';
+
 const LOG_PREFIX = '[ResumeMatcherExt]';
 const relayTabIds = new Set();
 
@@ -30,6 +32,7 @@ function relayLog(level, scope, message, data) {
 }
 
 export function logInfo(scope, message, data) {
+  recordLog('info', scope, message, data);
   if (data === undefined) {
     console.info(formatMessage(scope, message));
     relayLog('info', scope, message);
@@ -40,6 +43,7 @@ export function logInfo(scope, message, data) {
 }
 
 export function logWarn(scope, message, data) {
+  recordLog('warn', scope, message, data);
   if (data === undefined) {
     console.warn(formatMessage(scope, message));
     relayLog('warn', scope, message);
@@ -50,6 +54,7 @@ export function logWarn(scope, message, data) {
 }
 
 export function logError(scope, message, data) {
+  recordLog('error', scope, message, data);
   if (data === undefined) {
     console.error(formatMessage(scope, message));
     relayLog('error', scope, message);

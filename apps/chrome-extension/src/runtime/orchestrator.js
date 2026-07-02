@@ -1764,6 +1764,8 @@ export async function generateResumeForLinkedInJob(
         logError("Orchestrator", "Prompt 1 failed validation after repair.", {
           validationError: prompt1Run.validationError,
           conversationUrl: prompt1Run.conversationUrl ?? null,
+          rawTextPreview: (prompt1Run.rawText ?? "").slice(0, 2000),
+          rawTextLength: (prompt1Run.rawText ?? "").length,
         });
         await captureExtensionEvent("prompt_stage_failed", {
           surface: "run_view",
@@ -1889,6 +1891,8 @@ export async function generateResumeForLinkedInJob(
         logError("Orchestrator", "Prompt 2 failed validation after repair.", {
           validationError: prompt2Run.validationError,
           conversationUrl: prompt2Run.conversationUrl ?? null,
+          rawTextPreview: (prompt2Run.rawText ?? "").slice(0, 2000),
+          rawTextLength: (prompt2Run.rawText ?? "").length,
         });
         await captureExtensionEvent("prompt_stage_failed", {
           surface: "run_view",
@@ -2020,6 +2024,8 @@ export async function generateResumeForLinkedInJob(
       logError("Orchestrator", "Prompt 3 failed validation after repair.", {
         validationError: prompt3Run.validationError,
         conversationUrl: prompt3Run.conversationUrl ?? null,
+        rawTextPreview: (prompt3Run.rawText ?? "").slice(0, 2000),
+        rawTextLength: (prompt3Run.rawText ?? "").length,
       });
       await captureExtensionEvent("prompt_stage_failed", {
         surface: "run_view",

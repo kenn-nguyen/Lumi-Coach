@@ -30,6 +30,7 @@ export const STORAGE_KEYS = {
   analyticsState: "analyticsState",
   historyEntries: "historyEntries",
   lastError: "lastError",
+  lastRunDiagnostics: "lastRunDiagnostics",
 };
 
 export const APIFY_DEFAULT_LINKEDIN_ACTOR = "apimaestro/linkedin-job-detail";
