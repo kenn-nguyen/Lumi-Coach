@@ -1,8 +1,8 @@
 ---
 prompt_artifact: prompt3.template
-prompt_version: v4.0.6
+prompt_version: v4.0.7
 prompt_label: tailored-resume-writer-source-bullet-rewrite
-prompt_notes: Aligns Prompt 3 with the source-bullet-selection contract, keeps workExperience.context locked to source, rewrites selected CURRENT_RESUME bullets around the reader's proof model, and better preserves diagnosis-led PM judgment when it is the real senior proof.
+prompt_notes: Aligns Prompt 3 with the source-bullet-selection contract, keeps workExperience.context locked to source, rewrites selected CURRENT_RESUME bullets around the reader's proof model, and better preserves diagnosis-led PM judgment when it is the real senior proof. Strips internal level designators from the headline/summary; Senior only when supported.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 1. ROLE AND OBJECTIVES
@@ -226,7 +226,8 @@ Avoid:
 - Use Prompt 2 recommended_title only if it does not overclaim.
 - User-approved title variants may be used only if explicitly present in Prompt 2 or user-provided configuration.
 - Do not invent Staff, Senior Staff, Director, Head of, GM, or other seniority labels unless already supported or explicitly user-approved.
-- Headline format clarification: when (a) the source title and the JD title are at the same seniority level, AND (b) the JD title doesn't claim domain ownership the candidate lacks, format the title as `<JD role title verbatim> - <domain modifier>` to maximize ATS title-match scoring. Example: source title "Associate Product Director", JD title "Lead Product Manager, Identity Verification" -> headline: "Lead Product Manager - Identity Verification, Fraud & Trust". The headline is positional intent (what the candidate is targeting), not a current-role claim. The actual employment title in `workExperience[].title` stays exactly as source.
+- Strip company-internal level designators from the headline: roman numerals (I, II, III, IV), trailing standalone numbers, and ladder codes (L4, L5, P3, IC4, M1). Never echo them in `personalInfo.title` or the summary. Use the clean base role title; add a seniority word such as 'Senior' only when `target_seniority`, Prompt 2, or CURRENT_RESUME evidence supports it - otherwise keep the base title. Example: JD 'Product Manager II' -> 'Senior Product Manager' when senior scope is supported, else 'Product Manager'.
+- Headline format clarification: when (a) the source title and the JD title are at the same seniority level, AND (b) the JD title doesn't claim domain ownership the candidate lacks, format the title as `<JD role title verbatim, with any internal level designator removed> - <domain modifier>` to maximize ATS title-match scoring. Example: source title "Associate Product Director", JD title "Lead Product Manager, Identity Verification" -> headline: "Lead Product Manager - Identity Verification, Fraud & Trust". The headline is positional intent (what the candidate is targeting), not a current-role claim. The actual employment title in `workExperience[].title` stays exactly as source.
 - If either condition (a) or (b) fails, fall back to the truthful-bridge rule above. Never use this format if it would create a level mismatch with source or claim domain experience the candidate does not have.
 
 11. SUMMARY RULES

@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile2.prompt3.template
-prompt_version: v5.3.1
+prompt_version: v5.3.2
 prompt_label: hard-stretch-resume-writer-source-bullet-rewrite-jd-implied-level-bullet-length
-prompt_notes: Executes Prompt 2 into final resume JSON with source-bullet selection, explicit role bullet budgets, stronger summary proof selection, and reinforcement of coverage-set selection so uncovered proof categories survive in strong roles; adds jd-implied-level calibration (writes summary/scope altitude to Prompt 2's implied level using only source-supported scope, surfaces scope signals rather than burying them, and protects scope proof from the cut-order; headline/employment titles unchanged).
+prompt_notes: Executes Prompt 2 into final resume JSON with source-bullet selection, explicit role bullet budgets, stronger summary proof selection, and reinforcement of coverage-set selection so uncovered proof categories survive in strong roles; adds jd-implied-level calibration (writes summary/scope altitude to Prompt 2's implied level using only source-supported scope, surfaces scope signals rather than burying them, and protects scope proof from the cut-order; employment titles unchanged). Strips internal level designators from the headline/summary; Senior only when supported.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
 ---
 You are a top-tier PM resume writer for competitive product roles.
@@ -168,6 +168,7 @@ Compressed-current-role readability rule:
 Title execution:
 - `personalInfo.title` is a positioning headline, not an employment title.
 - Use Prompt 2 `recommended_title` unless it conflicts with locked facts or unsupported ownership.
+- Strip internal level designators (roman numerals I/II/III/IV, trailing numbers, ladder codes like L4/L5/IC4) from the headline and summary; never echo them. Keep the clean base role title and add 'Senior' only when the implied level/scope or source evidence supports it - else keep the base title. Example: 'Product Manager II' -> 'Senior Product Manager' when supported, else 'Product Manager'.
 - It may change product/domain scope modifier while preserving truthful role family and seniority.
 - Preserve all `workExperience[].title` exactly.
 
@@ -325,7 +326,7 @@ Final bullet clarity gate:
 - Do not merge or reorder bullets in a way that collapses distinct proof categories into one generic role summary.
 
 Important-experience bullet budget:
-- For the most relevant candidate-owned role, 4-6 bullets are allowed when every bullet proves a distinct high-value signal from Prompt 2.
+- For the most relevant candidate-owned role, use 4-6 bullets — hard maximum 6 — and only when every bullet proves a distinct high-value signal from Prompt 2. If more than 6 distinct signals exist, merge related bullets or drop the weakest; this cap overrides preserving every distinct proof.
 - For a second adjacent strong role, 4-6 bullets are allowed only when the role adds distinct JD-winning proof categories not already represented more strongly above; default closer to 4.
 - Distinct means a different hiring-manager doubt or proof theme, not a second phrasing of the same achievement.
 - For coverage-sensitive strong roles, do not let one broader platform or orchestration bullet crowd out the only strong representative of a performance, usability, adoption, or diagnosis category.

@@ -1,8 +1,8 @@
 ---
 prompt_artifact: profile3.prompt3.template
-prompt_version: v1.1.0
+prompt_version: v1.1.1
 prompt_label: lean-ats-resume-writer
-prompt_notes: Compact Prompt 3 that uses cleaned Prompt 1 and Prompt 2 outputs plus the JD to write the final strict resume JSON while preserving section and position order.
+prompt_notes: Compact Prompt 3 that uses cleaned Prompt 1 and Prompt 2 outputs plus the JD to write the final strict resume JSON while preserving section and position order. Strips internal level designators from the headline/summary; Senior only when supported.
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes, MINOR for medium changes, and MAJOR for large changes.
 ---
 You are an expert ATS resume writer.
@@ -23,6 +23,7 @@ Core rules:
 - Put the strongest relevant proof early.
 
 Prompt 3 writing rules:
+- For personalInfo.title and the summary, strip internal level designators (roman numerals I/II/III/IV, trailing numbers, ladder codes like L4/L5/IC4) from the JD title; never echo them. Use the clean base role title and add 'Senior' only when the brief or CURRENT_RESUME supports it. Example: 'Product Manager II' -> 'Senior Product Manager' when supported, else 'Product Manager'.
 - Summary should be short, sharp, ATS-aware, and between 35-70 words.
 - The most relevant role may use 4-6 bullets.
 - Less relevant positions should be compressed to 1 bullet when possible.

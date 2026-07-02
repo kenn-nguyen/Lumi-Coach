@@ -1,6 +1,6 @@
 ---
 prompt_artifact: profile5.prompt2.template
-prompt_version: v2.5.3
+prompt_version: v2.5.4
 prompt_label: hiring-manager-hard-stretch-brief-storybank-feedback-v14-distinct-anchor-compression-hm-value-driven-aligned-summary-concrete-execution
 prompt_notes: Converts Prompt 1 plus resume and story-bank evidence into a hard-stretch hiring-manager brief with execution-heavy PM/Senior PM mechanism selection, seniority-shaped summary hooks, bridge-title logic, and preservation of distinct JD-relevant anchors when compressing dense proof; adds jd-implied-level calibration and hiring-manager value-driven proof selection (P2, as the hiring manager, builds a value function around the standout axis — preferred_qualifications/near_gate_qualifications/hiring_manager_proof/hardest responsibilities — treats must-haves as table stakes, ranks the candidate's real proofs by standout match, and uses the generic evidence-strength list only as a tiebreak).
 ai_update_notes: When changing this artifact manually or with AI, update prompt_version, prompt_label, and prompt_notes so promptMetadata identifies the new prompt behavior. Versioning: use vMAJOR.MINOR.PATCH; bump PATCH for very small changes (example v2.0.1), MINOR for medium changes (example v2.1.0), and MAJOR for large changes or when MINOR would exceed 9 (example v3.0.0).
@@ -38,6 +38,7 @@ Selected-storyline to bullet-instruction mapping rule:
 - When several supported storylines compete, prioritize the ones that best answer the hiring manager's top JD demands and can be proven through candidate-owned execution, not just adjacency or abstract fit.
 - Do not rely on Prompt 3 to synthesize missing high-strength storylines from `selected_storylines` or `signal_map`.
 - In the most relevant role, prefer preserving a distinct proof bullet over compressing the role too aggressively.
+- Cap the most relevant role at 6 bullets (hard maximum); every other role gets fewer. If distinct high-value signals exceed 6, merge related ones or drop the least role-relevant (the weakest match to the hiring manager's value function) — this cap overrides creating an entry for every storyline or preserving every distinct proof.
 - If a metric appears only in company context, it is company-wide and must not be used as candidate-owned proof.
 - A context metric becomes eligible only if the same metric also appears in a candidate-owned bullet/project description or the story bank explicitly ties that metric to the candidate's product scope.
 - If you mention context-only information in `signal_map.evidence`, prefix it with `CONTEXT_ONLY:` and do not include it in `surface_in`.
@@ -114,6 +115,7 @@ Title competitiveness floor:
 - Use source-native labels only when they are more impressive or more truthful than the JD-native option.
 
 Title polish rule:
+- Strip internal level designators (roman numerals I/II/III/IV, trailing numbers, ladder codes like L4/L5/IC4) from `recommended_title` and `summary_lead`; keep the clean base role title and add 'Senior' only when the implied level/scope supports it. Example: 'Product Manager II' -> 'Senior Product Manager' when supported, else 'Product Manager'.
 - `recommended_title` should usually contain the role label plus 1-2 domain modifiers maximum.
 - If three or more strong modifiers are available, keep the two that maximize hiring-manager recognition and interview defensibility.
 - Do not keyword-stack titles just because several phrases are defensible.
@@ -203,6 +205,9 @@ Scope-bullet umbrella rule:
 - Good scope pattern: `Led [umbrella product/domain category] for [customer/user context] - [scale], [usage], [team/org scope if clean].`
 - Weak scope pattern: `Led [umbrella category] across [long list of products/workflows] for [customer] - [scale]...` when the list does not improve the reader's understanding.
 - Keep the scope bullet easy enough for HR to understand in one pass and strong enough for the hiring manager to see arena + seniority.
+
+Same-company scope-bullet de-duplication:
+- If two roles at the same company would each carry a scope bullet with overlapping arenas, keep it only on the most recent role and give the older role its strongest distinct result bullet instead (or fewer bullets) — unless the JD values career progression (growing scope, ownership, or people), or the two roles own materially different arenas, in which case keep both.
 
 Instruction conflict repair:
 - If `primary_message` contains a long taxonomy list but `optional_context` or `do_not_include` says not to over-list, simplify `primary_message` before output.

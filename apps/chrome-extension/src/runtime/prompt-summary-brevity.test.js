@@ -16,7 +16,7 @@ describe("packaged summary brevity prompt rules", () => {
     const prompt = readPrompt("prompt2.txt");
     const contract = readPrompt("patches/prompt2.output-contract.txt");
 
-    expect(prompt).toContain("prompt_version: v4.0.4");
+    expect(prompt).toContain("prompt_version: v4.0.5");
     expect(prompt).toContain("the buyer-facing wedge and hook claim");
     expect(prompt).toContain("the smallest believable proof cluster");
     expect(prompt).toContain("Prompt 2 chooses which source bullets survive");
@@ -33,7 +33,7 @@ describe("packaged summary brevity prompt rules", () => {
     const prompt = readPrompt("prompt3.txt");
     const contract = readPrompt("patches/prompt3.output-contract.txt");
 
-    expect(prompt).toContain("prompt_version: v4.0.6");
+    expect(prompt).toContain("prompt_version: v4.0.7");
     expect(prompt).toContain("Target 35-45 words, with a hard maximum of 50 words.");
     expect(prompt).toContain("Do not stack proof lists; move extra proof into role bullets.");
     expect(prompt).toContain("buyer-facing positioning pitch");
