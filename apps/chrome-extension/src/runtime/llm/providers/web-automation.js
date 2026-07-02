@@ -1,5 +1,6 @@
 import { extractJsonFromText } from '../../json.js';
 import { logError, logInfo } from '../../log.js';
+import { recordRawEmission } from '../../log-buffer.js';
 import { registerRunCleanup } from '../../run-control.js';
 
 function getRuntimeError() {
@@ -1161,7 +1162,14 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
 
   async function waitForAssistantResponse(previousAssistant, timeoutMs) {
     const existingSnapshot = getAssistantSnapshot();
-    if (hasNewAssistantTurn(previousAssistant, existingSnapshot) && !hasStopButton() && !hasResponseBusyIndicator()) {
+    // Require non-empty text: a new assistant turn container can exist in the
+    // DOM before its text has rendered, which would otherwise return empty.
+    if (
+      hasNewAssistantTurn(previousAssistant, existingSnapshot) &&
+      !hasStopButton() &&
+      !hasResponseBusyIndicator() &&
+      existingSnapshot.latestText.trim()
+    ) {
       publishWatchdogState({
         phase: 'completed',
         resultStatus: 'success',
@@ -1180,6 +1188,10 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
       let lastProgressAt = Date.now();
       let lastSnapshot = existingSnapshot;
       let lastBusyState = hasStopButton() || hasResponseBusyIndicator();
+      // When generation reportedly finished (Stop button gone, nothing busy) but
+      // no text is on the page, this marks when that empty-but-done state began,
+      // so we can fail fast after a short grace window instead of the full timeout.
+      let emptyFinishSince = null;
 
       let finished = false;
       let scheduleId = null;
@@ -1269,6 +1281,24 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
           conversationUrl: currentConversationUrl(),
         });
 
+        const hasResponseText = latestSnapshot.latestText.trim().length > 0;
+        // Fast-fail empty completion: generation reportedly finished (Stop button
+        // gone, nothing busy) but produced no text. Allow a short grace window for
+        // late rendering, then fail fast (retriable) instead of waiting out the
+        // full timeout. Confirm with a gate-free scrape so we don't bail when only
+        // the structured selectors missed it.
+        if (finishedByButton && !hasResponseText && !scrapeAssistantTextLenient().trim()) {
+          if (emptyFinishSince === null) {
+            emptyFinishSince = Date.now();
+          } else if (Date.now() - emptyFinishSince >= 6000) {
+            cleanup();
+            reject(new Error(`dom_changed:${providerLabel} returned an empty assistant response after prompt submission.`));
+            return;
+          }
+        } else {
+          emptyFinishSince = null;
+        }
+
         // Settle when EITHER the button transition says finished OR we saw a
         // new assistant turn — but only once nothing is busy.
         const readyToSettle = (finishedByButton || isNewTurn) && !busyState;
@@ -1289,11 +1319,22 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
 
         if (stableTimer === null) {
           stableTimer = window.setTimeout(() => {
-            // Prefer the structured snapshot text; fall back to the gate-free
-            // scrape when the structural selectors found nothing.
-            const resolvedText = latestSnapshot.latestText.trim()
-              ? latestSnapshot.latestText
+            // Re-read at fire time; the settle delay may have rendered more (or
+            // the first) text since the timer was scheduled. Prefer the
+            // structured snapshot text; fall back to the gate-free scrape when
+            // the structural selectors found nothing.
+            const freshSnapshot = getAssistantSnapshot();
+            const resolvedText = freshSnapshot.latestText.trim()
+              ? freshSnapshot.latestText
               : scrapeAssistantTextLenient();
+            if (!resolvedText.trim()) {
+              // The settle signal fired but no assistant text is on the page yet
+              // (e.g. the Stop button flashed before the message rendered). Don't
+              // resolve empty — re-arm and keep waiting for real text or the
+              // timeout (which is retriable) instead of failing the run.
+              stableTimer = null;
+              return;
+            }
             publishWatchdogState({
               phase: 'completed',
               resultStatus: 'success',
@@ -1534,7 +1575,8 @@ function shouldRetryPromptRun(result, config) {
     result.message.includes(`Prompt submission control never became ready after filling the ${composerLabel} composer.`) ||
     result.message.includes(`Timed out waiting for the ${composerLabel} response.`) ||
     result.message.includes(`Unable to locate the ${composerLabel} composer.`) ||
-    result.message.includes(`${composerLabel} composer never became interactive.`)
+    result.message.includes(`${composerLabel} composer never became interactive.`) ||
+    result.message.includes('returned an empty assistant response')
   );
 }
 
@@ -1878,6 +1920,15 @@ export async function runWebAutomationPrompt(prompt, config, options = {}) {
           break;
         }
 
+        // Capture the full failing output that triggered this self-heal attempt
+        // so a saved log carries the exact text that failed to parse/validate.
+        recordRawEmission({
+          stage: options.promptLabel ?? 'Prompt',
+          attempt,
+          rawText: result.rawText,
+          validationMessage: validation.message,
+        });
+
         const repairPrompt = buildRepairPrompt({
           attempt,
           promptLabel: options.promptLabel ?? 'Prompt',
@@ -1916,6 +1967,12 @@ export async function runWebAutomationPrompt(prompt, config, options = {}) {
       if (result.status === 'success') {
         const finalValidation = validateResponse(result.rawText);
         if (finalValidation && !finalValidation.valid) {
+          recordRawEmission({
+            stage: options.promptLabel ?? 'Prompt',
+            attempt: 'final',
+            rawText: result.rawText,
+            validationMessage: finalValidation.message,
+          });
           result = {
             ...result,
             validationError: finalValidation.message ?? 'The previous response was invalid.',

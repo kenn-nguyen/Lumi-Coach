@@ -207,6 +207,18 @@ describe("extractJsonFromText", () => {
       expect(parsed).toEqual({ name: "Jane", role: "PM" });
     });
 
+    it("recovers JSON with a raw newline inside a string value", () => {
+      const corrupted = '{"summary": "line one\nline two", "n": 1}';
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ summary: "line one\nline two", n: 1 });
+    });
+
+    it("recovers JSON with a raw tab inside a string value", () => {
+      const corrupted = '{"summary": "before\tafter"}';
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ summary: "before\tafter" });
+    });
+
     it("does not corrupt URLs (no naive // comment stripping)", () => {
       const text = '{"website": "https://example.com/path", "n": 1}';
       const parsed = extractJsonFromText(text);

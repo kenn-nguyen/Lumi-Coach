@@ -1,6 +1,7 @@
 import { DEFAULT_CHATGPT_TARGET_URL } from './constants.js';
 import { extractJsonFromText } from './json.js';
 import { logError, logInfo } from './log.js';
+import { recordRawEmission } from './log-buffer.js';
 import { registerRunCleanup } from './run-control.js';
 
 const chatGptRunSessions = new Map();
@@ -1290,7 +1291,13 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
 
   async function waitForAssistantResponse(previousAssistant, timeoutMs) {
     const existingSnapshot = getAssistantSnapshot();
-    if (hasNewAssistantTurn(previousAssistant, existingSnapshot) && !hasStopButton()) {
+    // Require non-empty text: a new assistant turn container can exist in the
+    // DOM before its text has rendered, which would otherwise return empty.
+    if (
+      hasNewAssistantTurn(previousAssistant, existingSnapshot) &&
+      !hasStopButton() &&
+      existingSnapshot.latestText.trim()
+    ) {
       return existingSnapshot.latestText;
     }
 
@@ -1300,6 +1307,10 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       let sawStopButton = hasStopButton();
       let lastProgressAt = Date.now();
       let lastSnapshot = existingSnapshot;
+      // When generation reportedly finished (Stop button gone) but no text is on
+      // the page, this marks when that empty-but-done state began, so we can
+      // fail fast after a short grace window instead of the full timeout.
+      let emptyFinishSince = null;
 
       let finished = false;
 
@@ -1387,6 +1398,24 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         lastSnapshot = latestSnapshot;
 
         const hasResponseText = latestSnapshot.latestText.trim().length > 0;
+
+        // Fast-fail empty completion: the model reportedly finished (Stop button
+        // appeared then went away) but produced no text. Allow a short grace
+        // window for late rendering, then fail fast (retriable) instead of
+        // waiting out the full first-token/idle timeout. Confirm with a gate-free
+        // scrape so we don't bail when only the structured selectors missed it.
+        if (finishedByButton && !hasResponseText && !scrapeAssistantTextLenient().trim()) {
+          if (emptyFinishSince === null) {
+            emptyFinishSince = Date.now();
+          } else if (Date.now() - emptyFinishSince >= 6000) {
+            cleanup();
+            reject(new Error('dom_changed:ChatGPT returned an empty assistant response after prompt submission.'));
+            return;
+          }
+        } else {
+          emptyFinishSince = null;
+        }
+
         // Backstop: if response text is non-empty and hasn't grown for a quiet
         // period, generation has finished even if a (phantom/hidden) Stop button
         // is still detected. ChatGPT can leave a stop control in the DOM after a
@@ -1417,9 +1446,20 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         }
 
         stableTimer = window.setTimeout(() => {
-          const resolvedText = latestSnapshot.latestText.trim()
-            ? latestSnapshot.latestText
+          // Re-read at fire time: 900ms may have rendered more (or the first)
+          // text since the timer was scheduled.
+          const freshSnapshot = getAssistantSnapshot();
+          const resolvedText = freshSnapshot.latestText.trim()
+            ? freshSnapshot.latestText
             : scrapeAssistantTextLenient();
+          if (!resolvedText.trim()) {
+            // The settle signal fired (e.g. the Stop button flashed and vanished
+            // during page setup) but no assistant text is on the page yet. Don't
+            // resolve empty — re-arm and keep waiting for real text or the
+            // timeout (which is retriable) instead of failing the run.
+            stableTimer = null;
+            return;
+          }
           cleanup();
           markTiming('responseCompletedAt');
           resolve(resolvedText);
@@ -1935,7 +1975,8 @@ function shouldRetryPromptRun(result) {
     result.message.includes('Timed out waiting for the ChatGPT response.') ||
     result.message.includes('Unable to locate the ChatGPT composer.') ||
     result.message.includes('ChatGPT composer never became interactive.') ||
-    result.message.includes('ChatGPT failed to respond (error state detected')
+    result.message.includes('ChatGPT failed to respond (error state detected') ||
+    result.message.includes('returned an empty assistant response')
   );
 }
 
@@ -2026,6 +2067,15 @@ async function runChatGptPromptInExistingSession(prompt, session, options = {}) 
         break;
       }
 
+      // Capture the full failing output that triggered this self-heal attempt
+      // so a saved log carries the exact text that failed to parse/validate.
+      recordRawEmission({
+        stage: options.promptLabel ?? 'Prompt',
+        attempt,
+        rawText: result.rawText,
+        validationMessage: validation.message,
+      });
+
       const repairPrompt = buildRepairPrompt({
         attempt,
         promptLabel: options.promptLabel ?? 'Prompt',
@@ -2086,6 +2136,12 @@ async function runChatGptPromptInExistingSession(prompt, session, options = {}) 
     if (result.status === 'success') {
       const finalValidation = validateResponse(result.rawText);
       if (finalValidation && !finalValidation.valid) {
+        recordRawEmission({
+          stage: options.promptLabel ?? 'Prompt',
+          attempt: 'final',
+          rawText: result.rawText,
+          validationMessage: finalValidation.message,
+        });
         result = {
           ...result,
           validationError:

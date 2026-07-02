@@ -15,7 +15,35 @@ export function extractJsonFromText(rawText, options = {}) {
     return parsed;
   }
 
-  throw new Error("Unable to parse JSON from model output.");
+  throw new Error(
+    `Unable to parse JSON from model output.${describeJsonParseFailure(trimmed)}`,
+  );
+}
+
+// Best-effort diagnostic appended to the parse-failure error: the underlying
+// JSON.parse message plus a window of text around the reported position, so logs
+// reveal exactly which character broke parsing (unescaped quote, stray char,
+// truncation) instead of a generic failure.
+function describeJsonParseFailure(text) {
+  const candidate = sliceLikelyJsonBlock(text, null) ?? text;
+  try {
+    JSON.parse(candidate);
+    return "";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const posMatch = message.match(/position (\d+)/);
+    if (!posMatch) {
+      return ` (${message})`;
+    }
+    const pos = Number(posMatch[1]);
+    const start = Math.max(0, pos - 60);
+    const end = Math.min(candidate.length, pos + 60);
+    const snippet = candidate
+      .slice(start, end)
+      .replace(/\n/g, "\\n")
+      .replace(/\t/g, "\\t");
+    return ` (${message}; near: …${snippet}…)`;
+  }
 }
 
 export function extractPrompt3PayloadFromText(rawText) {
@@ -106,21 +134,95 @@ function tryParseJson(text, validator) {
   // web-automation output without a model round-trip, and can never alter a
   // response that already parsed cleanly.
   const repairedText = repairLenientJson(sanitizedText);
-  if (repairedText !== text && repairedText !== sanitizedText) {
+
+  // Build the repair candidates to try, widest-net last. The control-char
+  // escaper handles the dominant remaining failure: the model emits a raw
+  // newline / tab / CR INSIDE a string value (e.g. a multi-line bullet), which
+  // JSON.parse rejects ("Bad control character in string literal"). It walks the
+  // text tracking string state and escapes those chars only inside strings, so
+  // it preserves content and can never corrupt already-valid JSON.
+  const candidates = [repairedText];
+  const controlEscaped = escapeRawControlCharsInStrings(repairedText);
+  if (controlEscaped !== repairedText) {
+    candidates.push(controlEscaped);
+  }
+
+  for (const candidate of candidates) {
+    if (candidate === text || candidate === sanitizedText) {
+      continue;
+    }
     try {
-      const parsed = JSON.parse(repairedText);
+      const parsed = JSON.parse(candidate);
       if (matchesValidator(parsed, validator)) {
         return parsed;
       }
     } catch {}
 
-    const repairedSlice = sliceLikelyJsonBlock(repairedText, validator);
+    const repairedSlice = sliceLikelyJsonBlock(candidate, validator);
     if (repairedSlice) {
       return JSON.parse(repairedSlice);
     }
   }
 
   return undefined;
+}
+
+// Escape raw control characters (newline, carriage return, tab) that appear
+// INSIDE JSON string literals. Valid JSON requires these to be escaped (\n, \r,
+// \t); LLM web output frequently emits them literally inside multi-line string
+// values. Characters outside strings are untouched, so structural formatting is
+// preserved and well-formed JSON passes through unchanged.
+function escapeRawControlCharsInStrings(text) {
+  if (typeof text !== "string" || !text) {
+    return text;
+  }
+
+  let out = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (!inString) {
+      if (char === '"') {
+        inString = true;
+      }
+      out += char;
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      out += char;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      out += char;
+      continue;
+    }
+    if (char === '"') {
+      inString = false;
+      out += char;
+      continue;
+    }
+    if (char === "\n") {
+      out += "\\n";
+      continue;
+    }
+    if (char === "\r") {
+      out += "\\r";
+      continue;
+    }
+    if (char === "\t") {
+      out += "\\t";
+      continue;
+    }
+    out += char;
+  }
+
+  return out;
 }
 
 function repairLenientJson(text) {
