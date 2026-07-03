@@ -643,6 +643,7 @@ High-signal proof preservation rule:
   - revenue or business growth;
   - integration/tooling acceleration;
   - operating leverage or cost/reliability improvement.
+- Prioritize the proof categories central to the JD's core domain and standout axis; treat off-domain categories (even if distinct) as secondary — include them only for breadth once the in-domain story is strong, and drop them first under the cap.
 - Distinct proof categories means different hiring-manager doubts answered by the role, not different draft phrasings of the same achievement.
 - When two source bullets share the same core X and Y but vary mostly in wording or supporting detail, merge them into one stronger bullet instruction rather than preserving both.
 - Do not drop high-signal performance proof such as success rate, reliability, false rejection, fraud reduction, conversion, latency, cost, adoption, or usage when it answers a different hiring-manager doubt from the other bullets.

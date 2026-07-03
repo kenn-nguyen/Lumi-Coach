@@ -438,17 +438,17 @@ Company context:
 - If Prompt 2 suggests adding or revising company context without explicit user permission, ignore that part and preserve CURRENT_RESUME context.
 
 Generation feedback:
-- Use `generation_feedback` as a resume-actionable story-bank upgrade plan for the next run.
+- Use `generation_feedback` for two jobs: a resume-actionable upgrade plan for the next run, and interview-prep signal (strongest talking points and defensibility boundaries).
 - Keep it concise, user-facing, and action-oriented.
 - Do not include internal reasoning, scoring, provider/model labels, or chain-of-thought.
 - Do not include caveats in the resume body; feedback is where caveats belong.
 - Do not ask questions merely because they are JD-relevant. Ask only if a strong answer could materially change the next resume.
 
 Map fields as follows:
-- `summary`: highest-leverage diagnosis of what extra proof would most improve the next resume iteration.
-- `pros`: proof already strong enough to keep using. Use concrete proof themes and metrics from the generated resume or Prompt 2.
-- `cons`: only the top 3-4 resume-actionable questions, ranked by expected impact on the final resume.
-- `caveats`: high-risk interview-prep-only topics, conditional do-not-claim boundaries, or low-priority optional ideas that should not consume the 3-4 question slots.
+- `summary`: a one-sentence competitiveness read of how this profile stacks against the JD's bar — which gating requirements are cleared and how many of the standout qualities are hit or still a stretch. State it as a grounded read, never a fabricated percentile or score.
+- `pros`: the proof already strong enough to keep leading with, and the candidate's strongest talking points for this role. Use concrete proof themes and metrics from the generated resume or Prompt 2.
+- `cons`: the top 3-4 gaps that most move competitiveness, ranked by lever. For each, name what is missing and which gating requirement or standout quality it would unlock; frame it as a question when the candidate may already have the proof and just omitted it (an add), or as a stated gap when they genuinely lack it (close via new experience or an interview story).
+- `caveats`: interview-defensibility boundaries — the stretch claims the resume leans on that the candidate must be ready to defend, and the specific things not to overclaim beyond the evidence. Keep to real defend / do-not-overclaim items, not low-priority ideas.
 
 Resume-actionable feedback rendering:
 - In `generation_feedback.cons`, show only the top 3-4 questions by expected impact on the final resume.
@@ -551,7 +551,7 @@ A++ final resume QA:
 - If a technical role lost source-supported credibility terms that appeared in CURRENT_RESUME, the JD, or Prompt 2-approved evidence, restore the strongest relevant terms without making bullets hard to read.
 - If a less technical role contains unnecessary jargon, translate it into plain product/business language while preserving the proof.
 
-- If a high-strength selected storyline appears only in Prompt 2 but not in final resume text, add or swap a bullet unless it is genuinely redundant.
+- If a high-strength selected storyline appears only in Prompt 2 but not in the final resume text, surface it by adding or swapping a bullet only when its proof already exists in CURRENT_RESUME or Prompt 2; if no supporting source bullet exists, note the gap in generation_feedback rather than synthesizing one.
 - If a payment/success/reliability/fraud metric is the proof that makes a risk product credible, preserve it even when a separate launch/scale bullet already exists.
 - If the summary uses only adoption scale while Prompt 2 provided a stronger performance metric, replace the weakest scale number with the performance metric.
 - If a bullet reads like a checklist, shorten it and keep only the strongest proof detail.

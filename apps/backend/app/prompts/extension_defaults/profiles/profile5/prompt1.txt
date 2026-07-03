@@ -26,10 +26,11 @@ Core boundary:
 - Do not infer candidate fit.
 - Do not include resume strategy, title recommendations, phrase promotion decisions, bullet guidance, skill guidance, include/exclude instructions, or final-resume wording in `flex_notes`.
 
-Hiring-manager persona:
-Before extracting fields, infer the hiring manager persona from the JD. Stay close to JD text. Do not invent backstory, psychology, or company-insider assumptions.
+Hiring-manager persona and the problem to solve:
+Before extracting fields, infer the hiring manager persona from the JD together with the core problem or pain point the role exists to solve, and any central trade-off it must manage — take these only from what the JD states or directly signals, never invented; weight the role/function's pain over company-wide goals. The problem is an influencer, not a reclassifier: keep every requirement in the tier the JD explicitly assigns it (never move an explicitly preferred qualification into gating, or vice versa); use the problem only to order and emphasize items within their tier and within hiring_manager_proof, surfacing first what most directly solves it. Stay close to JD text, and do not invent backstory, psychology, or company-insider assumptions.
 
 The persona must capture:
+- the core problem or pain point the role exists to solve, and any central trade-off it manages (weight role/function pain over company-wide goals);
 - what this manager appears to own;
 - what outcomes the role is accountable for;
 - what proof style would earn trust;
@@ -38,14 +39,14 @@ The persona must capture:
 - what overclaims would immediately break trust.
 
 `flex_notes` contract:
-- `flex_notes` must contain only the hiring-manager persona.
+- `flex_notes` must contain only the hiring-manager persona and the problem the role exists to solve.
 - It must not include resume strategy, title recommendations, phrase promotion decisions, bullet guidance, skill guidance, include/exclude instructions, or final-resume wording.
 - It may mention what the hiring manager trusts or rejects in general, but not what the resume should do.
 - Write `flex_notes` exactly as:
   `hiring_manager_persona: <one concise operational sentence>`
 
 Good `flex_notes` example:
-`hiring_manager_persona: [role/domain] leader responsible for [core ownership surface]; trusts concrete PM proof around [primary product/workflow], [key outcome metrics], [stakeholder/system constraints], and [tradeoff type]; accepts adjacent [evidence families] when mechanisms are specific; rejects vague enthusiasm, invented product ownership, unsupported system/tool claims, and inflated implementation depth.`
+`hiring_manager_persona: [role/domain] leader responsible for [core ownership surface], hiring this role to solve [the role's core problem]; trusts concrete PM proof around [primary product/workflow], [key outcome metrics], [stakeholder/system constraints], and [tradeoff type]; accepts adjacent [evidence families] when mechanisms are specific; rejects vague enthusiasm, invented product ownership, unsupported system/tool claims, and inflated implementation depth.`
 
 Bad `flex_notes` example:
 `hiring_manager_persona: Use [specific title] in the title, include [specific candidate metric] in the summary, emphasize [specific bullet], remove [specific skill], and avoid [specific phrase].`

@@ -561,7 +561,7 @@ High-signal proof preservation rule:
 - Distinct proof categories means different hiring-manager doubts answered by the role, not different draft phrasings of the same achievement.
 - When two source bullets share the same core X and Y but vary mostly in wording or supporting detail, merge them into one stronger bullet selection entry rather than preserving both.
 - For the main fit role and one adjacent strong role, optimize bullet selection as a coverage set, not as an individual bullet leaderboard.
-- First maximize distinct proof-category coverage across the role.
+- First maximize coverage of the proof categories central to the JD's core domain and standout axis; treat off-domain categories (even if distinct) as secondary — include them only for breadth once the in-domain story is strong, and drop them first under the cap.
 - Then choose the strongest source bullet within each covered category.
 - Only after coverage is established should relative bullet strength decide which bullet leads or gets cut.
 - Do not drop high-signal performance proof such as success rate, reliability, false rejection, fraud reduction, conversion, latency, cost, adoption, or usage when it answers a different hiring-manager doubt from the other bullets.
