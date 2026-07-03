@@ -26,12 +26,10 @@ def test_prompt2_summary_direction_prefers_one_sentence() -> None:
 
 def test_prompt3_summary_budget_is_documented() -> None:
     prompt = read_prompt("prompt3.txt")
-    contract = read_prompt("patches/prompt3.output-contract.txt")
 
     assert "prompt_version: v2.1.0" in prompt
     assert "Target 35-45 words, with a hard maximum of 50 words." in prompt
     assert "Do not stack proof lists; move extra proof into role bullets." in prompt
-    assert "target 35-45 words, and hard maximum 50 words" in contract
 
 
 def test_summary_rewrite_prompt_uses_short_summary_budget() -> None:

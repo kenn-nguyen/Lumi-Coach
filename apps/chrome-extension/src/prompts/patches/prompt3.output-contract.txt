@@ -103,7 +103,7 @@ Additional schema rules:
 - Use `flex_notes` only for small non-critical writer notes needed by future prompt variants.
 - Do not place `flex_notes` inside `resume_data`; it is prompt metadata only.
 - Do not use the em dash character `—` anywhere in the JSON output. Use a normal hyphen `-` instead.
-- `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences, target 35-45 words, and hard maximum 50 words.
+- `resume_data.summary` should be one short paragraph, preferably 1 sentence, at most 2 short sentences.
 - For resume bullet arrays such as experience bullets, project bullets, and custom-section bullets, do not end items with a period `.`.
 - If `generation_feedback` is present:
   - `summary` should be one short sentence

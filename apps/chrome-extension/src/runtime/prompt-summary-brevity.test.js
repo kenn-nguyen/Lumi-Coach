@@ -31,7 +31,6 @@ describe("packaged summary brevity prompt rules", () => {
 
   it("documents the Prompt 3 final summary budget", () => {
     const prompt = readPrompt("prompt3.txt");
-    const contract = readPrompt("patches/prompt3.output-contract.txt");
 
     expect(prompt).toContain("prompt_version: v4.0.7");
     expect(prompt).toContain("Target 35-45 words, with a hard maximum of 50 words.");
@@ -41,6 +40,5 @@ describe("packaged summary brevity prompt rules", () => {
     expect(prompt).toContain("Keep bullets concise, usually around 30-50 words.");
     expect(prompt).toContain("One secondary credibility, adoption, or deployment detail is allowed");
     expect(prompt).toContain("diagnosis, unmet-need discovery, problem reframing, or decision judgment");
-    expect(contract).toContain("target 35-45 words, and hard maximum 50 words");
   });
 });
