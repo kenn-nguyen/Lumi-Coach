@@ -1754,6 +1754,7 @@ async function downloadDiagnosticLogs() {
     `lumi-coach-logs-${sanitizeDownloadTimestamp()}.json`,
     payload,
   );
+  return payload;
 }
 
 function getMatchingCurrentSession(entry) {
@@ -9022,6 +9023,31 @@ async function requestCancelActiveRun() {
 }
 
 async function handleGenerateClick() {
+  try {
+    await handleGenerateClickInner();
+  } catch (error) {
+    // Safety net: a throw during pre-run setup (connection check, setup probe,
+    // prompt sync, etc.) happens after `state.isRunning` is set but outside the
+    // inner try/catch. Without this, the UI is left stuck — button locked as
+    // "Running…", no cancel, no status. Reset and surface the error (the error
+    // card carries the Save-logs link) so the user is never trapped.
+    state.isRunning = false;
+    state.isCanceling = false;
+    state.activeRunId = null;
+    state.activeRunJob = null;
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Something went wrong starting the run.";
+    setExplicitRunStatus("error", "error", "Run failed", formatErrorText(message));
+    try {
+      render();
+    } catch {}
+    console.error("[ResumeMatcherExt] Generate click failed.", error);
+  }
+}
+
+async function handleGenerateClickInner() {
   if (suppressNextClick) {
     suppressNextClick = false;
     return;
@@ -10083,12 +10109,23 @@ function ensureRoot() {
   });
   $(EXPORT_LOGS_ID)?.addEventListener("click", async () => {
     try {
-      await downloadDiagnosticLogs();
-      setRunStatus(
-        "info",
-        "Logs downloaded",
-        "Downloaded the most recent run's diagnostic logs as JSON.",
-      );
+      const payload = await downloadDiagnosticLogs();
+      if (payload?.stale) {
+        const hours = payload.savedAtAgeHours;
+        setRunStatus(
+          "warning",
+          "Downloaded older logs",
+          `No recent run found — these logs are from a previous run${
+            hours != null ? ` ~${hours}h ago` : ""
+          }. Run a tailor, then download again for the latest.`,
+        );
+      } else {
+        setRunStatus(
+          "info",
+          "Logs downloaded",
+          "Downloaded the most recent run's diagnostic logs as JSON.",
+        );
+      }
     } catch (error) {
       setRunStatus(
         "error",

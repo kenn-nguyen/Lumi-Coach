@@ -1,8 +1,8 @@
 import { DEFAULT_CHATGPT_TARGET_URL } from './constants.js';
 import { extractJsonFromText } from './json.js';
-import { logError, logInfo } from './log.js';
+import { logError, logInfo, logWarn } from './log.js';
 import { recordRawEmission } from './log-buffer.js';
-import { registerRunCleanup } from './run-control.js';
+import { getActiveRun, registerRunCleanup } from './run-control.js';
 
 const chatGptRunSessions = new Map();
 
@@ -238,6 +238,19 @@ async function waitForChatGptTabById(tabId, timeoutMs = 30000) {
 async function closeWindow(windowId) {
   await removePersistedPopupWindowId(windowId);
   return chrome.windows.remove(windowId).catch(() => {});
+}
+
+// True when the popup window no longer exists. Used to tell a user-closed window
+// (window gone → don't reopen) apart from a Chrome-discarded tab (window still
+// present → safe to reopen and continue the run).
+async function isPopupWindowGone(windowId) {
+  if (typeof windowId !== 'number') return true;
+  try {
+    await chrome.windows.get(windowId);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 async function wait(ms) {
@@ -1417,11 +1430,18 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         }
 
         // Backstop: if response text is non-empty and hasn't grown for a quiet
-        // period, generation has finished even if a (phantom/hidden) Stop button
-        // is still detected. ChatGPT can leave a stop control in the DOM after a
-        // run, which otherwise hangs the watcher for the full timeout.
+        // period, treat generation as finished so a leftover DOM node can't hang
+        // the watcher for the full timeout. Critically, require the Stop button
+        // to be GONE: a real, visible Stop button means ChatGPT is still
+        // generating — or, when the popup is hidden/occluded, its rendering is
+        // FROZEN mid-stream (quiet text is the freeze, not completion). Settling
+        // there captures truncated output and fires a premature repair that
+        // pastes into a still-busy composer. Wait for the Stop button to clear.
         const quietForSettle =
-          sawNewTurn && hasResponseText && Date.now() - lastProgressAt >= 12000;
+          sawNewTurn &&
+          hasResponseText &&
+          !stopPresent &&
+          Date.now() - lastProgressAt >= 12000;
 
         // Settle when the button transition says finished, or a new turn was seen
         // with the Stop button gone, or the text has gone quiet (backstop).
@@ -1572,6 +1592,25 @@ function injectedVisibilityKeepAlive() {
   if (window.__rmVisibilityKeepAlive) return;
   window.__rmVisibilityKeepAlive = true;
   try {
+    // Capture the REAL visibility getter before we spoof it, so the
+    // requestAnimationFrame shim below only activates when the window is
+    // genuinely hidden (and native rAF is otherwise untouched when visible).
+    let readRealHidden = () => false;
+    try {
+      const desc =
+        Object.getOwnPropertyDescriptor(Document.prototype, 'hidden') ||
+        Object.getOwnPropertyDescriptor(document, 'hidden');
+      if (desc && typeof desc.get === 'function') {
+        readRealHidden = () => {
+          try {
+            return desc.get.call(document) === true;
+          } catch {
+            return false;
+          }
+        };
+      }
+    } catch {}
+
     const force = (obj, prop, value) => {
       try {
         Object.defineProperty(obj, prop, { configurable: true, get: () => value });
@@ -1592,6 +1631,74 @@ function injectedVisibilityKeepAlive() {
       document.addEventListener(name, swallow, true);
       window.addEventListener(name, swallow, true);
     }
+
+    // Chrome suspends requestAnimationFrame for backgrounded/occluded windows,
+    // which freezes ChatGPT's streamed-token rendering mid-response and leaves us
+    // capturing truncated JSON. Spoofing document.hidden is NOT enough — rAF
+    // suspension is engine-level. Drive rAF from a MessageChannel loop (the one
+    // scheduler Chrome does not throttle in background tabs), paced to ~60fps,
+    // but only while the window is genuinely hidden; when visible we defer to
+    // native rAF so foreground timing and CPU are unchanged.
+    try {
+      const nativeRaf =
+        typeof window.requestAnimationFrame === 'function'
+          ? window.requestAnimationFrame.bind(window)
+          : null;
+      const nativeCancel =
+        typeof window.cancelAnimationFrame === 'function'
+          ? window.cancelAnimationFrame.bind(window)
+          : () => {};
+      if (nativeRaf && typeof MessageChannel === 'function') {
+        const channel = new MessageChannel();
+        const pending = new Map();
+        // Offset ids far above native rAF's small counter to avoid collisions.
+        let nextId = 1000000000;
+        let scheduled = false;
+        let lastFrameAt = 0;
+        const now = () =>
+          typeof performance !== 'undefined' && performance.now
+            ? performance.now()
+            : Date.now();
+        const post = () => {
+          if (scheduled) return;
+          scheduled = true;
+          channel.port2.postMessage(0);
+        };
+        channel.port1.onmessage = () => {
+          scheduled = false;
+          if (pending.size === 0) return;
+          const ts = now();
+          // Pace to ~60fps; if a frame isn't due yet, re-post instead of firing.
+          if (ts - lastFrameAt < 16) {
+            post();
+            return;
+          }
+          lastFrameAt = ts;
+          const due = Array.from(pending.values());
+          pending.clear();
+          for (const cb of due) {
+            try {
+              cb(ts);
+            } catch {}
+          }
+        };
+        window.requestAnimationFrame = (cb) => {
+          if (!readRealHidden()) {
+            return nativeRaf(cb);
+          }
+          const id = nextId++;
+          pending.set(id, cb);
+          post();
+          return id;
+        };
+        window.cancelAnimationFrame = (id) => {
+          if (pending.delete(id)) return;
+          try {
+            nativeCancel(id);
+          } catch {}
+        };
+      }
+    } catch {}
   } catch {}
 }
 
@@ -1628,7 +1735,19 @@ async function openChatGptSession(options = {}) {
   // This prevents HTTP 431 (Request Header Fields Too Large) caused by
   // accumulated cookies bloating the Cookie header on fresh popup requests.
   await pruneChatGptCookies();
-  const popupWindowId = await openPopupWindow(targetUrl);
+  let popupWindowId;
+  try {
+    popupWindowId = await openPopupWindow(targetUrl);
+  } catch (error) {
+    // Explicit failure log so "clicked Tailor but no popup opened" is pinpointed
+    // in a saved log instead of surfacing only as a generic downstream error.
+    logError('ChatGptAutomation', 'Failed to open ChatGPT popup window.', {
+      promptLabel,
+      targetUrl,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
   logInfo('ChatGptAutomation', 'ChatGPT popup created.', { promptLabel, popupWindowId });
   // Persist immediately so a service-worker crash doesn't leave this window orphaned.
   void persistPopupWindowId(popupWindowId);
@@ -1889,9 +2008,22 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     }
   } catch (error) {
     if (isPopupClosedError(error)) {
+      // Distinguish a genuine popup close/discard from a user cancel instead of
+      // silently collapsing both into "Run canceled." The caller decides whether
+      // to reopen (discard) or treat as canceled (user).
+      logWarn(
+        'ChatGptAutomation',
+        'ChatGPT popup was closed or discarded before the response completed.',
+        {
+          promptLabel,
+          tabId: session.tabId,
+          detail: error instanceof Error ? error.message : String(error),
+        },
+      );
       return {
-        status: 'canceled',
-        message: 'Run canceled.',
+        status: 'popup_closed',
+        message:
+          'ChatGPT popup was closed or discarded before the response completed.',
       };
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -2154,38 +2286,94 @@ async function runChatGptPromptInExistingSession(prompt, session, options = {}) 
   return result;
 }
 
-export async function runChatGptPrompt(prompt, options = {}) {
-  const reusableRunId = getReusableRunId(options);
-  if (reusableRunId) {
-    const session = await getOrOpenChatGptRunSession(reusableRunId, {
+async function runReusableChatGptPromptOnce(prompt, options, reusableRunId) {
+  const session = await getOrOpenChatGptRunSession(reusableRunId, {
+    ...options,
+    promptLength: prompt.length,
+  });
+  if (session.pendingResetPromise) {
+    logInfo('ChatGptAutomation', 'Awaiting in-flight ChatGPT reset before running the next prompt.', {
+      promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
+      runId: reusableRunId,
+      tabId: session.tabId,
+    });
+    await session.pendingResetPromise;
+  } else if (session.needsReset) {
+    await resetChatGptRunSession(reusableRunId, {
       ...options,
       promptLength: prompt.length,
     });
-    if (session.pendingResetPromise) {
-      logInfo('ChatGptAutomation', 'Awaiting in-flight ChatGPT reset before running the next prompt.', {
-        promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
-        runId: reusableRunId,
-        tabId: session.tabId,
-      });
-      await session.pendingResetPromise;
-    } else if (session.needsReset) {
-      await resetChatGptRunSession(reusableRunId, {
-        ...options,
-        promptLength: prompt.length,
-      });
-    }
+  }
+
+  try {
+    const result = await runChatGptPromptInExistingSession(
+      prompt,
+      session,
+      options,
+    );
+    session.needsReset =
+      result.status === 'success' && !result.validationError;
+    return result;
+  } catch (error) {
+    session.needsReset = false;
+    throw error;
+  }
+}
+
+export async function runChatGptPrompt(prompt, options = {}) {
+  const reusableRunId = getReusableRunId(options);
+  if (reusableRunId) {
+    const promptLabel = options.promptLabel ?? 'Prompt';
+    const wasUserCanceled = () =>
+      getActiveRun(reusableRunId)?.cancelRequested === true;
+
+    const recoverOrReturn = async (signal) => {
+      // A popup close is only recoverable if the USER didn't stop it. When the
+      // user cancels the run, cleanup closes the popup — treat as canceled.
+      if (wasUserCanceled()) {
+        return { status: 'canceled', message: 'Run canceled.' };
+      }
+      // Distinguish "the user closed the popup window" from "Chrome discarded the
+      // backgrounded tab". If the popup WINDOW is gone, the user (or Chrome)
+      // closed the whole window — do NOT reopen and fight the user; stop the run.
+      // Only auto-reopen when the window still exists (the tab was discarded/
+      // unloaded), since each prompt is a self-contained temporary chat.
+      const session = chatGptRunSessions.get(reusableRunId);
+      const windowGone = await isPopupWindowGone(session?.popupWindowId);
+      if (windowGone) {
+        logWarn(
+          'ChatGptAutomation',
+          'ChatGPT popup window is gone (likely closed by the user); not reopening.',
+          { runId: reusableRunId, promptLabel, signal },
+        );
+        return {
+          status: 'canceled',
+          message: 'The ChatGPT popup was closed, so the run stopped.',
+        };
+      }
+      logWarn(
+        'ChatGptAutomation',
+        'Reopening a fresh ChatGPT popup after the backgrounded tab was discarded mid-run.',
+        { runId: reusableRunId, promptLabel, signal },
+      );
+      await closeChatGptRunSession(reusableRunId);
+      return runReusableChatGptPromptOnce(prompt, options, reusableRunId);
+    };
 
     try {
-      const result = await runChatGptPromptInExistingSession(
+      const result = await runReusableChatGptPromptOnce(
         prompt,
-        session,
         options,
+        reusableRunId,
       );
-      session.needsReset =
-        result.status === 'success' && !result.validationError;
+      if (result.status === 'popup_closed') {
+        return recoverOrReturn('result');
+      }
       return result;
     } catch (error) {
-      session.needsReset = false;
+      if (isPopupClosedError(error)) {
+        return recoverOrReturn('error');
+      }
       throw error;
     }
   }

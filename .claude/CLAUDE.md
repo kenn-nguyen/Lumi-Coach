@@ -75,6 +75,7 @@ Resume Matcher is an AI-powered application for tailoring resumes to job descrip
 4. **Run `npm run format`** (Prettier) before committing
 5. **Log detailed errors server-side**, return generic messages to clients
 6. **Do NOT modify** `.github/workflows/` files without explicit request
+7. **Do NOT bump the extension version** (`apps/chrome-extension/manifest.json`) for small changes or uncommitted work-in-progress fixes. Keep the version stable across iterative fixes; only bump when a committed, releasable change is being published to the store. When in doubt, leave the version as-is and rebuild the zip at the current version.
 
 ---
 
@@ -105,6 +106,21 @@ For multi-step tasks, state a brief plan before coding:
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
 ```
+
+### Impact & Edge-Case Analysis (do this before finishing ANY change or fix)
+Two checks, every time — most bugs shipped here came from skipping one of them.
+
+**1. Blast radius — what else does this touch?**
+- Before editing, find every caller/consumer of the function, state, message, status, storage key, or DOM element you're changing (`rg` the symbol across `apps/`). List them.
+- Ask: does this change alter behavior for any of those callers or any *related feature* that shares this code? Fix or account for each — don't fix one path and leave a sibling broken. (See also the mirrored-implementations rule: extension ↔ backend, prompt profiles, prompt mirror.)
+- If a value/status/shape changes meaning (e.g. reusing `"canceled"` for a new case), check everyone who reads it.
+
+**2. User stories — who does what, including the "wrong" thing?**
+- Before implementing, enumerate the distinct actors and paths, not just the happy path: the normal user, the impatient user, the user who does the *opposite* of what you expect, the multitasker, the first-time/empty state, the error/retry/cancel path, and the browser/OS acting on its own (tab discard, throttle, focus loss).
+- For each, ask "what does the code do here, and is that what the user would want?" Name the ones that change the design.
+- Concrete miss to never repeat: an auto-reopen for a discarded popup must NOT reopen when the **user closed it themselves** — distinguish deliberate user action from environmental loss. Always ask "what if the user did this on purpose?"
+
+State the blast radius and the edge cases you considered (briefly) as part of the change, so gaps are visible before shipping — not after a bug report.
 
 ---
 

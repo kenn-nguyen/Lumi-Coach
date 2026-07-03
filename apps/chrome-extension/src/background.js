@@ -9,6 +9,7 @@ import { logError, logInfo, logWarn, setLogRelayTabId } from "./runtime/log.js";
 import {
   clearBufferedLogs,
   formatLogsForExport,
+  getBufferedLogs,
   getPersistableSnapshot,
   getRawEmissions,
 } from "./runtime/log-buffer.js";
@@ -1463,8 +1464,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return formatLogsForExport({
             version: chrome.runtime.getManifest().version,
             source: "memory",
+            stale: false,
           });
         }
+        // Returning the persisted snapshot. Flag it as stale if it's old, and
+        // never fully hide the current session — attach the live in-memory
+        // buffer under `liveSession` so ambient current-session context is kept.
+        const savedAtMs = persisted?.savedAt
+          ? Date.parse(persisted.savedAt)
+          : NaN;
+        const ageMs = Number.isFinite(savedAtMs) ? Date.now() - savedAtMs : null;
+        const stale = ageMs !== null && ageMs > 2 * 60 * 60 * 1000; // > 2h
+        const liveEntries = getBufferedLogs();
         return {
           appName: "Lumi Coach",
           format: "log-export-v1",
@@ -1473,10 +1484,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             persisted?.version ?? chrome.runtime.getManifest().version,
           source: "persisted",
           savedAt: persisted?.savedAt ?? null,
+          stale,
+          savedAtAgeHours:
+            ageMs !== null ? Math.round((ageMs / 3600000) * 10) / 10 : null,
           entryCount: persisted?.snapshot?.entries?.length ?? 0,
           rawEmissionCount: persisted?.snapshot?.rawEmissions?.length ?? 0,
           entries: persisted?.snapshot?.entries ?? [],
           rawEmissions: persisted?.snapshot?.rawEmissions ?? [],
+          ...(liveEntries.length > 0
+            ? {
+                liveSession: {
+                  entryCount: liveEntries.length,
+                  entries: liveEntries,
+                  rawEmissions: getRawEmissions(),
+                },
+              }
+            : {}),
         };
       }
 
@@ -1776,9 +1799,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           startedAt: Date.now(),
         });
         setLogRelayTabId(message.payload?.tabId ?? sender?.tab?.id ?? null);
+        // Scope diagnostics to this Tailor click (the next run is the only thing
+        // that clears the buffer). Reset here — before the auth/setup gates — so a
+        // run that never reaches the pipeline (blocked at a gate, or cancelled
+        // while stuck) is still captured for "Save logs".
+        clearBufferedLogs();
         const authGate = await ensureExtensionAuthForAction(pendingAction);
         if (!authGate.connected) {
           updateActiveRun(runId, { phase: "awaiting_auth", inFlight: false });
+          await persistRunDiagnostics();
           await setExtensionState({
             sessionId: runId,
             sourceTabId: pendingAction.tabId,
@@ -1808,6 +1837,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (setupState?.state === "missing_resume") {
           await setPendingExtensionAction(pendingAction);
           updateActiveRun(runId, { phase: "setup_required", inFlight: false });
+          await persistRunDiagnostics();
           return {
             ok: true,
             runId,
@@ -1819,6 +1849,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (setupState?.state === "missing_provider_config") {
           await setPendingExtensionAction(pendingAction);
           updateActiveRun(runId, { phase: "setup_required", inFlight: false });
+          await persistRunDiagnostics();
           return {
             ok: true,
             runId,
@@ -1829,10 +1860,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           };
         }
         try {
-          // Scope diagnostics to this run: the next run is the only thing that
-          // clears the previous run's logs. Reset the live buffer here so a saved
-          // log reflects only the current run.
-          clearBufferedLogs();
           updateActiveRun(runId, { phase: "running", inFlight: true });
           await setExtensionState({
             sessionId: runId,
@@ -1870,6 +1897,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             await finalizeCanceledRun(getActiveRun(runId) || { runId }, {
               reason: "user",
             });
+            // Persist so a cancelled/stuck run (e.g. popup never opened) is
+            // captured for "Save logs" instead of dropped.
+            await persistRunDiagnostics();
             return { ok: true, canceled: true, runId };
           }
           const runtimeState = await getExtensionState();
@@ -1906,6 +1936,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   await finalizeCanceledRun(getActiveRun(runId) || { runId }, {
                     reason: "user",
                   });
+                  await persistRunDiagnostics();
                   return { ok: true, canceled: true, runId };
                 }
                 logError(

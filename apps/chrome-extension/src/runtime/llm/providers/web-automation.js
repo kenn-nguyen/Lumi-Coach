@@ -1601,6 +1601,25 @@ function injectedVisibilityKeepAlive() {
   if (window.__rmVisibilityKeepAlive) return;
   window.__rmVisibilityKeepAlive = true;
   try {
+    // Capture the REAL visibility getter before we spoof it, so the
+    // requestAnimationFrame shim below only activates when the window is
+    // genuinely hidden (native rAF is untouched when visible).
+    let readRealHidden = () => false;
+    try {
+      const desc =
+        Object.getOwnPropertyDescriptor(Document.prototype, 'hidden') ||
+        Object.getOwnPropertyDescriptor(document, 'hidden');
+      if (desc && typeof desc.get === 'function') {
+        readRealHidden = () => {
+          try {
+            return desc.get.call(document) === true;
+          } catch {
+            return false;
+          }
+        };
+      }
+    } catch {}
+
     const force = (obj, prop, value) => {
       try {
         Object.defineProperty(obj, prop, { configurable: true, get: () => value });
@@ -1621,6 +1640,71 @@ function injectedVisibilityKeepAlive() {
       document.addEventListener(name, swallow, true);
       window.addEventListener(name, swallow, true);
     }
+
+    // Chrome suspends requestAnimationFrame for backgrounded/occluded windows,
+    // which freezes the provider's streamed-token rendering mid-response and
+    // leaves us capturing truncated output. Spoofing document.hidden is NOT
+    // enough — rAF suspension is engine-level. Drive rAF from a MessageChannel
+    // loop (not throttled in background tabs), paced to ~60fps, but only while
+    // the window is genuinely hidden; when visible we defer to native rAF.
+    try {
+      const nativeRaf =
+        typeof window.requestAnimationFrame === 'function'
+          ? window.requestAnimationFrame.bind(window)
+          : null;
+      const nativeCancel =
+        typeof window.cancelAnimationFrame === 'function'
+          ? window.cancelAnimationFrame.bind(window)
+          : () => {};
+      if (nativeRaf && typeof MessageChannel === 'function') {
+        const channel = new MessageChannel();
+        const pending = new Map();
+        let nextId = 1000000000;
+        let scheduled = false;
+        let lastFrameAt = 0;
+        const now = () =>
+          typeof performance !== 'undefined' && performance.now
+            ? performance.now()
+            : Date.now();
+        const post = () => {
+          if (scheduled) return;
+          scheduled = true;
+          channel.port2.postMessage(0);
+        };
+        channel.port1.onmessage = () => {
+          scheduled = false;
+          if (pending.size === 0) return;
+          const ts = now();
+          if (ts - lastFrameAt < 16) {
+            post();
+            return;
+          }
+          lastFrameAt = ts;
+          const due = Array.from(pending.values());
+          pending.clear();
+          for (const cb of due) {
+            try {
+              cb(ts);
+            } catch {}
+          }
+        };
+        window.requestAnimationFrame = (cb) => {
+          if (!readRealHidden()) {
+            return nativeRaf(cb);
+          }
+          const id = nextId++;
+          pending.set(id, cb);
+          post();
+          return id;
+        };
+        window.cancelAnimationFrame = (id) => {
+          if (pending.delete(id)) return;
+          try {
+            nativeCancel(id);
+          } catch {}
+        };
+      }
+    } catch {}
   } catch {}
 }
 
