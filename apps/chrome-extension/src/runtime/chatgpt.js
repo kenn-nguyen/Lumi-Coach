@@ -1972,6 +1972,44 @@ async function performChatGptRunSessionReset(normalizedRunId, session, options =
   return session;
 }
 
+// Recover an unreachable popup the way a human does: wait a moment, then hit
+// refresh on the SAME page (chrome.tabs.reload) — NOT re-navigate to a new URL.
+// Used when the popup shows an error page (Cloudflare block / 4xx / network),
+// regardless of the specific error. Returns true if the tab was reloaded and is
+// reachable again, false if the tab is gone (caller falls back to reopening).
+async function reloadChatGptRunSessionTab(session, options = {}) {
+  const promptLabel = options.promptLabel ?? session.promptLabel ?? 'Prompt';
+  // Random 1–2s pause before refreshing, so a transient block can clear and the
+  // retry doesn't look like an instant bot re-hit.
+  await wait(1000 + Math.floor(Math.random() * 1000));
+  try {
+    // Plain reload of the current page — same as the browser's refresh button.
+    await chrome.tabs.reload(session.tabId, { bypassCache: false });
+  } catch {
+    return false; // tab/window gone — let the caller reopen instead
+  }
+  try {
+    await waitForChatGptTabById(session.tabId);
+  } catch {
+    return false;
+  }
+  // The reload dropped the MAIN-world override; re-install it before running.
+  await installVisibilityKeepAlive(session.tabId);
+  const readiness = await waitForChatGptStartupReady(session.tabId, 1500, {
+    acceptAnyProbeResult: true,
+    pollIntervalMs: 300,
+  });
+  logInfo('ChatGptAutomation', 'Reloaded (refreshed) the ChatGPT popup after an error page.', {
+    promptLabel,
+    tabId: session.tabId,
+    elapsedMs: readiness.elapsedMs,
+    readiness: buildStartupReadinessLog(readiness.state),
+  });
+  // Same URL, same session — just refreshed. No reset needed.
+  session.needsReset = false;
+  return true;
+}
+
 export async function resetChatGptRunSession(runId, options = {}) {
   const normalizedRunId =
     typeof runId === 'string' && runId.trim() ? runId.trim() : '';
@@ -2512,28 +2550,30 @@ export async function runChatGptPrompt(prompt, options = {}) {
           };
         }
       }
-      // An error page is almost always HTTP 431 (the chatgpt.com Cookie header
-      // has bloated past the size limit) or a transient network/Cloudflare
-      // blip. Opening a *new* popup re-sends the same bloated cookies and hits
-      // the same error — what actually clears it is what a user does manually:
-      // reload the tab (after pruning cookies to shrink the header). So for an
-      // error page reuse the existing tab and force a reset (prune + re-navigate
-      // = reload) instead of reopening a fresh window. One quick retry; if the
-      // reload also fails, its error_page status surfaces so the run ends with a
-      // clear "could not be reached" message and the user can retry manually.
+      // Can't reach the site (error page) — whatever the cause (Cloudflare
+      // block, 4xx, network blip). Recover the way a human does: wait ~1–2s then
+      // hit REFRESH on the same page (chrome.tabs.reload), NOT re-navigate to a
+      // new URL. Then retry the prompt on the same refreshed page. One quick
+      // retry; if it still error-pages, that status surfaces and the run ends
+      // with a clear message so the user can retry manually.
       const existingSession = chatGptRunSessions.get(reusableRunId);
       if (reason === 'error_page' && existingSession) {
         logWarn(
           'ChatGptAutomation',
-          'Reloading the ChatGPT tab to recover from an error page (likely a Cloudflare block or HTTP 431).',
+          'Refreshing the ChatGPT popup to recover from an error page (Cloudflare/4xx/network).',
           { runId: reusableRunId, promptLabel, tabId: existingSession.tabId },
         );
-        // The reset below already applies a randomized pre-navigation backoff
-        // (see performChatGptRunSessionReset), so no extra wait here.
-        existingSession.needsReset = true; // forces prune + re-navigate (reload)
-        return runReusableChatGptPromptOnce(prompt, options, reusableRunId);
+        const reloaded = await reloadChatGptRunSessionTab(existingSession, {
+          promptLabel,
+        });
+        if (reloaded) {
+          // Same URL, refreshed — run the prompt in place (no reset/re-navigate).
+          existingSession.needsReset = false;
+          return runReusableChatGptPromptOnce(prompt, options, reusableRunId);
+        }
+        // Tab was gone — fall through to reopen a fresh popup.
       }
-      // Closed/discarded popup (or an error page with no live session to reload):
+      // Closed/discarded popup (or an error page whose tab could not be reloaded):
       // open a fresh popup — which also re-prunes cookies — and retry once. If
       // that also fails, its result surfaces the real error.
       logWarn(
