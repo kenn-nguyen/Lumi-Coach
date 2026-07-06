@@ -344,7 +344,9 @@ describe('chatgpt run-scoped popup reuse', () => {
       warmupDelayMs: 0,
     });
 
-    await Promise.resolve();
+    // Drain microtasks (the reset now prunes cookies before navigating, adding
+    // async steps) so the held tabs.update call is reached before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(chromeMock.chrome.tabs.update).toHaveBeenCalledTimes(1);
 
     heldUpdate.release();

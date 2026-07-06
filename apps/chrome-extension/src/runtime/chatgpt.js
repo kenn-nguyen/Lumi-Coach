@@ -96,22 +96,53 @@ function isPopupClosedError(error) {
   );
 }
 
+// Auth cookies that MUST be preserved — removing any of these logs the user
+// out of ChatGPT. Covers next-auth's session token (which can be chunked into
+// `…session-token.0`, `.1`, …), callback URL, and CSRF token.
+function isChatGptAuthCookie(name) {
+  return (
+    name.startsWith('__Secure-next-auth') ||
+    name.startsWith('__Host-next-auth') ||
+    name.includes('session-token')
+  );
+}
+
 /**
- * Remove cookies that are known to accumulate and bloat the Cookie request
- * header for chatgpt.com, causing HTTP 431 (Request Header Fields Too Large)
- * when opening a fresh popup window.
+ * Remove cookies that accumulate and bloat the Cookie request header for
+ * chatgpt.com, causing HTTP 431 (Request Header Fields Too Large) — reproducible
+ * by simply opening chatgpt.com after the header has grown too large; a manual
+ * refresh (after some cookies clear) fixes it. We clear the non-essential
+ * offenders so the header stays under the limit.
  *
- * Targets:
- *   - Cloudflare bot-management cookies (__cf_bm, _cfuvid) — rotate every
- *     ~30 min and stack up across sessions
+ * Purged (never affects login):
+ *   - Rotating Cloudflare cookies (__cf_bm, _cfuvid) — regenerate every ~30 min
+ *     and stack up across sessions
+ *   - Common analytics/tracking cookies (Google, Datadog, Bing, Meta, Segment)
  *   - Any cookie whose expiration date has already passed
  *
+ * Deliberately NOT purged:
+ *   - cf_clearance — Cloudflare's "this browser passed the bot check" token.
+ *     Removing it forces a fresh challenge on the next navigation, which renders
+ *     as an error page and broke prompt-to-prompt resets. Keep it.
+ *   - the next-auth session/CSRF cookies (see isChatGptAuthCookie) — login.
  * Safe to call even if the `cookies` permission is absent (fails silently).
  */
 async function pruneChatGptCookies() {
   const domains = ['chatgpt.com', '.chatgpt.com', 'chat.openai.com', '.chat.openai.com'];
-  // Cloudflare cookies that accumulate and are safe to clear before a fresh session
-  const stalePrefixes = ['__cf_bm', '_cfuvid'];
+  // Rotating Cloudflare + analytics cookies that are safe to clear before a
+  // fresh session. (cf_clearance is intentionally excluded — see above.)
+  const purgePrefixes = [
+    '__cf_bm',
+    '_cfuvid',
+    '_ga',
+    '_gid',
+    '_gat', // Google Analytics
+    '_dd_s', // Datadog
+    '_uetsid',
+    '_uetvid', // Bing
+    '_fbp', // Meta pixel
+    'ajs_', // Segment
+  ];
   const nowSec = Date.now() / 1000;
 
   try {
@@ -123,10 +154,11 @@ async function pruneChatGptCookies() {
         continue; // permission not granted or domain not accessible
       }
       for (const cookie of cookies) {
-        const isStale =
-          stalePrefixes.some((p) => cookie.name.startsWith(p)) ||
+        if (isChatGptAuthCookie(cookie.name)) continue; // never touch login
+        const isPurgeable =
+          purgePrefixes.some((p) => cookie.name.startsWith(p)) ||
           (cookie.expirationDate != null && cookie.expirationDate < nowSec);
-        if (!isStale) continue;
+        if (!isPurgeable) continue;
         const cookieUrl = `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`;
         await chrome.cookies.remove({ url: cookieUrl, name: cookie.name }).catch(() => {});
       }
@@ -255,6 +287,49 @@ async function isPopupWindowGone(windowId) {
 
 async function wait(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// When the popup shows an error page we can't read WHY (Chrome error pages
+// aren't script-injectable). Probe chatgpt.com directly from the background —
+// with the same cookies — to capture the real HTTP status (403/429/431/…) so we
+// can tell a Cloudflare block apart from cookie bloat or a network drop.
+async function probeChatGptHttpStatus() {
+  try {
+    const res = await fetch('https://chatgpt.com/', {
+      method: 'GET',
+      credentials: 'include',
+      redirect: 'manual',
+      cache: 'no-store',
+    });
+    if (res.type === 'opaqueredirect') return 'redirect';
+    return res.status ?? 'unknown';
+  } catch (error) {
+    return `network-error:${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+// Raise and un-minimize the active run's ChatGPT popup so a frozen/hidden popup
+// resumes streaming. Called from the background when the user clicks the
+// "Bring ChatGPT to front" hint in the LinkedIn tab.
+export async function focusChatGptPopup() {
+  let windowId = null;
+  for (const session of chatGptRunSessions.values()) {
+    if (typeof session?.popupWindowId === 'number') {
+      windowId = session.popupWindowId;
+      break;
+    }
+  }
+  if (typeof windowId !== 'number') return false;
+  try {
+    await chrome.windows.update(windowId, {
+      focused: true,
+      state: 'normal',
+      drawAttention: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function truncateForLog(value, max = 300) {
@@ -1850,6 +1925,20 @@ async function performChatGptRunSessionReset(normalizedRunId, session, options =
     warmupDelayMs,
   });
 
+  // Human-like spacing before re-navigating chatgpt.com for the next prompt.
+  // Back-to-back navigations (P1 done → immediately reload for P2) look bot-like
+  // and can trip Cloudflare rate-limits/challenges, which render as an error
+  // page. A short randomized gap makes the cadence less machine-gun. Gated on
+  // warmupDelayMs so tests (which pass 0) stay instant.
+  if (warmupDelayMs > 0) {
+    await wait(1000 + Math.floor(Math.random() * 1000)); // 1.0–2.0s jitter
+  }
+
+  // Prune stale Cloudflare/expired cookies before the reset navigation too —
+  // the fresh-open path does this to avoid HTTP 431 / Cloudflare error pages,
+  // and the reused-tab navigation is just as susceptible (P2/P3 were hitting an
+  // error page here while P1's fresh open, which prunes, succeeded).
+  await pruneChatGptCookies();
   const updatedTab = await chrome.tabs.update(session.tabId, { url: targetUrl });
   const nextTabId = updatedTab?.id ?? session.tabId;
   await waitForChatGptTabById(nextTabId);
@@ -1951,6 +2040,24 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     let settled = false;
     const pollStartAt = Date.now();
     let pollCount = 0;
+    // Stall detection: if the popup gets minimized or fully covered (e.g. a
+    // maximized/fullscreen window on macOS), the browser freezes its rendering
+    // and streaming halts. This poll runs in the background worker, so it keeps
+    // observing even while the popup renderer is frozen — nudge the LinkedIn tab
+    // so the user can bring the popup back.
+    let lastTextLen = -1;
+    let lastGrowthAt = Date.now();
+    let stallHintSent = false;
+    const notifyPopupStall = (stalled, extra = {}) => {
+      const sourceTabId = getActiveRun()?.sourceTabId;
+      if (typeof sourceTabId !== 'number') return;
+      chrome.tabs
+        .sendMessage(sourceTabId, {
+          type: stalled ? 'CHATGPT_POPUP_STALLED' : 'CHATGPT_POPUP_RESUMED',
+          payload: { promptLabel, ...extra },
+        })
+        .catch(() => {});
+    };
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedChatGptPromptEntry,
@@ -1988,6 +2095,42 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       } catch {
         // ignore — popup may be mid-navigation or closing
       }
+      // Freeze/hidden-popup detection.
+      try {
+        const textLen =
+          typeof watcherState?.textLen === 'number' ? watcherState.textLen : null;
+        if (textLen !== null && textLen !== lastTextLen) {
+          lastTextLen = textLen;
+          lastGrowthAt = Date.now();
+          if (stallHintSent) {
+            stallHintSent = false;
+            notifyPopupStall(false);
+          }
+        }
+        let minimized = false;
+        try {
+          const win = await chrome.windows.get(session.popupWindowId);
+          minimized = win?.state === 'minimized';
+        } catch {
+          // window may be gone/closing — leave to the main flow
+        }
+        // Minimized is definitive. Otherwise only flag a MID-STREAM stall (text
+        // already started, then stopped growing while still generating) — a
+        // longer window than a normal reasoning pause, which happens before text
+        // appears — to avoid false alarms.
+        const generating = watcherState?.hasStop === true;
+        const midStreamStalled =
+          generating &&
+          textLen !== null &&
+          textLen > 0 &&
+          Date.now() - lastGrowthAt >= 15000;
+        if (!stallHintSent && (minimized || midStreamStalled)) {
+          stallHintSent = true;
+          notifyPopupStall(true, { minimized });
+        }
+      } catch {
+        // never let stall detection break the run
+      }
       logInfo('ChatGptAutomation', 'ChatGPT prompt runner in progress.', {
         promptLabel,
         tabId: session.tabId,
@@ -2005,6 +2148,10 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     } finally {
       settled = true;
       clearInterval(progressPoll);
+      if (stallHintSent) {
+        stallHintSent = false;
+        notifyPopupStall(false);
+      }
     }
   } catch (error) {
     if (isPopupClosedError(error)) {
@@ -2031,12 +2178,24 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     // Treat as a retriable failure rather than a hard crash so the run
     // surfaces a clean "interrupted" state instead of an unhandled exception.
     if (/frame with id \d+ is showing error page/i.test(message)) {
+      // The popup navigation loaded a browser error page (network blip,
+      // Cloudflare challenge, HTTP 431, or a transient ChatGPT issue). Return a
+      // distinct status so the caller can reopen a fresh popup and retry once,
+      // rather than failing the whole run — a fresh open re-prunes cookies and
+      // often recovers. A persistent error page (retry also fails) surfaces the
+      // clean "could not be reached" message.
+      const httpStatus = await probeChatGptHttpStatus();
       logError('ChatGptAutomation', 'ChatGPT popup loaded an error page — network or site issue.', {
         promptLabel,
         tabId: session.tabId,
         targetUrl: session.targetUrl,
+        httpStatus,
       });
-      throw new Error('ChatGPT could not be reached. Please check your internet connection and try again.');
+      return {
+        status: 'error_page',
+        message:
+          'ChatGPT could not be reached. Please check your internet connection and try again.',
+      };
     }
     logError('ChatGptAutomation', 'Script injection failed.', {
       promptLabel,
@@ -2327,34 +2486,60 @@ export async function runChatGptPrompt(prompt, options = {}) {
     const wasUserCanceled = () =>
       getActiveRun(reusableRunId)?.cancelRequested === true;
 
-    const recoverOrReturn = async (signal) => {
-      // A popup close is only recoverable if the USER didn't stop it. When the
-      // user cancels the run, cleanup closes the popup — treat as canceled.
+    // Recover a reusable-popup run by reopening a fresh popup and retrying the
+    // prompt once. `reason` is 'popup_closed' or 'error_page'.
+    const recoverOrReturn = async (reason) => {
+      // Never fight a user who stopped the run: an explicit cancel closes the
+      // popup via cleanup — treat as canceled, don't reopen.
       if (wasUserCanceled()) {
         return { status: 'canceled', message: 'Run canceled.' };
       }
-      // Distinguish "the user closed the popup window" from "Chrome discarded the
-      // backgrounded tab". If the popup WINDOW is gone, the user (or Chrome)
-      // closed the whole window — do NOT reopen and fight the user; stop the run.
-      // Only auto-reopen when the window still exists (the tab was discarded/
-      // unloaded), since each prompt is a self-contained temporary chat.
-      const session = chatGptRunSessions.get(reusableRunId);
-      const windowGone = await isPopupWindowGone(session?.popupWindowId);
-      if (windowGone) {
+      // For a CLOSED popup, distinguish "the user closed the window" from
+      // "Chrome discarded the backgrounded tab": if the window is gone, the user
+      // closed it — do NOT reopen and fight them. (An error PAGE means the window
+      // still exists showing an error, so this only guards the closed case.)
+      if (reason === 'popup_closed') {
+        const session = chatGptRunSessions.get(reusableRunId);
+        if (await isPopupWindowGone(session?.popupWindowId)) {
+          logWarn(
+            'ChatGptAutomation',
+            'ChatGPT popup window is gone (likely closed by the user); not reopening.',
+            { runId: reusableRunId, promptLabel },
+          );
+          return {
+            status: 'canceled',
+            message: 'The ChatGPT popup was closed, so the run stopped.',
+          };
+        }
+      }
+      // An error page is almost always HTTP 431 (the chatgpt.com Cookie header
+      // has bloated past the size limit) or a transient network/Cloudflare
+      // blip. Opening a *new* popup re-sends the same bloated cookies and hits
+      // the same error — what actually clears it is what a user does manually:
+      // reload the tab (after pruning cookies to shrink the header). So for an
+      // error page reuse the existing tab and force a reset (prune + re-navigate
+      // = reload) instead of reopening a fresh window. One quick retry; if the
+      // reload also fails, its error_page status surfaces so the run ends with a
+      // clear "could not be reached" message and the user can retry manually.
+      const existingSession = chatGptRunSessions.get(reusableRunId);
+      if (reason === 'error_page' && existingSession) {
         logWarn(
           'ChatGptAutomation',
-          'ChatGPT popup window is gone (likely closed by the user); not reopening.',
-          { runId: reusableRunId, promptLabel, signal },
+          'Reloading the ChatGPT tab to recover from an error page (likely a Cloudflare block or HTTP 431).',
+          { runId: reusableRunId, promptLabel, tabId: existingSession.tabId },
         );
-        return {
-          status: 'canceled',
-          message: 'The ChatGPT popup was closed, so the run stopped.',
-        };
+        // The reset below already applies a randomized pre-navigation backoff
+        // (see performChatGptRunSessionReset), so no extra wait here.
+        existingSession.needsReset = true; // forces prune + re-navigate (reload)
+        return runReusableChatGptPromptOnce(prompt, options, reusableRunId);
       }
+      // Closed/discarded popup (or an error page with no live session to reload):
+      // open a fresh popup — which also re-prunes cookies — and retry once. If
+      // that also fails, its result surfaces the real error.
       logWarn(
         'ChatGptAutomation',
-        'Reopening a fresh ChatGPT popup after the backgrounded tab was discarded mid-run.',
-        { runId: reusableRunId, promptLabel, signal },
+        'Reopening a fresh ChatGPT popup to recover the run.',
+        { runId: reusableRunId, promptLabel, reason },
       );
       await closeChatGptRunSession(reusableRunId);
       return runReusableChatGptPromptOnce(prompt, options, reusableRunId);
@@ -2366,13 +2551,13 @@ export async function runChatGptPrompt(prompt, options = {}) {
         options,
         reusableRunId,
       );
-      if (result.status === 'popup_closed') {
-        return recoverOrReturn('result');
+      if (result.status === 'popup_closed' || result.status === 'error_page') {
+        return recoverOrReturn(result.status);
       }
       return result;
     } catch (error) {
       if (isPopupClosedError(error)) {
-        return recoverOrReturn('error');
+        return recoverOrReturn('popup_closed');
       }
       throw error;
     }

@@ -3,7 +3,10 @@ import {
   importMasterResumeFromTextAsset,
   saveStoryboardAsset,
 } from "./runtime/orchestrator.js";
-import { closeOrphanedChatGptWindows } from "./runtime/chatgpt.js";
+import {
+  closeOrphanedChatGptWindows,
+  focusChatGptPopup,
+} from "./runtime/chatgpt.js";
 import { captureExtensionEvent } from "./runtime/analytics.js";
 import { logError, logInfo, logWarn, setLogRelayTabId } from "./runtime/log.js";
 import {
@@ -1441,6 +1444,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "REGISTER_LOG_VIEWER":
         setLogRelayTabId(sender?.tab?.id ?? null);
         return { ok: true };
+
+      case "FOCUS_CHATGPT_POPUP":
+        return { ok: await focusChatGptPopup() };
 
       case "EXPORT_LOGS": {
         // Never clear here — logs stay available until the next run starts.

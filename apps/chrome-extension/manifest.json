@@ -57,6 +57,7 @@
         "src/assets/*.gif",
         "src/assets/*.png",
         "src/content/run-status.js",
+        "src/content/panel-styles.js",
         "src/content/site-adapters/index.js",
         "src/content/site-adapters/linkedin/*.js",
         "src/content/site-adapters/shared/*.js",
