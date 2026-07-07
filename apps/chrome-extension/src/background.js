@@ -789,6 +789,23 @@ function getCurrentRunLocation(extensionState) {
   );
 }
 
+// Tear down the extension's own auth (its separate ~30-day token) and reset the
+// UI to signed-out. Used both when the website tells us it signed out
+// (SOM_EXTENSION_SIGNED_OUT) and when the user signs out FROM the extension — so
+// we don't depend on the fragile website→extension round-trip message arriving.
+async function signOutExtensionLocally(phase = "sign_out") {
+  await cancelActiveRun({ reason: "signed_out", phase });
+  await clearExtensionAuth();
+  await clearPendingExtensionAction();
+  await broadcastContentScriptMessage({
+    type: "EXTENSION_CONNECTION_STATE_CHANGED",
+    payload: {
+      connectionState: "signed_out",
+      message: getSignedOutWorkspaceMessage(),
+    },
+  });
+}
+
 async function finalizeCanceledRun(run, options = {}) {
   if (!run?.runId) return;
 
@@ -1997,6 +2014,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case "OPEN_SIGN_OUT":
         suppressSourceFocusFor(15000);
+        // Sign the extension out immediately on user intent — clearing its own
+        // token here (rather than waiting for the website to message
+        // SOM_EXTENSION_SIGNED_OUT back across the sign-out redirect chain, which
+        // often never arrived) so the panel returns to sign-in right away.
+        await signOutExtensionLocally("sign_out");
         await openWebsiteSignOutTab();
         return { ok: true };
 
