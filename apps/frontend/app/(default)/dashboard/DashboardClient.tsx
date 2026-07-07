@@ -631,26 +631,20 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
         return <span className={cn(baseClass, 'bg-blue-50 text-blue-700')}>{status}</span>;
       case 'ready':
       case 'completed':
-        // Explicit, clearly-labeled action button (was a subtle "Ready" pill
-        // that read as a status, not a control).
-        return (
-          <button
-            type="button"
-            className={cn(
-              baseClass,
-              'gap-1 bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35'
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (resumeId) {
-                router.push(`/resumes/${resumeId}`);
-              }
-            }}
+        // Explicit action, styled to match the sibling "Open JD" chip and
+        // opened in a new tab (was a subtle "Ready" pill that read as a status).
+        return resumeId ? (
+          <a
+            href={`/resumes/${resumeId}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
+            className="inline-flex h-8 shrink-0 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
           >
             {t('dashboard.openResume')}
-          </button>
-        );
+          </a>
+        ) : null;
       default:
         return (
           <span className={cn(baseClass, 'bg-secondary text-muted-foreground')}>{status}</span>
