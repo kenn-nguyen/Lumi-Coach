@@ -1,5 +1,11 @@
 export const DEFAULT_APP_ORIGIN = "https://lumi.ceo";
-export const DEFAULT_API_ORIGIN = "https://som-career-coach.onrender.com";
+// Primary API origin (unified with the app domain; /api/v1 is proxied to the
+// backend). If it's unreachable, fetchWithAuth fails over to the fallback below.
+export const DEFAULT_API_ORIGIN = "https://lumi.ceo";
+// Direct backend origin used as an automatic fallback when the primary can't be
+// reached (Vercel/Cloudflare gateway error or network failure).
+export const DEFAULT_FALLBACK_API_ORIGIN =
+  "https://som-career-coach.onrender.com";
 export const DEFAULT_CHATGPT_TARGET_URL =
   "https://chatgpt.com/?temporary-chat=true";
 

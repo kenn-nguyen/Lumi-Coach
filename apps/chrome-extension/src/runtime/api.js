@@ -1,4 +1,8 @@
-import { DEFAULT_API_ORIGIN, DEFAULT_APP_ORIGIN } from "./constants.js";
+import {
+  DEFAULT_API_ORIGIN,
+  DEFAULT_APP_ORIGIN,
+  DEFAULT_FALLBACK_API_ORIGIN,
+} from "./constants.js";
 import { logError, logInfo, logWarn } from "./log.js";
 import {
   clearExtensionAuth,
@@ -185,6 +189,49 @@ export async function fetchExtensionAccessToken() {
   return response.json();
 }
 
+// --- API origin failover ---------------------------------------------------
+// Backend calls try the primary origin (lumi.ceo, which proxies /api/v1 to the
+// backend); if the primary is UNREACHABLE — a network failure or a gateway
+// error (502/503/504, or Cloudflare's 52x origin-unreachable) — the same call
+// is retried against the direct backend origin (Render). A real backend answer
+// (200/400/401/404/500/…) is NOT a reason to fail over. Once the fallback works
+// we prefer it for a short window, then re-probe the primary so we recover.
+const API_FALLBACK_ORIGIN = normalizeOrigin(
+  DEFAULT_FALLBACK_API_ORIGIN,
+  DEFAULT_FALLBACK_API_ORIGIN,
+);
+const PREFER_FALLBACK_TTL_MS = 5 * 60 * 1000;
+let _apiFailoverToOrigin = null; // origin we last succeeded on, when it was the fallback
+let _apiFailoverAt = 0;
+
+function isOriginUnreachableStatus(status) {
+  // Gateway / proxy could-not-reach-upstream, incl. Cloudflare 52x. A plain 500
+  // is a real backend error (the fallback would return it too) — don't fail over.
+  return (
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    (status >= 520 && status <= 527)
+  );
+}
+
+function splitApiEndpoint(endpoint) {
+  const idx = endpoint.indexOf("/api/v1");
+  if (idx < 0) return null;
+  return { origin: endpoint.slice(0, idx), rest: endpoint.slice(idx) };
+}
+
+function orderApiOrigins(primaryOrigin) {
+  const fallback = API_FALLBACK_ORIGIN;
+  if (!fallback || fallback === primaryOrigin) return [primaryOrigin];
+  const preferFallback =
+    _apiFailoverToOrigin === fallback &&
+    Date.now() - _apiFailoverAt <= PREFER_FALLBACK_TTL_MS;
+  return preferFallback
+    ? [fallback, primaryOrigin]
+    : [primaryOrigin, fallback];
+}
+
 async function fetchWithAuth(endpoint, options = {}) {
   const auth = await getExtensionAuth();
   if (!auth?.token || !auth?.expiresAt) {
@@ -201,11 +248,56 @@ async function fetchWithAuth(endpoint, options = {}) {
 
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", `Bearer ${auth.token}`);
+  const fetchOptions = { ...options, headers };
 
-  const response = await fetch(endpoint, {
-    ...options,
-    headers,
-  });
+  const split = splitApiEndpoint(endpoint);
+  const origins = split ? orderApiOrigins(split.origin) : [null];
+
+  let response = null;
+  let lastError = null;
+  for (let i = 0; i < origins.length; i += 1) {
+    const isLast = i === origins.length - 1;
+    const url = split ? `${origins[i]}${split.rest}` : endpoint;
+    try {
+      response = await fetch(url, fetchOptions);
+    } catch (error) {
+      if (isAbortError(error)) throw error; // user canceled — never fail over
+      lastError = error;
+      response = null;
+      if (isLast) break;
+      logWarn("ExtensionAuth", "API origin unreachable; failing over.", {
+        origin: origins[i],
+        next: origins[i + 1],
+        error: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+    if (isOriginUnreachableStatus(response.status) && !isLast) {
+      logWarn("ExtensionAuth", "API origin gateway error; failing over.", {
+        origin: origins[i],
+        next: origins[i + 1],
+        status: response.status,
+      });
+      lastError = new Error(`gateway ${response.status} at ${origins[i]}`);
+      response = null;
+      continue;
+    }
+    // This origin answered. Remember it so later calls prefer the working one,
+    // but only "stick" to the fallback (primary is the default we re-probe to).
+    if (split) {
+      if (origins[i] === API_FALLBACK_ORIGIN && origins[i] !== split.origin) {
+        _apiFailoverToOrigin = origins[i];
+        _apiFailoverAt = Date.now();
+      } else {
+        _apiFailoverToOrigin = null;
+      }
+    }
+    break;
+  }
+
+  if (!response) {
+    throw lastError ?? new Error(`Failed to reach the API at ${endpoint}`);
+  }
 
   if (response.status === 401) {
     await clearExtensionAuth();
