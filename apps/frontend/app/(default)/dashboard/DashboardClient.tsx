@@ -630,12 +630,15 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
       case 'pending':
         return <span className={cn(baseClass, 'bg-blue-50 text-blue-700')}>{status}</span>;
       case 'ready':
+      case 'completed':
+        // Explicit, clearly-labeled action button (was a subtle "Ready" pill
+        // that read as a status, not a control).
         return (
           <button
             type="button"
             className={cn(
               baseClass,
-              'bg-secondary text-foreground transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35'
+              'gap-1 bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35'
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -645,7 +648,7 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
             }}
             onKeyDown={(event) => event.stopPropagation()}
           >
-            {status}
+            {t('dashboard.openResume')}
           </button>
         );
       default:
