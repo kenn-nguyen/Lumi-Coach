@@ -109,7 +109,7 @@ interface ResumeResponse {
       content: string;
       content_type: string;
       created_at: string;
-      processing_status: 'pending' | 'processing' | 'ready' | 'failed';
+      processing_status: 'pending' | 'processing' | 'ready' | 'completed' | 'failed';
     };
     processed_resume: ProcessedResume | null;
     generation_feedback?: GenerationFeedback | null;
@@ -129,7 +129,7 @@ export interface ResumeUploadResponse {
   message: string;
   request_id: string;
   resume_id: string;
-  processing_status: 'pending' | 'processing' | 'ready' | 'failed';
+  processing_status: 'pending' | 'processing' | 'ready' | 'completed' | 'failed';
   is_master: boolean;
 }
 
@@ -156,7 +156,7 @@ export interface ResumeListItem {
   filename: string | null;
   is_master: boolean;
   parent_id: string | null;
-  processing_status: 'pending' | 'processing' | 'ready' | 'failed';
+  processing_status: 'pending' | 'processing' | 'ready' | 'completed' | 'failed';
   created_at: string;
   updated_at: string;
   title?: string | null;
