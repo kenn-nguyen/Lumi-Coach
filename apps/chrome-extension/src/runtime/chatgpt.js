@@ -267,6 +267,39 @@ async function waitForChatGptTabById(tabId, timeoutMs = 30000) {
   throw new Error('Timed out waiting for the ChatGPT tab to become reachable.');
 }
 
+// Resolve once the tab's TOP frame finishes (re)loading. `chrome.tabs.reload`
+// returns immediately — it does NOT wait for the reload to commit — so without
+// this the old page is still in the tab and a readiness probe / prompt inject
+// races against the reload tearing the page down (observed: a refreshed prompt
+// returning no result). Register the listener BEFORE triggering the reload so
+// the event can't be missed; a timeout + optional status fallback guarantees we
+// never hang if webNavigation is unavailable.
+function waitForTopFrameLoad(tabId, timeoutMs = 20000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      try {
+        chrome.webNavigation?.onCompleted?.removeListener(onCompleted);
+      } catch {
+        /* ignore */
+      }
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const onCompleted = (details) => {
+      if (details?.tabId === tabId && details?.frameId === 0) finish(true);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    try {
+      chrome.webNavigation?.onCompleted?.addListener(onCompleted);
+    } catch {
+      // webNavigation unavailable — the timeout fallback will resolve.
+    }
+  });
+}
+
 async function closeWindow(windowId) {
   await removePersistedPopupWindowId(windowId);
   return chrome.windows.remove(windowId).catch(() => {});
@@ -1412,6 +1445,16 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
         stableTimerActive: false,
         stopBtn: null,
       };
+      // On-demand best-effort extraction for the background poll. When the popup
+      // is hidden the browser suspends this watcher's timers, so the in-page
+      // settle never fires; the SW poll then detects completion (Stop button
+      // gone + stable text) and calls this to pull the finished answer without
+      // waiting for the (starved) settle. Reuses the same scraping as the
+      // in-page path so the text is identical.
+      window.__rmScrapeAssistant = () => {
+        const snapshot = getAssistantSnapshot().latestText.trim();
+        return snapshot || scrapeAssistantTextLenient().trim();
+      };
       let scheduleId = null;
 
       const cleanup = () => {
@@ -1913,61 +1956,54 @@ export async function getOrOpenChatGptRunSession(runId, options = {}) {
 }
 
 async function performChatGptRunSessionReset(normalizedRunId, session, options = {}) {
-  const requestedTargetUrl = options.targetUrl ?? DEFAULT_CHATGPT_TARGET_URL;
-  const targetUrl = buildRunTargetUrl(requestedTargetUrl);
   const warmupDelayMs = options.warmupDelayMs ?? 1500;
+  const promptLabel = options.promptLabel ?? session.promptLabel ?? 'Prompt';
 
-  logInfo('ChatGptAutomation', 'Resetting reusable ChatGPT popup.', {
-    promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
+  logInfo('ChatGptAutomation', 'Refreshing reusable ChatGPT popup for the next prompt.', {
+    promptLabel,
     runId: normalizedRunId,
     tabId: session.tabId,
-    targetUrl,
     warmupDelayMs,
   });
 
-  // Human-like spacing before re-navigating chatgpt.com for the next prompt.
-  // Back-to-back navigations (P1 done → immediately reload for P2) look bot-like
-  // and can trip Cloudflare rate-limits/challenges, which render as an error
-  // page. A short randomized gap makes the cadence less machine-gun. Gated on
-  // warmupDelayMs so tests (which pass 0) stay instant.
-  if (warmupDelayMs > 0) {
-    await wait(1000 + Math.floor(Math.random() * 1000)); // 1.0–2.0s jitter
-  }
-
-  // Prune stale Cloudflare/expired cookies before the reset navigation too —
-  // the fresh-open path does this to avoid HTTP 431 / Cloudflare error pages,
-  // and the reused-tab navigation is just as susceptible (P2/P3 were hitting an
-  // error page here while P1's fresh open, which prunes, succeeded).
+  // Prune rotating Cloudflare + expired cookies to keep the request header under
+  // the 431 limit across a long run. (cf_clearance is preserved.)
   await pruneChatGptCookies();
-  const updatedTab = await chrome.tabs.update(session.tabId, { url: targetUrl });
-  const nextTabId = updatedTab?.id ?? session.tabId;
-  await waitForChatGptTabById(nextTabId);
-  // The navigation above dropped the MAIN-world override; re-install it.
-  await installVisibilityKeepAlive(nextTabId);
+
+  // Refresh the SAME popup — exactly like hitting the browser's refresh button —
+  // instead of navigating to a brand-new URL. A ChatGPT temporary chat resets on
+  // reload, so this yields a fresh empty chat for the next prompt, and a same-URL
+  // refresh is markedly faster than a fresh cross-page navigation (warm
+  // connection, cached assets, Cloudflare clearance intact). This restores the
+  // faster pre-0.3.x prompt-to-prompt cadence.
+  const reloadDone = waitForTopFrameLoad(session.tabId);
+  await chrome.tabs.reload(session.tabId, { bypassCache: false });
+  await reloadDone; // wait for the refresh to actually finish before injecting
+  await waitForChatGptTabById(session.tabId);
+  // The reload dropped the MAIN-world override; re-install it.
+  await installVisibilityKeepAlive(session.tabId);
   if (warmupDelayMs > 0) {
-    const readiness = await waitForChatGptStartupReady(nextTabId, warmupDelayMs, {
+    const readiness = await waitForChatGptStartupReady(session.tabId, warmupDelayMs, {
       acceptAnyProbeResult: true,
       pollIntervalMs: 300,
     });
     logInfo(
       'ChatGptAutomation',
       readiness.state?.ready
-        ? 'ChatGPT startup ready after reset.'
+        ? 'ChatGPT startup ready after refresh.'
         : readiness.state
-          ? 'ChatGPT page probe succeeded after reset before full startup readiness.'
-          : 'ChatGPT startup probe expired after reset; continuing to prompt runner.',
+          ? 'ChatGPT page probe succeeded after refresh before full startup readiness.'
+          : 'ChatGPT startup probe expired after refresh; continuing to prompt runner.',
       {
-        promptLabel: options.promptLabel ?? session.promptLabel ?? 'Prompt',
+        promptLabel,
         runId: normalizedRunId,
-        tabId: nextTabId,
+        tabId: session.tabId,
         elapsedMs: readiness.elapsedMs,
         readiness: buildStartupReadinessLog(readiness.state),
       },
     );
   }
 
-  session.tabId = nextTabId;
-  session.targetUrl = targetUrl;
   session.needsReset = false;
   return session;
 }
@@ -1984,7 +2020,9 @@ async function reloadChatGptRunSessionTab(session, options = {}) {
   await wait(1000 + Math.floor(Math.random() * 1000));
   try {
     // Plain reload of the current page — same as the browser's refresh button.
+    const reloadDone = waitForTopFrameLoad(session.tabId);
     await chrome.tabs.reload(session.tabId, { bypassCache: false });
+    await reloadDone; // wait for the refresh to finish before injecting
   } catch {
     return false; // tab/window gone — let the caller reopen instead
   }
@@ -2064,6 +2102,7 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
   const responseTimeoutMs = options.responseTimeoutMs ?? 600000;
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 300000;
   const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 300000;
+  const pollIntervalMs = options.pollIntervalMs ?? 4000;
 
   let executionResults;
   try {
@@ -2096,6 +2135,20 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
         })
         .catch(() => {});
     };
+    // Background-poll completion backstop: when the popup is hidden the in-page
+    // watcher's settle timers are suspended by the browser, so a FINISHED
+    // response can sit unread until a timeout (then get needlessly retried). This
+    // SW poll isn't visibility-throttled, so when it sees generation finished
+    // (Stop button was present, now gone) with stable non-empty text, it scrapes
+    // the answer directly and resolves — racing (and usually pre-empting) the
+    // starved in-page settle only when the popup is hidden.
+    let sawGenerating = false;
+    let completeStableCount = 0;
+    let pollCompletionDone = false;
+    let resolvePollCompletion;
+    const pollCompletionPromise = new Promise((resolve) => {
+      resolvePollCompletion = resolve;
+    });
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedChatGptPromptEntry,
@@ -2169,6 +2222,67 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       } catch {
         // never let stall detection break the run
       }
+      // Background-poll completion backstop (see above): detect a finished
+      // response the starved in-page settle can't report, then scrape it.
+      try {
+        if (!pollCompletionDone && watcherState) {
+          const wLen =
+            typeof watcherState.textLen === 'number' ? watcherState.textLen : 0;
+          if (watcherState.hasStop === true) sawGenerating = true;
+          const looksDone =
+            sawGenerating &&
+            watcherState.hasStop === false &&
+            watcherState.sawNewTurn === true &&
+            watcherState.hasError !== true &&
+            wLen > 0;
+          // Require the finished state to hold for two consecutive polls (~8s) so
+          // a transient Stop-button flicker (ChatGPT's "Conversation not found"
+          // re-render loop) can't trigger a premature resolve.
+          completeStableCount = looksDone ? completeStableCount + 1 : 0;
+          if (
+            completeStableCount >= 2 &&
+            getActiveRun()?.cancelRequested !== true
+          ) {
+            let scraped = null;
+            try {
+              const [{ result: text } = {}] =
+                (await chrome.scripting.executeScript({
+                  target: { tabId: session.tabId },
+                  func: () =>
+                    typeof window.__rmScrapeAssistant === 'function'
+                      ? window.__rmScrapeAssistant()
+                      : null,
+                })) ?? [];
+              scraped = typeof text === 'string' ? text.trim() : null;
+            } catch {
+              // popup mid-navigation/closing — let the main flow handle it
+            }
+            if (scraped) {
+              pollCompletionDone = true;
+              logInfo(
+                'ChatGptAutomation',
+                'Recovered a completed response from the background poll (in-page settle was starved by a hidden popup).',
+                {
+                  promptLabel,
+                  tabId: session.tabId,
+                  pollCount,
+                  textLength: scraped.length,
+                  visibilityState,
+                },
+              );
+              resolvePollCompletion({
+                status: 'success',
+                rawText: scraped,
+                conversationUrl: tabSnapshot?.url ?? session.targetUrl ?? null,
+                timings: { completedBy: 'background_poll' },
+                recoveredByPoll: true,
+              });
+            }
+          }
+        }
+      } catch {
+        // never let completion detection break the run
+      }
       logInfo('ChatGptAutomation', 'ChatGPT prompt runner in progress.', {
         promptLabel,
         tabId: session.tabId,
@@ -2180,9 +2294,24 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
         visibilityState,
         watcher: watcherState,
       });
-    }, 4000);
+    }, pollIntervalMs);
     try {
-      executionResults = await executionPromise;
+      // Race the in-page watcher against the background-poll backstop. When the
+      // popup is visible the watcher settles in <1s and wins; when it's hidden
+      // (watcher timers suspended) the poll wins and provides the scraped answer.
+      const outcome = await Promise.race([
+        executionPromise.then((results) => ({ via: 'watcher', results })),
+        pollCompletionPromise.then((result) => ({
+          via: 'poll',
+          results: [{ result }],
+        })),
+      ]);
+      executionResults = outcome.results;
+      if (outcome.via === 'poll') {
+        // The in-page watcher is still pending (its settle was starved). Ignore
+        // its eventual result and swallow any late rejection.
+        executionPromise.catch(() => {});
+      }
     } finally {
       settled = true;
       clearInterval(progressPoll);

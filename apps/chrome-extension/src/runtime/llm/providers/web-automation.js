@@ -883,6 +883,17 @@ export function injectedProviderPromptEntry(prompt, config, options = {}) {
     return best;
   }
 
+  // On-demand best-effort extraction for the background completion watchdog.
+  // When the popup is hidden the browser suspends this watcher's settle timers,
+  // so the timer-gated `resultStatus:'success'` state is never published; the
+  // watchdog then detects completion from the continuously-updated `busy` signal
+  // and calls this to pull the finished answer. Reuses the same scraping as the
+  // in-page path so the text is identical.
+  window.__rmScrapeAssistant = () => {
+    const snapshot = getAssistantSnapshot().latestText.trim();
+    return snapshot || scrapeAssistantTextLenient().trim();
+  };
+
   function hasNewAssistantTurn(previous, next) {
     if (!next.latestText) return false;
     if (next.count > previous.count) return true;
@@ -1497,6 +1508,12 @@ function startWebAutomationCompletionWatchdog(session, config, options = {}) {
   let stopped = false;
   let timerId = null;
   let lastCompletedState = null;
+  // Backstop trackers: `busy` is published continuously (observer-driven, so it
+  // updates even while the popup is hidden), unlike the timer-gated
+  // `resultStatus:'success'`. sawBusy = generation started; lastIdleLen tracks a
+  // stable finished length across reads.
+  let sawBusy = false;
+  let lastIdleLen = null;
 
   const stop = () => {
     stopped = true;
@@ -1519,6 +1536,7 @@ function startWebAutomationCompletionWatchdog(session, config, options = {}) {
         schedule();
         return;
       }
+      if (state.busy === true) sawBusy = true;
 
       if (
         state.resultStatus === 'success' &&
@@ -1553,6 +1571,47 @@ function startWebAutomationCompletionWatchdog(session, config, options = {}) {
         };
       } else {
         lastCompletedState = null;
+        // Hidden-popup backstop: the in-page settle timer is starved, so
+        // `resultStatus:'success'` is never published — but `busy` flips false
+        // when generation ends. On a stable idle+text state (busy false, length
+        // unchanged across two reads), scrape the finished answer directly.
+        const looksIdleDone =
+          sawBusy &&
+          state.busy === false &&
+          typeof state.latestTextLength === 'number' &&
+          state.latestTextLength > 0;
+        if (looksIdleDone && lastIdleLen === state.latestTextLength) {
+          let scraped = null;
+          try {
+            const [{ result: text } = {}] =
+              (await chrome.scripting.executeScript({
+                target: { tabId: session.tabId },
+                func: () =>
+                  typeof window.__rmScrapeAssistant === 'function'
+                    ? window.__rmScrapeAssistant()
+                    : null,
+              })) ?? [];
+            scraped = typeof text === 'string' ? text.trim() : null;
+          } catch {
+            // popup mid-navigation/closing — let the main flow handle it
+          }
+          if (scraped) {
+            stop();
+            logInfo(
+              config.scope,
+              'Completion watchdog recovered a completed response from the background (in-page settle was starved by a hidden popup).',
+              { promptLabel, tabId: session.tabId, textLength: scraped.length },
+            );
+            resolve({
+              status: 'success',
+              rawText: scraped,
+              conversationUrl: state.conversationUrl,
+              recoveredByWatchdog: true,
+            });
+            return;
+          }
+        }
+        lastIdleLen = looksIdleDone ? state.latestTextLength : null;
       }
 
       schedule();

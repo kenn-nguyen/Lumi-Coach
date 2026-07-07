@@ -19,8 +19,17 @@ function createChromeMock() {
   let nextTabId = 101;
   let defaultTabStatus = 'complete';
   let pendingTabUpdate = null;
+  let pendingTabReload = null;
   const windowsById = new Map();
   const tabsById = new Map();
+  const webNavCompletedListeners = new Set();
+  // Background-poll simulation: sequence of watcher states the poll's state-read
+  // returns, the text its scrape returns, and whether the in-page watcher is
+  // held pending (to simulate a hidden popup starving the in-page settle).
+  const watcherStateReads = [];
+  let lastWatcherStateRead = null;
+  let scrapeResult = '';
+  let holdWatcher = false;
   const scriptingResults = [];
   const readinessResults = [];
 
@@ -89,6 +98,29 @@ function createChromeMock() {
         tab.status = 'complete';
         return { ...tab };
       }),
+      reload: vi.fn(async (tabId) => {
+        const tab = tabsById.get(tabId);
+        if (!tab) {
+          throw new Error(`No tab with id ${tabId}`);
+        }
+        if (pendingTabReload) {
+          const gate = pendingTabReload;
+          pendingTabReload = null;
+          await gate;
+        }
+        tab.status = 'complete';
+        // Simulate the top-frame load finishing so waitForTopFrameLoad resolves.
+        for (const fn of Array.from(webNavCompletedListeners)) {
+          fn({ tabId, frameId: 0 });
+        }
+        return undefined;
+      }),
+    },
+    webNavigation: {
+      onCompleted: {
+        addListener: vi.fn((fn) => webNavCompletedListeners.add(fn)),
+        removeListener: vi.fn((fn) => webNavCompletedListeners.delete(fn)),
+      },
     },
     scripting: {
       executeScript: vi.fn(async (request) => {
@@ -101,6 +133,30 @@ function createChromeMock() {
               authRequired: false,
             };
           return [{ result: nextReadiness, request }];
+        }
+        const name = request?.func?.name;
+        const src =
+          typeof request?.func === 'function' ? request.func.toString() : '';
+        // The poll's reads are inline arrows (property name 'func'); gate on that
+        // so the NAMED watcher (which also references __rmWatcherState because it
+        // sets it) doesn't match these branches.
+        if (name === 'func' && src.includes('__rmScrapeAssistant')) {
+          return [{ result: scrapeResult, request }];
+        }
+        if (name === 'func' && src.includes('__rmWatcherState')) {
+          const watcher =
+            watcherStateReads.length > 0
+              ? watcherStateReads.shift()
+              : lastWatcherStateRead;
+          lastWatcherStateRead = watcher ?? lastWatcherStateRead;
+          return [
+            { result: { visibilityState: 'hidden', watcher: watcher ?? null }, request },
+          ];
+        }
+        // The in-page watcher (injectedChatGptPromptEntry). Optionally hold it
+        // pending forever to simulate a hidden popup starving its settle timers.
+        if (name === 'injectedChatGptPromptEntry' && holdWatcher) {
+          return new Promise(() => {});
         }
         const nextResult =
           scriptingResults.shift() ?? {
@@ -117,6 +173,13 @@ function createChromeMock() {
     chrome,
     scriptingResults,
     readinessResults,
+    watcherStateReads,
+    setScrapeResult(text) {
+      scrapeResult = text;
+    },
+    holdWatcher() {
+      holdWatcher = true;
+    },
     setDefaultTabStatus(status) {
       defaultTabStatus = status;
     },
@@ -126,6 +189,18 @@ function createChromeMock() {
         release = resolve;
       });
       pendingTabUpdate = gate;
+      return {
+        release() {
+          release?.();
+        },
+      };
+    },
+    holdNextTabReload() {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      pendingTabReload = gate;
       return {
         release() {
           release?.();
@@ -203,11 +278,14 @@ describe('chatgpt run-scoped popup reuse', () => {
       warmupDelayMs: 0,
     });
 
+    // Reset refreshes the SAME popup (browser-refresh style) rather than
+    // navigating to a new URL — faster, and a temporary chat resets on reload.
     expect(resetSession.tabId).toBe(originalTabId);
-    expect(chromeMock.chrome.tabs.update).toHaveBeenCalledTimes(1);
-    const [, updateProperties] = chromeMock.chrome.tabs.update.mock.calls[0];
-    expect(updateProperties.url).toContain('temporary-chat=true');
-    expect(updateProperties.url).toContain('rm_run=');
+    expect(chromeMock.chrome.tabs.reload).toHaveBeenCalledTimes(1);
+    expect(chromeMock.chrome.tabs.reload).toHaveBeenCalledWith(originalTabId, {
+      bypassCache: false,
+    });
+    expect(chromeMock.chrome.tabs.update).not.toHaveBeenCalled();
   });
 
   it('skips the fixed warmup delay when ChatGPT reports startup readiness immediately', async () => {
@@ -321,7 +399,7 @@ describe('chatgpt run-scoped popup reuse', () => {
     expect(firstResult.status).toBe('success');
     expect(secondResult.status).toBe('success');
     expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
-    expect(chromeMock.chrome.tabs.update).toHaveBeenCalledTimes(1);
+    expect(chromeMock.chrome.tabs.reload).toHaveBeenCalledTimes(1);
     const firstTabId =
       chromeMock.chrome.scripting.executeScript.mock.calls[0][0].target.tabId;
     const secondTabId =
@@ -335,7 +413,7 @@ describe('chatgpt run-scoped popup reuse', () => {
       warmupDelayMs: 0,
     });
     session.needsReset = true;
-    const heldUpdate = chromeMock.holdNextTabUpdate();
+    const heldReload = chromeMock.holdNextTabReload();
 
     const firstReset = prepareChatGptRunSessionForNextStage('run-prepare', {
       warmupDelayMs: 0,
@@ -344,12 +422,12 @@ describe('chatgpt run-scoped popup reuse', () => {
       warmupDelayMs: 0,
     });
 
-    // Drain microtasks (the reset now prunes cookies before navigating, adding
-    // async steps) so the held tabs.update call is reached before asserting.
+    // Drain microtasks (the reset prunes cookies before refreshing, adding async
+    // steps) so the held tabs.reload call is reached before asserting.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(chromeMock.chrome.tabs.update).toHaveBeenCalledTimes(1);
+    expect(chromeMock.chrome.tabs.reload).toHaveBeenCalledTimes(1);
 
-    heldUpdate.release();
+    heldReload.release();
     const [firstSession, secondSession] = await Promise.all([
       firstReset,
       secondReset,
@@ -359,6 +437,30 @@ describe('chatgpt run-scoped popup reuse', () => {
     expect(secondSession.tabId).toBe(session.tabId);
     expect(session.needsReset).toBe(false);
     expect(session.pendingResetPromise).toBe(null);
+  });
+
+  it('recovers a completed response from the background poll when the hidden popup starves the in-page settle', async () => {
+    ensureActiveRun({ runId: 'run-poll', phase: 'running', inFlight: true });
+    // Simulate a hidden popup: the in-page watcher never resolves (its settle
+    // timers are suspended), and the SW poll observes generation finish.
+    chromeMock.holdWatcher();
+    chromeMock.setScrapeResult('{"resume":"final answer"}');
+    chromeMock.watcherStateReads.push(
+      { hasStop: true, sawNewTurn: true, textLen: 100, hasError: false },
+      { hasStop: false, sawNewTurn: true, textLen: 500, hasError: false },
+      { hasStop: false, sawNewTurn: true, textLen: 500, hasError: false },
+      { hasStop: false, sawNewTurn: true, textLen: 500, hasError: false },
+    );
+
+    const result = await runChatGptPrompt('Prompt', {
+      runId: 'run-poll',
+      reusePopupSession: true,
+      warmupDelayMs: 0,
+      pollIntervalMs: 5,
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.rawText).toContain('final answer');
   });
 
   it('preserves the legacy open-close behavior when popup reuse is disabled', async () => {

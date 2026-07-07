@@ -494,6 +494,12 @@ function createChromeMock() {
   const tabsById = new Map();
   const readinessResults = [];
   const executionResults = [];
+  // Completion-watchdog simulation: watchdog state reads, the scrape text, and
+  // whether the in-page watcher is held pending (hidden-popup / starved settle).
+  const watchdogStateReads = [];
+  let lastWatchdogState = null;
+  let scrapeResult = '';
+  let holdWatcher = false;
 
   function createTab(url, windowId) {
     const tab = {
@@ -557,6 +563,25 @@ function createChromeMock() {
             };
           return [{ result: nextReadiness, request }];
         }
+        const name = request?.func?.name;
+        const src =
+          typeof request?.func === 'function' ? request.func.toString() : '';
+        // Watchdog reads are inline arrows (name 'func'); gate on that so the
+        // NAMED watcher doesn't match.
+        if (name === 'func' && src.includes('__rmScrapeAssistant')) {
+          return [{ result: scrapeResult, request }];
+        }
+        if (name === 'func' && src.includes('__resumeMatcherWebAutomationState')) {
+          const state =
+            watchdogStateReads.length > 0
+              ? watchdogStateReads.shift()
+              : lastWatchdogState;
+          lastWatchdogState = state ?? lastWatchdogState;
+          return [{ result: state ?? null, request }];
+        }
+        if (name === 'injectedProviderPromptEntry' && holdWatcher) {
+          return new Promise(() => {});
+        }
         const nextResult =
           executionResults.shift() ?? {
             status: 'success',
@@ -568,7 +593,18 @@ function createChromeMock() {
     },
   };
 
-  return { chrome, readinessResults, executionResults };
+  return {
+    chrome,
+    readinessResults,
+    executionResults,
+    watchdogStateReads,
+    setScrapeResult(text) {
+      scrapeResult = text;
+    },
+    holdWatcher() {
+      holdWatcher = true;
+    },
+  };
 }
 
 describe('runWebAutomationPrompt startup readiness', () => {
@@ -639,5 +675,56 @@ describe('runWebAutomationPrompt startup readiness', () => {
     ).toBe(true);
 
     await runPromise;
+  });
+
+  it('recovers a completed response via the watchdog when a hidden popup starves the in-page settle', async () => {
+    const chromeMock = createChromeMock();
+    vi.stubGlobal('chrome', chromeMock.chrome);
+    // In-page watcher never resolves (its settle timers are suspended while
+    // hidden); the watchdog must recover the answer from the `busy` signal.
+    chromeMock.holdWatcher();
+    chromeMock.setScrapeResult('{"resume":"final answer"}');
+    chromeMock.watchdogStateReads.push(
+      { phase: 'waiting_for_response', resultStatus: null, busy: true, rawText: '', latestTextLength: 100, updatedAt: 1, conversationUrl: 'https://claude.ai/chats/x' },
+      { phase: 'waiting_for_response', resultStatus: null, busy: false, rawText: '', latestTextLength: 500, updatedAt: 2, conversationUrl: 'https://claude.ai/chats/x' },
+      { phase: 'waiting_for_response', resultStatus: null, busy: false, rawText: '', latestTextLength: 500, updatedAt: 3, conversationUrl: 'https://claude.ai/chats/x' },
+      { phase: 'waiting_for_response', resultStatus: null, busy: false, rawText: '', latestTextLength: 500, updatedAt: 4, conversationUrl: 'https://claude.ai/chats/x' },
+    );
+
+    const config = {
+      providerLabel: 'Claude',
+      scope: 'ClaudeAutomation',
+      defaultTargetUrl: 'https://claude.ai/new',
+      urlMatchers: ['https://claude.ai/'],
+      inputSelectors: ['#composer'],
+      sendButtonSelectors: ['#send-button'],
+      stopButtonSelectors: ['button[aria-label*="Stop"]'],
+      responseBusySelectors: [],
+      assistantTextSelectors: ['[data-assistant]'],
+      loginSelectors: [],
+      authRequiredMessage: 'x',
+      openPopupMessage: 'x',
+      popupCreatedMessage: 'x',
+      waitForTabMessage: 'x',
+      tabReadyMessage: 'x',
+      waitForHydrationMessage: 'x',
+      progressMessage: 'x',
+      retryMessage: 'x',
+      partialSuccessMessage: 'x',
+      partialRetrySuccessMessage: 'x',
+      responseTimeoutMs: 120000,
+      responseIdleTimeoutMs: 25000,
+      responseFirstTokenTimeoutMs: 60000,
+    };
+
+    const result = await runWebAutomationPrompt('Return JSON', config, {
+      promptLabel: 'Prompt',
+      warmupDelayMs: 0,
+      watchdogPollIntervalMs: 5,
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.rawText).toContain('final answer');
+    expect(result.recoveredByWatchdog).toBe(true);
   });
 });
