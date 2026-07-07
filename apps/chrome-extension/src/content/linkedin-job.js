@@ -3523,18 +3523,27 @@ function renderSettingsActionButton(id, label, { variant = "secondary", disabled
   return `<button id="${escapeHtml(id)}" type="button" class="resume-matcher-button${variantClass}"${disabled ? " disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
+const RECOMMENDED_PROVIDER_PROFILE_ID = "chatgpt:web_automation";
+
 function renderProviderOptions(settings, selectedProfileId = "") {
   const normalizedSelectedProfileId = String(selectedProfileId || "");
   const options = Object.values(settings?.profiles || {})
-    .sort((left, right) =>
-      (left?.label || "").localeCompare(right?.label || "", undefined, {
+    .sort((left, right) => {
+      // Surface the recommended flow (ChatGPT via the extension) first; the
+      // rest alphabetical.
+      if (left?.id === RECOMMENDED_PROVIDER_PROFILE_ID) return -1;
+      if (right?.id === RECOMMENDED_PROVIDER_PROFILE_ID) return 1;
+      return (left?.label || "").localeCompare(right?.label || "", undefined, {
         sensitivity: "base",
-      }),
-    )
-    .map(
-      (profile) =>
-        `<option value="${escapeHtml(profile.id)}"${profile.id === normalizedSelectedProfileId ? " selected" : ""}>${escapeHtml(profile.label)}</option>`,
-    )
+      });
+    })
+    .map((profile) => {
+      const label =
+        profile.id === RECOMMENDED_PROVIDER_PROFILE_ID
+          ? `${profile.label} (Recommended)`
+          : profile.label;
+      return `<option value="${escapeHtml(profile.id)}"${profile.id === normalizedSelectedProfileId ? " selected" : ""}>${escapeHtml(label)}</option>`;
+    })
     .join("");
   return `<option value="" disabled${normalizedSelectedProfileId ? "" : " selected"}>Choose your AI provider</option>${options}`;
 }
@@ -3795,8 +3804,8 @@ function renderOnboardingStep() {
       return `
         ${renderOnboardingProgress(resolvedStep)}
         <div class="resume-matcher-onboarding__provider-grid">
-          <p class="resume-matcher-onboarding__provider-note"><strong>API key</strong> is more stable.</p>
-          <p class="resume-matcher-onboarding__provider-note"><strong>Web automation</strong> uses your browser login and is less stable.</p>
+          <p class="resume-matcher-onboarding__provider-note"><strong>Recommended:</strong> ChatGPT via the extension — our most tested, reliable path, and it only uses your ChatGPT subscription (no API key or per-token cost).</p>
+          <p class="resume-matcher-onboarding__provider-note">Prefer an API key? Claude, OpenAI, and Gemini also work (needs a key and per-token cost).</p>
           <div class="resume-matcher-field">
             <select id="resume-matcher-onboarding-provider-select" data-invalid="${missingFields.has("provider") ? "true" : "false"}" data-required-empty="${!missingFields.has("provider") && requiredEmptyFields.has("provider") ? "true" : "false"}">${renderProviderOptions(providerSettings, providerDraft.selectedProfileId)}</select>
           </div>
@@ -5362,11 +5371,23 @@ function renderRunView() {
       state.popupStallHint && state.isRunning
         ? `<div class="resume-matcher-status-detail">⚠️ ChatGPT looks paused — its popup window may be minimized or hidden behind another window. Keep it visible while tailoring. <span class="resume-matcher-status-savelogs" data-status-action="focus_popup" role="button" tabindex="0">Bring ChatGPT to front</span></div>`
         : "";
+    // On an error, nudge users who aren't on the recommended flow toward it —
+    // it's our most tested path and only costs their ChatGPT subscription.
+    const onRecommendedProvider =
+      state.assets?.llmSettings?.activeProfileId ===
+      RECOMMENDED_PROVIDER_PROFILE_ID;
+    const providerHint =
+      status &&
+      (status.kind === "error" || status.kind === "interrupted") &&
+      !onRecommendedProvider
+        ? `<div class="resume-matcher-status-detail">💡 The ChatGPT-via-extension flow is our most tested and lowest-cost path (only your ChatGPT subscription). <span class="resume-matcher-status-savelogs" data-status-action="use_chatgpt_web" role="button" tabindex="0">Switch to ChatGPT</span></div>`
+        : "";
     statusRoot.innerHTML = status
       ? `
         <div class="resume-matcher-status-title">${status.tone === "info" && isLoadingJob ? '<span class="resume-matcher-status-spinner" aria-hidden="true"></span>' : ""}${escapeHtml(status.title)}</div>
         ${status.detail || saveLogsLink ? `<div class="resume-matcher-status-detail">${escapeHtml(status.detail)}${status.detail && saveLogsLink ? " " : ""}${saveLogsLink}</div>` : ""}
         ${stallHint}
+        ${providerHint}
       `
       : stallHint;
     statusActions.innerHTML =
@@ -6378,6 +6399,30 @@ async function handleStatusAction(actionId) {
     } catch (error) {
       // Best-effort: a failed export must never disrupt the error card.
       console.error("[ResumeMatcherExt] Failed to save logs.", error);
+    }
+    return;
+  }
+  if (actionId === "use_chatgpt_web") {
+    try {
+      const response = await sendMessage("SAVE_LLM_SETTINGS", {
+        activeProfileId: RECOMMENDED_PROVIDER_PROFILE_ID,
+      });
+      if (response?.ok) {
+        state.assets = {
+          ...(state.assets || {}),
+          llmSettings: response.llmSettings,
+        };
+        providerDraftState = createProviderDraftState(
+          RECOMMENDED_PROVIDER_PROFILE_ID,
+          response.llmSettings,
+        );
+        render();
+      }
+    } catch (error) {
+      console.error(
+        "[ResumeMatcherExt] Failed to switch to the ChatGPT web flow.",
+        error,
+      );
     }
     return;
   }
