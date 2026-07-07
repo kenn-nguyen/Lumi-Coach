@@ -27,6 +27,7 @@ import {
 import {
   buildPreviewUrl,
   cloneResume,
+  deleteResume,
   fetchBackendApifyLinkedInFallback,
   fetchFeatureConfig,
   enableContentGenerationFeatures,
@@ -1397,6 +1398,41 @@ async function resolveBaseResumeId({
   };
 }
 
+// Commit-on-success cleanup: delete the job-specific resume clone if the run
+// that created it never committed (tailored content never saved). No-op if
+// there's no clone, or it already committed (a real, kept tailored resume). The
+// master resume is never a tailored clone, and the backend DELETE endpoint
+// refuses to delete a master, so this can't remove the master.
+export async function discardUncommittedTailoredResume(reason = "cleanup") {
+  let state;
+  try {
+    state = await getExtensionState();
+  } catch {
+    return;
+  }
+  const resumeId = state?.tailoredResumeId ?? null;
+  if (!resumeId || state?.tailoredResumeCommitted === true) {
+    return;
+  }
+  try {
+    await deleteResume(resumeId);
+    await setExtensionState({
+      tailoredResumeId: null,
+      tailoredResumeCommitted: false,
+    });
+    logInfo("Orchestrator", "Discarded uncommitted tailored resume clone.", {
+      resumeId,
+      reason,
+    });
+  } catch (error) {
+    logWarn(
+      "Orchestrator",
+      "Failed to discard uncommitted tailored resume clone.",
+      { resumeId, reason, error: error instanceof Error ? error.message : String(error) },
+    );
+  }
+}
+
 export async function generateResumeForLinkedInJob(
   tabId,
   prompt1CustomInstruction = "",
@@ -1404,6 +1440,11 @@ export async function generateResumeForLinkedInJob(
   activeRunJobHint = null,
 ) {
   logInfo("Orchestrator", "Generate flow started.", { tabId });
+  // Commit-on-success: before starting a new run, discard any leftover tailored
+  // clone from a previous run that never committed (failed/canceled/crashed, or
+  // an auth-reconnect re-clone) so orphan rows can't accumulate on the dashboard.
+  // Runs before this run touches state (the reset below nulls tailoredResumeId).
+  await discardUncommittedTailoredResume("new-run");
   const runStartedMs = Date.now();
   const customContext = prompt1CustomInstruction.trim();
   const customContextProvided = customContext.length > 0;
@@ -1638,6 +1679,9 @@ export async function generateResumeForLinkedInJob(
   await setExtensionState({
     selectedResumeId: resumeId,
     tailoredResumeId: resumeId,
+    // Not yet committed — cleared/deleted if the run fails or is canceled
+    // before the tailored content is saved (patch). Set true after patch.
+    tailoredResumeCommitted: false,
   });
   cancel.throwIfCanceled("resume fetch");
   const fetchedResume = cloneResponse?.data
@@ -2180,7 +2224,10 @@ export async function generateResumeForLinkedInJob(
       { signal: cancel.signal() },
     );
     patchDurationMs = Date.now() - patchStartedMs;
-    await setExtensionState({ patchDurationMs });
+    // The tailored content is now saved on the resume — it's a usable resume,
+    // so mark it committed. Failures after this point (job-context link, rename,
+    // preview) keep the resume rather than discarding the user's tailored work.
+    await setExtensionState({ patchDurationMs, tailoredResumeCommitted: true });
     cancel.throwIfCanceled("resume patch");
   } catch (error) {
     if (isRunCanceledError(error)) {

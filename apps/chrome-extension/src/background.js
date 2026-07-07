@@ -1,4 +1,5 @@
 import {
+  discardUncommittedTailoredResume,
   generateResumeForLinkedInJob,
   importMasterResumeFromTextAsset,
   saveStoryboardAsset,
@@ -811,6 +812,10 @@ async function finalizeCanceledRun(run, options = {}) {
     await setExtensionState(nextState);
   }
 
+  // Canceling discards the in-progress tailored clone (unless its content was
+  // already saved), so a canceled run leaves no orphan row on the dashboard.
+  await discardUncommittedTailoredResume("canceled");
+
   const sourceUrl = getCurrentRunSourceUrl(extensionState);
   await clearPendingExtensionAction();
   markRunTerminal(run.runId, "canceled");
@@ -1341,6 +1346,8 @@ async function resumePendingExtensionAction(options = {}) {
           })
           .catch(() => {});
       }
+      // Terminal failure of the resumed run — discard the uncommitted clone.
+      await discardUncommittedTailoredResume("failed");
       clearActiveRun(runId);
       throw error;
     }
@@ -1965,6 +1972,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               message: getSignedOutWorkspaceMessage(),
             };
           }
+          // Terminal failure (not a reconnect/awaiting-auth case) — discard the
+          // uncommitted tailored clone so a failed run leaves no orphan row.
+          await discardUncommittedTailoredResume("failed");
           clearActiveRun(runId);
           await persistRunDiagnostics();
           throw error;
