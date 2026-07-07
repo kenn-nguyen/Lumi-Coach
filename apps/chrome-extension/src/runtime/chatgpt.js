@@ -127,7 +127,7 @@ function isChatGptAuthCookie(name) {
  *   - the next-auth session/CSRF cookies (see isChatGptAuthCookie) — login.
  * Safe to call even if the `cookies` permission is absent (fails silently).
  */
-async function pruneChatGptCookies() {
+async function pruneChatGptCookies({ aggressive = false } = {}) {
   const domains = ['chatgpt.com', '.chatgpt.com', 'chat.openai.com', '.chat.openai.com'];
   // Rotating Cloudflare + analytics cookies that are safe to clear before a
   // fresh session. (cf_clearance is intentionally excluded — see above.)
@@ -156,6 +156,10 @@ async function pruneChatGptCookies() {
       for (const cookie of cookies) {
         if (isChatGptAuthCookie(cookie.name)) continue; // never touch login
         const isPurgeable =
+          // 431 recovery: the Cookie header is too large, so clear EVERY
+          // non-login cookie (incl. cf_clearance) to shrink it below the limit.
+          // A one-time Cloudflare re-check may follow, but it beats a hard 431.
+          aggressive ||
           purgePrefixes.some((p) => cookie.name.startsWith(p)) ||
           (cookie.expirationDate != null && cookie.expirationDate < nowSec);
         if (!isPurgeable) continue;
@@ -2018,6 +2022,14 @@ async function reloadChatGptRunSessionTab(session, options = {}) {
   // Random 1–2s pause before refreshing, so a transient block can clear and the
   // retry doesn't look like an instant bot re-hit.
   await wait(1000 + Math.floor(Math.random() * 1000));
+  // A persistent HTTP 431 ("Request Header Fields Too Large") is a bloated
+  // Cookie header — reloading re-sends the same oversized cookies, so the
+  // browser's own refresh, hard-refresh, and URL changes all stay stuck on the
+  // error page. The only cure is shrinking the header, so on a confirmed 431 we
+  // clear every non-login chatgpt.com cookie before refreshing. Other error
+  // pages get the normal rotating-cookie prune (cf_clearance preserved).
+  const httpStatus = await probeChatGptHttpStatus();
+  await pruneChatGptCookies({ aggressive: httpStatus === 431 });
   try {
     // Plain reload of the current page — same as the browser's refresh button.
     const reloadDone = waitForTopFrameLoad(session.tabId);
@@ -2040,6 +2052,8 @@ async function reloadChatGptRunSessionTab(session, options = {}) {
   logInfo('ChatGptAutomation', 'Reloaded (refreshed) the ChatGPT popup after an error page.', {
     promptLabel,
     tabId: session.tabId,
+    httpStatus,
+    cookiesPurged: httpStatus === 431 ? 'aggressive' : 'rotating',
     elapsedMs: readiness.elapsedMs,
     readiness: buildStartupReadinessLog(readiness.state),
   });
