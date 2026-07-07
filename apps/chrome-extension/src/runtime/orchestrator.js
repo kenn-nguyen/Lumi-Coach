@@ -1411,7 +1411,12 @@ export async function discardUncommittedTailoredResume(reason = "cleanup") {
     return;
   }
   const resumeId = state?.tailoredResumeId ?? null;
-  if (!resumeId || state?.tailoredResumeCommitted === true) {
+  // Only discard a clone we KNOW is uncommitted — tailoredResumeCommitted is
+  // set to false atomically with tailoredResumeId at clone time and flipped to
+  // true after patch. Any OTHER value (true = finished, or undefined = a
+  // pre-existing/rehydrated resume whose flag was dropped) is left alone, so a
+  // finished resume is never deleted.
+  if (!resumeId || state?.tailoredResumeCommitted !== false) {
     return;
   }
   try {

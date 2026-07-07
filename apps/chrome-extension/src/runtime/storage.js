@@ -272,6 +272,11 @@ function sanitizeExtensionStateForStorage(extensionState) {
   if (typeof source.tailoredResumeId === "string" && source.tailoredResumeId) {
     next.tailoredResumeId = source.tailoredResumeId;
   }
+  // Preserve the commit flag alongside the id — losing it on rehydration would
+  // make a finished resume look uncommitted and get discarded on the next run.
+  if (typeof source.tailoredResumeCommitted === "boolean") {
+    next.tailoredResumeCommitted = source.tailoredResumeCommitted;
+  }
   if (typeof source.previewUrl === "string" && source.previewUrl) {
     next.previewUrl = source.previewUrl;
   }

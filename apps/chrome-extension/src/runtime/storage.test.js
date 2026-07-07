@@ -133,6 +133,28 @@ describe("account-scoped extension storage", () => {
     });
   });
 
+  it("preserves tailoredResumeCommitted across the storage round-trip (guards against deleting finished resumes)", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+
+    // A finished tailored resume must keep committed=true through serialization —
+    // dropping it would make the commit-on-success cleanup delete it.
+    await setExtensionState({
+      tailoredResumeId: "resume-finished",
+      tailoredResumeCommitted: true,
+    });
+    const finished = await getExtensionState();
+    expect(finished.tailoredResumeId).toBe("resume-finished");
+    expect(finished.tailoredResumeCommitted).toBe(true);
+
+    // An in-progress clone keeps committed=false so it can be discarded on failure.
+    await setExtensionState({
+      tailoredResumeId: "resume-in-progress",
+      tailoredResumeCommitted: false,
+    });
+    expect((await getExtensionState()).tailoredResumeCommitted).toBe(false);
+  });
+
   it("keeps local workspaces isolated when switching accounts", async () => {
     await setExtensionAuth(createAuth(userA));
     await activateAccountWorkspace(userA);
