@@ -43,7 +43,7 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
   // Input state
   const [jdUrl, setJdUrl] = useState('');
   const [jdText, setJdText] = useState('');
-  const [profileId, setProfileId] = useState<PromptProfileId>('profile2');
+  const [profileId, setProfileId] = useState<PromptProfileId>('profile5');
 
   // Pipeline state
   const [phase, setPhase] = useState<Phase>('input');
@@ -297,8 +297,8 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                   className="w-full rounded-none border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
                 >
                   <option value="profile1">Safe</option>
-                  <option value="profile2">Competitive (recommended)</option>
-                  <option value="profile5">Competitive+</option>
+                  <option value="profile2">Competitive</option>
+                  <option value="profile5">Competitive+ (recommended)</option>
                   <option value="profile4">Direct</option>
                 </select>
               </div>

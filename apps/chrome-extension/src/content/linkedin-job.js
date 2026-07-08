@@ -258,7 +258,7 @@ const EXTENSION_VERSION = (() => {
   }
 })();
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
-const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
+const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile5";
 const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
 const PROVIDER_SAVE_REQUIRED_MESSAGE =
   "Save your AI setup before uploading your Master Resume.";
@@ -511,7 +511,7 @@ const TAILORING_STYLE_INFO = [
     profileId: "profile2",
     title: "Competitive",
     lines: [
-      "Recommended for most applications.",
+      "Rewrites your source bullets in place (conservative phrasing).",
       "Stretch: Medium-high",
       "Truth safety: 8-8.5/10",
       "Hiring-manager fit: 9-9.5/10",
@@ -523,6 +523,7 @@ const TAILORING_STYLE_INFO = [
     profileId: "profile5",
     title: "Competitive+",
     lines: [
+      "Recommended for most applications.",
       "Previous Competitive method (instruction/synthesis).",
       "Stretch: Medium-high",
       "Truth safety: 8-8.5/10",

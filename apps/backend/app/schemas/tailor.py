@@ -16,7 +16,7 @@ VALID_PROMPT_PROFILES = {
 
 
 class TailorRequest(BaseModel):
-    prompt_profile_id: str = "profile2"
+    prompt_profile_id: str = "profile5"
     jd_url: str | None = None
     jd_text: str | None = None
 
