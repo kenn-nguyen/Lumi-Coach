@@ -20,7 +20,11 @@ const PROMPT_PROFILE_IDS = [
   "profile4",
   "profile5",
 ];
-const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile2";
+// Competitive+ (profile5) is the product default/recommended style. Keep this
+// in sync with the content script and backend defaults — a fresh account's
+// activeProfileId is seeded here, and an explicit "profile2" here used to win
+// over the content script's profile5 fallback (Run tab showed "Competitive").
+const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile5";
 const PROMPT_DEFAULTS_MODES = ["server", "extension"];
 const ONBOARDING_STEPS = ["intro", "sign_in", "provider", "assets", "done"];
 const ACCOUNT_STORAGE_VERSION = 1;
