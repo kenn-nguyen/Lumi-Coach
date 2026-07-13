@@ -1,7 +1,8 @@
 import { extractJsonFromText } from '../../json.js';
 import { logError, logInfo } from '../../log.js';
 import { recordRawEmission } from '../../log-buffer.js';
-import { registerRunCleanup } from '../../run-control.js';
+import { registerRunCleanup, throwIfRunCanceled } from '../../run-control.js';
+import { acquireWebFireSlot } from '../../fire-gate.js';
 
 function getRuntimeError() {
   return chrome.runtime.lastError?.message;
@@ -1875,6 +1876,16 @@ async function executeWebAutomationPromptInSession(session, prompt, config, opti
     let settled = false;
     const pollStartAt = Date.now();
     let pollCount = 0;
+    // Fire-gate: serialize this fire against other concurrent web jobs to avoid
+    // a bot-detection burst (zero latency when serial), then re-check cancel.
+    const fireRunId = options.runId ?? null;
+    await acquireWebFireSlot({
+      runId: fireRunId,
+      tabId: session.tabId,
+      promptLabel,
+      provider: config.scope,
+    });
+    if (fireRunId) throwIfRunCanceled(fireRunId, promptLabel);
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedProviderPromptEntry,

@@ -47,12 +47,11 @@ import {
   closeChatGptRunSession,
   prepareChatGptRunSessionForNextStage,
 } from "./chatgpt.js";
+import { getUserAssets, setStoryboardAsset } from "./storage.js";
 import {
-  getExtensionState,
-  getUserAssets,
-  setExtensionState,
-  setStoryboardAsset,
-} from "./storage.js";
+  getRunState,
+  setRunState,
+} from "./run-state.js";
 import { alignSectionMetaToSourceResume } from "./resume-structure.js";
 import { captureExtensionEvent } from "./analytics.js";
 import { getActiveLlmProfile, resolveProfileForStage } from "./llm/profiles.js";
@@ -71,6 +70,10 @@ import {
 } from "./run-control.js";
 import { syncExtensionRun } from "./extension-runs.js";
 import { cleanFreeformHandoffText } from "./freeform-handoff.js";
+
+// Single-flight guard for master-resume bootstrap: shared across concurrent runs
+// so two "no master" runs create ONE master, not two (hazard #2).
+let masterBootstrapInFlight = null;
 
 export async function saveStoryboardAsset(payload) {
   await setStoryboardAsset({
@@ -1105,7 +1108,7 @@ async function bootstrapMasterResumeFromMarkdown({
   if (!localResumeMarkdown) {
     const message =
       "No master resume was found in Lumi Coach. Upload your Markdown resume in the extension first.";
-    await setExtensionState({
+    await setRunState(runId, {
       sourceTabId,
       activeRunJob,
       patchError: message,
@@ -1114,7 +1117,7 @@ async function bootstrapMasterResumeFromMarkdown({
     throw new Error(message);
   }
 
-  await setExtensionState({
+  await setRunState(runId, {
     sourceTabId,
     activeRunJob,
     patchError: null,
@@ -1134,7 +1137,7 @@ async function bootstrapMasterResumeFromMarkdown({
       activeLlmProfile,
     );
     const prompt4 = prompt4Rendered.text;
-    await setExtensionState({
+    await setRunState(runId, {
       prompt4Input: prompt4,
       prompt4Raw: null,
       prompt4Result: null,
@@ -1158,7 +1161,7 @@ async function bootstrapMasterResumeFromMarkdown({
       prompt4Run.status === "success"
         ? prompt4Run.rawText
         : (prompt4Run.partialRawText ?? "");
-    await setExtensionState({
+    await setRunState(runId, {
       prompt4Input: prompt4,
       prompt4Raw,
     });
@@ -1197,7 +1200,7 @@ async function bootstrapMasterResumeFromMarkdown({
     const parsedResumeData = stripPromptFlexNotesFromResumeData(
       normalizePrompt3ResumeData(prompt4Parsed),
     );
-    await setExtensionState({
+    await setRunState(runId, {
       prompt4Result: parsedResumeData,
     });
     const validationErrors = validateResumeData(parsedResumeData);
@@ -1236,7 +1239,7 @@ async function bootstrapMasterResumeFromMarkdown({
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
-    await setExtensionState({
+    await setRunState(runId, {
       patchError: message,
       status: SESSION_STATUS.error,
     });
@@ -1380,14 +1383,24 @@ async function resolveBaseResumeId({
   cancel.throwIfCanceled("base resume lookup");
   const masterResume = resumeList?.data?.find((resume) => resume?.is_master);
   if (!masterResume?.resume_id) {
-    return bootstrapMasterResumeFromMarkdown({
-      masterResumeContextAsset,
-      activeLlmProfile,
-      systemPrompt,
-      activeRunJob,
-      sourceTabId,
-      runId,
-    });
+    // Single-flight (hazard #2): two concurrent runs that both find no master
+    // would each bootstrap one → duplicate masters. The first run's bootstrap
+    // promise is shared; the rest await it and reuse the created master. The
+    // guard is set synchronously right after the no-master check (no await gap),
+    // so there's no race window.
+    if (!masterBootstrapInFlight) {
+      masterBootstrapInFlight = bootstrapMasterResumeFromMarkdown({
+        masterResumeContextAsset,
+        activeLlmProfile,
+        systemPrompt,
+        activeRunJob,
+        sourceTabId,
+        runId,
+      }).finally(() => {
+        masterBootstrapInFlight = null;
+      });
+    }
+    return masterBootstrapInFlight;
   }
   return {
     resumeId: masterResume.resume_id,
@@ -1403,10 +1416,10 @@ async function resolveBaseResumeId({
 // there's no clone, or it already committed (a real, kept tailored resume). The
 // master resume is never a tailored clone, and the backend DELETE endpoint
 // refuses to delete a master, so this can't remove the master.
-export async function discardUncommittedTailoredResume(reason = "cleanup") {
+export async function discardUncommittedTailoredResume(runId, reason = "cleanup") {
   let state;
   try {
-    state = await getExtensionState();
+    state = getRunState(runId);
   } catch {
     return;
   }
@@ -1421,7 +1434,7 @@ export async function discardUncommittedTailoredResume(reason = "cleanup") {
   }
   try {
     await deleteResume(resumeId);
-    await setExtensionState({
+    await setRunState(runId, {
       tailoredResumeId: null,
       tailoredResumeCommitted: false,
     });
@@ -1443,13 +1456,17 @@ export async function generateResumeForLinkedInJob(
   prompt1CustomInstruction = "",
   jobInput = null,
   activeRunJobHint = null,
+  options = {},
 ) {
-  logInfo("Orchestrator", "Generate flow started.", { tabId });
+  // Per-run isolation: runId identifies this run's own state slice so N
+  // concurrent runs never clobber each other. Passed by the queue scheduler.
+  const runId = options.runId ?? null;
+  logInfo("Orchestrator", "Generate flow started.", { tabId, runId });
   // Commit-on-success: before starting a new run, discard any leftover tailored
   // clone from a previous run that never committed (failed/canceled/crashed, or
   // an auth-reconnect re-clone) so orphan rows can't accumulate on the dashboard.
   // Runs before this run touches state (the reset below nulls tailoredResumeId).
-  await discardUncommittedTailoredResume("new-run");
+  await discardUncommittedTailoredResume(runId, "new-run");
   const runStartedMs = Date.now();
   const customContext = prompt1CustomInstruction.trim();
   const customContextProvided = customContext.length > 0;
@@ -1503,8 +1520,7 @@ export async function generateResumeForLinkedInJob(
     });
     return promptMetadata;
   };
-  const currentExtensionState = await getExtensionState();
-  const runId = currentExtensionState?.sessionId ?? null;
+  const currentExtensionState = getRunState(runId);
   const cancel = createCancelHelpers(runId);
   const reuseChatGptPopup = shouldReuseChatGptPopupSession(
     activeLlmProfile,
@@ -1630,7 +1646,7 @@ export async function generateResumeForLinkedInJob(
   if (!jobId) {
     throw new Error("Job upload response did not include a job id.");
   }
-  await setExtensionState({
+  await setRunState(runId, {
     sourceTabId: activeTabId,
     activeRunJob,
     status: SESSION_STATUS.scraped,
@@ -1681,7 +1697,7 @@ export async function generateResumeForLinkedInJob(
     "Cloned base resume and created job-specific resume.",
     { baseResumeId, resumeId },
   );
-  await setExtensionState({
+  await setRunState(runId, {
     selectedResumeId: resumeId,
     tailoredResumeId: resumeId,
     // Not yet committed — cleared/deleted if the run fails or is canceled
@@ -1736,7 +1752,7 @@ export async function generateResumeForLinkedInJob(
   systemPrompt = systemPromptRendered.text;
   promptContext.systemPrompt = systemPrompt;
   await refreshPromptMetadata();
-  await setExtensionState({
+  await setRunState(runId, {
     promptProfileId: activePromptProfileId || "profile1",
     promptMetadata,
     resumeSource: currentResume,
@@ -1753,7 +1769,7 @@ export async function generateResumeForLinkedInJob(
       prompt1Input = prompt1;
       promptMetadataByName.prompt1 = prompt1Rendered.metadata;
       await refreshPromptMetadata();
-      await setExtensionState({
+      await setRunState(runId, {
         prompt1Input,
         promptMetadata,
       });
@@ -1791,7 +1807,7 @@ export async function generateResumeForLinkedInJob(
         prompt1Run.status === "success"
           ? prompt1Run.rawText
           : (prompt1Run.partialRawText ?? "");
-      await setExtensionState({
+      await setRunState(runId, {
         prompt1Raw,
         prompt1DurationMs,
       });
@@ -1857,7 +1873,7 @@ export async function generateResumeForLinkedInJob(
         );
         promptContext.prompt1Json = prompt1Result;
       }
-      await setExtensionState({
+      await setRunState(runId, {
         prompt1Raw,
         prompt1Result,
         prompt1DurationMs,
@@ -1881,7 +1897,7 @@ export async function generateResumeForLinkedInJob(
       prompt2Input = prompt2;
       promptMetadataByName.prompt2 = prompt2Rendered.metadata;
       await refreshPromptMetadata();
-      await setExtensionState({
+      await setRunState(runId, {
         prompt2Input,
         promptMetadata,
       });
@@ -1918,7 +1934,7 @@ export async function generateResumeForLinkedInJob(
         prompt2Run.status === "success"
           ? prompt2Run.rawText
           : (prompt2Run.partialRawText ?? "");
-      await setExtensionState({
+      await setRunState(runId, {
         prompt2Raw,
         prompt2DurationMs,
       });
@@ -1984,7 +2000,7 @@ export async function generateResumeForLinkedInJob(
         );
         promptContext.prompt2Json = prompt2Result;
       }
-      await setExtensionState({
+      await setRunState(runId, {
         prompt2Raw,
         prompt2Result,
         prompt2DurationMs,
@@ -2017,7 +2033,7 @@ export async function generateResumeForLinkedInJob(
     prompt3Input = prompt3;
     promptMetadataByName.prompt3 = prompt3Rendered.metadata;
     await refreshPromptMetadata();
-    await setExtensionState({
+    await setRunState(runId, {
       prompt3Input,
       promptMetadata,
     });
@@ -2049,7 +2065,7 @@ export async function generateResumeForLinkedInJob(
         ? prompt3Run.rawText
         : (prompt3Run.partialRawText ?? "");
     prompt3DurationMs = Date.now() - prompt3StartedMs;
-    await setExtensionState({
+    await setRunState(runId, {
       prompt3Raw,
       prompt3DurationMs,
       status: SESSION_STATUS.prompt3Done,
@@ -2123,7 +2139,7 @@ export async function generateResumeForLinkedInJob(
     }
     logInfo("Orchestrator", "Validating Prompt 3 output.");
     validationErrors = validateResumeData(prompt3Parsed);
-    await setExtensionState({
+    await setRunState(runId, {
       prompt3Parsed,
       prompt3Feedback,
       prompt3ValidationErrors: validationErrors,
@@ -2232,7 +2248,7 @@ export async function generateResumeForLinkedInJob(
     // The tailored content is now saved on the resume — it's a usable resume,
     // so mark it committed. Failures after this point (job-context link, rename,
     // preview) keep the resume rather than discarding the user's tailored work.
-    await setExtensionState({ patchDurationMs, tailoredResumeCommitted: true });
+    await setRunState(runId, { patchDurationMs, tailoredResumeCommitted: true });
     cancel.throwIfCanceled("resume patch");
   } catch (error) {
     if (isRunCanceledError(error)) {
@@ -2241,7 +2257,7 @@ export async function generateResumeForLinkedInJob(
     const message =
       error instanceof Error ? error.message : "Failed to patch resume.";
     logError("Orchestrator", "Resume patch failed.", { resumeId, message });
-    await setExtensionState({
+    await setRunState(runId, {
       patchError: message,
       status: SESSION_STATUS.error,
     });
@@ -2268,7 +2284,7 @@ export async function generateResumeForLinkedInJob(
       signal: cancel.signal(),
     });
     cancel.throwIfCanceled("job-context link");
-    await setExtensionState({ jobContextLinked: true });
+    await setRunState(runId, { jobContextLinked: true });
   } catch (error) {
     if (isRunCanceledError(error)) {
       throw error;
@@ -2287,7 +2303,7 @@ export async function generateResumeForLinkedInJob(
         message,
       },
     );
-    await setExtensionState({
+    await setRunState(runId, {
       patchError: message,
       status: SESSION_STATUS.error,
       jobContextLinked: false,
@@ -2368,7 +2384,7 @@ export async function generateResumeForLinkedInJob(
     },
     { signal: cancel.signal() },
   );
-  await setExtensionState({
+  await setRunState(runId, {
     status: SESSION_STATUS.patched,
     patchError: null,
     previewUrl,
@@ -2388,7 +2404,11 @@ export async function generateResumeForLinkedInJob(
     job_id: jobId,
     source_url: jobSnapshot.sourceUrl,
   });
-  await openPreviewTab(previewUrl);
+  // Queue runs suppress the auto-open so N finished jobs don't spawn N tabs —
+  // the Runs-tab "Open resume" button opens each result on demand instead.
+  if (!options.suppressPreviewOpen) {
+    await openPreviewTab(previewUrl);
+  }
 
   return {
     resumeId,

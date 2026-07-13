@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The fire-gate throttles real prompt fires with 400–1000ms timers; stub it so
+// the ChatGPT tests fire instantly. Its own timing is covered by fire-gate.test.js.
+vi.mock('./fire-gate.js', () => ({
+  acquireWebFireSlot: () => Promise.resolve(),
+  resetWebFireGate: () => {},
+}));
+
 import {
   clearChatGptRunSessionsForTests,
   closeChatGptRunSession,

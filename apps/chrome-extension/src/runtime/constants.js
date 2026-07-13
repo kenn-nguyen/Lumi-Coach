@@ -37,6 +37,8 @@ export const STORAGE_KEYS = {
   historyEntries: "historyEntries",
   lastError: "lastError",
   lastRunDiagnostics: "lastRunDiagnostics",
+  runQueue: "runQueue",
+  queueSettings: "queueSettings",
 };
 
 export const APIFY_DEFAULT_LINKEDIN_ACTOR = "apimaestro/linkedin-job-detail";

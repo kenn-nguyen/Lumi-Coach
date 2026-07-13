@@ -1327,6 +1327,42 @@ export function buildPanelStyles({
       min-width: 0;
       min-height: 40px;
     }
+    .resume-matcher-stepper {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .resume-matcher-stepper__btn {
+      appearance: none;
+      box-sizing: border-box;
+      border: 1px solid rgba(216, 206, 187, 0.96);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #344054;
+      width: 32px;
+      height: 32px;
+      font: inherit;
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .resume-matcher-stepper__btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .resume-matcher-stepper__value {
+      min-width: 28px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      font-size: 15px;
+      color: #1d2939;
+    }
 
     .resume-matcher-button__icon {
       width: 16px;
@@ -1842,6 +1878,191 @@ export function buildPanelStyles({
       justify-self: center;
       font-size: 13px;
       color: #475467;
+    }
+
+    .resume-matcher-runs-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .resume-matcher-icon-button--badged {
+      position: relative;
+      overflow: visible;
+    }
+
+    .resume-matcher-runs-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: #1d4ed8;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+    }
+
+    .resume-matcher-runs-badge[hidden] {
+      display: none;
+    }
+
+    .resume-matcher-run-card__statusline {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .resume-matcher-run-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.3;
+      letter-spacing: 0.01em;
+      color: #344054;
+      background: rgba(102, 112, 133, 0.16);
+    }
+
+    .resume-matcher-run-chip[data-tone="running"] {
+      color: #1d4ed8;
+      background: rgba(29, 78, 216, 0.14);
+    }
+
+    .resume-matcher-run-chip[data-tone="success"] {
+      color: #15803d;
+      background: rgba(21, 128, 61, 0.14);
+    }
+
+    .resume-matcher-run-chip[data-tone="warning"] {
+      color: #b45309;
+      background: rgba(249, 115, 22, 0.18);
+    }
+
+    .resume-matcher-run-chip[data-tone="error"] {
+      color: #dc2626;
+      background: rgba(220, 38, 38, 0.14);
+    }
+
+    .resume-matcher-run-chip[data-tone="muted"] {
+      color: #667085;
+      background: rgba(102, 112, 133, 0.12);
+    }
+
+    .resume-matcher-run-substage {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 12px;
+      line-height: 1.35;
+      color: #475467;
+    }
+
+    .resume-matcher-run-card .resume-matcher-history-item__top {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      column-gap: 8px;
+    }
+    .resume-matcher-run-card__heading {
+      min-width: 0;
+    }
+    .resume-matcher-run-card__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      color: #667085;
+    }
+    .resume-matcher-run-card__icon[data-tone="running"] { color: #1d4ed8; }
+    .resume-matcher-run-card__icon[data-tone="success"] { color: #15803d; }
+    .resume-matcher-run-card__icon[data-tone="warning"] { color: #b45309; }
+    .resume-matcher-run-card__icon[data-tone="error"] { color: #dc2626; }
+    .resume-matcher-run-card__icon[data-tone="muted"] { color: #98a2b3; }
+    @keyframes resume-matcher-spin {
+      to { transform: rotate(360deg); }
+    }
+    .resume-matcher-spin {
+      transform-origin: center;
+      animation: resume-matcher-spin 0.9s linear infinite;
+    }
+    .resume-matcher-run-elapsed {
+      font-variant-numeric: tabular-nums;
+      color: #98a2b3;
+      white-space: nowrap;
+    }
+    .resume-matcher-runs-filter {
+      display: inline-flex;
+      gap: 6px;
+      padding: 3px;
+      border: 1px solid rgba(232, 206, 214, 0.86);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.74);
+      width: fit-content;
+      margin-bottom: 8px;
+    }
+    .resume-matcher-runs-filter__btn {
+      appearance: none;
+      box-sizing: border-box;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: rgba(108, 41, 64, 0.8);
+      padding: 5px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      transition:
+        background-color 120ms ease,
+        color 120ms ease;
+    }
+    .resume-matcher-runs-filter__btn.is-active {
+      background: linear-gradient(180deg, #9f254f 0%, #6f1b38 100%);
+      color: #fff7fb;
+    }
+    .resume-matcher-run-card__badges {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+    .resume-matcher-run-new {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 999px;
+      color: #ffffff;
+      background: #667085;
+    }
+    .resume-matcher-run-new[data-tone="success"] { background: #15803d; }
+    .resume-matcher-run-new[data-tone="error"] { background: #dc2626; }
+    .resume-matcher-run-card.is-new[data-run-status="succeeded"] {
+      background: rgba(21, 128, 61, 0.05);
+    }
+    .resume-matcher-run-card.is-new[data-run-status="failed"] {
+      background: rgba(220, 38, 38, 0.05);
+    }
+
+    .resume-matcher-run-card__actions {
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .resume-matcher-history-item__link.is-danger-link {
+      color: #a01f1f;
     }
 
     .resume-matcher-settings-stack {

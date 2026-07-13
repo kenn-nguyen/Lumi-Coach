@@ -89,6 +89,24 @@ const HISTORY_SORT_DESC_ID = "resume-matcher-history-sort-desc";
 const HISTORY_PREV_ID = "resume-matcher-history-prev";
 const HISTORY_PAGE_ID = "resume-matcher-history-page";
 const HISTORY_NEXT_ID = "resume-matcher-history-next";
+const BOARD_RUNS_ID = "resume-matcher-board-runs";
+const RUNS_BADGE_ID = "resume-matcher-runs-badge";
+const RUNS_LIST_ID = "resume-matcher-runs-list";
+const RUNS_PREV_ID = "resume-matcher-runs-prev";
+const RUNS_PAGE_ID = "resume-matcher-runs-page";
+const RUNS_NEXT_ID = "resume-matcher-runs-next";
+const QUEUE_MAX_PARALLEL_VALUE_ID = "resume-matcher-queue-max-parallel-value";
+const QUEUE_MAX_PARALLEL_DEC_ID = "resume-matcher-queue-max-parallel-dec";
+const QUEUE_MAX_PARALLEL_INC_ID = "resume-matcher-queue-max-parallel-inc";
+const QUEUE_MAX_PARALLEL_MIN = 1;
+const QUEUE_MAX_PARALLEL_MAX = 10;
+const RUNS_PER_PAGE = 4;
+const ACTIVE_QUEUE_STATUSES = new Set([
+  "queued",
+  "preparing",
+  "running",
+  "needs_attention",
+]);
 const SETTINGS_VIEW_ID = "resume-matcher-settings-view";
 const MASTER_RESUME_LABEL_ID = "resume-matcher-master-resume-label";
 const MASTER_RESUME_INPUT_ID = "resume-matcher-master-resume-input";
@@ -693,6 +711,13 @@ const ICONS = {
       <path d="M4.5 6.6 10 11.2l5.5-4.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M4.6 13.6 8 10.5M15.4 13.6 12 10.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
     </svg>`,
+  runs: `
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="4.6" cy="6" r="1.15" fill="currentColor"/>
+      <circle cx="4.6" cy="10" r="1.15" fill="currentColor"/>
+      <circle cx="4.6" cy="14" r="1.15" fill="currentColor"/>
+      <path d="M8 6h8M8 10h8M8 14h5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </svg>`,
   settings: `
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <circle cx="10" cy="10" r="2.9" stroke="currentColor" stroke-width="1.7"/>
@@ -852,6 +877,14 @@ const state = {
   historySortDirection: "desc",
   historyPage: 1,
   historyFilterOpen: false,
+  queue: [],
+  queuePage: 1,
+  runsFilter: "all",
+  // Baseline for "New" result highlighting: results that finished after this
+  // (i.e. since the user last viewed the Runs tab) are flagged as new. Init to
+  // load time so pre-existing history isn't all flagged.
+  runsSeenAt: Date.now(),
+  maxParallel: 3,
   historyConnecting: false,
   deletingHistoryRunId: null,
   promptStyleInfoOpen: false,
@@ -2229,6 +2262,7 @@ function showLauncher() {
 }
 
 function dismissLauncher() {
+  markRunsSeenIfViewing();
   state.dismissed = true;
   state.boardOpen = false;
   state.launcherAlert = false;
@@ -2247,11 +2281,18 @@ function openBoard(view = "run", options = {}) {
   const resolvedView = resolveAllowedBoardView(requestedView);
   const previousOpen = state.boardOpen;
   const previousView = state.currentView;
+  // Leaving the Runs tab marks its results as seen (clears "New" next visit).
+  if (previousView === "history" && resolvedView !== "history") {
+    state.runsSeenAt = Date.now();
+  }
   state.boardOpen = true;
   state.currentView = resolvedView;
   state.launcherAlert = false;
   render();
   syncDockedPosition($(ROOT_ID));
+  // Load the shared queue + parallel-jobs limit whenever the panel opens, so
+  // this tab shows current cross-tab state (esp. the Settings stepper value).
+  void hydrateQueueSnapshot();
   if (!previousOpen || previousView !== resolvedView) {
     const eventName =
       resolvedView === "settings"
@@ -2300,7 +2341,13 @@ function openBoard(view = "run", options = {}) {
   return true;
 }
 
+function markRunsSeenIfViewing() {
+  if (state.boardOpen && state.currentView === "history") {
+    state.runsSeenAt = Date.now();
+  }
+}
 function minimizeBoard() {
+  markRunsSeenIfViewing();
   state.boardOpen = false;
   render();
   syncDockedPosition($(ROOT_ID));
@@ -4595,6 +4642,24 @@ function renderSettings() {
     settingsHealth.textContent = readyToTailor ? "Ready to tailor" : "Finish setup";
     settingsHealth.dataset.state = readyToTailor ? "ready" : "incomplete";
   }
+  // maxParallel is authoritative from the background (loaded/synced via the
+  // queue snapshot + QUEUE_UPDATED broadcasts), with assets as a fallback.
+  const savedMaxParallel = assets?.queueSettings?.maxParallel;
+  if (Number.isFinite(savedMaxParallel) && !Number.isFinite(state.maxParallel)) {
+    state.maxParallel = savedMaxParallel;
+  }
+  const maxParallelValue = $(QUEUE_MAX_PARALLEL_VALUE_ID);
+  if (maxParallelValue) {
+    maxParallelValue.textContent = String(state.maxParallel);
+  }
+  const maxParallelDec = $(QUEUE_MAX_PARALLEL_DEC_ID);
+  const maxParallelInc = $(QUEUE_MAX_PARALLEL_INC_ID);
+  if (maxParallelDec instanceof HTMLButtonElement) {
+    maxParallelDec.disabled = state.maxParallel <= QUEUE_MAX_PARALLEL_MIN;
+  }
+  if (maxParallelInc instanceof HTMLButtonElement) {
+    maxParallelInc.disabled = state.maxParallel >= QUEUE_MAX_PARALLEL_MAX;
+  }
   const promptProfileTabs = $(PROMPT_PROFILE_TABS_ID);
   const promptProfileDetail = $(PROMPT_PROFILE_DETAIL_ID);
   if (promptProfileTabs instanceof HTMLElement) {
@@ -5329,6 +5394,19 @@ function renderRunView() {
           ? getManualPrimaryButtonLabel()
           : "Tailor";
     primaryButton.hidden = showOnboarding || hardBlocker || waitingForSelection;
+    // If this tab's job is already an active queue record, lock the primary
+    // button so the same job can't be enqueued twice.
+    if (!state.isRunning && !state.isCanceling) {
+      const queuedRecord = getActiveQueueRecordForCurrentJob();
+      if (queuedRecord) {
+        primaryButton.disabled = true;
+        primaryButton.textContent =
+          queuedRecord.status === "running" ||
+          queuedRecord.status === "preparing"
+            ? "Running"
+            : "In queue";
+      }
+    }
   }
 
   const cancelRow = $(RUN_CANCEL_ROW_ID);
@@ -5531,10 +5609,13 @@ function renderViews() {
   state.currentView = resolveAllowedBoardView(state.currentView);
   const runView = $(RUN_VIEW_ID);
   const settingsView = $(SETTINGS_VIEW_ID);
+  const runsView = $(HISTORY_VIEW_ID);
   const settingsLocked = isSettingsNavigationLocked();
   runView?.classList.toggle("is-active", state.currentView === "run");
   settingsView?.classList.toggle("is-active", state.currentView === "settings");
+  runsView?.classList.toggle("is-active", state.currentView === "history");
   $(BOARD_HOME_ID)?.classList.toggle("is-active", state.currentView === "run");
+  $(BOARD_RUNS_ID)?.classList.toggle("is-active", state.currentView === "history");
   const settingsButton = $(BOARD_SETTINGS_ID);
   settingsButton?.classList.toggle(
     "is-active",
@@ -5571,6 +5652,10 @@ function render() {
   renderViews();
   renderRunView();
   renderSettings();
+  if (state.currentView === "history") {
+    renderRunsQueue();
+  }
+  updateRunsBadge();
   syncRunningInteractivity();
 }
 
@@ -6393,6 +6478,686 @@ async function handleGenerateClickInner() {
   }
 }
 
+function getCurrentJobNormalizedUrl() {
+  if (isManualRunMode() || shouldShowManualJdFallback()) {
+    return normalizeJobSourceUrl(
+      resolveManualJobSourceUrl(
+        state.manualJobSourceUrl,
+        state.currentJob?.sourceUrl || "",
+        window.location.href,
+      ),
+    );
+  }
+  return resolveSelectedJobSourceUrl();
+}
+
+function getActiveQueueRecordForCurrentJob() {
+  const currentUrl = normalizeJobSourceUrl(getCurrentJobNormalizedUrl());
+  if (!currentUrl) return null;
+  const queue = Array.isArray(state.queue) ? state.queue : [];
+  return (
+    queue.find(
+      (record) =>
+        ACTIVE_QUEUE_STATUSES.has(record?.status) &&
+        normalizeJobSourceUrl(record?.jobUrl) === currentUrl,
+    ) || null
+  );
+}
+
+// Build a TAB-INDEPENDENT snapshot so the background run never needs the live
+// tab. For LinkedIn mode we scrape the inline JD text now and pack it as a
+// manual_text jobInput; for manual-paste mode we reuse the pasted JD.
+function buildJobSnapshotForEnqueue() {
+  const manualMode = isManualRunMode() || shouldShowManualJdFallback();
+  let jobInput;
+  let currentJob;
+  if (manualMode) {
+    currentJob = state.currentJob;
+    jobInput = buildManualJobInput();
+  } else {
+    currentJob = extractCurrentJob() || state.currentJob;
+    jobInput = createManualJobInput({
+      rawText: String(currentJob?.descriptionText || "").trim(),
+      currentJob,
+      manualSourceUrl: null,
+      locationHref: window.location.href,
+    });
+  }
+  if (!jobInput || !jobInput.rawText) return null;
+  const sourceUrl =
+    jobInput.sourceUrl || resolveSelectedJobSourceUrl() || window.location.href;
+  return {
+    title: jobInput.title || currentJob?.title || "",
+    company: jobInput.company || currentJob?.company || "",
+    jobUrl: normalizeJobSourceUrl(sourceUrl),
+    sourceUrl,
+    jdText: jobInput.rawText,
+    jobInput,
+    activeRunJob: cloneJobForRun(jobInput || currentJob),
+  };
+}
+
+async function handleEnqueueClick() {
+  try {
+    await handleEnqueueClickInner();
+  } catch (error) {
+    setExplicitRunStatus(
+      "error",
+      "error",
+      "Couldn’t add to queue",
+      formatErrorText(
+        error instanceof Error ? error.message : "Something went wrong.",
+      ),
+    );
+    try {
+      render();
+    } catch {}
+    console.error("[ResumeMatcherExt] Enqueue click failed.", error);
+  }
+}
+
+async function handleEnqueueClickInner() {
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
+  if (isLockedToAnotherTab()) {
+    showLauncherLockNotice();
+    state.boardOpen = false;
+    render();
+    return;
+  }
+  if (state.isRunning || state.isCanceling) return;
+
+  const activePromptProfileId =
+    state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+  const runnablePromptProfileId = getRunnablePromptProfileId(
+    state.assets?.promptTemplateProfiles,
+    activePromptProfileId,
+  );
+  if (runnablePromptProfileId !== activePromptProfileId) {
+    try {
+      await persistPromptProfileSelection(runnablePromptProfileId, {
+        refresh: false,
+      });
+    } catch (error) {
+      setExplicitRunStatus(
+        "error",
+        "error",
+        "Save failed",
+        error instanceof Error
+          ? error.message
+          : "Failed to switch prompt profile.",
+      );
+      return;
+    }
+  }
+
+  state.currentView = "run";
+  openBoard("run", { skipConnectionCheck: true });
+  activateRunInspection({ recheckConnection: false });
+
+  const connected = await reconcileConnectionStatus("run");
+  if (!connected) {
+    const requirement = getSetupRequirementStatus() || {
+      tone: "blocked",
+      title: "Connect Lumi Coach",
+      detail: "Connect your Lumi Coach account before tailoring.",
+      actions: [
+        { id: "connect", label: "Continue with Google", variant: "primary" },
+      ],
+    };
+    setExplicitRunStatus(
+      "interrupted",
+      requirement.tone,
+      requirement.title,
+      requirement.detail,
+      requirement.actions,
+    );
+    return;
+  }
+
+  const setupRequirement = getSetupRequirementStatus();
+  if (setupRequirement) {
+    const setupAction = getManualSetupAction(setupRequirement);
+    clearExplicitRunStatus("enqueue-setup-repair", { renderNow: false });
+    if (setupAction?.id === "upload_resume") {
+      await handleStatusAction("upload_resume");
+      render();
+      return;
+    }
+    if (
+      setupAction?.id === "open_settings" ||
+      setupAction?.id === "open-settings" ||
+      setupAction?.id === "configure_provider"
+    ) {
+      state.providerSettingsEditOpen = true;
+      await handleStatusAction(setupAction.id);
+      render();
+      return;
+    }
+    setExplicitRunStatus(
+      "interrupted",
+      setupRequirement.tone,
+      setupRequirement.title,
+      setupRequirement.detail,
+      setupRequirement.actions,
+    );
+    return;
+  }
+
+  if (state.promptSyncPromise) {
+    await state.promptSyncPromise.catch(() => {});
+  }
+
+  const snapshot = buildJobSnapshotForEnqueue();
+  if (!snapshot) {
+    const scrape = getScrapeRequirementStatus();
+    state.scrapeIssue = scrape.detail;
+    setExplicitRunStatus(
+      "interrupted",
+      scrape.tone,
+      scrape.title,
+      scrape.detail,
+    );
+    return;
+  }
+
+  const promptProfileId =
+    state.assets?.activePromptProfileId || DEFAULT_ACTIVE_PROMPT_PROFILE_ID;
+  const providerProfileId = state.assets?.llmSettings?.activeProfileId || null;
+  const baseResumeId = getBackendMasterResume()?.resumeId || null;
+  const prompt1CustomInstruction = state.customMessage.trim();
+
+  let response;
+  try {
+    response = await sendMessage("ENQUEUE_JOB", {
+      runId: crypto.randomUUID(),
+      title: snapshot.title,
+      company: snapshot.company,
+      jobUrl: snapshot.jobUrl,
+      sourceUrl: snapshot.sourceUrl,
+      jdText: snapshot.jdText,
+      providerProfileId,
+      promptProfileId,
+      baseResumeId,
+      prompt1CustomInstruction,
+      jobInput: snapshot.jobInput,
+      activeRunJob: snapshot.activeRunJob,
+    });
+  } catch (error) {
+    setExplicitRunStatus(
+      "error",
+      "error",
+      "Couldn’t add to queue",
+      error instanceof Error ? error.message : "Please try again.",
+    );
+    return;
+  }
+
+  if (Array.isArray(response?.queue)) {
+    state.queue = response.queue;
+  }
+  updateRunsBadge();
+
+  if (response?.ok) {
+    state.customMessage = "";
+    const notes = $(RUN_NOTES_ID);
+    if (notes) {
+      notes.value = "";
+      autoGrowTextarea(notes);
+    }
+    setRunStatus(
+      "success",
+      "Added to queue",
+      "Track progress in the Runs tab.",
+    );
+    render();
+    return;
+  }
+
+  if (response?.reason === "cap") {
+    window.alert(
+      `Queue is full (${response.limit ?? 5} active). Finish or remove a job first.`,
+    );
+    render();
+    return;
+  }
+  if (
+    response?.reason === "duplicate" ||
+    response?.reason === "duplicate_run_id"
+  ) {
+    window.alert("This job is already in the queue.");
+    render();
+    return;
+  }
+  setExplicitRunStatus(
+    "error",
+    "error",
+    "Couldn’t add to queue",
+    "Please try again.",
+  );
+  render();
+}
+
+async function hydrateQueueSnapshot() {
+  try {
+    const response = await sendMessage("GET_QUEUE_SNAPSHOT");
+    if (Array.isArray(response?.queue)) {
+      state.queue = response.queue;
+      updateRunsBadge();
+      if (state.boardOpen && state.currentView === "history") {
+        renderRunsQueue();
+      }
+    }
+    if (Number.isFinite(response?.maxParallel)) {
+      state.maxParallel = response.maxParallel;
+      if (state.boardOpen && state.currentView === "settings") {
+        renderSettings();
+      }
+    }
+  } catch {
+    // Non-fatal: the queue will hydrate on the next QUEUE_UPDATED broadcast.
+  }
+}
+
+// Stepper: nudge the max-parallel limit by ±1, persist immediately (no Save
+// button), and let the background broadcast the new value to every other tab.
+async function adjustMaxParallel(delta) {
+  const current = Number.isFinite(state.maxParallel) ? state.maxParallel : 3;
+  const next = Math.min(
+    QUEUE_MAX_PARALLEL_MAX,
+    Math.max(QUEUE_MAX_PARALLEL_MIN, current + delta),
+  );
+  if (next === current) return;
+  state.maxParallel = next; // optimistic — reflect the click instantly
+  renderSettings();
+  try {
+    const response = await sendMessage("SAVE_QUEUE_SETTINGS", {
+      maxParallel: next,
+    });
+    const saved = response?.queueSettings?.maxParallel;
+    if (Number.isFinite(saved)) {
+      state.maxParallel = saved;
+      renderSettings();
+    }
+  } catch {
+    state.maxParallel = current; // revert on failure
+    renderSettings();
+  }
+}
+
+const RUN_STATUS_ICONS = {
+  clock:
+    '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.5"/></svg>',
+  spinner:
+    '<svg class="resume-matcher-spin" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 1.9a6.1 6.1 0 1 0 6.1 6.1"/></svg>',
+  check:
+    '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3.4 3.4L13 4.2"/></svg>',
+  cross:
+    '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4"/></svg>',
+  warning:
+    '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 1.4 13.4h13.2L8 2.2z"/><path d="M8 6.4v3.1"/><path d="M8 11.5h.01"/></svg>',
+  canceled:
+    '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><path d="M4.6 4.6l6.8 6.8"/></svg>',
+};
+
+// Small status icon (shown top-right of a Runs card) + tone for coloring.
+function getRunStatusMeta(status, record = null) {
+  if (record?.canceling) {
+    return { icon: RUN_STATUS_ICONS.spinner, tone: "warning", label: "Cancelling" };
+  }
+  switch (status) {
+    case "queued":
+      return { icon: RUN_STATUS_ICONS.clock, tone: "neutral", label: "Queued" };
+    case "preparing":
+    case "running":
+      return { icon: RUN_STATUS_ICONS.spinner, tone: "running", label: "Running" };
+    case "needs_attention":
+      return { icon: RUN_STATUS_ICONS.warning, tone: "warning", label: "Needs attention" };
+    case "succeeded":
+      return { icon: RUN_STATUS_ICONS.check, tone: "success", label: "Succeeded" };
+    case "failed":
+      return { icon: RUN_STATUS_ICONS.cross, tone: "error", label: "Failed" };
+    case "canceled":
+      return { icon: RUN_STATUS_ICONS.canceled, tone: "muted", label: "Canceled" };
+    default:
+      return { icon: "", tone: "neutral", label: status || "" };
+  }
+}
+
+// The main status line of a card: prefer the live pipeline sub-stage (so you see
+// exactly which prompt stage the job is on); otherwise a sensible per-status text.
+function getRunCardStatusText(record) {
+  const status = record?.status || "";
+  if (record?.canceling) return "Cancelling…";
+  if (record?.subStage) return record.subStage;
+  switch (status) {
+    case "queued":
+      return "Queued — waiting to start";
+    case "preparing":
+      return "Preparing…";
+    case "running":
+      return "Running…";
+    case "needs_attention":
+      return "Needs attention";
+    case "succeeded":
+      return "Ready — tailored resume saved";
+    case "failed":
+      return record?.error ? `Failed: ${record.error}` : "Failed";
+    case "canceled":
+      return "Canceled";
+    default:
+      return "";
+  }
+}
+
+function renderRunCardActions(record) {
+  const status = record?.status || "";
+  const runId = escapeHtml(record?.runId || "");
+  const button = (action, label, extraClass = "") =>
+    `<button type="button" class="resume-matcher-history-item__link${extraClass}" data-runs-action="${action}" data-run-id="${runId}">${label}</button>`;
+
+  // Cancel is in flight — show a disabled "Cancelling…" until the run stops.
+  if (record?.canceling) {
+    return `<button type="button" class="resume-matcher-history-item__link is-danger-link" disabled>Cancelling…</button>`;
+  }
+
+  if (status === "queued") {
+    return button("remove", "Remove", " is-danger-link");
+  }
+  if (
+    status === "preparing" ||
+    status === "running" ||
+    status === "needs_attention"
+  ) {
+    return button("cancel", "Cancel", " is-danger-link");
+  }
+  if (status === "succeeded") {
+    return record?.tailoredResumeId
+      ? button("open-resume", "Open resume")
+      : "";
+  }
+  if (status === "failed") {
+    return [
+      record?.logAvailable !== false ? button("save-logs", "Save logs") : "",
+      button("retry", "Retry"),
+      button("remove", "Remove", " is-danger-link"),
+    ]
+      .filter(Boolean)
+      .join("");
+  }
+  if (status === "canceled") {
+    return button("remove", "Remove", " is-danger-link");
+  }
+  return "";
+}
+
+function renderRunCard(record) {
+  const status = record?.status || "";
+  const meta = getRunStatusMeta(status, record);
+  const title = escapeHtml(record?.title || "Untitled role");
+  const company = escapeHtml(record?.company || "Unknown company");
+  const jobUrl = record?.jobUrl || record?.sourceUrl || "";
+  const titleHtml = jobUrl
+    ? `<a class="resume-matcher-history-item__title-button" href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer">${title}</a>`
+    : `<div class="resume-matcher-history-item__title">${title}</div>`;
+  const detail = escapeHtml(getRunCardStatusText(record));
+  const actions = renderRunCardActions(record);
+  const label = escapeHtml(meta.label);
+  // A live-ticking elapsed suffix for active cards (filled by tickRunsElapsed).
+  const elapsedSpan = ACTIVE_QUEUE_STATUSES.has(status)
+    ? `<span class="resume-matcher-run-elapsed" data-run-elapsed="${escapeHtml(record?.runId || "")}"></span>`
+    : "";
+  // "New" flag: a result that finished since the user last viewed the Runs tab.
+  const isNew =
+    (status === "succeeded" || status === "failed") &&
+    Number.isFinite(record?.endedAt) &&
+    record.endedAt > (state.runsSeenAt || 0);
+  const newBadge = isNew
+    ? `<span class="resume-matcher-run-new" data-tone="${meta.tone}">New</span>`
+    : "";
+  return `
+    <article class="resume-matcher-history-item resume-matcher-run-card${isNew ? " is-new" : ""}" data-run-status="${escapeHtml(status)}">
+      <div class="resume-matcher-history-item__top">
+        <div class="resume-matcher-run-card__heading">
+          ${titleHtml}
+          <div class="resume-matcher-history-item__company">${company}</div>
+        </div>
+        <div class="resume-matcher-run-card__badges">
+          ${newBadge}
+          <span class="resume-matcher-run-card__icon" data-tone="${meta.tone}" role="img" title="${label}" aria-label="${label}">${meta.icon}</span>
+        </div>
+      </div>
+      ${detail || elapsedSpan ? `<div class="resume-matcher-run-card__statusline"><span class="resume-matcher-run-substage">${detail}${elapsedSpan}</span></div>` : ""}
+      ${actions ? `<div class="resume-matcher-history-item__actions resume-matcher-run-card__actions">${actions}</div>` : ""}
+    </article>
+  `;
+}
+
+function renderRunsQueue() {
+  const listRoot = $(RUNS_LIST_ID);
+  if (!listRoot) return;
+  const pageNode = $(RUNS_PAGE_ID);
+  const prevButton = $(RUNS_PREV_ID);
+  const nextButton = $(RUNS_NEXT_ID);
+  const connected = state.connectionState === "connected";
+  const queue = Array.isArray(state.queue) ? state.queue : [];
+
+  if (!connected) {
+    listRoot.innerHTML = `<div class="resume-matcher-empty">
+      <div><strong>Connect Lumi Coach to view your runs.</strong></div>
+      <div>Your runs are managed in your Lumi workspace.</div>
+      <button type="button" class="resume-matcher-button is-primary" data-history-connect>Continue with Google</button>
+    </div>`;
+    if (pageNode) pageNode.textContent = "0/0";
+    if (prevButton) prevButton.disabled = true;
+    if (nextButton) nextButton.disabled = true;
+    return;
+  }
+
+  // Reflect the active filter on the filter buttons.
+  const filter = state.runsFilter || "all";
+  const listShell = listRoot.parentElement;
+  if (listShell) {
+    listShell
+      .querySelectorAll("[data-runs-filter]")
+      .forEach((btn) =>
+        btn.classList.toggle(
+          "is-active",
+          btn.getAttribute("data-runs-filter") === filter,
+        ),
+      );
+  }
+
+  const filtered = queue.filter((r) => {
+    if (filter === "active") return ACTIVE_QUEUE_STATUSES.has(r.status);
+    if (filter === "done") return !ACTIVE_QUEUE_STATUSES.has(r.status);
+    return true;
+  });
+
+  const totalItems = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / RUNS_PER_PAGE));
+  if (state.queuePage > totalPages) state.queuePage = totalPages;
+  if (state.queuePage < 1) state.queuePage = 1;
+  const start = (state.queuePage - 1) * RUNS_PER_PAGE;
+  const pageItems = filtered.slice(start, start + RUNS_PER_PAGE);
+
+  if (!totalItems) {
+    const empty =
+      filter === "all"
+        ? "No runs yet. Tailor a job to add it to the queue."
+        : filter === "active"
+          ? "No active runs."
+          : "No finished runs yet.";
+    listRoot.innerHTML = `<div class="resume-matcher-empty">${empty}</div>`;
+  } else {
+    listRoot.innerHTML = pageItems.map(renderRunCard).join("");
+  }
+
+  if (pageNode) {
+    pageNode.textContent = totalItems ? `${state.queuePage}/${totalPages}` : "0/0";
+  }
+  if (prevButton) prevButton.disabled = state.queuePage <= 1;
+  if (nextButton) nextButton.disabled = state.queuePage >= totalPages;
+
+  // Live elapsed timer on active cards: fill now + keep a 1s ticker running
+  // while an active job is on screen (stops itself otherwise).
+  tickRunsElapsed();
+  if (pageItems.some((r) => ACTIVE_QUEUE_STATUSES.has(r.status))) {
+    startRunsElapsedTicker();
+  } else {
+    stopRunsElapsedTicker();
+  }
+}
+
+function formatElapsed(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
+let runsElapsedTicker = null;
+function tickRunsElapsed() {
+  const listRoot = $(RUNS_LIST_ID);
+  if (!listRoot) return;
+  const byId = new Map(
+    (Array.isArray(state.queue) ? state.queue : []).map((r) => [r.runId, r]),
+  );
+  listRoot.querySelectorAll("[data-run-elapsed]").forEach((span) => {
+    const rec = byId.get(span.getAttribute("data-run-elapsed"));
+    if (
+      rec &&
+      ACTIVE_QUEUE_STATUSES.has(rec.status) &&
+      rec.stageStartedAt &&
+      !rec.canceling
+    ) {
+      const secs = Math.max(
+        0,
+        Math.round((Date.now() - rec.stageStartedAt) / 1000),
+      );
+      span.textContent = ` · ${formatElapsed(secs)}`;
+    } else {
+      span.textContent = "";
+    }
+  });
+}
+function startRunsElapsedTicker() {
+  if (runsElapsedTicker) return;
+  runsElapsedTicker = window.setInterval(() => {
+    if (!state.boardOpen || state.currentView !== "history") {
+      stopRunsElapsedTicker();
+      return;
+    }
+    tickRunsElapsed();
+  }, 1000);
+}
+function stopRunsElapsedTicker() {
+  if (runsElapsedTicker) {
+    window.clearInterval(runsElapsedTicker);
+    runsElapsedTicker = null;
+  }
+}
+
+function changeRunsPage(delta) {
+  const queue = Array.isArray(state.queue) ? state.queue : [];
+  const totalPages = Math.max(1, Math.ceil(queue.length / RUNS_PER_PAGE));
+  state.queuePage = Math.min(totalPages, Math.max(1, state.queuePage + delta));
+  renderRunsQueue();
+}
+
+function updateRunsBadge() {
+  const badge = $(RUNS_BADGE_ID);
+  if (!badge) return;
+  const queue = Array.isArray(state.queue) ? state.queue : [];
+  const activeCount = queue.filter((record) =>
+    ACTIVE_QUEUE_STATUSES.has(record?.status),
+  ).length;
+  if (activeCount > 0) {
+    badge.textContent = String(activeCount);
+    badge.hidden = false;
+  } else {
+    badge.textContent = "";
+    badge.hidden = true;
+  }
+}
+
+async function retryQueuedRun(record) {
+  if (!record?.runId) return;
+  // The background retains the original JD snapshot + payload on the terminal
+  // record, so it can re-enqueue a fresh job from ANY tab.
+  try {
+    const response = await sendMessage("RETRY_QUEUED_JOB", {
+      runId: record.runId,
+    });
+    if (Array.isArray(response?.queue)) {
+      state.queue = response.queue;
+    }
+    updateRunsBadge();
+    renderRunsQueue();
+    if (response && response.ok === false && response.reason === "cap") {
+      window.alert("Queue is full (5 active). Finish or remove a job first.");
+    }
+  } catch (error) {
+    console.error("[ResumeMatcherExt] Retry failed.", error);
+  }
+}
+
+async function handleRunsCardAction(action, runId) {
+  if (!runId) return;
+  const record =
+    (Array.isArray(state.queue) ? state.queue : []).find(
+      (entry) => entry?.runId === runId,
+    ) || null;
+
+  if (action === "open-resume") {
+    const tailoredResumeId = record?.tailoredResumeId;
+    if (tailoredResumeId) {
+      window.open(
+        `${getAppOrigin()}/resumes/${encodeURIComponent(tailoredResumeId)}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+    }
+    return;
+  }
+  if (action === "save-logs") {
+    try {
+      await downloadDiagnosticLogs();
+    } catch (error) {
+      console.error("[ResumeMatcherExt] Failed to save run logs.", error);
+    }
+    return;
+  }
+  if (action === "retry") {
+    await retryQueuedRun(record);
+    return;
+  }
+  if (action === "remove" || action === "cancel") {
+    try {
+      const response = await sendMessage("CANCEL_QUEUED_JOB", { runId });
+      if (Array.isArray(response?.queue)) {
+        state.queue = response.queue;
+      }
+      updateRunsBadge();
+      renderRunsQueue();
+      if (state.currentView === "run") {
+        renderRunView();
+      }
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Action failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to update the queue.",
+      );
+    }
+  }
+}
+
 async function handleStatusAction(actionId) {
   if (actionId === "save_logs") {
     try {
@@ -6614,6 +7379,7 @@ function ensureRoot() {
         </div>
         <div class="resume-matcher-board__header-actions">
           <button id="${BOARD_HOME_ID}" class="resume-matcher-icon-button" type="button" aria-label="Run" title="Run">${icon("aiStar")}</button>
+          <button id="${BOARD_RUNS_ID}" class="resume-matcher-icon-button resume-matcher-icon-button--badged" type="button" aria-label="Runs" title="Runs">${icon("runs")}<span id="${RUNS_BADGE_ID}" class="resume-matcher-runs-badge" hidden></span></button>
           <button id="${BOARD_SETTINGS_ID}" class="resume-matcher-icon-button" type="button" aria-label="Settings" title="Settings">${icon("settings")}</button>
           <button id="${BOARD_MINIMIZE_ID}" class="resume-matcher-icon-button" type="button" aria-label="Minimize" title="Minimize">${icon("minimize")}</button>
         </div>
@@ -6693,6 +7459,19 @@ function ensureRoot() {
               <div id="${RUN_STATUS_ACTIONS_ID}" class="resume-matcher-button-row"></div>
             </div>
           </article>
+        </section>
+        <section id="${HISTORY_VIEW_ID}" class="resume-matcher-view">
+          <div class="resume-matcher-runs-filter" role="group" aria-label="Filter runs">
+            <button type="button" class="resume-matcher-runs-filter__btn" data-runs-filter="all">All</button>
+            <button type="button" class="resume-matcher-runs-filter__btn" data-runs-filter="active">Active</button>
+            <button type="button" class="resume-matcher-runs-filter__btn" data-runs-filter="done">Done</button>
+          </div>
+          <div id="${RUNS_LIST_ID}" class="resume-matcher-runs-list"></div>
+          <div class="resume-matcher-history-pagination">
+            <button id="${RUNS_PREV_ID}" type="button" aria-label="Previous page" title="Previous page">${icon("chevronLeft")}</button>
+            <span id="${RUNS_PAGE_ID}">0/0</span>
+            <button id="${RUNS_NEXT_ID}" type="button" aria-label="Next page" title="Next page">${icon("chevronRight")}</button>
+          </div>
         </section>
         <section id="${SETTINGS_VIEW_ID}" class="resume-matcher-view">
           <div class="resume-matcher-settings-stack">
@@ -6788,6 +7567,15 @@ function ensureRoot() {
                       </div>
                     </div>
                     <button id="${APIFY_SAVE_ID}" type="button" class="resume-matcher-button is-primary">Save Apify</button>
+                  </div>
+                  <div class="resume-matcher-settings-item resume-matcher-field--full">
+                    <div class="resume-matcher-settings-item__title">Maximum parallel jobs</div>
+                    <div class="resume-matcher-settings-item__detail">How many queued jobs may tailor at the same time. Saved and shared across tabs.</div>
+                    <div class="resume-matcher-stepper" role="group" aria-label="Maximum parallel jobs">
+                      <button id="${QUEUE_MAX_PARALLEL_DEC_ID}" type="button" class="resume-matcher-stepper__btn" aria-label="Decrease">&minus;</button>
+                      <span id="${QUEUE_MAX_PARALLEL_VALUE_ID}" class="resume-matcher-stepper__value" aria-live="polite">3</span>
+                      <button id="${QUEUE_MAX_PARALLEL_INC_ID}" type="button" class="resume-matcher-stepper__btn" aria-label="Increase">+</button>
+                    </div>
                   </div>
                   <div class="resume-matcher-settings-item">
                     <div class="resume-matcher-settings-item__title-row">
@@ -6895,6 +7683,15 @@ function ensureRoot() {
     openBoard("run", { skipConnectionCheck: true });
     activateRunInspection();
   });
+  $(BOARD_RUNS_ID)?.addEventListener("click", () => {
+    if (state.currentView === "history") {
+      openBoard("run", { skipConnectionCheck: true });
+      activateRunInspection();
+      return;
+    }
+    openBoard("history");
+    void hydrateQueueSnapshot();
+  });
   $(BOARD_SETTINGS_ID)?.addEventListener("click", () => {
     if (isSettingsNavigationLocked()) {
       return;
@@ -6918,7 +7715,7 @@ function ensureRoot() {
     renderRunView();
   });
   $(RUN_READY_ID)?.addEventListener("click", handleManualJobRescrape);
-  $(RUN_PRIMARY_ID)?.addEventListener("click", handleGenerateClick);
+  $(RUN_PRIMARY_ID)?.addEventListener("click", handleEnqueueClick);
   $(RUN_CANCEL_ID)?.addEventListener("click", requestCancelActiveRun);
   $(RUN_PROMPT_PROFILE_INFO_ID)?.addEventListener("click", (event) => {
     event.preventDefault();
@@ -7145,6 +7942,12 @@ function ensureRoot() {
       );
     }
   });
+  $(QUEUE_MAX_PARALLEL_DEC_ID)?.addEventListener("click", () =>
+    adjustMaxParallel(-1),
+  );
+  $(QUEUE_MAX_PARALLEL_INC_ID)?.addEventListener("click", () =>
+    adjustMaxParallel(1),
+  );
   $(RESET_LOCAL_ID)?.addEventListener("click", async () => {
     if (
       !window.confirm(
@@ -7333,6 +8136,37 @@ function ensureRoot() {
     if (state.historyFilterOpen && !target.closest(`#${HISTORY_FILTER_ID}`)) {
       state.historyFilterOpen = false;
       renderHistory();
+    }
+
+    const runsActionButton = target.closest("[data-runs-action]");
+    if (runsActionButton) {
+      event.preventDefault();
+      await handleRunsCardAction(
+        runsActionButton.dataset.runsAction,
+        runsActionButton.dataset.runId,
+      );
+      return;
+    }
+    const runsFilterButton = target.closest("[data-runs-filter]");
+    if (runsFilterButton) {
+      event.preventDefault();
+      const next = runsFilterButton.dataset.runsFilter || "all";
+      if (next !== state.runsFilter) {
+        state.runsFilter = next;
+        state.queuePage = 1;
+        renderRunsQueue();
+      }
+      return;
+    }
+    if (target.closest(`#${RUNS_PREV_ID}`)) {
+      event.preventDefault();
+      changeRunsPage(-1);
+      return;
+    }
+    if (target.closest(`#${RUNS_NEXT_ID}`)) {
+      event.preventDefault();
+      changeRunsPage(1);
+      return;
     }
 
     const button = target.closest("[data-status-action]");
@@ -7670,6 +8504,15 @@ function updateStatusFromLog(level, scope, message, data) {
     return;
   }
 
+  // The progress/result log stream is broadcast to EVERY tab (so any tab can
+  // Save logs), but only a tab actually running its OWN job should reflect run
+  // status (running / success / error) in its Run view. Under the queue no tab
+  // owns a run, so no tab adopts run status here — it lives on the Runs tab.
+  // (Console logging above still runs, so Save logs is unaffected.)
+  if (!state.isRunning && !state.ownedRunId && !state.activeRunId) {
+    return;
+  }
+
   if (state.previewHandoffComplete) {
     return;
   }
@@ -7938,6 +8781,32 @@ function handleRuntimeMessage(message, _sender, sendResponse) {
       .catch((error) =>
         sendResponse({ ok: false, error: error?.message || String(error) }),
       );
+    return true;
+  }
+
+  if (message?.type === "QUEUE_UPDATED") {
+    const queue = message.payload?.queue;
+    if (Array.isArray(queue)) {
+      state.queue = queue;
+      updateRunsBadge();
+      // Performance: only do a full list render when the Runs tab is open.
+      // Otherwise the cheap badge update above is enough; the run view is
+      // refreshed lazily so the primary button reflects "In queue"/"Running".
+      if (state.boardOpen && state.currentView === "history") {
+        renderRunsQueue();
+      } else if (state.boardOpen && state.currentView === "run") {
+        renderRunView();
+      }
+    }
+    // Cross-tab sync of the parallel-jobs limit: another tab changing it
+    // broadcasts the new value here, so this tab's stepper stays in step.
+    if (Number.isFinite(message.payload?.maxParallel)) {
+      state.maxParallel = message.payload.maxParallel;
+      if (state.boardOpen && state.currentView === "settings") {
+        renderSettings();
+      }
+    }
+    sendResponse({ ok: true });
     return true;
   }
 
@@ -8272,25 +9141,44 @@ void loadRunStatusHelpers().finally(() => {
   if (isContentScriptDisposed()) {
     return;
   }
-  void chrome.runtime
-    .sendMessage({ type: "REGISTER_LOG_VIEWER" })
-    .catch((error) => {
-      if (isExtensionContextInvalidatedError(error)) {
-        destroyContentScriptInstance("register-log-viewer-invalidated");
-      }
-    });
+  // Defer ALL load-time setup until the browser is idle (after LinkedIn's own
+  // first paint). The content script runs at document_idle, but LinkedIn's React
+  // app is still hydrating then — building our panel DOM, starting the job-pane
+  // MutationObserver, and running extractCurrentJob() at that moment competes
+  // with LinkedIn's rendering. With several tabs opening at once the main
+  // threads saturate and pages flash blank until our work yields. Running this
+  // block on idle (with a 2s safety timeout) gets us out of LinkedIn's paint
+  // path — the bubble just appears a beat after the page is visible.
+  const startExtension = () => {
+    if (isContentScriptDisposed()) {
+      return;
+    }
+    void chrome.runtime
+      .sendMessage({ type: "REGISTER_LOG_VIEWER" })
+      .catch((error) => {
+        if (isExtensionContextInvalidatedError(error)) {
+          destroyContentScriptInstance("register-log-viewer-invalidated");
+        }
+      });
 
-  window.addEventListener("resize", handleViewportChange);
-  document.addEventListener("visibilitychange", handleVisibilityChange);
-  void refreshBoardData({ refreshBackendMaster: true });
-  // Don't start the route poll for a tab opened in the background — it would be
-  // a repeating timer that keeps the tab from sleeping before the user ever
-  // looks at it. handleVisibilityChange starts it on first focus.
-  if (!document.hidden) {
-    startUrlFallbackPolling();
-  }
-  globalThis[CONTENT_SCRIPT_INSTANCE_KEY] = {
-    destroy: destroyContentScriptInstance,
+    window.addEventListener("resize", handleViewportChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    void refreshBoardData({ refreshBackendMaster: true });
+    // Don't start the route poll for a tab opened in the background — it would be
+    // a repeating timer that keeps the tab from sleeping before the user ever
+    // looks at it. handleVisibilityChange starts it on first focus.
+    if (!document.hidden) {
+      startUrlFallbackPolling();
+    }
+    globalThis[CONTENT_SCRIPT_INSTANCE_KEY] = {
+      destroy: destroyContentScriptInstance,
+    };
   };
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(startExtension, { timeout: 2000 });
+  } else {
+    window.setTimeout(startExtension, 250);
+  }
 });
 })();

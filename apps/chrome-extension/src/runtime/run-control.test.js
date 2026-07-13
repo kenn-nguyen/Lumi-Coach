@@ -6,13 +6,18 @@ import {
   ensureActiveRun,
   getActiveRunConflict,
   getActiveRun,
+  getActiveRunCount,
+  listActiveRuns,
   markRunPreviewHandoffStarted,
   requestActiveRunCancel,
   throwIfRunCanceled,
 } from "./run-control.js";
 
 afterEach(() => {
-  clearActiveRun();
+  // Multiple runs can coexist now — clear every one between tests.
+  for (const run of listActiveRuns()) {
+    clearActiveRun(run.runId);
+  }
 });
 
 describe("run-control", () => {
@@ -92,53 +97,42 @@ describe("run-control", () => {
     });
   });
 
-  it("blocks a second run while another run is in flight", () => {
+  it("allows multiple concurrent runs (parallel queue)", () => {
     ensureActiveRun({
       runId: "run-5",
       phase: "running",
       inFlight: true,
     });
+    // No throw — the queue's maxParallel cap gates concurrency, not run-control.
+    ensureActiveRun({
+      runId: "run-6",
+      phase: "running",
+      inFlight: true,
+    });
 
-    expect(getActiveRunConflict("run-6")?.runId).toBe("run-5");
-    expect(() =>
-      ensureActiveRun({
-        runId: "run-6",
-        phase: "preflight",
-      }),
-    ).toThrow(/tailoring run is already in progress/i);
+    expect(getActiveRun("run-5")?.runId).toBe("run-5");
+    expect(getActiveRun("run-6")?.runId).toBe("run-6");
+    expect(getActiveRunCount()).toBe(2);
   });
 
-  it("blocks a second run while the first run is in preflight", () => {
+  it("still reports a conflict for a different in-flight run (for callers that check)", () => {
     ensureActiveRun({
       runId: "run-7",
-      phase: "preflight",
-      inFlight: false,
+      phase: "running",
+      inFlight: true,
     });
-
+    // getActiveRunConflict is retained for the legacy single-run entrypoint.
     expect(getActiveRunConflict("run-8")?.runId).toBe("run-7");
-    expect(() =>
-      ensureActiveRun({
-        runId: "run-8",
-        phase: "preflight",
-        inFlight: false,
-      }),
-    ).toThrow(/tailoring run is already in progress/i);
+    expect(getActiveRunConflict("run-7")).toBeNull();
   });
 
-  it("allows replacing a setup-required repair run", () => {
-    ensureActiveRun({
-      runId: "run-9",
-      phase: "setup_required",
-      inFlight: false,
-    });
+  it("keeps each run isolated and clears only the targeted run", () => {
+    ensureActiveRun({ runId: "run-9", phase: "running", inFlight: true });
+    ensureActiveRun({ runId: "run-10", phase: "running", inFlight: true });
 
-    expect(getActiveRunConflict("run-10")).toBeNull();
-    ensureActiveRun({
-      runId: "run-10",
-      phase: "preflight",
-      inFlight: false,
-    });
-
-    expect(getActiveRun()?.runId).toBe("run-10");
+    clearActiveRun("run-9");
+    expect(getActiveRun("run-9")).toBeNull();
+    expect(getActiveRun("run-10")?.runId).toBe("run-10");
+    expect(getActiveRunCount()).toBe(1);
   });
 });

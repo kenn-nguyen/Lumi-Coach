@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Stub the fire-gate so provider fires are instant under test (its 400–1000ms
+// throttle is covered by fire-gate.test.js).
+vi.mock('../../fire-gate.js', () => ({
+  acquireWebFireSlot: () => Promise.resolve(),
+  resetWebFireGate: () => {},
+}));
+
 import { injectedProviderPromptEntry, runWebAutomationPrompt } from './web-automation.js';
 
 function flushMicrotasks() {

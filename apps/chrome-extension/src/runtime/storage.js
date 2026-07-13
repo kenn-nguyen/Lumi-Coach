@@ -929,6 +929,38 @@ export async function clearPendingExtensionAction() {
   await chrome.storage.local.remove(STORAGE_KEYS.extensionPendingAction);
 }
 
+// Persisted tailoring queue (array of lightweight job records). Account-scoped,
+// mirroring the pending-action pattern. The service worker holds the
+// authoritative in-memory queue; this is the durable mirror for SW restarts.
+export async function getRunQueue() {
+  const accountData = await getScopedStorageValues([STORAGE_KEYS.runQueue]);
+  const scoped = accountData[STORAGE_KEYS.runQueue];
+  if (Array.isArray(scoped)) return scoped;
+  const data = await storageGet(STORAGE_KEYS.runQueue);
+  const legacy = data[STORAGE_KEYS.runQueue];
+  return Array.isArray(legacy) ? legacy : [];
+}
+
+export async function setRunQueue(records) {
+  const list = Array.isArray(records) ? records : [];
+  await setScopedStorageValues({ [STORAGE_KEYS.runQueue]: list });
+}
+
+export async function getQueueSettings() {
+  const accountData = await getScopedStorageValues([STORAGE_KEYS.queueSettings]);
+  const scoped = accountData[STORAGE_KEYS.queueSettings];
+  if (scoped && typeof scoped === "object") return scoped;
+  const data = await storageGet(STORAGE_KEYS.queueSettings);
+  const legacy = data[STORAGE_KEYS.queueSettings];
+  return legacy && typeof legacy === "object" ? legacy : {};
+}
+
+export async function setQueueSettings(settings) {
+  const next = settings && typeof settings === "object" ? settings : {};
+  await setScopedStorageValues({ [STORAGE_KEYS.queueSettings]: next });
+  return next;
+}
+
 function normalizeOrigin(value, fallback) {
   const normalized = (value || fallback).trim().replace(/\/+$/, "");
   return normalized || fallback;

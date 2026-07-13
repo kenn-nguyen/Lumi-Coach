@@ -2,7 +2,12 @@ import { DEFAULT_CHATGPT_TARGET_URL } from './constants.js';
 import { extractJsonFromText } from './json.js';
 import { logError, logInfo, logWarn } from './log.js';
 import { recordRawEmission } from './log-buffer.js';
-import { getActiveRun, registerRunCleanup } from './run-control.js';
+import {
+  getActiveRun,
+  registerRunCleanup,
+  throwIfRunCanceled,
+} from './run-control.js';
+import { acquireWebFireSlot } from './fire-gate.js';
 
 const chatGptRunSessions = new Map();
 
@@ -170,6 +175,41 @@ async function pruneChatGptCookies({ aggressive = false } = {}) {
   } catch {
     // Best-effort — never block the popup from opening
   }
+}
+
+// Diagnostic: summarize the chatgpt.com cookie jar (names + approximate byte
+// size) so an HTTP 431 ("Request Header Fields Too Large") log pinpoints exactly
+// which cookie bloats the Cookie header — enabling a precise, non-aggressive
+// preventive prune instead of always clearing everything (which forces a
+// Cloudflare re-check).
+async function summarizeChatGptCookies() {
+  const domains = ['chatgpt.com', '.chatgpt.com'];
+  const seen = new Map(); // name -> approx bytes (dedupe by name across domains)
+  let totalBytes = 0;
+  try {
+    for (const domain of domains) {
+      let cookies;
+      try {
+        cookies = await chrome.cookies.getAll({ domain });
+      } catch {
+        continue;
+      }
+      for (const cookie of cookies) {
+        if (seen.has(cookie.name)) continue;
+        // "name=value; " — the shape that counts toward the request Cookie header.
+        const bytes = (cookie.name?.length ?? 0) + (cookie.value?.length ?? 0) + 3;
+        seen.set(cookie.name, bytes);
+        totalBytes += bytes;
+      }
+    }
+  } catch {
+    // Best-effort diagnostic — never throw.
+  }
+  const top = [...seen.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([name, bytes]) => ({ name, bytes }));
+  return { cookieCount: seen.size, approxHeaderBytes: totalBytes, topCookies: top };
 }
 
 async function openPopupWindow(targetUrl) {
@@ -348,12 +388,22 @@ async function probeChatGptHttpStatus() {
 // Raise and un-minimize the active run's ChatGPT popup so a frozen/hidden popup
 // resumes streaming. Called from the background when the user clicks the
 // "Bring ChatGPT to front" hint in the LinkedIn tab.
-export async function focusChatGptPopup() {
+export async function focusChatGptPopup(runId = null) {
   let windowId = null;
-  for (const session of chatGptRunSessions.values()) {
+  // Target the requested run's popup (parallel: N popups exist). Fall back to
+  // the first session when no runId is given (single-popup / legacy callers).
+  if (runId) {
+    const session = chatGptRunSessions.get(runId);
     if (typeof session?.popupWindowId === 'number') {
       windowId = session.popupWindowId;
-      break;
+    }
+  }
+  if (typeof windowId !== 'number') {
+    for (const session of chatGptRunSessions.values()) {
+      if (typeof session?.popupWindowId === 'number') {
+        windowId = session.popupWindowId;
+        break;
+      }
     }
   }
   if (typeof windowId !== 'number') return false;
@@ -704,10 +754,10 @@ async function waitForChatGptStartupReady(
 }
 
 function injectedChatGptPromptEntry(prompt, options = {}) {
-  const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 300000;
-  const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 300000;
+  const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 600000;
+  const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 600000;
   const composerWaitTimeoutMs = 45000;
-  const responseTimeoutMs = options.responseTimeoutMs ?? 600000;
+  const responseTimeoutMs = options.responseTimeoutMs ?? 1200000;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? 15000;
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? 12000;
   const preSubmitDelayMinMs = options.preSubmitDelayMinMs ?? 400;
@@ -1622,6 +1672,16 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
           reject(new Error('dom_changed:ChatGPT failed to respond (error state detected — possibly "Conversation not found"). The run will retry.'));
           return;
         }
+        // A visible Stop button means the model is actively working — including a
+        // reasoning model that stays SILENT for minutes while "thinking" before
+        // it streams any text. Count that as live progress so a thinking run is
+        // never cut off and re-fired mid-thought. Only the hard overall cap
+        // (responseTimeoutMs / hardTimeoutId) can end a run while it's still
+        // generating. A genuine error is caught by the hasErrorState() fast-fail
+        // above, so a flickering Stop button during an error loop can't wedge us.
+        if (hasStopButton()) {
+          lastProgressAt = Date.now();
+        }
         const timeoutWindow = sawNewTurn ? responseIdleTimeoutMs : Math.min(responseFirstTokenTimeoutMs, timeoutMs);
         if (Date.now() - lastProgressAt >= timeoutWindow) {
           failForTimeout();
@@ -2025,11 +2085,25 @@ async function reloadChatGptRunSessionTab(session, options = {}) {
   // A persistent HTTP 431 ("Request Header Fields Too Large") is a bloated
   // Cookie header — reloading re-sends the same oversized cookies, so the
   // browser's own refresh, hard-refresh, and URL changes all stay stuck on the
-  // error page. The only cure is shrinking the header, so on a confirmed 431 we
-  // clear every non-login chatgpt.com cookie before refreshing. Other error
-  // pages get the normal rotating-cookie prune (cf_clearance preserved).
+  // error page. The only cure is shrinking the header.
+  //
+  // IMPORTANT: this background-worker probe carries FAR fewer headers than the
+  // real popup request (no sec-ch-*, referer, or full browser fingerprint), so
+  // it routinely reports 200 while the POPUP itself is stuck on 431. We cannot
+  // trust the probe to detect the 431, so on ANY error page recovery we clear
+  // every non-login cookie to shrink the header. This path only runs when the
+  // popup is genuinely showing an error page, so aggressive pruning is safe
+  // (a one-time Cloudflare re-check may follow, but it beats a hard 431 loop).
   const httpStatus = await probeChatGptHttpStatus();
-  await pruneChatGptCookies({ aggressive: httpStatus === 431 });
+  // Diagnostic: capture what the Cookie header looks like BEFORE we clear it, so
+  // a recurring 431 log shows exactly which cookie(s) bloated it.
+  const cookieSummary = await summarizeChatGptCookies();
+  logWarn(
+    'ChatGptAutomation',
+    'chatgpt.com cookie header before error-page recovery prune (pinpoints 431 bloat).',
+    { promptLabel, tabId: session.tabId, ...cookieSummary },
+  );
+  await pruneChatGptCookies({ aggressive: true });
   try {
     // Plain reload of the current page — same as the browser's refresh button.
     const reloadDone = waitForTopFrameLoad(session.tabId);
@@ -2045,15 +2119,21 @@ async function reloadChatGptRunSessionTab(session, options = {}) {
   }
   // The reload dropped the MAIN-world override; re-install it before running.
   await installVisibilityKeepAlive(session.tabId);
-  const readiness = await waitForChatGptStartupReady(session.tabId, 1500, {
-    acceptAnyProbeResult: true,
-    pollIntervalMs: 300,
+  // After an aggressive cookie prune, the reload may briefly show a Cloudflare
+  // re-check before the real composer appears. Wait for ACTUAL readiness (not
+  // just any probe result) with a generous timeout so we don't re-inject the
+  // prompt into a mid-load / challenge page and misdetect it as an error page
+  // again. Returns as soon as the composer is ready (fast for a healthy page).
+  const readiness = await waitForChatGptStartupReady(session.tabId, 12000, {
+    acceptAnyProbeResult: false,
+    pollIntervalMs: 500,
   });
   logInfo('ChatGptAutomation', 'Reloaded (refreshed) the ChatGPT popup after an error page.', {
     promptLabel,
     tabId: session.tabId,
     httpStatus,
-    cookiesPurged: httpStatus === 431 ? 'aggressive' : 'rotating',
+    cookiesPurged: 'aggressive',
+    probedHttpStatus: httpStatus,
     elapsedMs: readiness.elapsedMs,
     readiness: buildStartupReadinessLog(readiness.state),
   });
@@ -2113,9 +2193,9 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
   const promptLength = prompt.length;
   const composeReadyTimeoutMs = options.composeReadyTimeoutMs ?? Math.min(30000, Math.max(15000, Math.ceil(promptLength / 3)));
   const sendReadyTimeoutMs = options.sendReadyTimeoutMs ?? Math.min(30000, Math.max(12000, Math.ceil(promptLength / 3)));
-  const responseTimeoutMs = options.responseTimeoutMs ?? 600000;
-  const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 300000;
-  const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 300000;
+  const responseTimeoutMs = options.responseTimeoutMs ?? 1200000;
+  const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 600000;
+  const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 600000;
   const pollIntervalMs = options.pollIntervalMs ?? 4000;
 
   let executionResults;
@@ -2163,6 +2243,18 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     const pollCompletionPromise = new Promise((resolve) => {
       resolvePollCompletion = resolve;
     });
+    // Fire-gate: space this fire from other concurrent web-automation jobs so
+    // multiple popups never hit Cloudflare in the same instant. Zero added
+    // latency when serial (min-interval throttle). Then re-check cancellation —
+    // never fire into a run we're already canceling (hazard #5).
+    const fireRunId = options.runId ?? null;
+    await acquireWebFireSlot({
+      runId: fireRunId,
+      tabId: session.tabId,
+      promptLabel,
+      provider: 'chatgpt',
+    });
+    if (fireRunId) throwIfRunCanceled(fireRunId, promptLabel);
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedChatGptPromptEntry,
@@ -2223,12 +2315,19 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
         // already started, then stopped growing while still generating) — a
         // longer window than a normal reasoning pause, which happens before text
         // appears — to avoid false alarms.
+        // The background poll keeps reading the popup's live DOM even while the
+        // window is occluded/backgrounded (the service worker isn't frozen), so
+        // if the popup is genuinely still generating, textLen keeps growing and
+        // lastGrowthAt stays fresh — no stall. Only flag a MID-STREAM stall after
+        // a long gap (text started, then stopped growing for 45s while the Stop
+        // button is still shown), so switching apps or a normal reasoning pause
+        // doesn't trip a false "bring to front" alert.
         const generating = watcherState?.hasStop === true;
         const midStreamStalled =
           generating &&
           textLen !== null &&
           textLen > 0 &&
-          Date.now() - lastGrowthAt >= 15000;
+          Date.now() - lastGrowthAt >= 45000;
         if (!stallHintSent && (minimized || midStreamStalled)) {
           stallHintSent = true;
           notifyPopupStall(true, { minimized });
@@ -2494,9 +2593,9 @@ async function runChatGptPromptWithRetryInSession(prompt, session, options = {})
     disableRetry: true,
     composeReadyTimeoutMs: Math.min(45000, Math.max(options.composeReadyTimeoutMs ?? 0, Math.ceil(prompt.length / 2), 20000)),
     sendReadyTimeoutMs: Math.min(45000, Math.max(options.sendReadyTimeoutMs ?? 0, Math.ceil(prompt.length / 2), 18000)),
-    responseTimeoutMs: Math.min(900000, Math.max(options.responseTimeoutMs ?? 0, 720000)),
-    responseIdleTimeoutMs: Math.min(600000, Math.max(options.responseIdleTimeoutMs ?? 0, 300000)),
-    responseFirstTokenTimeoutMs: Math.min(600000, Math.max(options.responseFirstTokenTimeoutMs ?? 0, 300000)),
+    responseTimeoutMs: Math.min(1200000, Math.max(options.responseTimeoutMs ?? 0, 900000)),
+    responseIdleTimeoutMs: Math.min(600000, Math.max(options.responseIdleTimeoutMs ?? 0, 600000)),
+    responseFirstTokenTimeoutMs: Math.min(600000, Math.max(options.responseFirstTokenTimeoutMs ?? 0, 600000)),
   });
   if (canUsePartialJson(retryResult)) {
     logInfo('ChatGptAutomation', 'Using parseable partial ChatGPT response after retry timeout.', {
@@ -2588,16 +2687,16 @@ async function runChatGptPromptInExistingSession(prompt, session, options = {}) 
           Math.max(options.sendReadyTimeoutMs ?? 0, 12000),
         ),
         responseTimeoutMs: Math.min(
-          600000,
-          Math.max(options.responseTimeoutMs ?? 0, 300000),
+          1200000,
+          Math.max(options.responseTimeoutMs ?? 0, 900000),
         ),
         responseIdleTimeoutMs: Math.min(
-          420000,
-          Math.max(options.responseIdleTimeoutMs ?? 0, 180000),
+          600000,
+          Math.max(options.responseIdleTimeoutMs ?? 0, 600000),
         ),
         responseFirstTokenTimeoutMs: Math.min(
-          420000,
-          Math.max(options.responseFirstTokenTimeoutMs ?? 0, 180000),
+          600000,
+          Math.max(options.responseFirstTokenTimeoutMs ?? 0, 600000),
         ),
       });
       if (result.status !== 'success') {

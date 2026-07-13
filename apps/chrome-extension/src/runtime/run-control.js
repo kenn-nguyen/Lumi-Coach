@@ -1,4 +1,14 @@
-let activeRun = null;
+// Live runs keyed by runId. Was a single `activeRun` variable; now a Map so the
+// queue can hold several concurrent runs. Every helper below preserves its old
+// behavior for the single-run case: a null runId resolves to the sole live run,
+// and getActiveRunConflict still treats any OTHER busy run as a conflict (so the
+// capacity gate can keep it at one until parallelism is switched on).
+const activeRuns = new Map();
+
+function firstActiveRun() {
+  for (const run of activeRuns.values()) return run;
+  return null;
+}
 
 export function createRunCanceledError(runId = null, stage = "") {
   const stageText = String(stage || "").trim();
@@ -27,40 +37,53 @@ export function isRunCanceledError(error) {
 }
 
 export function getActiveRun(runId = null) {
-  if (!activeRun) return null;
-  if (runId && activeRun.runId !== runId) return null;
-  return activeRun;
+  if (!runId) return firstActiveRun();
+  return activeRuns.get(runId) ?? null;
+}
+
+// All live runs (terminal-or-not) in insertion order. For the scheduler + the
+// cancel-all path.
+export function listActiveRuns() {
+  return Array.from(activeRuns.values());
+}
+
+// Count of runs that still occupy a concurrency slot (not yet terminal). The
+// capacity gate compares this against maxParallel.
+export function getActiveRunCount() {
+  let count = 0;
+  for (const run of activeRuns.values()) {
+    if (run.terminal !== true) count += 1;
+  }
+  return count;
 }
 
 export function getActiveRunConflict(runId = null) {
-  if (!activeRun) return null;
-  if (runId && activeRun.runId === runId) return null;
-  const phase = String(activeRun.phase || "").trim();
-  if (
-    activeRun.inFlight === true ||
-    activeRun.cancelRequested === true ||
-    phase === "preflight"
-  ) {
-    return activeRun;
+  for (const run of activeRuns.values()) {
+    if (runId && run.runId === runId) continue;
+    const phase = String(run.phase || "").trim();
+    if (
+      run.inFlight === true ||
+      run.cancelRequested === true ||
+      phase === "preflight"
+    ) {
+      return run;
+    }
   }
   return null;
 }
 
 export function ensureActiveRun(init = {}) {
-  const runId = init.runId ?? activeRun?.runId ?? null;
+  const runId = init.runId ?? firstActiveRun()?.runId ?? null;
   if (!runId) {
     throw new Error("A run id is required to create active run state.");
   }
 
-  const conflict = getActiveRunConflict(runId);
-  if (conflict) {
-    throw new Error(
-      "A tailoring run is already in progress. Cancel it before starting another.",
-    );
-  }
-
-  if (!activeRun || activeRun.runId !== runId) {
-    activeRun = {
+  let run = activeRuns.get(runId);
+  if (!run) {
+    // Parallel queue: multiple runs coexist, keyed by runId. Concurrency is
+    // capped by the queue scheduler (maxParallel), not here — so there is no
+    // single-run conflict throw and no eviction of other runs.
+    run = {
       runId,
       sourceTabId: init.sourceTabId ?? null,
       activeRunJob: init.activeRunJob ?? null,
@@ -76,24 +99,25 @@ export function ensureActiveRun(init = {}) {
       terminal: false,
       cleanupFns: new Set(),
     };
-    return activeRun;
+    activeRuns.set(runId, run);
+    return run;
   }
 
-  activeRun.sourceTabId = init.sourceTabId ?? activeRun.sourceTabId ?? null;
-  activeRun.activeRunJob = init.activeRunJob ?? activeRun.activeRunJob ?? null;
+  run.sourceTabId = init.sourceTabId ?? run.sourceTabId ?? null;
+  run.activeRunJob = init.activeRunJob ?? run.activeRunJob ?? null;
   if (typeof init.startedAt === "number") {
-    activeRun.startedAt = init.startedAt;
+    run.startedAt = init.startedAt;
   }
   if (typeof init.phase === "string" && init.phase.trim()) {
-    activeRun.phase = init.phase.trim();
+    run.phase = init.phase.trim();
   }
   if (typeof init.inFlight === "boolean") {
-    activeRun.inFlight = init.inFlight;
+    run.inFlight = init.inFlight;
   }
   if (typeof init.cancelable === "boolean") {
-    activeRun.cancelable = init.cancelable;
+    run.cancelable = init.cancelable;
   }
-  return activeRun;
+  return run;
 }
 
 export function updateActiveRun(runId, patch = {}) {
@@ -104,10 +128,10 @@ export function updateActiveRun(runId, patch = {}) {
 }
 
 export function clearActiveRun(runId = null) {
-  if (!activeRun) return;
-  if (runId && activeRun.runId !== runId) return;
-  activeRun.cleanupFns.clear();
-  activeRun = null;
+  const run = getActiveRun(runId);
+  if (!run) return;
+  run.cleanupFns.clear();
+  activeRuns.delete(run.runId);
 }
 
 export function registerRunCleanup(runId, cleanup) {

@@ -2,6 +2,7 @@ import {
   discardUncommittedTailoredResume,
   generateResumeForLinkedInJob,
   importMasterResumeFromTextAsset,
+  isSingleStagePromptProfileId,
   saveStoryboardAsset,
 } from "./runtime/orchestrator.js";
 import {
@@ -100,6 +101,41 @@ import {
   requestActiveRunCancel,
   updateActiveRun,
 } from "./runtime/run-control.js";
+import { createRunQueue } from "./runtime/run-queue.js";
+import {
+  initRunState,
+  clearRunState,
+  setRunStateChangeListener,
+} from "./runtime/run-state.js";
+
+// Live pipeline stage → the CURRENT activity + step number shown on a Runs-tab
+// card. The run-state status marks a COMPLETED milestone, so each maps to what's
+// happening NEXT (status "prompt1_done" = now running Prompt 2). The step COUNT
+// depends on the profile: multi-stage profiles (Safe/Competitive/Competitive+/
+// Lean) run 3 prompts; the single-stage "Direct" (profile4) runs just one, so it
+// has fewer steps and never emits prompt1_done/prompt2_done.
+const RUN_STAGES_MULTI = {
+  starting: { step: 1, total: 5, label: "Reading the job" },
+  bootstrap_master: { step: 1, total: 5, label: "Setting up base resume" },
+  scraped: { step: 1, total: 5, label: "Running Prompt 1 (role fit)" },
+  prompt1_done: { step: 2, total: 5, label: "Running Prompt 2 (positioning)" },
+  prompt2_done: { step: 3, total: 5, label: "Running Prompt 3 (writing resume)" },
+  prompt3_done: { step: 4, total: 5, label: "Finalizing draft" },
+  validated: { step: 5, total: 5, label: "Saving resume" },
+};
+const RUN_STAGES_SINGLE = {
+  starting: { step: 1, total: 3, label: "Reading the job" },
+  bootstrap_master: { step: 1, total: 3, label: "Setting up base resume" },
+  scraped: { step: 1, total: 3, label: "Tailoring resume" },
+  prompt3_done: { step: 2, total: 3, label: "Finalizing draft" },
+  validated: { step: 3, total: 3, label: "Saving resume" },
+};
+import {
+  getRunQueue,
+  setRunQueue,
+  getQueueSettings,
+  setQueueSettings,
+} from "./runtime/storage.js";
 
 let suppressSourceFocusUntil = 0;
 let backendMasterResumeCache = {
@@ -137,36 +173,20 @@ function getRunLockJobLabel(activeRunJob = null) {
 }
 
 function buildRunLockSnapshot(currentTabId = null) {
-  const activeRunState = getActiveRunConflict(null);
-  if (!activeRunState) {
-    return {
-      active: false,
-      currentTabOwnsRun: false,
-      sourceTabId: null,
-      runId: null,
-      message: "",
-      detail: "",
-      jobLabel: "",
-    };
-  }
-
-  const sourceTabId = activeRunState.sourceTabId ?? null;
-  const currentTabOwnsRun =
-    typeof currentTabId === "number" &&
-    typeof sourceTabId === "number" &&
-    currentTabId === sourceTabId;
-  const jobLabel = getRunLockJobLabel(activeRunState.activeRunJob);
-
+  // The tailoring queue replaces the old one-run-at-a-time cross-tab lock: any
+  // tab can view/manage the shared queue, and the background enforces the
+  // concurrency cap + dedup. So the lock is always reported inactive now (this
+  // keeps every tab's board openable while a job runs). currentTabId is kept for
+  // signature compatibility.
+  void currentTabId;
   return {
-    active: true,
-    currentTabOwnsRun,
-    sourceTabId,
-    runId: activeRunState.runId ?? null,
-    message: "Tailoring is running in another tab.",
-    detail: jobLabel
-      ? `Finish or cancel ${jobLabel} there before starting another run.`
-      : "Finish or cancel the current run there before starting another run.",
-    jobLabel,
+    active: false,
+    currentTabOwnsRun: false,
+    sourceTabId: null,
+    runId: null,
+    message: "",
+    detail: "",
+    jobLabel: "",
   };
 }
 
@@ -266,6 +286,10 @@ async function applyExtensionAuthPayload(payload) {
   });
 
   if (accountChanged && previousAccountKey) {
+    // Different account: drain the previous account's queue (detaches the
+    // in-memory instance so the next account re-hydrates its own persisted
+    // queue) before cancelling the live run.
+    await drainRunQueueForTeardown();
     await cancelActiveRun({
       reason: "account_switched",
       phase: "account_switch",
@@ -773,6 +797,241 @@ async function broadcastContentScriptMessage(message) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Tailoring queue (background-owned). The SW holds the authoritative in-memory
+// queue; run-queue.js persists a lightweight mirror. Runs up to maxParallel jobs
+// concurrently (user setting, default 3) — per-run state isolation makes that
+// safe.
+// ---------------------------------------------------------------------------
+let runQueueInstance = null;
+let runQueueHydrated = false;
+const DEFAULT_MAX_PARALLEL = 3;
+
+function clampMaxParallel(value) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return DEFAULT_MAX_PARALLEL;
+  return Math.min(10, Math.max(1, n));
+}
+
+async function ensureRunQueue() {
+  if (runQueueInstance) return runQueueInstance;
+  const settings = await getQueueSettings().catch(() => ({}));
+  runQueueInstance = createRunQueue({
+    persist: async (records) => {
+      await setRunQueue(records).catch(() => {});
+    },
+    startRun: (record) => startQueuedRun(record),
+    now: () => Date.now(),
+    maxParallel: clampMaxParallel(settings?.maxParallel ?? DEFAULT_MAX_PARALLEL),
+  });
+  // Surface each run's live pipeline stage on its card, and re-anchor the card's
+  // elapsed timer to the moment this step started.
+  setRunStateChangeListener((runId, runState) => {
+    if (!runQueueInstance) return;
+    const rec = runQueueInstance.get(runId);
+    if (!rec || (rec.status !== "running" && rec.status !== "preparing")) return;
+    const stages = isSingleStagePromptProfileId(rec.promptProfileId)
+      ? RUN_STAGES_SINGLE
+      : RUN_STAGES_MULTI;
+    const stage = stages[runState?.status];
+    if (!stage) return;
+    runQueueInstance.setSubStage(
+      runId,
+      `Step ${stage.step}/${stage.total} · ${stage.label}`,
+      Date.now(),
+    );
+    scheduleQueueBroadcast(); // coalesced — progress ticks shouldn't flood tabs
+  });
+  if (!runQueueHydrated) {
+    runQueueHydrated = true;
+    const stored = await getRunQueue().catch(() => []);
+    runQueueInstance.hydrate(stored);
+    runQueueInstance.pruneHistory();
+    scheduleQueueBroadcast(true);
+  }
+  return runQueueInstance;
+}
+
+// Lightweight UI projection — strips the heavy run payload + JD text.
+function toQueueUiRecord(record) {
+  const {
+    payload: _payload,
+    jdText: _jdText,
+    ...rest
+  } = record;
+  return rest;
+}
+
+let queueBroadcastTimer = null;
+let queueBroadcastTrailing = false;
+
+// Coalesce QUEUE_UPDATED pushes to ~1/s (leading + trailing) so a burst of
+// progress updates across jobs and tabs never floods content scripts. Terminal
+// transitions pass immediate=true.
+function scheduleQueueBroadcast(immediate = false) {
+  const send = () => {
+    queueBroadcastTrailing = false;
+    if (!runQueueInstance) return;
+    const queue = runQueueInstance.getSnapshot().map(toQueueUiRecord);
+    void broadcastContentScriptMessage({
+      type: "QUEUE_UPDATED",
+      payload: { queue, maxParallel: runQueueInstance.getMaxParallel() },
+    });
+  };
+  if (immediate) {
+    if (queueBroadcastTimer) {
+      clearTimeout(queueBroadcastTimer);
+      queueBroadcastTimer = null;
+    }
+    send();
+    return;
+  }
+  if (queueBroadcastTimer) {
+    queueBroadcastTrailing = true;
+    return;
+  }
+  send();
+  queueBroadcastTimer = setTimeout(() => {
+    queueBroadcastTimer = null;
+    if (queueBroadcastTrailing) send();
+  }, 1000);
+}
+
+// Drive one queued job through the existing single-run engine, reporting each
+// transition back to the queue. Adapted from the GENERATE_FOR_ACTIVE_JOB
+// handler; the queue's scheduler (not a conflict check) gates concurrency.
+async function startQueuedRun(record) {
+  const runId = record.runId;
+  const payload = record.payload || {};
+  const pendingAction = {
+    runId,
+    type: "generate_active_job",
+    tabId: payload.tabId ?? null,
+    prompt1CustomInstruction: payload.prompt1CustomInstruction ?? "",
+    jobInput: payload.jobInput ?? null,
+    activeRunJob: payload.activeRunJob ?? null,
+  };
+  try {
+    // Apply this job's snapshotted tailoring style so the run uses what the
+    // user chose when they queued it (serial baseline; Phase 4 threads it
+    // per-run instead of via global selection).
+    if (record.promptProfileId) {
+      await savePromptTemplateProfileSelection(record.promptProfileId).catch(
+        () => {},
+      );
+    }
+    ensureActiveRun({
+      runId,
+      sourceTabId: pendingAction.tabId,
+      activeRunJob: pendingAction.activeRunJob ?? null,
+      phase: "preflight",
+      inFlight: false,
+      cancelable: true,
+      startedAt: Date.now(),
+    });
+    // Seed this run's isolated state slice before the pipeline runs so N
+    // concurrent runs never share the old single extensionSession blob.
+    initRunState(runId, {
+      sessionId: runId,
+      sourceTabId: pendingAction.tabId,
+      activeRunJob: pendingAction.activeRunJob ?? null,
+    });
+    setLogRelayTabId(pendingAction.tabId ?? null);
+    // Note: the diagnostics buffer is NOT cleared per run — under parallelism
+    // that would wipe sibling runs' in-progress logs. The ring buffer self-
+    // bounds; per-run log isolation (runId tagging) is a documented follow-up.
+
+    const authGate = await ensureExtensionAuthForAction(pendingAction);
+    if (!authGate.connected) {
+      updateActiveRun(runId, { phase: "awaiting_auth", inFlight: false });
+      await persistRunDiagnostics();
+      runQueueInstance?.markNeedsAttention(runId, {
+        subStage: "Sign in to continue — then Retry.",
+      });
+      scheduleQueueBroadcast(true);
+      return;
+    }
+
+    const assets = await getUserAssetsWithBackendMaster();
+    const setupState = getExtensionSetupState({
+      assets,
+      extensionConnected: true,
+      websiteAuthenticated: true,
+      onboardingProgress: await getOnboardingProgress(),
+    });
+    if (
+      setupState?.state === "missing_resume" ||
+      setupState?.state === "missing_provider_config"
+    ) {
+      updateActiveRun(runId, { phase: "setup_required", inFlight: false });
+      await persistRunDiagnostics();
+      runQueueInstance?.markNeedsAttention(runId, {
+        subStage: setupState.detail || "Finish setup — then Retry.",
+      });
+      scheduleQueueBroadcast(true);
+      return;
+    }
+
+    updateActiveRun(runId, { phase: "running", inFlight: true });
+    runQueueInstance?.markRunning(runId, { subStage: "Running…" });
+    scheduleQueueBroadcast(true);
+    // NOTE: queue runs deliberately do NOT write the shared `extensionSession`.
+    // That single blob is the legacy one-run-at-a-time UI state; writing an
+    // active status here made EVERY tab's Run view think a run was in progress
+    // (disabled Tailor button, stray Cancel row, locked launcher). A queue run's
+    // status lives entirely on its queue record + per-run state instead.
+    await captureExtensionEvent("tailor_started", {
+      surface: "queue",
+      run_id: runId,
+      source_tab_id: pendingAction.tabId ?? null,
+    });
+
+    const result = await generateResumeForLinkedInJob(
+      pendingAction.tabId,
+      pendingAction.prompt1CustomInstruction,
+      pendingAction.jobInput,
+      pendingAction.activeRunJob,
+      // Open each finished resume in a new tab as it completes (user request).
+      { runId },
+    );
+    markRunTerminal(runId, "completed");
+    clearActiveRun(runId);
+    await persistRunDiagnostics();
+    runQueueInstance?.markSucceeded(runId, {
+      tailoredResumeId: result?.resumeId ?? null,
+      previewUrl: result?.previewUrl ?? null,
+      subStage: null,
+    });
+    scheduleQueueBroadcast(true);
+  } catch (error) {
+    if (isRunCanceledError(error)) {
+      await finalizeCanceledRun(getActiveRun(runId) || { runId }, {
+        reason: "user",
+      });
+      await persistRunDiagnostics();
+      runQueueInstance?.markCanceled(runId);
+      scheduleQueueBroadcast(true);
+      return;
+    }
+    await captureExtensionEvent("tailor_failed", {
+      surface: "queue",
+      run_id: runId,
+      error_message: error instanceof Error ? error.message : String(error),
+    });
+    await discardUncommittedTailoredResume(runId, "failed");
+    clearActiveRun(runId);
+    await persistRunDiagnostics();
+    runQueueInstance?.markFailed(runId, {
+      error: error instanceof Error ? error.message : String(error),
+      logAvailable: true,
+    });
+    scheduleQueueBroadcast(true);
+  } finally {
+    // Free this run's isolated state on every exit (success/fail/cancel/paused).
+    clearRunState(runId);
+  }
+}
+
 function getCurrentRunSourceUrl(extensionState) {
   return (
     extensionState?.jobSnapshot?.sourceUrl ||
@@ -793,7 +1052,35 @@ function getCurrentRunLocation(extensionState) {
 // UI to signed-out. Used both when the website tells us it signed out
 // (SOM_EXTENSION_SIGNED_OUT) and when the user signs out FROM the extension — so
 // we don't depend on the fragile website→extension round-trip message arriving.
+// Drain the whole queue (not just the one active run) on sign-out / account
+// switch. Detach the in-memory instance FIRST so no terminal transition can
+// re-pump a queued job during teardown, then clear the persisted mirror.
+async function drainRunQueueForTeardown() {
+  const instance = runQueueInstance;
+  runQueueInstance = null;
+  runQueueHydrated = false;
+  if (instance) {
+    for (const record of instance.getSnapshot()) {
+      if (
+        ["queued", "preparing", "running", "needs_attention"].includes(
+          record.status,
+        )
+      ) {
+        instance.markCanceled(record.runId);
+      }
+    }
+  }
+  await setRunQueue([]).catch(() => {});
+  await broadcastContentScriptMessage({
+    type: "QUEUE_UPDATED",
+    payload: { queue: [] },
+  });
+}
+
 async function signOutExtensionLocally(phase = "sign_out") {
+  // Detach + clear the queue before cancelling the live run, so the cancel's
+  // terminal handling can't spin up the next queued job mid-sign-out.
+  await drainRunQueueForTeardown();
   await cancelActiveRun({ reason: "signed_out", phase });
   await clearExtensionAuth();
   await clearPendingExtensionAction();
@@ -831,7 +1118,7 @@ async function finalizeCanceledRun(run, options = {}) {
 
   // Canceling discards the in-progress tailored clone (unless its content was
   // already saved), so a canceled run leaves no orphan row on the dashboard.
-  await discardUncommittedTailoredResume("canceled");
+  await discardUncommittedTailoredResume(run.runId, "canceled");
 
   const sourceUrl = getCurrentRunSourceUrl(extensionState);
   await clearPendingExtensionAction();
@@ -1209,6 +1496,14 @@ function isSourceFocusSuppressed() {
 }
 
 async function resumePendingExtensionAction(options = {}) {
+  // Auth/setup was just resolved — auto-resume any queue jobs that paused
+  // waiting for it (hazard #3). Runs before the single-slot pending-action
+  // early-return below so it fires even when there's no legacy pending action.
+  if (runQueueInstance) {
+    if (runQueueInstance.resumeNeedsAttention()) {
+      scheduleQueueBroadcast(true);
+    }
+  }
   const pendingAction = await getPendingExtensionAction();
   if (!pendingAction) return;
 
@@ -1312,6 +1607,7 @@ async function resumePendingExtensionAction(options = {}) {
         pendingAction.prompt1CustomInstruction ?? "",
         pendingAction.jobInput ?? null,
         pendingAction.activeRunJob ?? null,
+        { runId },
       );
       markRunTerminal(runId, "completed");
       clearActiveRun(runId);
@@ -1364,7 +1660,7 @@ async function resumePendingExtensionAction(options = {}) {
           .catch(() => {});
       }
       // Terminal failure of the resumed run — discard the uncommitted clone.
-      await discardUncommittedTailoredResume("failed");
+      await discardUncommittedTailoredResume(runId, "failed");
       clearActiveRun(runId);
       throw error;
     }
@@ -1470,7 +1766,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true };
 
       case "FOCUS_CHATGPT_POPUP":
-        return { ok: await focusChatGptPopup() };
+        return { ok: await focusChatGptPopup(message.payload?.runId ?? null) };
 
       case "EXPORT_LOGS": {
         // Never clear here — logs stay available until the next run starts.
@@ -1917,6 +2213,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             message.payload?.prompt1CustomInstruction ?? "",
             message.payload?.jobInput ?? null,
             pendingAction.activeRunJob ?? null,
+            { runId },
           );
           markRunTerminal(runId, "completed");
           clearActiveRun(runId);
@@ -1954,6 +2251,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     message.payload?.prompt1CustomInstruction ?? "",
                     message.payload?.jobInput ?? null,
                     pendingAction.activeRunJob ?? null,
+                    { runId },
                   );
                   await clearPendingExtensionAction();
                   markRunTerminal(runId, "completed");
@@ -1991,11 +2289,122 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
           // Terminal failure (not a reconnect/awaiting-auth case) — discard the
           // uncommitted tailored clone so a failed run leaves no orphan row.
-          await discardUncommittedTailoredResume("failed");
+          await discardUncommittedTailoredResume(runId, "failed");
           clearActiveRun(runId);
           await persistRunDiagnostics();
           throw error;
         }
+      }
+
+      case "ENQUEUE_JOB": {
+        const queue = await ensureRunQueue();
+        const runId = message.payload?.runId || crypto.randomUUID();
+        const tabId = message.payload?.tabId ?? sender?.tab?.id ?? null;
+        const result = queue.enqueue({
+          runId,
+          title: message.payload?.title ?? "",
+          company: message.payload?.company ?? "",
+          jobUrl: message.payload?.jobUrl ?? "",
+          sourceUrl: message.payload?.sourceUrl ?? "",
+          jdText: message.payload?.jdText ?? "",
+          providerProfileId: message.payload?.providerProfileId ?? null,
+          promptProfileId: message.payload?.promptProfileId ?? null,
+          baseResumeId: message.payload?.baseResumeId ?? null,
+          payload: {
+            tabId,
+            prompt1CustomInstruction:
+              message.payload?.prompt1CustomInstruction ?? "",
+            jobInput: message.payload?.jobInput ?? null,
+            activeRunJob: message.payload?.activeRunJob ?? null,
+          },
+        });
+        scheduleQueueBroadcast(true);
+        return {
+          ...result,
+          runId: result.runId ?? runId,
+          queue: queue.getSnapshot().map(toQueueUiRecord),
+        };
+      }
+
+      case "CANCEL_QUEUED_JOB": {
+        const queue = await ensureRunQueue();
+        const runId = message.payload?.runId;
+        const decision = queue.requestCancelOrRemove(runId);
+        if (decision.action === "cancel") {
+          const cr = await requestActiveRunCancel({
+            runId,
+            reason: "user",
+            phase: "queue_cancel",
+          });
+          if (cr.canceled && cr.immediate) {
+            await finalizeCanceledRun(getActiveRun(runId) || { runId }, {
+              reason: "user",
+            });
+            queue.markCanceled(runId);
+          } else if (cr.reason === "no_active_run") {
+            // Paused/needs-attention job with no live run — just cancel it.
+            queue.markCanceled(runId);
+          } else {
+            // Cooperative cancel: the run is mid-response and will stop at its
+            // next checkpoint. Show "Cancelling…" until startQueuedRun's catch
+            // finalizes it and marks it canceled.
+            queue.markCanceling(runId);
+          }
+        }
+        scheduleQueueBroadcast(true);
+        return {
+          ok: true,
+          action: decision.action,
+          queue: queue.getSnapshot().map(toQueueUiRecord),
+        };
+      }
+
+      case "RETRY_QUEUED_JOB": {
+        // Re-enqueue a NEW job from a terminal record's retained snapshot +
+        // payload (the background keeps the full JD/jobInput on the record, so
+        // Retry works from ANY tab — the UI record alone can't carry it).
+        const queue = await ensureRunQueue();
+        const source = queue.get(message.payload?.runId);
+        if (!source) return { ok: false, reason: "not_found" };
+        const newRunId = crypto.randomUUID();
+        const result = queue.enqueue({
+          runId: newRunId,
+          title: source.title,
+          company: source.company,
+          jobUrl: source.jobUrl,
+          sourceUrl: source.sourceUrl,
+          jdText: source.jdText,
+          providerProfileId: source.providerProfileId,
+          promptProfileId: source.promptProfileId,
+          baseResumeId: source.baseResumeId,
+          payload: source.payload,
+        });
+        scheduleQueueBroadcast(true);
+        return {
+          ...result,
+          runId: result.runId ?? newRunId,
+          queue: queue.getSnapshot().map(toQueueUiRecord),
+        };
+      }
+
+      case "GET_QUEUE_SNAPSHOT": {
+        const queue = await ensureRunQueue();
+        return {
+          ok: true,
+          queue: queue.getSnapshot().map(toQueueUiRecord),
+          maxParallel: queue.getMaxParallel(),
+        };
+      }
+
+      case "SAVE_QUEUE_SETTINGS": {
+        const maxParallel = clampMaxParallel(message.payload?.maxParallel);
+        const saved = await setQueueSettings({ maxParallel });
+        // Apply live: raising the cap immediately starts more queued jobs;
+        // lowering it never stops running ones (run-queue enforces that).
+        const queue = await ensureRunQueue();
+        queue.setMaxParallel(maxParallel);
+        scheduleQueueBroadcast(true);
+        return { ok: true, queueSettings: saved };
       }
 
       case "CONTINUE_PENDING_GENERATION_WITHOUT_STORYBOARD":
