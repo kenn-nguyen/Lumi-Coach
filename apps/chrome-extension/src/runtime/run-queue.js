@@ -185,7 +185,14 @@ export function createRunQueue({
     return r;
   }
   function markFailed(runId, changes = {}) {
-    const r = patch(runId, { ...changes, status: "failed", endedAt: now() });
+    // Clear the live sub-stage: a terminal card must show its failure reason
+    // (getRunCardStatusText prefers subStage), not the last "Running…" stage.
+    const r = patch(runId, {
+      subStage: null,
+      ...changes,
+      status: "failed",
+      endedAt: now(),
+    });
     pump();
     return r;
   }
@@ -196,7 +203,10 @@ export function createRunQueue({
     return patch(runId, { canceling: true, subStage: "Cancelling…" });
   }
   function markCanceled(runId, changes = {}) {
+    // Clear the leftover "Cancelling…" sub-stage so the card reads "Canceled"
+    // (getRunCardStatusText prefers subStage over the status label).
     const r = patch(runId, {
+      subStage: null,
       ...changes,
       status: "canceled",
       canceling: false,

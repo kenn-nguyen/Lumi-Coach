@@ -109,8 +109,26 @@ describe("run-queue", () => {
     expect(q.get("b")).toBeNull();
     // running a -> cancel (caller tears down, then marks canceled)
     expect(q.requestCancelOrRemove("a").action).toBe("cancel");
+    // Cooperative cancel shows "Cancelling…"; markCanceled must clear it so the
+    // card reads "Canceled", not the stale sub-stage.
+    q.markCanceling("a");
+    expect(q.get("a").canceling).toBe(true);
+    expect(q.get("a").subStage).toBe("Cancelling…");
     q.markCanceled("a");
     expect(q.get("a").status).toBe("canceled");
+    expect(q.get("a").canceling).toBe(false);
+    expect(q.get("a").subStage).toBe(null);
+  });
+
+  it("clears the live sub-stage when a running job fails", async () => {
+    const q = makeQueue(1);
+    q.enqueue(job("a"));
+    await flush();
+    q.markRunning("a", { subStage: "Step 2/5 · Positioning plan" });
+    expect(q.get("a").subStage).toBe("Step 2/5 · Positioning plan");
+    q.markFailed("a", { error: "boom" });
+    expect(q.get("a").status).toBe("failed");
+    expect(q.get("a").subStage).toBe(null);
   });
 
   it("frees the running slot on needs_attention and resumes others", async () => {
