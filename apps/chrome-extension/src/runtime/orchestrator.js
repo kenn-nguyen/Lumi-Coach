@@ -2407,7 +2407,8 @@ export async function generateResumeForLinkedInJob(
   // Queue runs suppress the auto-open so N finished jobs don't spawn N tabs —
   // the Runs-tab "Open resume" button opens each result on demand instead.
   if (!options.suppressPreviewOpen) {
-    await openPreviewTab(previewUrl);
+    // Background tab: an auto-open on completion must not interrupt the user.
+    await openPreviewTab(previewUrl, { active: false });
   }
 
   return {

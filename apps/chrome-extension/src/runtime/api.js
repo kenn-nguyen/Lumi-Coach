@@ -1143,12 +1143,18 @@ export async function buildPreviewUrl(resumeId, options = {}) {
   return url.toString();
 }
 
-export async function openPreviewTab(previewUrl) {
+export async function openPreviewTab(previewUrl, { active = true } = {}) {
   if (!previewUrl) {
     throw new Error("Preview URL is required.");
   }
   const { appOrigin } = await getRuntimeEndpoints();
-  await chrome.tabs.create({ url: toAbsoluteUrl(previewUrl, appOrigin) });
+  // active:false opens the finished resume in a background tab so an auto-open
+  // on run completion doesn't steal focus from what the user is doing. Deliberate
+  // "Open resume" clicks pass active:true (the default) to foreground the tab.
+  await chrome.tabs.create({
+    url: toAbsoluteUrl(previewUrl, appOrigin),
+    active,
+  });
 }
 
 export async function openWebsiteSignInTab(extensionId, sourceTabId = null) {

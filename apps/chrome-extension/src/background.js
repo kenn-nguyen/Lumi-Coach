@@ -1723,7 +1723,8 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   if (activeStatus === SESSION_STATUS.patched && extensionState?.previewUrl) {
-    await openPreviewTab(extensionState.previewUrl);
+    // Deferred auto-open (run finished, SW woke) — background tab, don't steal focus.
+    await openPreviewTab(extensionState.previewUrl, { active: false });
     await consumePatchedSuccess(extensionState);
     return;
   }
