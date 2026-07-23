@@ -484,7 +484,11 @@ export async function deleteResume(resumeId: string): Promise<void> {
     } catch {
       detail = '';
     }
-    throw new Error(detail || `Failed to delete resume (status ${res.status}): ${text}`);
+    const error = new Error(
+      detail || `Failed to delete resume (status ${res.status}): ${text}`
+    ) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
 }
 

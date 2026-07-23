@@ -606,8 +606,17 @@ export default function ResumeViewerPage() {
       setShowDeleteDialog(false);
       setShowDeleteSuccessDialog(true);
     } catch (err) {
-      console.error('Failed to delete resume:', err);
-      setDeleteError(t('resumeViewer.errors.failedToDelete'));
+      const status = (err as { status?: number })?.status;
+      // 409 = the backend deliberately blocked the delete (e.g. this is the
+      // master resume). It carries a clear, user-facing reason — surface it and
+      // treat it as expected (warn, not error, so it doesn't trip the dev overlay).
+      if (status === 409 && err instanceof Error && err.message) {
+        console.warn('Delete blocked:', err.message);
+        setDeleteError(err.message);
+      } else {
+        console.error('Failed to delete resume:', err);
+        setDeleteError(t('resumeViewer.errors.failedToDelete'));
+      }
       setShowDeleteDialog(false);
     }
   };
