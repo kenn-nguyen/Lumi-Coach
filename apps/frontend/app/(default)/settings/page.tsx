@@ -139,6 +139,10 @@ export default function SettingsPage() {
   // LLM Config state
   const [provider, setProvider] = useState<LLMProvider>('openai');
   const [model, setModel] = useState('');
+  // The provider/model currently SAVED (what tailoring uses), distinct from the
+  // editable `provider` pill selection which only takes effect on Save.
+  const [activeProvider, setActiveProvider] = useState<LLMProvider | null>(null);
+  const [activeModel, setActiveModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiBase, setApiBase] = useState('');
   const [hasStoredApiKey, setHasStoredApiKey] = useState(false);
@@ -205,6 +209,9 @@ export default function SettingsPage() {
   // Multi-provider API key grid state
   const [providerKeys, setProviderKeys] = useState<Partial<Record<ApiKeyProvider, string>>>({});
   const [savedProviders, setSavedProviders] = useState<Set<ApiKeyProvider>>(new Set());
+  const [providerMasked, setProviderMasked] = useState<
+    Partial<Record<ApiKeyProvider, string | null>>
+  >({});
   const [providerKeysSavingMap, setProviderKeysSavingMap] = useState<
     Partial<Record<ApiKeyProvider, boolean>>
   >({});
@@ -271,6 +278,8 @@ export default function SettingsPage() {
       const safeProvider = isKnownProvider(providerFromBackend) ? providerFromBackend : 'openai';
       setProvider(safeProvider);
       setModel(llmConfig.model || PROVIDER_INFO[safeProvider].defaultModel);
+      setActiveProvider(safeProvider);
+      setActiveModel(llmConfig.model || PROVIDER_INFO[safeProvider].defaultModel);
       setApiBase(normalizeApiBaseForProvider(safeProvider, llmConfig.api_base || '') || '');
 
       if ('has_stored_api_key' in llmConfig) {
@@ -391,10 +400,13 @@ export default function SettingsPage() {
 
         if (apiKeyStatus) {
           const saved = new Set<ApiKeyProvider>();
+          const masked: Partial<Record<ApiKeyProvider, string | null>> = {};
           apiKeyStatus.providers.forEach((p) => {
             if (p.configured) saved.add(p.provider as ApiKeyProvider);
+            masked[p.provider as ApiKeyProvider] = p.masked_key ?? null;
           });
           setSavedProviders(saved);
+          setProviderMasked(masked);
         }
 
         setStatus('idle');
@@ -430,7 +442,7 @@ export default function SettingsPage() {
     setHealthCheck(null);
 
     try {
-      if (requiresApiKey && !apiKey.trim() && !hasStoredApiKey) {
+      if (requiresApiKey && !apiKey.trim() && !selectedKeySaved) {
         setError(t('settings.errors.apiKeyRequired'));
         setStatus('error');
         return;
@@ -442,18 +454,21 @@ export default function SettingsPage() {
         model: model.trim(),
         api_base: normalizeApiBaseForProvider(provider, apiBase),
       };
-      if (requiresApiKey) {
-        if (trimmedKey) {
-          config.api_key = trimmedKey;
-        } else if (!hasStoredApiKey) {
-          config.api_key = '';
-        }
-      } else {
+      // API keys are stored PER PROVIDER (below), not in the primary field — so
+      // switching providers keeps each key and Remove fully clears one. Only
+      // clear the primary field for no-key providers.
+      if (!requiresApiKey) {
         config.api_key = '';
       }
 
       await updateLlmConfig(config);
+      if (requiresApiKey && trimmedKey) {
+        await updateApiKeys({ [selectedApiKeyProvider]: trimmedKey });
+        await refreshApiKeyStatus();
+      }
       await refreshStatus();
+      setActiveProvider(provider);
+      setActiveModel(model.trim() || providerInfo.defaultModel);
       setIsUserSavedConfig(true);
       // Update LLM cache with new values (no raw key stored)
       writeCache(CACHE_KEYS.SETTINGS_LLM, {
@@ -601,6 +616,41 @@ export default function SettingsPage() {
     }
   };
 
+  const refreshApiKeyStatus = async () => {
+    const status = await fetchApiKeyStatus().catch(() => null);
+    if (!status) return;
+    const saved = new Set<ApiKeyProvider>();
+    const masked: Partial<Record<ApiKeyProvider, string | null>> = {};
+    status.providers.forEach((p) => {
+      if (p.configured) saved.add(p.provider as ApiKeyProvider);
+      masked[p.provider as ApiKeyProvider] = p.masked_key ?? null;
+    });
+    setSavedProviders(saved);
+    setProviderMasked(masked);
+  };
+
+  // Per-provider key state for the currently selected provider.
+  const selectedApiKeyProvider = llmProviderToApiKeyProvider(provider);
+  const selectedKeySaved = savedProviders.has(selectedApiKeyProvider);
+  const selectedKeyMasked = providerMasked[selectedApiKeyProvider] ?? null;
+
+  const handleRemovePrimaryKey = async () => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(`Remove the saved ${providerInfo.name} API key?`)
+    ) {
+      return;
+    }
+    try {
+      await deleteApiKey(selectedApiKeyProvider);
+      setApiKey('');
+      await refreshApiKeyStatus();
+      await refreshStatus();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to remove API key');
+    }
+  };
+
   // Output template settings
   const handleOutputTemplateSettingsChange = async (nextSettings: TemplateSettings) => {
     const previousSettings = defaultTemplateSettings;
@@ -745,6 +795,8 @@ export default function SettingsPage() {
       if (llmConfig) {
         setProvider(llmConfig.provider || 'openai');
         setModel(llmConfig.model || PROVIDER_INFO['openai'].defaultModel);
+        setActiveProvider((llmConfig.provider as LLMProvider) || 'openai');
+        setActiveModel(llmConfig.model || PROVIDER_INFO['openai'].defaultModel);
         const isMaskedKey = Boolean(llmConfig.api_key) && llmConfig.api_key.includes('*');
         setHasStoredApiKey(Boolean(llmConfig.api_key));
         setIsUserSavedConfig(Boolean(llmConfig.is_user_config));
@@ -1026,10 +1078,25 @@ export default function SettingsPage() {
                       provider === p ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE
                     }`}
                   >
+                    {activeProvider === p && <span aria-hidden="true">● </span>}
                     {PROVIDER_INFO[p].name.split(' ')[0]}
                   </button>
                 ))}
               </div>
+              {activeProvider && (
+                <p className="font-mono text-xs text-gray-600">
+                  Currently tailoring with:{' '}
+                  <span className="font-semibold text-foreground">
+                    {PROVIDER_INFO[activeProvider]?.name ?? activeProvider}
+                  </span>
+                  {activeModel ? ` · ${activeModel}` : ''}
+                </p>
+              )}
+              {activeProvider && activeProvider !== provider && (
+                <p className="font-mono text-xs text-amber-700">
+                  Not saved — click Save to switch to {PROVIDER_INFO[provider]?.name ?? provider}.
+                </p>
+              )}
               {isServerManagedVertexProvider && (
                 <p className="text-xs text-gray-500 font-mono">
                   Vertex AI is managed by the backend. Choose another provider to save your own
@@ -1050,20 +1117,34 @@ export default function SettingsPage() {
                 }}
                 placeholder={
                   requiresApiKey
-                    ? hasStoredApiKey
-                      ? t('settings.llmConfiguration.leaveBlankToKeepExistingKey')
+                    ? selectedKeySaved
+                      ? 'Enter a new key to replace the saved one'
                       : t('settings.llmConfiguration.apiKeyPlaceholder')
                     : t('settings.llmConfiguration.apiKeyNotRequiredPlaceholder')
                 }
                 className="font-mono"
                 disabled={!requiresApiKey}
               />
-              {hasStoredApiKey && isUserSavedConfig && (
-                <p className="text-xs text-green-700 font-mono flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  {t('settings.llmConfiguration.savedToAccount')}
-                </p>
-              )}
+              {requiresApiKey &&
+                (selectedKeySaved ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-green-700 font-mono flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Key saved{selectedKeyMasked ? ` · ${selectedKeyMasked}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleRemovePrimaryKey}
+                      className="text-xs font-mono text-gray-500 transition-colors hover:text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <p className="font-mono text-xs text-gray-400">
+                    No key saved for {providerInfo.name} yet.
+                  </p>
+                ))}
             </div>
 
             {/* Customize model — collapsible */}

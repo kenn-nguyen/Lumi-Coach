@@ -52,3 +52,4 @@ class TailorStatusResponse(BaseModel):
     completed_at: str | None = None
     tailored_resume_id: str | None = None
     error_message: str | None = None
+    warning: str | None = None

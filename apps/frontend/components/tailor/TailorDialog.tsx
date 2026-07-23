@@ -394,6 +394,11 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                   A new resume has been created based on the job description.
                 </p>
               </div>
+              {statusData?.warning && (
+                <p className="mx-auto max-w-sm rounded-none border border-amber-300 bg-amber-50 px-3 py-2 text-left text-xs text-amber-800">
+                  {statusData.warning}
+                </p>
+              )}
               <div className="flex justify-center gap-2 pt-2">
                 <Button variant="outline" onClick={onClose}>
                   Close

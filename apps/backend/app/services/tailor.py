@@ -16,6 +16,7 @@ from typing import Any
 from uuid import uuid4
 
 from app import llm
+from app.config import settings
 from app.database import db
 from app.llm import LLMConfig
 from app.services.prompt_loader import (
@@ -230,7 +231,24 @@ def _set_failed(resume_id: str, user_id: str, message: str) -> None:
     )
 
 
-def _set_completed(resume_id: str, user_id: str, tailored_resume_id: str) -> None:
+def _saved_provider_names(user_id: str | None) -> list[str]:
+    """Provider names the user has a saved per-provider key for (for reminders)."""
+    if not user_id:
+        return []
+    try:
+        cfg = db.get_user_llm_config(user_id) or {}
+        keys = cfg.get("extra_api_keys") or {}
+        return sorted(name for name, value in keys.items() if value)
+    except Exception:
+        return []
+
+
+def _set_completed(
+    resume_id: str,
+    user_id: str,
+    tailored_resume_id: str,
+    warning: str | None = None,
+) -> None:
     _update_tailor_job(
         resume_id,
         user_id,
@@ -238,6 +256,7 @@ def _set_completed(resume_id: str, user_id: str, tailored_resume_id: str) -> Non
             "status": "completed",
             "tailored_resume_id": tailored_resume_id,
             "completed_at": _utcnow_iso(),
+            "warning": warning,
         },
     )
 
@@ -411,21 +430,55 @@ async def run_tailor_pipeline(
             _update_progress(resume_id, user_id, "apify")
             from app.services.apify_linkedin import fetch_linkedin_job_detail_via_apify
 
-            try:
-                jd_data = await fetch_linkedin_job_detail_via_apify(jd_url, api_key=apify_api_key)
-                jd_text = jd_data.get("raw_text") or ""
-                job_title = jd_data.get("title", "").strip()
-                company = jd_data.get("company", "").strip()
-                apify_location = jd_data.get("location", "").strip() or None
-                if company and job_title:
-                    apify_title = f"{company} - {job_title}"
-                elif job_title:
-                    apify_title = job_title
-                elif company:
-                    apify_title = company
-            except Exception as exc:
-                _set_failed(resume_id, user_id, str(exc))
+            # Try the user's/config Apify key first, then the server (env) key.
+            apify_keys: list[str] = []
+            for candidate in (apify_api_key, settings.apify_api_token):
+                token = (candidate or "").strip()
+                if token and token not in apify_keys:
+                    apify_keys.append(token)
+
+            if not apify_keys:
+                _set_failed(
+                    resume_id,
+                    user_id,
+                    "To tailor from a LinkedIn URL you need an Apify API key. Add one in "
+                    "Settings (get it at https://apify.com/apimaestro/linkedin-job-detail), "
+                    "or paste the job description text instead.",
+                )
                 return
+
+            jd_data = None
+            last_error: Exception | None = None
+            for token in apify_keys:
+                try:
+                    jd_data = await fetch_linkedin_job_detail_via_apify(jd_url, api_key=token)
+                    break
+                except Exception as exc:  # noqa: BLE001 - try the next key, report at the end
+                    last_error = exc
+                    logger.warning("Apify fetch failed with one key for %s: %s", jd_url, exc)
+
+            if jd_data is None:
+                logger.error("Apify LinkedIn fetch failed for %s: %s", jd_url, last_error)
+                _set_failed(
+                    resume_id,
+                    user_id,
+                    "Couldn't fetch the LinkedIn job from Apify. Check that your Apify API "
+                    "key in Settings is valid (get one at "
+                    "https://apify.com/apimaestro/linkedin-job-detail), or paste the job "
+                    "description text instead.",
+                )
+                return
+
+            jd_text = jd_data.get("raw_text") or ""
+            job_title = jd_data.get("title", "").strip()
+            company = jd_data.get("company", "").strip()
+            apify_location = jd_data.get("location", "").strip() or None
+            if company and job_title:
+                apify_title = f"{company} - {job_title}"
+            elif job_title:
+                apify_title = job_title
+            elif company:
+                apify_title = company
 
         if not jd_text:
             _set_failed(resume_id, user_id, "No job description text available.")
@@ -468,6 +521,49 @@ async def run_tailor_pipeline(
         p2_json: dict[str, Any] = {}
         p3_prompt = ""
 
+        # LLM fallback: if the user's key fails a stage (invalid key / quota /
+        # unsupported model), finish the run on Lumi's free shared model instead of
+        # failing — and remember it so we can tell the user afterwards.
+        _fallback = {"used": False}
+        _free_config: LLMConfig | None = None
+
+        async def _stage_call(
+            prompt: str,
+            sys_prompt: str,
+            stage_config: LLMConfig,
+            label: str,
+            *,
+            parse_json: bool,
+            stage_kwargs: dict | None,
+        ) -> tuple[str, dict | None]:
+            nonlocal _free_config
+            if _fallback["used"] and _free_config is not None:
+                return await _call_llm_with_repair(
+                    prompt, sys_prompt, _free_config, label, parse_json=parse_json
+                )
+            try:
+                return await _call_llm_with_repair(
+                    prompt,
+                    sys_prompt,
+                    stage_config,
+                    label,
+                    parse_json=parse_json,
+                    stage_kwargs=stage_kwargs,
+                )
+            except llm.UserLlmRequestError:
+                candidate = llm.get_server_llm_config()
+                # Only fall back if the free shared model is actually usable.
+                if not candidate.api_key and candidate.provider != "vertex_ai":
+                    raise
+                _free_config = candidate
+                _fallback["used"] = True
+                logger.warning(
+                    "User LLM key failed at %s — completing on the free shared model.", label
+                )
+                return await _call_llm_with_repair(
+                    prompt, sys_prompt, _free_config, label, parse_json=parse_json
+                )
+
         # ── Stage 1: Prompt 1 — Analyze JD ────────────────────────────────
         if not is_single_stage:
             if _is_canceled(resume_id, user_id):
@@ -475,9 +571,10 @@ async def run_tailor_pipeline(
             _update_progress(resume_id, user_id, "prompt1")
 
             p1_config, p1_kwargs = _resolve_stage_llm_config("prompt1", llm_config, user_id)
+
             p1_prompt = build_prompt("prompt1", prompt_profile_id, base_vars)
             _p1_start = datetime.now(timezone.utc)
-            p1_raw, p1_parsed = await _call_llm_with_repair(
+            p1_raw, p1_parsed = await _stage_call(
                 p1_prompt,
                 system_prompt,
                 p1_config,
@@ -504,7 +601,7 @@ async def run_tailor_pipeline(
             }
             p2_prompt = build_prompt("prompt2", prompt_profile_id, p2_vars)
             _p2_start = datetime.now(timezone.utc)
-            p2_raw, p2_parsed = await _call_llm_with_repair(
+            p2_raw, p2_parsed = await _stage_call(
                 p2_prompt,
                 system_prompt,
                 p2_config,
@@ -538,7 +635,7 @@ async def run_tailor_pipeline(
         }
         p3_prompt = build_prompt("prompt3", prompt_profile_id, p3_vars)
         _p3_start = datetime.now(timezone.utc)
-        p3_raw, _ = await _call_llm_with_repair(
+        p3_raw, _ = await _stage_call(
             p3_prompt,
             system_prompt,
             p3_config,
@@ -615,7 +712,24 @@ async def run_tailor_pipeline(
             user_id=user_id,
         )
 
-        _set_completed(resume_id, user_id, tailored_resume_id)
+        fallback_warning: str | None = None
+        if _fallback["used"]:
+            saved = [name for name in _saved_provider_names(user_id) if name != llm_config.provider]
+            fallback_warning = (
+                f"Your {llm_config.provider} key couldn't complete this, so we tailored with "
+                "Lumi's free model."
+            )
+            if saved:
+                fallback_warning += (
+                    f" You also have keys saved for {', '.join(saved)} — fix "
+                    f"{llm_config.provider} or switch provider in Settings for full quality."
+                )
+            else:
+                fallback_warning += (
+                    f" Add or fix your {llm_config.provider} key in Settings for full quality."
+                )
+
+        _set_completed(resume_id, user_id, tailored_resume_id, warning=fallback_warning)
 
         # Record the web tailor run in extension_runs (unified log — same table as extension).
         _total_ms = int((datetime.now(timezone.utc) - run_started_at).total_seconds() * 1000)

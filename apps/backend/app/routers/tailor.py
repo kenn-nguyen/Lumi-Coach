@@ -14,7 +14,6 @@ from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from app.config import settings
 from app.config_cache import load_config
 from app.database import db
 from app.llm import get_llm_config
@@ -88,7 +87,7 @@ async def start_tailor(
         jd_text=request.jd_text,
         prompt_profile_id=request.prompt_profile_id,
         llm_config=llm_config,
-        apify_api_key=load_config().get("apify_api_token") or settings.apify_api_token or None,
+        apify_api_key=load_config().get("apify_api_token") or None,
     )
 
     logger.info("Tailor job %s queued for resume %s (user %s)", job_id, resume_id, user_id)
@@ -125,6 +124,7 @@ async def get_tailor_status(
         completed_at=job.get("completed_at"),
         tailored_resume_id=job.get("tailored_resume_id"),
         error_message=job.get("error_message"),
+        warning=job.get("warning"),
     )
 
 

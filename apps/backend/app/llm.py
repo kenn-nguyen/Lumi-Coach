@@ -50,8 +50,15 @@ class LLMConfig(BaseModel):
 
 
 def _is_effective_user_llm_config(user_config: dict[str, Any]) -> bool:
-    """Return whether a saved user config should override server fallback."""
-    return bool(user_config.get("encrypted_api_key"))
+    """Return whether a saved user config should override server fallback.
+
+    Effective if the user has a legacy primary key OR a per-provider key stored
+    for their selected provider.
+    """
+    if user_config.get("encrypted_api_key"):
+        return True
+    provider = str(user_config.get("provider") or "")
+    return bool(provider and resolve_extra_api_key(user_config, provider))
 
 
 SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE = (
@@ -430,15 +437,20 @@ def get_llm_config(user_id: str | None = None) -> LLMConfig:
             user_config = None
 
         if user_config and _is_effective_user_llm_config(user_config):
-            encrypted_api_key = user_config.get("encrypted_api_key")
-            try:
-                api_key = decrypt_api_key(encrypted_api_key) if encrypted_api_key else ""
-            except LLMConfigEncryptionError:
-                logging.exception("Failed to decrypt user LLM API key")
-                api_key = ""
+            provider_str = str(user_config.get("provider") or settings.llm_provider)
+            # Per-provider key (extra_api_keys) is authoritative for the active
+            # provider; fall back to the legacy primary key.
+            api_key = resolve_extra_api_key(user_config, provider_str)
+            if not api_key:
+                encrypted_api_key = user_config.get("encrypted_api_key")
+                try:
+                    api_key = decrypt_api_key(encrypted_api_key) if encrypted_api_key else ""
+                except LLMConfigEncryptionError:
+                    logging.exception("Failed to decrypt user LLM API key")
+                    api_key = ""
 
             return LLMConfig(
-                provider=str(user_config.get("provider") or settings.llm_provider),
+                provider=provider_str,
                 model=str(user_config.get("model") or settings.llm_model),
                 api_key=api_key,
                 api_base=user_config.get("api_base"),
