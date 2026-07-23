@@ -150,7 +150,7 @@ export const PROVIDER_INFO: Record<
     defaultModel: 'deepseek/deepseek-chat',
     requiresKey: true,
   },
-  gemini: { name: 'Google Gemini', defaultModel: 'gemini-2.5-flash-lite', requiresKey: true },
+  gemini: { name: 'Google Gemini', defaultModel: 'gemini-3.1-flash-lite', requiresKey: true },
   vertex_ai: {
     name: 'Google Vertex AI',
     defaultModel: 'gemini-2.5-flash-lite',
