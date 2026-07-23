@@ -169,6 +169,8 @@ const LLM_CONFIG_DOWNLOAD_ID = "resume-matcher-llm-config-download";
 const LLM_CONFIG_IMPORT_BTN_ID = "resume-matcher-llm-config-import-btn";
 const LLM_CONFIG_IMPORT_INPUT_ID = "resume-matcher-llm-config-import-input";
 const LLM_CONFIG_RESET_ID = "resume-matcher-llm-config-reset";
+const LLM_CONFIG_ENABLED_INPUT_ID = "resume-matcher-llm-config-enabled";
+const LLM_CONFIG_CONTROLS_ID = "resume-matcher-llm-config-controls";
 const STYLE_ID = "resume-matcher-floating-style";
 const POSITION_KEY = "resumeMatcherFloatingPosition";
 const DISMISSED_KEY = "resumeMatcherFloatingButtonDismissed";
@@ -277,6 +279,10 @@ const EXTENSION_VERSION = (() => {
 })();
 const STORY_BANK_GUIDE_URL = `${APP_URL}story-bank`;
 const DEFAULT_ACTIVE_PROMPT_PROFILE_ID = "profile5";
+// A LinkedIn-scraped JD shorter than this is almost always broken (truncated read,
+// wrong element, or a custom instruction pasted into the JD box) rather than a
+// genuinely short posting. Below it we block the scrape run and require manual paste.
+const MIN_LINKEDIN_JD_CHARS = 1000;
 const CHOOSE_AI_PROVIDER_MESSAGE = "Choose your AI provider to continue.";
 const PROVIDER_SAVE_REQUIRED_MESSAGE =
   "Save your AI setup before uploading your Master Resume.";
@@ -4864,7 +4870,20 @@ function renderSettings() {
     accountDetail.title = accountDetail.textContent;
   }
 
+  // Per-stage routing is gated behind the advanced toggle (default off). When
+  // off, getUserAssets already nulls importedLlmConfig, so hasImportedLlmConfig
+  // reflects "on AND a config is imported".
+  const advancedLlmRoutingEnabled = assets?.advancedLlmRoutingEnabled === true;
   const hasImportedLlmConfig = Boolean(assets?.importedLlmConfig);
+  const llmConfigEnabledInput = $(LLM_CONFIG_ENABLED_INPUT_ID);
+  if (
+    llmConfigEnabledInput &&
+    llmConfigEnabledInput !== document.activeElement
+  ) {
+    llmConfigEnabledInput.checked = advancedLlmRoutingEnabled;
+  }
+  const llmConfigControls = $(LLM_CONFIG_CONTROLS_ID);
+  if (llmConfigControls) llmConfigControls.hidden = !advancedLlmRoutingEnabled;
   const llmConfigBadge = $(LLM_CONFIG_BADGE_ID);
   if (llmConfigBadge) llmConfigBadge.hidden = !hasImportedLlmConfig;
   const llmConfigResetBtn = $(LLM_CONFIG_RESET_ID);
@@ -6508,12 +6527,28 @@ function getActiveQueueRecordForCurrentJob() {
 // tab. For LinkedIn mode we scrape the inline JD text now and pack it as a
 // manual_text jobInput; for manual-paste mode we reuse the pasted JD.
 function buildJobSnapshotForEnqueue() {
-  const manualMode = isManualRunMode() || shouldShowManualJdFallback();
+  // Explicit manual paste = a standalone job. Do NOT inherit the LinkedIn job the
+  // user happens to be viewing: its title/company get injected into the prompt as
+  // the target role and the result would be mis-linked to that posting (the model
+  // tailors for the on-page job instead of the pasted one). The scrape-FALLBACK
+  // case (scraping failed on THIS job) still keeps currentJob — same job, just
+  // pasted because the scrape broke.
+  const explicitManual = isManualRunMode();
+  const manualMode = explicitManual || shouldShowManualJdFallback();
   let jobInput;
   let currentJob;
   if (manualMode) {
-    currentJob = state.currentJob;
-    jobInput = buildManualJobInput();
+    currentJob = explicitManual ? null : state.currentJob;
+    jobInput = explicitManual
+      ? createManualJobInput({
+          rawText: state.manualJobDescription,
+          currentJob: null,
+          manualTitle: state.manualJobTitle,
+          manualCompany: state.manualJobCompany,
+          manualSourceUrl: state.manualJobSourceUrl,
+          locationHref: "",
+        })
+      : buildManualJobInput();
   } else {
     currentJob = extractCurrentJob() || state.currentJob;
     jobInput = createManualJobInput({
@@ -6524,12 +6559,13 @@ function buildJobSnapshotForEnqueue() {
     });
   }
   if (!jobInput || !jobInput.rawText) return null;
-  const sourceUrl =
-    jobInput.sourceUrl || resolveSelectedJobSourceUrl() || window.location.href;
+  const sourceUrl = explicitManual
+    ? jobInput.sourceUrl || ""
+    : jobInput.sourceUrl || resolveSelectedJobSourceUrl() || window.location.href;
   return {
     title: jobInput.title || currentJob?.title || "",
     company: jobInput.company || currentJob?.company || "",
-    jobUrl: normalizeJobSourceUrl(sourceUrl),
+    jobUrl: sourceUrl ? normalizeJobSourceUrl(sourceUrl) : "",
     sourceUrl,
     jdText: jobInput.rawText,
     jobInput,
@@ -6650,6 +6686,23 @@ async function handleEnqueueClickInner() {
     await state.promptSyncPromise.catch(() => {});
   }
 
+  // The LinkedIn-scrape path reads the on-page description box; manual paste and
+  // scrape-fallback use the user's own text instead.
+  const isLinkedInScrapePath =
+    !isManualRunMode() && !shouldShowManualJdFallback();
+
+  // Expand the JD "See more" before we read the description box, so a CSS-clamped
+  // box can't hand us a truncated innerText. Best-effort: no-op if there's no
+  // expander, and never blocks the run on failure.
+  if (isLinkedInScrapePath) {
+    try {
+      const { tryExpandJobDescription } = await loadAdapterModule();
+      if (typeof tryExpandJobDescription === "function") {
+        await tryExpandJobDescription(document);
+      }
+    } catch {}
+  }
+
   const snapshot = buildJobSnapshotForEnqueue();
   if (!snapshot) {
     const scrape = getScrapeRequirementStatus();
@@ -6660,6 +6713,26 @@ async function handleEnqueueClickInner() {
       scrape.title,
       scrape.detail,
     );
+    return;
+  }
+
+  // Block a suspiciously short LinkedIn scrape and force manual paste — a JD this
+  // short is almost always a bad read (truncation, wrong element, or an
+  // instruction pasted into the JD), not a real posting. Manual paste and the
+  // scrape-fallback box are exempt: that text is the user's explicit input.
+  const jdChars = snapshot.jdText.trim().length;
+  if (isLinkedInScrapePath && jdChars < MIN_LINKEDIN_JD_CHARS) {
+    const scrape = getScrapeRequirementStatus(
+      `The job description we read looks unusually short (${jdChars} characters), so it may be cut off or the wrong text. Paste the full job description below to continue.`,
+    );
+    state.scrapeIssue = scrape.detail;
+    setExplicitRunStatus(
+      "interrupted",
+      scrape.tone,
+      "Job description looks incomplete",
+      scrape.detail,
+    );
+    render();
     return;
   }
 
@@ -7626,13 +7699,21 @@ function ensureRoot() {
                       <div class="resume-matcher-settings-item__title">LLM config</div>
                       <span id="${LLM_CONFIG_BADGE_ID}" class="resume-matcher-settings-status-pill" data-tone="success" hidden>Custom active</span>
                     </div>
-                    <div class="resume-matcher-settings-item__detail">Route different prompt stages to different AI providers. Download the template for instructions — edit it in a text editor, then import.</div>
-                    <div class="resume-matcher-button-row">
-                      <button id="${LLM_CONFIG_DOWNLOAD_ID}" type="button" class="resume-matcher-button">Download template</button>
-                      <button id="${LLM_CONFIG_IMPORT_BTN_ID}" type="button" class="resume-matcher-button">Import config</button>
-                      <button id="${LLM_CONFIG_RESET_ID}" type="button" class="resume-matcher-button is-quiet" hidden>Reset</button>
+                    <div class="resume-matcher-settings-item__detail">Off by default: every stage uses your active AI provider. Turn on only to route different prompt stages to different providers via a config file.</div>
+                    <label class="resume-matcher-inline-action resume-matcher-inline-action--compact" for="${LLM_CONFIG_ENABLED_INPUT_ID}">
+                      <span class="resume-matcher-inline-action__label">Enable per-stage routing</span>
+                      <input id="${LLM_CONFIG_ENABLED_INPUT_ID}" class="resume-matcher-checkbox" type="checkbox" />
+                      <span class="resume-matcher-toggle" aria-hidden="true"></span>
+                    </label>
+                    <div id="${LLM_CONFIG_CONTROLS_ID}" class="resume-matcher-settings-substack" hidden>
+                      <div class="resume-matcher-settings-item__detail">Download the template for instructions — edit it in a text editor, then import.</div>
+                      <div class="resume-matcher-button-row">
+                        <button id="${LLM_CONFIG_DOWNLOAD_ID}" type="button" class="resume-matcher-button">Download template</button>
+                        <button id="${LLM_CONFIG_IMPORT_BTN_ID}" type="button" class="resume-matcher-button">Import config</button>
+                        <button id="${LLM_CONFIG_RESET_ID}" type="button" class="resume-matcher-button is-quiet" hidden>Reset</button>
+                      </div>
+                      <input id="${LLM_CONFIG_IMPORT_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".yaml,.yml,text/yaml,text/plain" />
                     </div>
-                    <input id="${LLM_CONFIG_IMPORT_INPUT_ID}" class="resume-matcher-file-input" type="file" accept=".yaml,.yml,text/yaml,text/plain" />
                   </div>
                   <div class="resume-matcher-advanced-actions resume-matcher-field--full">
                     <button id="${EXPORT_DATA_ID}" type="button" class="resume-matcher-button">Export run data</button>
@@ -8009,6 +8090,19 @@ function ensureRoot() {
         "error",
         "Log download failed",
         error instanceof Error ? error.message : "Unable to download logs.",
+      );
+    }
+  });
+  $(LLM_CONFIG_ENABLED_INPUT_ID)?.addEventListener("change", async () => {
+    const enabled = $(LLM_CONFIG_ENABLED_INPUT_ID)?.checked === true;
+    try {
+      await sendMessage("SAVE_ADVANCED_LLM_ROUTING", { enabled });
+      await refreshBoardData();
+    } catch (error) {
+      setRunStatus(
+        "error",
+        "Couldn’t save",
+        error instanceof Error ? error.message : "Please try again.",
       );
     }
   });

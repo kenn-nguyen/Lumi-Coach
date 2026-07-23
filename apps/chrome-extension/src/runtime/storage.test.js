@@ -10,9 +10,12 @@ import {
   clearExtensionLocalData,
   getActiveAccountKey,
   getExtensionState,
+  getImportedLlmConfig,
   getPendingExtensionAction,
   getServerPromptDefaults,
   getUserAssets,
+  setAdvancedLlmRoutingEnabled,
+  setImportedLlmConfig,
   savePromptDefaultsMode,
   savePromptTemplateProfileSelection,
   setExtensionState,
@@ -392,6 +395,34 @@ describe("account-scoped extension storage", () => {
 
     expect(profiles.activeProfileId).toBe("profile4");
     expect((await getUserAssets()).activePromptProfileId).toBe("profile4");
+  });
+
+  it("gates importedLlmConfig behind the advanced routing toggle (keep-but-ignore)", async () => {
+    await setExtensionAuth(createAuth(userA));
+    await activateAccountWorkspace(userA);
+    await setImportedLlmConfig({ stageProviders: { prompt1: "chatgpt" } });
+
+    // Default off: the stored config is not surfaced, so every stage uses the
+    // active provider (resolveProfileForStage falls back on a null config).
+    let assets = await getUserAssets();
+    expect(assets.advancedLlmRoutingEnabled).toBe(false);
+    expect(assets.importedLlmConfig).toBeNull();
+
+    // On: the stored config surfaces again.
+    await setAdvancedLlmRoutingEnabled(true);
+    assets = await getUserAssets();
+    expect(assets.advancedLlmRoutingEnabled).toBe(true);
+    expect(assets.importedLlmConfig).toEqual({
+      stageProviders: { prompt1: "chatgpt" },
+    });
+
+    // Back off: hidden again but still stored (restorable, not discarded).
+    await setAdvancedLlmRoutingEnabled(false);
+    assets = await getUserAssets();
+    expect(assets.importedLlmConfig).toBeNull();
+    expect(await getImportedLlmConfig()).toEqual({
+      stageProviders: { prompt1: "chatgpt" },
+    });
   });
 
   it("stores profile-scoped system prompt body overrides", async () => {

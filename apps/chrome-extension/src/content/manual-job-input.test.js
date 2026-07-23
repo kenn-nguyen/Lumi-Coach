@@ -90,6 +90,27 @@ describe("createManualJobInput", () => {
     });
   });
 
+  it("carries no job identity for a standalone paste (no currentJob, no page href)", () => {
+    // Explicit manual mode passes currentJob:null + locationHref:"" so the paste
+    // never inherits the LinkedIn job the user is viewing (which would be injected
+    // into the prompt as the target role and mis-link the result).
+    expect(
+      createManualJobInput({
+        rawText: "  A pasted JD for a different job  ",
+        currentJob: null,
+        locationHref: "",
+      }),
+    ).toEqual({
+      source: "manual_text",
+      rawText: "A pasted JD for a different job",
+      title: "",
+      company: "",
+      location: "",
+      datePosted: "",
+      sourceUrl: "",
+    });
+  });
+
   it("prefers manual title, company, and JD link overrides when provided", () => {
     expect(
       createManualJobInput({

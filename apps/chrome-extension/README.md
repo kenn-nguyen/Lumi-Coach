@@ -1,18 +1,18 @@
-# Chrome Extension Scaffold
+# Lumi Coach — Chrome Extension
 
-This folder is reserved for the LinkedIn-to-resume Chrome extension.
+The LinkedIn-to-resume Chrome extension (Manifest V3). This is Lumi Coach's **primary capture surface**: it runs on LinkedIn job pages, tailors the resume, and hands the result to the [web workspace](https://som-career-coach-iota.vercel.app/). This README is the behavioral/interaction contract for the extension.
 
-Planned flow:
+Flow:
 - Show a floating generate action on LinkedIn job pages
 - Extract job data from LinkedIn
 - Run the multi-step prompt pipeline
 - Produce `ResumeData` JSON
 - Create one job-specific `resume_id`
 - Patch the tailored JSON into that record
-- Open the resume preview page in SOM Career Coach
+- Open the resume preview page in the Lumi Coach web app
 - Use the floating board for assets, runs, and settings
 
-Current interaction contract:
+Interaction contract:
 - default visible state is the floating launcher icon
 - clicking the launcher opens the floating board
 - minimizing the board returns to the launcher
@@ -152,5 +152,3 @@ Source-aligned port locations:
 See `PORTING_MAP.md` for the exact source-to-target mapping.
 See `ARCHITECTURE.md` for checkpointing and retry behavior.
 See `ENGINEERING.md` for architecture and coding practices.
-
-Nothing in this folder is wired into the main app yet.

@@ -84,6 +84,7 @@ import {
   setPromptTemplateAsset,
   setImportedLlmConfig,
   clearImportedLlmConfig,
+  setAdvancedLlmRoutingEnabled,
 } from "./runtime/storage.js";
 import {
   getPackagedPromptArtifactText,
@@ -2072,6 +2073,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "CLEAR_IMPORTED_LLM_CONFIG":
         await clearImportedLlmConfig();
         return { ok: true };
+
+      case "SAVE_ADVANCED_LLM_ROUTING": {
+        const advancedLlmRoutingEnabled = await setAdvancedLlmRoutingEnabled(
+          message.payload?.enabled === true,
+        );
+        return { ok: true, advancedLlmRoutingEnabled };
+      }
 
       case "RESET_DEFAULT_SETTINGS":
         await resetExtensionSettingsToDefault();

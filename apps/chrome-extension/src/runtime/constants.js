@@ -26,6 +26,7 @@ export const STORAGE_KEYS = {
   serverPromptLastSyncedAt: "serverPromptLastSyncedAt",
   llmSettings: "llmSettings",
   importedLlmConfig: "importedLlmConfig",
+  advancedLlmRoutingEnabled: "advancedLlmRoutingEnabled",
   chatGptTargetUrl: "chatGptTargetUrl",
   appOrigin: "appOrigin",
   apiOrigin: "apiOrigin",

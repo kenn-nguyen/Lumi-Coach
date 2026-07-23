@@ -61,7 +61,6 @@ import {
   formatApiProviderErrorForUser,
   isApiProviderError,
 } from "./llm/api-errors.js";
-import { extractLinkedInJobIdFromUrl } from "../shared/linkedin-route.js";
 import {
   createRunAbortSignal,
   isRunCanceledError,
@@ -138,14 +137,12 @@ async function getResolvableTabId(tabId) {
 async function buildJobSnapshot(activeTabId, jobInput = null) {
   const manualRawText = jobInput?.rawText?.trim();
   if (manualRawText) {
-    const tab = await chrome.tabs.get(activeTabId).catch(() => null);
-    const pageUrl = tab?.url || "";
-    const jobId = extractLinkedInJobIdFromUrl(pageUrl);
-    const sourceUrl =
-      jobInput?.sourceUrl?.trim() ||
-      (jobId
-        ? `${new URL(pageUrl).origin}/jobs/view/${jobId}/`
-        : pageUrl);
+    // A manual paste is linked only to the URL the input itself carries: the
+    // scrape-fallback case supplies the on-page job's URL via jobInput.sourceUrl;
+    // a standalone paste supplies the user's URL or none. Do NOT re-derive it from
+    // the source tab — that would re-attach a standalone paste to whatever job
+    // page happens to be open (the "tailored the LinkedIn job" bug).
+    const sourceUrl = jobInput?.sourceUrl?.trim() || "";
 
     return {
       source: jobInput?.source || "manual_text",

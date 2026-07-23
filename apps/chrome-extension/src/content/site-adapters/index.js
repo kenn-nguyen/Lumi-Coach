@@ -1,4 +1,5 @@
 import { linkedInAdapter } from './linkedin/adapter.js';
+import { tryExpandJobDescription } from './shared/expand-text.js';
 
 const ADAPTERS = [linkedInAdapter];
 
@@ -9,4 +10,4 @@ export function getAdapter(hostname) {
   return null;
 }
 
-export { linkedInAdapter };
+export { linkedInAdapter, tryExpandJobDescription };

@@ -60,6 +60,7 @@ const ACCOUNT_SETTINGS_SCOPED_KEYS = [
   STORAGE_KEYS.onboardingProgress,
   STORAGE_KEYS.apifyFallbackSettings,
   STORAGE_KEYS.importedLlmConfig,
+  STORAGE_KEYS.advancedLlmRoutingEnabled,
 ];
 
 function getDefaultOnboardingProgress() {
@@ -759,6 +760,7 @@ export async function getUserAssets() {
         STORAGE_KEYS.onboardingProgress,
         STORAGE_KEYS.apifyFallbackSettings,
         STORAGE_KEYS.importedLlmConfig,
+        STORAGE_KEYS.advancedLlmRoutingEnabled,
       ],
       accountKey,
     ),
@@ -786,6 +788,8 @@ export async function getUserAssets() {
   const promptDefaultsMode = normalizePromptDefaultsMode(
     scopedData[STORAGE_KEYS.promptDefaultsMode],
   );
+  const advancedLlmRoutingEnabled =
+    scopedData[STORAGE_KEYS.advancedLlmRoutingEnabled] === true;
   return {
     activeAccountKey: accountKey,
     masterResumeContextAsset:
@@ -809,7 +813,14 @@ export async function getUserAssets() {
     apifyFallbackSettings: normalizeApifyFallbackSettings(
       scopedData[STORAGE_KEYS.apifyFallbackSettings],
     ),
-    importedLlmConfig: scopedData[STORAGE_KEYS.importedLlmConfig] ?? null,
+    // Per-stage YAML routing only applies when the user has explicitly enabled
+    // the advanced toggle (default off). When off, a previously-imported config
+    // is kept in storage but not surfaced, so every stage uses the active
+    // provider (resolveProfileForStage falls back on a null importedLlmConfig).
+    advancedLlmRoutingEnabled,
+    importedLlmConfig: advancedLlmRoutingEnabled
+      ? scopedData[STORAGE_KEYS.importedLlmConfig] ?? null
+      : null,
   };
 }
 
@@ -1279,4 +1290,19 @@ export async function setImportedLlmConfig(config) {
 
 export async function clearImportedLlmConfig() {
   await removeScopedStorageKeys([STORAGE_KEYS.importedLlmConfig]);
+}
+
+export async function getAdvancedLlmRoutingEnabled() {
+  const data = await getScopedStorageValues([
+    STORAGE_KEYS.advancedLlmRoutingEnabled,
+  ]);
+  return data[STORAGE_KEYS.advancedLlmRoutingEnabled] === true;
+}
+
+export async function setAdvancedLlmRoutingEnabled(enabled) {
+  const next = enabled === true;
+  await setScopedStorageValues({
+    [STORAGE_KEYS.advancedLlmRoutingEnabled]: next,
+  });
+  return next;
 }
