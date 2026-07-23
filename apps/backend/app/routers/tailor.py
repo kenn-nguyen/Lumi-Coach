@@ -50,7 +50,8 @@ async def start_tailor(
         raise HTTPException(status_code=404, detail="Resume not found.")
 
     # ── Guard: only one active job per user ────────────────────────────────
-    existing_resumes: list[dict] = db.list_resumes(user_id=user_id)
+    # list_resumes returns a paginated {"items": [...], "total": N} dict.
+    existing_resumes = db.list_resumes(user_id=user_id).get("items", [])
     for r in existing_resumes:
         job = r.get("tailor_job") or {}
         if job.get("status") == "running" and r.get("resume_id") != resume_id:
