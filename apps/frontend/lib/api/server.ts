@@ -5,7 +5,10 @@ import { createBackendAccessToken } from '@/lib/auth/backend-token';
 import type { ResumeListItem } from '@/lib/api/resume';
 
 // The Next.js server reaches the FastAPI backend directly on the loopback origin.
-const INTERNAL_API_BASE = 'http://127.0.0.1:8000/api/v1';
+// Override with INTERNAL_API_ORIGIN when the backend only answers on a specific
+// address (e.g. Docker Desktop on macOS publishes IPv6-only: set http://[::1]:8000).
+const INTERNAL_API_ORIGIN = process.env.INTERNAL_API_ORIGIN ?? 'http://localhost:8000';
+const INTERNAL_API_BASE = `${INTERNAL_API_ORIGIN}/api/v1`;
 
 type DashboardProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
 
