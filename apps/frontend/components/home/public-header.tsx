@@ -62,6 +62,7 @@ export function PublicHeader({ activeTab = null }: PublicHeaderProps): React.Rea
           Install now
         </a>
         <AuthCta
+          signedInLabel="Sign in"
           eventTarget={activeTab === 'story-bank' ? 'public_header_story_bank' : 'public_header'}
           className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e6cad2]/95 bg-white/70 px-5 text-sm font-semibold text-[#6f102d] transition hover:bg-white"
         />
