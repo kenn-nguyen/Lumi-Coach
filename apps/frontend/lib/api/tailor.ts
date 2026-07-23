@@ -42,7 +42,7 @@ export async function startTailor(
   resumeId: string,
   request: StartTailorRequest
 ): Promise<TailorStartResponse> {
-  const resp = await apiFetch(`/api/v1/resumes/${resumeId}/tailor`, {
+  const resp = await apiFetch(`/resumes/${resumeId}/tailor`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -55,7 +55,7 @@ export async function startTailor(
 }
 
 export async function getTailorStatus(resumeId: string): Promise<TailorStatusResponse> {
-  const resp = await apiFetch(`/api/v1/resumes/${resumeId}/tailor/status`, {
+  const resp = await apiFetch(`/resumes/${resumeId}/tailor/status`, {
     method: 'GET',
   });
   if (!resp.ok) {
@@ -66,7 +66,7 @@ export async function getTailorStatus(resumeId: string): Promise<TailorStatusRes
 }
 
 export async function cancelTailor(resumeId: string): Promise<void> {
-  const resp = await apiFetch(`/api/v1/resumes/${resumeId}/tailor/cancel`, {
+  const resp = await apiFetch(`/resumes/${resumeId}/tailor/cancel`, {
     method: 'POST',
   });
   if (!resp.ok) {
