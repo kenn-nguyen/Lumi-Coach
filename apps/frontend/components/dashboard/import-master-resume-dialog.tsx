@@ -57,8 +57,11 @@ export function ImportMasterResumeDialog({
     } catch (submitError) {
       const base =
         submitError instanceof Error ? submitError.message : 'Failed to import master resume.';
+      // A missing resource (404) is a state error, not an LLM problem — don't
+      // blame the free tier for it.
+      const isMissingResource = /not found|no longer exists|404/i.test(base);
       const freeTierSuffix =
-        systemStatus?.using_free_llm && !systemStatus?.has_user_api_key
+        !isMissingResource && systemStatus?.using_free_llm && !systemStatus?.has_user_api_key
           ? ' This may be due to free tier instability — try again or add your own API key in Settings.'
           : '';
       setError(base + freeTierSuffix);

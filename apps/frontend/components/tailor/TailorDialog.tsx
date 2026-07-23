@@ -143,8 +143,11 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
       startPolling(resumeId);
     } catch (err: unknown) {
       const base = err instanceof Error ? err.message : 'Failed to start pipeline.';
+      // A missing resource (404) is a state error, not an LLM problem — don't
+      // blame the free tier for it.
+      const isMissingResource = /not found|no longer exists|404/i.test(base);
       const freeTierSuffix =
-        systemStatus?.using_free_llm && !systemStatus?.has_user_api_key
+        !isMissingResource && systemStatus?.using_free_llm && !systemStatus?.has_user_api_key
           ? ' This may be due to free tier instability — try again or add your own API key in Settings.'
           : '';
       setErrorMsg(base + freeTierSuffix);
@@ -262,12 +265,17 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                 )}
               </div>
 
-              {/* Divider */}
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs font-mono text-muted-foreground">OR</span>
-                <div className="h-px flex-1 bg-border" />
+              {/* Divider — only ONE of the two is needed */}
+              <div className="flex items-center gap-3 py-1">
+                <div className="h-0.5 flex-1 bg-foreground/20" />
+                <span className="rounded-full bg-[#15803D] px-4 py-1 font-mono text-xs font-bold uppercase tracking-[0.2em] text-white">
+                  Or
+                </span>
+                <div className="h-0.5 flex-1 bg-foreground/20" />
               </div>
+              <p className="-mt-2 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Choose one — a job link or the pasted text
+              </p>
 
               {/* JD text */}
               <div>
