@@ -15,6 +15,8 @@ interface SetupChecklistProps {
   masterResumeId: string | null;
   processingStatus: ProcessingStatus;
   onUploadResume: () => void;
+  dismissed: boolean;
+  onDismissedChange: (dismissed: boolean) => void;
 }
 
 export function SetupChecklist({
@@ -22,6 +24,8 @@ export function SetupChecklist({
   masterResumeId,
   processingStatus,
   onUploadResume,
+  dismissed,
+  onDismissedChange,
 }: SetupChecklistProps) {
   // Gate on fresh API data, not stale localStorage cache.
   // mountTime is set once in useLayoutEffect so it can be read safely during render.
@@ -53,12 +57,10 @@ export function SetupChecklist({
 
   const stepsComplete = [step1Done, step2Done].filter(Boolean).length;
 
-  // Let the user dismiss the modal (e.g. signed in with the wrong Google
-  // account) so they can reach the account menu and log out / switch. Setup
-  // isn't complete, so the modal returns on the next load — dismissing only
-  // unblocks the current view, it doesn't skip setup.
-  const [dismissed, setDismissed] = useState(false);
-
+  // Dismissal is owned by the parent so the "Add Master Resume" button can
+  // re-open this modal after the user closes it (e.g. signed in with the wrong
+  // Google account). Setup isn't complete, so the modal also returns on the
+  // next load — dismissing only unblocks the current view, it doesn't skip setup.
   const shouldShowModal = hasFreshApiData && systemStatus !== null && !isSetupDone && !dismissed;
 
   // Lock scroll while setup modal is open
@@ -77,12 +79,12 @@ export function SetupChecklist({
     const block = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopImmediatePropagation();
-        setDismissed(true);
+        onDismissedChange(true);
       }
     };
     document.addEventListener('keydown', block, true);
     return () => document.removeEventListener('keydown', block, true);
-  }, [shouldShowModal]);
+  }, [shouldShowModal, onDismissedChange]);
 
   if (!shouldShowModal || typeof document === 'undefined') return null;
 
@@ -107,7 +109,7 @@ export function SetupChecklist({
             <button
               type="button"
               aria-label="Close"
-              onClick={() => setDismissed(true)}
+              onClick={() => onDismissedChange(true)}
               className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition hover:bg-secondary/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
             >
               <X className="h-4 w-4" />

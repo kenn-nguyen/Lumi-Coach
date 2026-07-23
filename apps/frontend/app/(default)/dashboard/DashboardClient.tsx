@@ -125,6 +125,9 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
   const [isTailorMenuOpen, setIsTailorMenuOpen] = useState(false);
   const [showImportTailoredDialog, setShowImportTailoredDialog] = useState(false);
   const [showImportMasterDialog, setShowImportMasterDialog] = useState(false);
+  // Owns the "Welcome — let's get you set up" modal's dismissed state so the
+  // "Add Master Resume" button can re-open it.
+  const [setupDismissed, setSetupDismissed] = useState(false);
   const [isLlmNoticeDismissed, setIsLlmNoticeDismissed] = useState(false);
   const [resumePendingDelete, setResumePendingDelete] = useState<ResumeListItem | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -832,7 +835,7 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
               <Button
                 variant="outline"
                 className="h-10 min-w-[15rem] justify-start px-4"
-                onClick={() => setShowTailorPrompt(true)}
+                onClick={() => setSetupDismissed(false)}
               >
                 <span className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/10 bg-primary text-white">
                   <Plus className="h-3.5 w-3.5" />
@@ -921,6 +924,8 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
           masterResumeId={masterResumeId}
           processingStatus={processingStatus}
           onUploadResume={() => setShowImportMasterDialog(true)}
+          dismissed={setupDismissed}
+          onDismissedChange={setSetupDismissed}
         />
 
         {/* Background tailor job banner */}
