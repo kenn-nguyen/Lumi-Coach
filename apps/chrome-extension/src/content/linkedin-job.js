@@ -5377,17 +5377,24 @@ function renderRunView() {
       state.currentJob?.company || "",
     );
   }
+  // Prefill the JD-link field with the on-page job URL (LinkedIn job when
+  // detected, otherwise the current page URL) so a manual paste on any job site
+  // captures where it came from. `manualJobSourceUrl` is null until the user
+  // edits the field and "" once they clear it, so this never fights a
+  // deliberate clear or typing.
+  const manualSourceUrlFallback =
+    state.currentJob?.sourceUrl || window.location.href;
   if (
     manualSourceUrlInput instanceof HTMLInputElement &&
     manualSourceUrlInput.value !==
       pickManualJobMetadataValue(
         state.manualJobSourceUrl,
-        state.currentJob?.sourceUrl || "",
+        manualSourceUrlFallback,
       )
   ) {
     manualSourceUrlInput.value = pickManualJobMetadataValue(
       state.manualJobSourceUrl,
-      state.currentJob?.sourceUrl || "",
+      manualSourceUrlFallback,
     );
   }
   if (notesField) {
