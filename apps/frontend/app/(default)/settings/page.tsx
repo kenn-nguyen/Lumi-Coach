@@ -426,13 +426,26 @@ export default function SettingsPage() {
   }, [authStatus, t, applyLlmConfig, applyFeatureConfig, applyOutputConfig]);
 
   // Handle provider change
-  const handleProviderChange = (newProvider: LLMProvider) => {
+  const handleProviderChange = async (newProvider: LLMProvider) => {
+    const nextModel = PROVIDER_INFO[newProvider].defaultModel;
     setProvider(newProvider);
-    setModel(PROVIDER_INFO[newProvider].defaultModel);
+    setModel(nextModel);
     setApiBase('');
     setApiKey('');
     setHasStoredApiKey(false);
     setIsUserSavedConfig(false);
+    // Switching provider takes effect immediately — the API key lives in the
+    // per-provider store, so there's no need to re-enter it or click Save.
+    setActiveProvider(newProvider);
+    setActiveModel(nextModel);
+    if (newProvider === 'vertex_ai') return; // backend-managed; can't save per-user
+    try {
+      await updateLlmConfig({ provider: newProvider, model: nextModel, api_base: null });
+      invalidateCache(CACHE_KEYS.STATUS);
+      await refreshStatus();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to switch provider.');
+    }
   };
 
   // Save configuration
@@ -1090,11 +1103,6 @@ export default function SettingsPage() {
                     {PROVIDER_INFO[activeProvider]?.name ?? activeProvider}
                   </span>
                   {activeModel ? ` · ${activeModel}` : ''}
-                </p>
-              )}
-              {activeProvider && activeProvider !== provider && (
-                <p className="font-mono text-xs text-amber-700">
-                  Not saved — click Save to switch to {PROVIDER_INFO[provider]?.name ?? provider}.
                 </p>
               )}
               {isServerManagedVertexProvider && (
