@@ -1,8 +1,6 @@
-# Resume Matcher Setup Guide
+# Lumi Coach Setup Guide
 
-[**English**](SETUP.md) | [Español](SETUP.es.md) | [简体中文](SETUP.zh-CN.md) | [日本語](SETUP.ja.md)
-
-Welcome! This guide will walk you through setting up Resume Matcher on your local machine. Whether you're a developer looking to contribute or someone who wants to run the application locally, this guide has you covered.
+Welcome! This guide will walk you through setting up Lumi Coach on your local machine. Whether you're a developer looking to contribute or someone who wants to run the application locally, this guide has you covered.
 
 ---
 
@@ -40,7 +38,7 @@ Before you begin, make sure you have the following installed on your system:
 
 ### Installing uv (Python Package Manager)
 
-Resume Matcher uses `uv` for fast, reliable Python dependency management. Install it with:
+Lumi Coach uses `uv` for fast, reliable Python dependency management. Install it with:
 
 ```bash
 # macOS/Linux
@@ -61,8 +59,8 @@ If you're familiar with development tools and want to get running quickly:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/srbhr/Resume-Matcher.git
-cd Resume-Matcher
+git clone https://github.com/kenn-nguyen/Lumi-Coach.git
+cd Lumi-Coach
 
 # 2. Start the backend (Terminal 1)
 cd apps/backend
@@ -109,8 +107,8 @@ DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/som_career_co
 First, get the code on your machine:
 
 ```bash
-git clone https://github.com/srbhr/Resume-Matcher.git
-cd Resume-Matcher
+git clone https://github.com/kenn-nguyen/Lumi-Coach.git
+cd Lumi-Coach
 ```
 
 ### 2. Backend Setup
@@ -213,13 +211,13 @@ You should see:
 - Local:        http://localhost:3000
 ```
 
-Open **<http://localhost:3000>** in your browser. You should see the Resume Matcher dashboard!
+Open **<http://localhost:3000>** in your browser. You should see the Lumi Coach dashboard!
 
 ---
 
 ## Configuring Your AI Provider
 
-Resume Matcher supports multiple AI providers. You can configure your provider through the Settings page in the app, or by editing the backend `.env` file.
+Lumi Coach supports multiple AI providers. You can configure your provider through the Settings page in the app, or by editing the backend `.env` file.
 
 ### Option A: Cloud Providers
 
@@ -276,7 +274,7 @@ Ollama typically starts automatically after installation.
 
 ## Docker Deployment
 
-Prefer containerized deployment? Resume Matcher includes Docker support.
+Prefer containerized deployment? Lumi Coach includes Docker support.
 
 ### Quick Start with Docker Compose
 
@@ -417,9 +415,6 @@ uv sync --group dev
 
 # Run tests
 uv run pytest
-
-# Check if database needs reset (stored as JSON files)
-ls -la data/
 ```
 
 ### Frontend Commands
@@ -448,18 +443,20 @@ npm run dev -- -p 3001
 
 ### Database Management
 
-Resume Matcher uses TinyDB (JSON file storage). All data is in `apps/backend/data/`:
+Lumi Coach uses PostgreSQL (via SQLAlchemy). For local development the fastest setup is the bundled compose file (see [Local PostgreSQL for Testing](#local-postgresql-for-testing) above):
 
 ```bash
-# View database files
-ls apps/backend/data/
+# Start a local PostgreSQL (localhost:5432)
+docker compose -f docker-compose.local.yml up -d
 
-# Backup your data
-cp -r apps/backend/data apps/backend/data-backup
+# Stop it
+docker compose -f docker-compose.local.yml down
 
-# Reset everything (start fresh)
-rm -rf apps/backend/data
+# Reset everything (drops the local data volume — start fresh)
+docker compose -f docker-compose.local.yml down -v
 ```
+
+Schema updates are applied automatically on backend startup (additive migrations).
 
 ---
 
@@ -528,13 +525,13 @@ CORS_ORIGINS=["http://localhost:3001", "http://127.0.0.1:3001"]
 ## Project Structure Overview
 
 ```
-Resume-Matcher/
+Lumi-Coach/
 ├── apps/
 │   ├── backend/                 # Python FastAPI backend
 │   │   ├── app/
 │   │   │   ├── main.py          # Application entry point
 │   │   │   ├── config.py        # Environment configuration
-│   │   │   ├── database.py      # TinyDB wrapper
+│   │   │   ├── database.py      # PostgreSQL wrapper (SQLAlchemy)
 │   │   │   ├── llm.py           # AI provider integration
 │   │   │   ├── routers/         # API endpoints
 │   │   │   ├── services/        # Business logic
@@ -544,12 +541,14 @@ Resume-Matcher/
 │   │   ├── .env.example         # Environment template
 │   │   └── pyproject.toml       # Python dependencies
 │   │
-│   └── frontend/                # Next.js React frontend
-│       ├── app/                 # Pages (dashboard, builder, etc.)
-│       ├── components/          # Reusable React components
-│       ├── lib/                 # Utilities and API client
-│       ├── .env.sample          # Environment template
-│       └── package.json         # Node.js dependencies
+│   ├── frontend/                # Next.js React frontend
+│   │   ├── app/                 # Pages (dashboard, builder, etc.)
+│   │   ├── components/          # Reusable React components
+│   │   ├── lib/                 # Utilities and API client
+│   │   ├── .env.sample          # Environment template
+│   │   └── package.json         # Node.js dependencies
+│   │
+│   └── chrome-extension/        # MV3 extension (LinkedIn capture — primary product)
 │
 ├── docs/                        # Additional documentation
 ├── docker-compose.yml           # Docker configuration
@@ -563,8 +562,7 @@ Resume-Matcher/
 
 Stuck? Here are your options:
 
-- **Discord Community:** [dsc.gg/resume-matcher](https://dsc.gg/resume-matcher) - Active community for questions and discussions
-- **GitHub Issues:** [Open an issue](https://github.com/srbhr/Resume-Matcher/issues) for bugs or feature requests
+- **GitHub Issues:** [Open an issue](https://github.com/kenn-nguyen/Lumi-Coach/issues) for bugs or feature requests
 - **Documentation:** Check the [docs/agent/](docs/agent/) folder for detailed guides
 
 ### Useful Documentation
@@ -577,4 +575,4 @@ Stuck? Here are your options:
 
 ---
 
-Happy resume building! If you find Resume Matcher helpful, consider [starring the repo](https://github.com/srbhr/Resume-Matcher) and [joining our Discord](https://dsc.gg/resume-matcher).
+Happy resume building! If you find Lumi Coach helpful, consider [starring the repo](https://github.com/kenn-nguyen/Lumi-Coach).

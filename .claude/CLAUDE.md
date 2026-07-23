@@ -76,6 +76,7 @@ Resume Matcher is an AI-powered application for tailoring resumes to job descrip
 5. **Log detailed errors server-side**, return generic messages to clients
 6. **Do NOT modify** `.github/workflows/` files without explicit request
 7. **Do NOT bump the extension version** (`apps/chrome-extension/manifest.json`) for small changes or uncommitted work-in-progress fixes. Keep the version stable across iterative fixes; only bump when a committed, releasable change is being published to the store. When in doubt, leave the version as-is and rebuild the zip at the current version.
+8. **Documentation is English-only, by deliberate choice.** Do NOT add or restore localized doc translations (e.g. `README.es.md`, `README.ja.md`, `SETUP.zh-CN.md`) or language-selector rows. The prior upstream translations were removed on purpose. (In-app UI i18n under `apps/frontend/messages/` is unaffected — this rule is about repo docs only.)
 
 ---
 
