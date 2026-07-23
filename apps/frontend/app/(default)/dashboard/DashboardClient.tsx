@@ -667,7 +667,9 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
 
   const handleOpenMasterResume = () => {
     if (!masterResumeId) {
-      setShowTailorPrompt(true);
+      // No master yet: let the user create one on the web (upload → AI parse),
+      // instead of pushing them to the extension.
+      setShowImportMasterDialog(true);
       return;
     }
     router.push(`/resumes/${masterResumeId}`);
