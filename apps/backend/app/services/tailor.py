@@ -674,17 +674,12 @@ async def run_tailor_pipeline(
         generation_artifacts: dict[str, Any] = {"prompt2": p2_json} if p2_json else {}
 
         # Apify path: "Company - Job Title" from parsed JD metadata.
-        # Text-paste path: same format using P1's extracted company_context + target_role.
+        # Text-paste path: use P1's normalized target_role. company_context is a short
+        # framing sentence ("Company is a CRM for…"), not a company name — never put
+        # it in the title.
         # Fallback for single-stage profiles (profile4) that skip P1/P2: P2's recommended_title.
         if not apify_title and p1_json:
-            p1_company = (p1_json.get("company_context") or "").strip()
-            p1_role = (p1_json.get("target_role") or "").strip()
-            if p1_company and p1_role:
-                apify_title = f"{p1_company} - {p1_role}"
-            elif p1_role:
-                apify_title = p1_role
-            elif p1_company:
-                apify_title = p1_company
+            apify_title = (p1_json.get("target_role") or "").strip() or None
         resume_title: str | None = apify_title or (
             (p2_json.get("recommended_title") or "").strip() or None
             if p2_json

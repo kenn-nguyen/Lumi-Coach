@@ -45,7 +45,7 @@ export interface RunEvalStepResponse {
 }
 
 function evalsBase(userScoped?: boolean): string {
-  return userScoped ? '/api/v1/evals' : '/api/v1/admin/evals';
+  return userScoped ? '/evals' : '/admin/evals';
 }
 
 export async function fetchEvalCases(params?: {
@@ -117,7 +117,7 @@ export async function runEvalStep(payload: {
 }
 
 export async function downloadEvalExport(): Promise<void> {
-  const res = await apiFetch('/api/v1/admin/evals/export');
+  const res = await apiFetch('/admin/evals/export');
   if (!res.ok) {
     const msg = await readApiErrorMessage(res, 'Failed to export eval cases');
     throw new Error(msg);
