@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { PublicHeader } from './public-header';
+import { AuthCta } from './auth-cta';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 const CHROME_WEB_STORE_URL =
@@ -245,6 +246,12 @@ export default function Homepage(): React.ReactElement {
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
+              <AuthCta
+                signedOutLabel="Tailor on the web"
+                signedInLabel="Go to dashboard"
+                eventTarget="hero"
+                className="inline-flex min-h-14 items-center justify-center rounded-full bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] px-7 text-base font-semibold text-[#fff7f9] shadow-[0_24px_46px_rgba(105,23,51,0.3)] transition hover:translate-y-[1px] hover:opacity-95"
+              />
               <a
                 href={CHROME_WEB_STORE_URL}
                 onClick={() =>
@@ -254,12 +261,13 @@ export default function Homepage(): React.ReactElement {
                 }
                 className="inline-flex min-h-14 items-center justify-center rounded-full bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] px-7 text-base font-semibold text-[#fff7f9] shadow-[0_24px_46px_rgba(105,23,51,0.3)] transition hover:translate-y-[1px] hover:opacity-95"
               >
-                Install now
+                Install the extension
               </a>
-              <span className="max-w-[28ch] text-sm leading-6 text-[#6f4756]">
-                Open the role, tailor in context, review the draft.
-              </span>
             </div>
+            <p className="max-w-[46ch] text-sm leading-6 text-[#6f4756]">
+              Tailor right here on the web, or install the extension to start from a live LinkedIn
+              job.
+            </p>
           </div>
 
           <ExtensionMock />

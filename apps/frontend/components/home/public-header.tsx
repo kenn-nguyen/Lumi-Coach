@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { AuthCta } from './auth-cta';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
 
 type PublicHeaderProps = {
@@ -45,7 +46,7 @@ export function PublicHeader({ activeTab = null }: PublicHeaderProps): React.Rea
         </nav>
       </div>
 
-      <div className="hidden items-center gap-3 md:flex">
+      <div className="flex items-center gap-2 sm:gap-3">
         <a
           href={CHROME_WEB_STORE_URL}
           onClick={() =>
@@ -56,10 +57,14 @@ export function PublicHeader({ activeTab = null }: PublicHeaderProps): React.Rea
                   : 'chrome_web_store_header',
             })
           }
-          className="inline-flex min-h-11 items-center justify-center rounded-full bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] px-5 text-sm font-semibold text-[#fff7f9] shadow-[0_12px_26px_rgba(86,15,40,0.14)] transition hover:translate-y-[1px] hover:opacity-95"
+          className="hidden min-h-11 items-center justify-center rounded-full bg-[linear-gradient(180deg,#8e2247_0%,#691733_100%)] px-5 text-sm font-semibold text-[#fff7f9] shadow-[0_12px_26px_rgba(86,15,40,0.14)] transition hover:translate-y-[1px] hover:opacity-95 md:inline-flex"
         >
           Install now
         </a>
+        <AuthCta
+          eventTarget={activeTab === 'story-bank' ? 'public_header_story_bank' : 'public_header'}
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#e6cad2]/95 bg-white/70 px-5 text-sm font-semibold text-[#6f102d] transition hover:bg-white"
+        />
       </div>
     </header>
   );
