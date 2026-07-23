@@ -124,13 +124,39 @@ def raise_if_shared_gemini_fallback_limit(
         raise SharedGeminiFallbackLimitError(SHARED_GEMINI_FALLBACK_LIMIT_MESSAGE) from error
 
 
+def _looks_like_model_error(error: Exception) -> bool:
+    """Detect an invalid / unavailable model error (vs. a key/quota error)."""
+    message = str(error).lower()
+    if "model" not in message:
+        return False
+    return any(
+        marker in message
+        for marker in (
+            "not found",
+            "does not exist",
+            "not exist",
+            "unknown model",
+            "invalid model",
+            "unsupported",
+            "no such model",
+            "not a valid model",
+        )
+    )
+
+
 def raise_if_user_llm_request_error(
     config: LLMConfig,
     error: Exception,
 ) -> None:
     """Raise a user-safe error for user-owned key/config request failures."""
-    if config.is_user_config:
-        raise UserLlmRequestError(USER_LLM_REQUEST_FAILED_MESSAGE) from error
+    if not config.is_user_config:
+        return
+    if _looks_like_model_error(error):
+        raise UserLlmRequestError(
+            f"The model \"{config.model}\" isn't available for {config.provider}. "
+            "Check the model name in Settings → Customize model."
+        ) from error
+    raise UserLlmRequestError(USER_LLM_REQUEST_FAILED_MESSAGE) from error
 
 
 def raise_if_known_llm_request_error(config: LLMConfig, error: Exception) -> None:
@@ -683,7 +709,14 @@ async def check_llm_health(
         # Provide a minimal, actionable client-facing hint without leaking secrets.
         error_code = "health_check_failed"
         message = str(e)
-        if "404" in message and "/v1/v1/" in message:
+        client_error: str | None = None
+        if _looks_like_model_error(e):
+            error_code = "invalid_model"
+            client_error = (
+                f'The model "{config.model}" isn\'t available for {config.provider}. '
+                "Check the model name in Settings → Customize model."
+            )
+        elif "404" in message and "/v1/v1/" in message:
             error_code = "duplicate_v1_path"
         elif "404" in message:
             error_code = "not_found_404"
@@ -697,6 +730,8 @@ async def check_llm_health(
             "model": config.model,
             "error_code": error_code,
         }
+        if client_error:
+            result["error"] = client_error
         if include_details:
             result["test_prompt"] = _to_code_block(prompt)
             result["model_output"] = _to_code_block(None)

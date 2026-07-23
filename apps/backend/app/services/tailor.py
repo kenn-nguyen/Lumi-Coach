@@ -550,13 +550,14 @@ async def run_tailor_pipeline(
                     parse_json=parse_json,
                     stage_kwargs=stage_kwargs,
                 )
-            except llm.UserLlmRequestError:
+            except llm.UserLlmRequestError as exc:
                 candidate = llm.get_server_llm_config()
                 # Only fall back if the free shared model is actually usable.
                 if not candidate.api_key and candidate.provider != "vertex_ai":
                     raise
                 _free_config = candidate
                 _fallback["used"] = True
+                _fallback["reason"] = str(exc)
                 logger.warning(
                     "User LLM key failed at %s — completing on the free shared model.", label
                 )
@@ -714,11 +715,11 @@ async def run_tailor_pipeline(
 
         fallback_warning: str | None = None
         if _fallback["used"]:
-            saved = [name for name in _saved_provider_names(user_id) if name != llm_config.provider]
-            fallback_warning = (
-                f"Your {llm_config.provider} key couldn't complete this, so we tailored with "
-                "Lumi's free model."
+            reason = _fallback.get("reason") or (
+                f"Your {llm_config.provider} configuration couldn't complete this."
             )
+            saved = [name for name in _saved_provider_names(user_id) if name != llm_config.provider]
+            fallback_warning = f"{reason} We tailored with Lumi's free model instead."
             if saved:
                 fallback_warning += (
                     f" You also have keys saved for {', '.join(saved)} — fix "
@@ -726,7 +727,7 @@ async def run_tailor_pipeline(
                 )
             else:
                 fallback_warning += (
-                    f" Add or fix your {llm_config.provider} key in Settings for full quality."
+                    f" Fix your {llm_config.provider} key or model in Settings for full quality."
                 )
 
         _set_completed(resume_id, user_id, tailored_resume_id, warning=fallback_warning)

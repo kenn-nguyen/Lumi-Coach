@@ -7,11 +7,38 @@ import pytest
 from app.llm import (
     LLMConfig,
     SharedGeminiFallbackLimitError,
+    UserLlmRequestError,
     get_server_llm_config,
     get_llm_config,
     is_llm_config_configured,
     raise_if_shared_gemini_fallback_limit,
+    raise_if_user_llm_request_error,
 )
+
+
+def test_user_model_error_names_the_model() -> None:
+    config = LLMConfig(
+        provider="deepseek", model="deepseek-wrong", api_key="k", is_user_config=True
+    )
+    with pytest.raises(UserLlmRequestError) as exc:
+        raise_if_user_llm_request_error(
+            config, RuntimeError("BadRequestError: The model `deepseek-wrong` does not exist")
+        )
+    assert "deepseek-wrong" in str(exc.value)
+    assert "model" in str(exc.value).lower()
+
+
+def test_user_key_error_is_generic() -> None:
+    config = LLMConfig(provider="openai", model="gpt-4o", api_key="k", is_user_config=True)
+    with pytest.raises(UserLlmRequestError) as exc:
+        raise_if_user_llm_request_error(config, RuntimeError("401 invalid api key"))
+    assert "API key" in str(exc.value)
+
+
+def test_server_config_does_not_raise_user_error() -> None:
+    config = LLMConfig(provider="openai", model="gpt-4o", api_key="k", is_user_config=False)
+    # No raise for non-user config.
+    raise_if_user_llm_request_error(config, RuntimeError("The model `x` does not exist"))
 
 
 def test_shared_gemini_quota_error_is_rewritten() -> None:
