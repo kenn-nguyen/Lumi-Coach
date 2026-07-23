@@ -16,9 +16,11 @@ Extension schema (stageProviders + profiles, multi-provider routing):
             model: claude-sonnet-4-6
             thinking: {type: enabled, budget_tokens: 8192}
 
-The active file is chosen via override-over-default resolution:
-  data/llm-stage-config.yaml  (user upload)  wins over
-  prompts/extension_defaults/llm-stage-config.yaml  (bundled default)
+Config is stored PER USER in the DB (encrypted, since it can embed apiKeys) and
+only applied when that user has explicitly enabled per-stage routing. When a user
+has it off (the default) or has no config, every stage falls back to the user's
+active provider. The bundled prompts/extension_defaults/llm-stage-config.yaml is
+kept only as a read-only template users can download to see the schema.
 """
 
 from __future__ import annotations
@@ -33,7 +35,6 @@ logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts" / "extension_defaults"
 _DEFAULT_CONFIG_PATH = _PROMPTS_DIR / "llm-stage-config.yaml"
-_OVERRIDE_CONFIG_PATH = Path(__file__).parent.parent.parent / "data" / "llm-stage-config.yaml"
 
 _PROFILE_KEYS = {"profile1", "profile2", "profile3", "profile4"}
 
@@ -47,17 +48,25 @@ _PROFILE_ID_TO_PROVIDER: dict[str, str] = {
 }
 
 
-def _load_raw() -> dict[str, Any]:
-    for path in (_OVERRIDE_CONFIG_PATH, _DEFAULT_CONFIG_PATH):
-        if path.exists():
-            try:
-                raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-                if isinstance(raw, dict):
-                    logger.debug("Loaded LLM stage config from %s", path)
-                    return raw
-            except Exception as e:
-                logger.warning("Failed to load LLM stage config from %s: %s", path, e)
-    return {}
+def _load_user_raw(user_id: str | None) -> dict[str, Any]:
+    """Return the user's parsed stage config, or {} when off/absent/invalid.
+
+    Gated on the per-user enabled flag so a stored-but-disabled config never
+    routes anything. Never raises — resolution must fall back cleanly.
+    """
+    if not user_id:
+        return {}
+    try:
+        from app.database import db
+
+        stage_config = db.get_user_stage_config(user_id)
+        if not stage_config.get("enabled") or not stage_config.get("content"):
+            return {}
+        raw = yaml.safe_load(stage_config["content"]) or {}
+        return raw if isinstance(raw, dict) else {}
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Failed to load stage config for user %s: %s", user_id, e)
+        return {}
 
 
 def _is_extension_schema(config: dict[str, Any]) -> bool:
@@ -83,14 +92,14 @@ def _extract_stage_settings(cfg: dict[str, Any]) -> tuple[str | None, dict[str, 
 
 
 def get_stage_overrides(
-    provider: str, stage: str, profile_id: str | None = None
+    provider: str, stage: str, profile_id: str | None = None, user_id: str | None = None
 ) -> tuple[str | None, dict[str, Any]]:
     """Legacy schema: return (model_override, extra_kwargs) within the same provider.
 
     Returns (None, {}) for extension-schema configs — callers should use
     get_stage_provider_config instead.
     """
-    config = _load_raw()
+    config = _load_user_raw(user_id)
     if _is_extension_schema(config):
         return None, {}
 
@@ -112,21 +121,19 @@ def get_stage_overrides(
 
 
 def get_stage_provider_config(
-    stage: str,
+    stage: str, user_id: str | None = None
 ) -> tuple[str | None, str | None, dict[str, Any]]:
     """Extension schema: return (lm_provider, model, extra_kwargs) for this stage.
 
     lm_provider is a LiteLLM provider name (e.g. "anthropic", "deepseek").
-    Returns (None, None, {}) when using the legacy schema or no override exists.
+    Returns (None, None, {}) when the user has per-stage routing off, has no
+    config, or is using the legacy schema.
 
-    When a custom YAML is active and a profile has an `apiKey` field, the key
-    is injected into extra_kwargs as "_api_key" (stripped before any LiteLLM call).
+    When routing is active and a profile has an `apiKey` field, the key is
+    injected into extra_kwargs as "_api_key" (stripped before any LiteLLM call).
     """
-    # Simple mode: no custom YAML uploaded → all stages use the user's primary provider
-    if not is_using_override():
-        return None, None, {}
-
-    config = _load_raw()
+    # _load_user_raw already gates on the per-user enabled flag → {} when off.
+    config = _load_user_raw(user_id)
     if not _is_extension_schema(config):
         return None, None, {}
 
@@ -168,14 +175,12 @@ def get_stage_provider_config(
     return provider, model, extra_kwargs
 
 
-def get_yaml_api_key_for_provider(provider: str) -> str | None:
+def get_yaml_api_key_for_provider(provider: str, user_id: str | None = None) -> str | None:
     """Return the first embedded apiKey for profiles that map to this provider, or None.
 
-    Only active when a custom YAML override is uploaded.
+    Only active when the user has per-stage routing enabled with a config.
     """
-    if not is_using_override():
-        return None
-    config = _load_raw()
+    config = _load_user_raw(user_id)
     if not _is_extension_schema(config):
         return None
     profiles = config.get("profiles", {}) or {}
@@ -189,37 +194,15 @@ def get_yaml_api_key_for_provider(provider: str) -> str | None:
     return None
 
 
-def save_override(content: str) -> None:
-    """Validate and save an uploaded YAML config."""
+def validate_stage_config(content: str) -> None:
+    """Validate an uploaded YAML config before it is stored for a user."""
     parsed = yaml.safe_load(content)
     if not isinstance(parsed, dict):
         raise ValueError("Config must be a YAML mapping")
-    _OVERRIDE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _OVERRIDE_CONFIG_PATH.write_text(content, encoding="utf-8")
-    logger.info("LLM stage config override saved to %s", _OVERRIDE_CONFIG_PATH)
-
-
-def read_active_config() -> str:
-    """Return the raw YAML text of the currently active config."""
-    for path in (_OVERRIDE_CONFIG_PATH, _DEFAULT_CONFIG_PATH):
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-    return ""
 
 
 def read_default_config() -> str:
-    """Return the raw YAML text of the bundled default config (ignores any override)."""
+    """Return the raw YAML text of the bundled default config (download template)."""
     if _DEFAULT_CONFIG_PATH.exists():
         return _DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")
     return ""
-
-
-def is_using_override() -> bool:
-    return _OVERRIDE_CONFIG_PATH.exists()
-
-
-def delete_override() -> bool:
-    if _OVERRIDE_CONFIG_PATH.exists():
-        _OVERRIDE_CONFIG_PATH.unlink()
-        return True
-    return False

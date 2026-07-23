@@ -457,10 +457,25 @@ export async function clearAllApiKeys(): Promise<void> {
   }
 }
 
-// LLM Stage Config (per-stage model overrides YAML)
+// LLM Stage Config (per-stage model overrides YAML) — per-user, gated by a toggle.
 export interface LlmStageConfigResponse {
   content: string;
   is_override: boolean;
+  enabled?: boolean;
+}
+
+export async function setLlmStageRoutingEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
+  const res = await apiFetch('/config/llm-stage-config/enabled', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to update routing toggle (status ${res.status}).`);
+  }
+  return res.json();
 }
 
 export async function fetchLlmStageConfig(template = false): Promise<LlmStageConfigResponse> {

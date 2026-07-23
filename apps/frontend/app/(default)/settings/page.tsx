@@ -18,6 +18,7 @@ import {
   fetchLlmStageConfig,
   uploadLlmStageConfig,
   deleteLlmStageConfig,
+  setLlmStageRoutingEnabled,
   fetchEvalConfig,
   uploadEvalConfig,
   deleteEvalConfig,
@@ -149,6 +150,7 @@ export default function SettingsPage() {
 
   // Stage config state
   const [stageConfigIsOverride, setStageConfigIsOverride] = useState(false);
+  const [stageRoutingEnabled, setStageRoutingEnabled] = useState(false);
   const [stageConfigLoading, setStageConfigLoading] = useState(false);
   const [stageConfigError, setStageConfigError] = useState<string | null>(null);
   const [stageConfigSaved, setStageConfigSaved] = useState(false);
@@ -376,6 +378,7 @@ export default function SettingsPage() {
 
         if (stageConfig) {
           setStageConfigIsOverride(stageConfig.is_override);
+          setStageRoutingEnabled(stageConfig.enabled ?? false);
         }
 
         if (evalConfig) {
@@ -670,6 +673,17 @@ export default function SettingsPage() {
       setStageConfigError((err as Error).message || 'Failed to reset config');
     } finally {
       setStageConfigLoading(false);
+    }
+  };
+
+  const handleStageRoutingToggle = async (checked: boolean) => {
+    setStageRoutingEnabled(checked);
+    setStageConfigError(null);
+    try {
+      await setLlmStageRoutingEnabled(checked);
+    } catch (err) {
+      setStageRoutingEnabled(!checked);
+      setStageConfigError((err as Error).message || 'Failed to update toggle');
     }
   };
 
@@ -1221,64 +1235,77 @@ export default function SettingsPage() {
                     <Label>Tailoring Pipeline</Label>
                     <span
                       className={`font-mono text-xs px-2 py-0.5 border ${
-                        stageConfigIsOverride
+                        stageRoutingEnabled && stageConfigIsOverride
                           ? 'border-blue-200 bg-blue-50 text-blue-700'
                           : 'border-border bg-secondary text-gray-500'
                       }`}
                     >
-                      {stageConfigIsOverride ? 'Custom active' : 'Default'}
+                      {stageRoutingEnabled && stageConfigIsOverride
+                        ? 'Custom active'
+                        : 'Single provider'}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 font-mono">
-                    YAML file controlling per-provider, per-stage model overrides for the tailoring
-                    pipeline. Matches the Chrome extension&apos;s config format.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      ref={stageFileRef}
-                      type="file"
-                      accept=".yaml,.yml"
-                      className="hidden"
-                      onChange={handleStageConfigUpload}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => stageFileRef.current?.click()}
-                      disabled={stageConfigLoading}
-                      className="gap-1.5"
-                    >
-                      {stageConfigLoading ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : stageConfigSaved ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                      ) : (
-                        <Upload className="w-3.5 h-3.5" />
-                      )}
-                      {stageConfigSaved ? 'Uploaded' : 'Upload YAML'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleStageConfigDownload}
-                      className="gap-1.5"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Download template
-                    </Button>
-                    {stageConfigIsOverride && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleStageConfigReset}
-                        disabled={stageConfigLoading}
-                        className="gap-1.5 text-gray-600 hover:text-red-600 hover:border-red-200"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        Reset to default
-                      </Button>
-                    )}
-                  </div>
+                  <ToggleSwitch
+                    checked={stageRoutingEnabled}
+                    onCheckedChange={handleStageRoutingToggle}
+                    label="Enable per-stage routing"
+                    description="Off by default: every stage uses your active AI provider. Turn on to route different prompt stages to different providers via a config file. Your config is private to your account."
+                  />
+                  {stageRoutingEnabled && (
+                    <>
+                      <p className="text-xs text-gray-500 font-mono">
+                        YAML file controlling per-provider, per-stage model overrides for the
+                        tailoring pipeline. Download the template to see the format, edit it, then
+                        upload.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          ref={stageFileRef}
+                          type="file"
+                          accept=".yaml,.yml"
+                          className="hidden"
+                          onChange={handleStageConfigUpload}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => stageFileRef.current?.click()}
+                          disabled={stageConfigLoading}
+                          className="gap-1.5"
+                        >
+                          {stageConfigLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : stageConfigSaved ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                          {stageConfigSaved ? 'Uploaded' : 'Upload YAML'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleStageConfigDownload}
+                          className="gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download template
+                        </Button>
+                        {stageConfigIsOverride && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleStageConfigReset}
+                            disabled={stageConfigLoading}
+                            className="gap-1.5 text-gray-600 hover:text-red-600 hover:border-red-200"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Remove config
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
                   {stageConfigError && (
                     <p className="text-xs text-red-600 font-mono">{stageConfigError}</p>
                   )}
@@ -1354,7 +1381,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* ── Pipeline Routing ────────────────────────────────────── */}
-                {stageConfigIsOverride && stageReadiness.length > 0 && (
+                {stageRoutingEnabled && stageConfigIsOverride && stageReadiness.length > 0 && (
                   <div className="space-y-2">
                     <span className="font-mono text-xs font-bold uppercase tracking-wider text-gray-700">
                       Pipeline Routing
@@ -1406,19 +1433,21 @@ export default function SettingsPage() {
                     </span>
                     <span
                       className={`font-mono text-[10px] px-2 py-0.5 border ${
-                        stageConfigIsOverride
+                        stageRoutingEnabled && stageConfigIsOverride
                           ? 'border-blue-200 bg-blue-50 text-blue-700'
                           : 'border-border bg-secondary text-gray-400'
                       }`}
                     >
-                      {stageConfigIsOverride ? 'Active' : 'Requires custom YAML'}
+                      {stageRoutingEnabled && stageConfigIsOverride
+                        ? 'Active'
+                        : 'Requires per-stage routing'}
                     </span>
                   </div>
 
-                  {!stageConfigIsOverride ? (
+                  {!(stageRoutingEnabled && stageConfigIsOverride) ? (
                     <p className="font-mono text-[11px] text-gray-400">
-                      Upload a custom stage YAML above to enable per-provider routing. These keys
-                      are only used when a custom pipeline config is active.
+                      Enable per-stage routing and upload a stage YAML above to use per-provider
+                      routing. These keys are only used when a custom pipeline config is active.
                     </p>
                   ) : (
                     <>

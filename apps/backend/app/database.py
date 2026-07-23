@@ -89,6 +89,13 @@ class UserLlmConfigModel(Base):
     api_base: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra_api_keys: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Per-user LLM stage-routing config (YAML, encrypted at rest since it may embed
+    # apiKeys) plus an explicit on/off flag. Off by default: every stage uses the
+    # user's active provider until they enable per-stage routing.
+    stage_config_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stage_routing_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -322,6 +329,19 @@ class Database:
                     text("ALTER TABLE llm_configs ADD COLUMN extra_api_keys JSONB")
                 )
                 logger.info("Added llm_configs.extra_api_keys column")
+            if "stage_config_yaml" not in columns:
+                connection.execute(
+                    text("ALTER TABLE llm_configs ADD COLUMN stage_config_yaml TEXT")
+                )
+                logger.info("Added llm_configs.stage_config_yaml column")
+            if "stage_routing_enabled" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE llm_configs ADD COLUMN stage_routing_enabled "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+                logger.info("Added llm_configs.stage_routing_enabled column")
 
     def _ensure_user_schema(self) -> None:
         """Apply additive schema updates for encrypted user lookup."""
@@ -1118,6 +1138,61 @@ class Database:
             existing.pop(provider_key, None)
             config.extra_api_keys = existing
             config.updated_at = _utcnow()
+            session.commit()
+
+    def get_user_stage_config(self, user_id: str) -> dict[str, Any]:
+        """Return the user's per-stage routing config (decrypted) and enabled flag.
+
+        Always returns a dict; defaults for a user with no row/config:
+        {"content": "", "enabled": False, "has_config": False}.
+        """
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            if config is None:
+                return {"content": "", "enabled": False, "has_config": False}
+            content = decrypt_text(config.stage_config_yaml) or ""
+            return {
+                "content": content,
+                "enabled": bool(config.stage_routing_enabled),
+                "has_config": bool(content),
+            }
+
+    def set_user_stage_config(self, *, user_id: str, content: str | None) -> None:
+        """Store (or clear) the user's stage-routing YAML, encrypted at rest.
+
+        Passing None/empty clears it. Creates a placeholder row if none exists
+        (mirrors upsert_user_extra_api_keys)."""
+        encrypted = encrypt_text(content) if content else None
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            if config is None:
+                config = UserLlmConfigModel(
+                    user_id=user_id,
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    stage_config_yaml=encrypted,
+                )
+                session.add(config)
+            else:
+                config.stage_config_yaml = encrypted
+                config.updated_at = _utcnow()
+            session.commit()
+
+    def set_user_stage_routing_enabled(self, *, user_id: str, enabled: bool) -> None:
+        """Toggle per-stage routing for a user (creates a placeholder row if none)."""
+        with self._session() as session:
+            config = session.get(UserLlmConfigModel, user_id)
+            if config is None:
+                config = UserLlmConfigModel(
+                    user_id=user_id,
+                    provider="openai",
+                    model="gpt-4o-mini",
+                    stage_routing_enabled=bool(enabled),
+                )
+                session.add(config)
+            else:
+                config.stage_routing_enabled = bool(enabled)
+                config.updated_at = _utcnow()
             session.commit()
 
     def create_resume(

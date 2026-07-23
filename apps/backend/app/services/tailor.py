@@ -74,7 +74,7 @@ def _provider_has_key(provider: str, user_id: str | None, default_config: LLMCon
     # Check YAML-embedded apiKey (advanced mode: user pasted key directly in the YAML file)
     try:
         from app.services.llm_stage_config import get_yaml_api_key_for_provider
-        if get_yaml_api_key_for_provider(provider):
+        if get_yaml_api_key_for_provider(provider, user_id):
             return True
     except Exception:
         pass
@@ -87,7 +87,7 @@ def check_stage_readiness(
     """Return [{stage, provider, configured}] for each pipeline stage."""
     result = []
     for stage in _TAILOR_STAGES:
-        provider, _, _ = get_stage_provider_config(stage)
+        provider, _, _ = get_stage_provider_config(stage, user_id)
         if provider is None:
             provider = default_config.provider
         result.append({
@@ -127,14 +127,16 @@ def _resolve_stage_llm_config(
     2. Server config.json api_keys dict.
     3. LiteLLM environment variables.
     """
-    provider, model, extra_kwargs = get_stage_provider_config(stage)
+    provider, model, extra_kwargs = get_stage_provider_config(stage, user_id)
 
     # Pop the internal YAML-embedded key before it reaches LiteLLM
     yaml_api_key = extra_kwargs.pop("_api_key", None)
 
     if provider is None:
         # Simple/legacy mode — model/kwargs override within the same provider
-        model_override, kwargs = _get_stage_overrides_from_file(default_config.provider, stage)
+        model_override, kwargs = _get_stage_overrides_from_file(
+            default_config.provider, stage, user_id=user_id
+        )
         if model_override:
             return default_config.model_copy(update={"model": model_override}), kwargs
         return default_config, kwargs

@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 
 from app.config import settings
 from app.llm import check_llm_health, get_llm_config, LLMConfig
-from app.services.llm_stage_config import delete_override, is_using_override, read_active_config, read_default_config, save_override
+from app.services.llm_stage_config import read_default_config, validate_stage_config
 from app.services.eval_config import (
     read_default_eval_config,
     validate_eval_config_yaml,
@@ -799,41 +799,63 @@ async def get_stage_readiness(
     user_config = db.get_user_llm_config(current_user.user_id) or {}
     llm_config = get_llm_config(user_config)
     stages = check_stage_readiness(current_user.user_id, llm_config)
-    return {"stages": stages, "is_override": is_using_override()}
+    stage_config = db.get_user_stage_config(current_user.user_id)
+    return {"stages": stages, "is_override": stage_config["enabled"] and stage_config["has_config"]}
 
 
 @router.get("/llm-stage-config")
-async def get_llm_stage_config(template: bool = False) -> dict:
-    """Return the active LLM stage config YAML and whether an override is in use.
+async def get_llm_stage_config(
+    template: bool = False,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Return the current user's LLM stage config YAML + on/off state.
 
-    Pass ?template=true to always get the bundled default regardless of any override.
+    Pass ?template=true to always get the bundled default (the schema template),
+    regardless of the user's own config.
     """
-    content = read_default_config() if template else read_active_config()
+    if template:
+        return {"content": read_default_config(), "is_override": False, "enabled": False}
+    stage_config = db.get_user_stage_config(current_user.user_id)
     return {
-        "content": content,
-        "is_override": False if template else is_using_override(),
+        "content": stage_config["content"],
+        "is_override": stage_config["has_config"],
+        "enabled": stage_config["enabled"],
     }
 
 
 @router.put("/llm-stage-config")
-async def upload_llm_stage_config(file: UploadFile = File(...)) -> dict:
-    """Upload a YAML file to override the bundled LLM stage config."""
-    if file.content_type not in {"application/x-yaml", "text/yaml", "text/plain", "application/octet-stream"}:
-        # be lenient — browsers may send application/octet-stream for .yaml
-        pass
+async def upload_llm_stage_config(
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Store a YAML per-stage routing config for the current user (encrypted)."""
     content = (await file.read()).decode("utf-8")
     try:
-        save_override(content)
+        validate_stage_config(content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    db.set_user_stage_config(user_id=current_user.user_id, content=content)
     return {"message": "LLM stage config updated", "is_override": True}
 
 
 @router.delete("/llm-stage-config")
-async def reset_llm_stage_config() -> dict:
-    """Remove the override and revert to the bundled default config."""
-    deleted = delete_override()
-    return {"message": "Override removed" if deleted else "No override was active", "is_override": False}
+async def reset_llm_stage_config(
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Remove the current user's stage config and revert to single-provider mode."""
+    db.set_user_stage_config(user_id=current_user.user_id, content=None)
+    return {"message": "Stage config removed", "is_override": False}
+
+
+@router.put("/llm-stage-config/enabled")
+async def set_llm_stage_routing_enabled(
+    payload: dict,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+) -> dict:
+    """Toggle per-stage routing for the current user (off = active provider everywhere)."""
+    enabled = bool(payload.get("enabled"))
+    db.set_user_stage_routing_enabled(user_id=current_user.user_id, enabled=enabled)
+    return {"enabled": enabled}
 
 
 @router.get("/eval-config")
