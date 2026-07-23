@@ -12,7 +12,7 @@ import litellm
 
 logger = logging.getLogger(__name__)
 
-EVAL_JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "gemini/gemini-2.0-flash-lite")
+EVAL_JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "gemini/gemini-2.5-flash-lite")
 
 _PROFILE_META: dict[str, dict[str, str]] = {
     "profile1": {"name": "Safe", "adjective": "conservative, accurate, understated"},
@@ -93,11 +93,20 @@ async def score_judge(
     """Call the LLM judge. Returns (passed, scores_dict)."""
     prompt = _build_prompt(jd_text, master, tailored, profile_id)
 
+    # Authenticate with the server's configured key. Without this litellm falls
+    # back to a GEMINI_API_KEY/GOOGLE_API_KEY env var, which the app doesn't set
+    # (it stores the key as LLM_API_KEY) — producing "key=None" 400 errors.
+    # Assumes EVAL_JUDGE_MODEL's provider matches the server config's provider.
+    from app.llm import get_server_llm_config
+
+    server_config = get_server_llm_config()
+
     response = await litellm.acompletion(
         model=EVAL_JUDGE_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
         max_tokens=512,
+        api_key=server_config.api_key or None,
     )
     raw = response.choices[0].message.content or ""
 
