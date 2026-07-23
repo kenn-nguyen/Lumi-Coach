@@ -796,8 +796,7 @@ async def get_stage_readiness(
 ) -> dict:
     """Return per-stage provider and API key readiness for the current user."""
     from app.services.tailor import check_stage_readiness
-    user_config = db.get_user_llm_config(current_user.user_id) or {}
-    llm_config = get_llm_config(user_config)
+    llm_config = get_llm_config(current_user.user_id)
     stages = check_stage_readiness(current_user.user_id, llm_config)
     stage_config = db.get_user_stage_config(current_user.user_id)
     return {"stages": stages, "is_override": stage_config["enabled"] and stage_config["has_config"]}
