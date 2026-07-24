@@ -38,7 +38,7 @@ type Phase = 'input' | 'running' | 'done' | 'error';
 export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
   const router = useRouter();
   const { status: systemStatus } = useStatusCache();
-  const { setJob } = useBackgroundTailor();
+  const { job: bgJob, setJob } = useBackgroundTailor();
 
   // Input state
   const [jdUrl, setJdUrl] = useState('');
@@ -63,28 +63,6 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
-
-  // Reset state when dialog opens/closes; fetch readiness on open
-  useEffect(() => {
-    if (!isOpen) {
-      if (pollRef.current) clearInterval(pollRef.current);
-      setPhase('input');
-      setStatusData(null);
-      setErrorMsg('');
-      setIsSubmitting(false);
-      setJdUrl('');
-      setJdText('');
-      setMissingStages([]);
-      setIsOverride(false);
-    } else {
-      fetchStageReadiness()
-        .then((r) => {
-          setMissingStages(r.stages.filter((s) => !s.configured));
-          setIsOverride(r.is_override);
-        })
-        .catch(() => {});
-    }
-  }, [isOpen]);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -119,6 +97,36 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
     },
     [stopPolling]
   );
+
+  // Reset on close. On open, if a tailor job is already running for this resume,
+  // reconnect to it and show progress instead of the input form — one job at a
+  // time, no queue, so a second job can't be started from here.
+  useEffect(() => {
+    if (!isOpen) {
+      stopPolling();
+      setPhase('input');
+      setStatusData(null);
+      setErrorMsg('');
+      setIsSubmitting(false);
+      setJdUrl('');
+      setJdText('');
+      setMissingStages([]);
+      setIsOverride(false);
+      return;
+    }
+    if (bgJob?.resumeId === resumeId) {
+      setPhase('running');
+      startPolling(resumeId);
+    }
+    fetchStageReadiness()
+      .then((r) => {
+        setMissingStages(r.stages.filter((s) => !s.configured));
+        setIsOverride(r.is_override);
+      })
+      .catch(() => {});
+    // Runs on open/close only; startPolling/bgJob are intentionally omitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleSubmit = useCallback(async () => {
     const hasUrl = jdUrl.trim().length > 0;

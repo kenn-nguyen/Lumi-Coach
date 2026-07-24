@@ -49,16 +49,16 @@ async def start_tailor(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
-    # ── Guard: only one active job per user ────────────────────────────────
-    # list_resumes returns a paginated {"items": [...], "total": N} dict.
-    existing_resumes = db.list_resumes(user_id=user_id).get("items", [])
-    for r in existing_resumes:
-        job = r.get("tailor_job") or {}
-        if job.get("status") == "running" and r.get("resume_id") != resume_id:
-            raise HTTPException(
-                status_code=409,
-                detail="A tailor job is already running for this account.",
-            )
+    # ── Guard: one active tailor job at a time ─────────────────────────────
+    # `resume` (fetched above) carries this resume's tailor_job. Block a second
+    # run while one is in flight — a new run would clobber the shared tailor_job
+    # state and spawn a duplicate tailored resume.
+    existing_job = resume.get("tailor_job") or {}
+    if existing_job.get("status") == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="A tailor job is already running. Wait for it to finish.",
+        )
 
     # ── Seed tailor_job state ──────────────────────────────────────────────
     job_id = str(uuid4())
