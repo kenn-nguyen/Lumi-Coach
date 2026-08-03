@@ -9,9 +9,16 @@ import { onSessionInvalidated } from '@/lib/auth/cross-tab-session';
 import { StatusCacheProvider } from '@/lib/context/status-cache';
 import { clearProtectedClientState } from '@/lib/auth/protected-client-state';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
+import { useBackendWarmup } from '@/hooks/use-backend-warmup';
+import { BackendWakingScreen } from '@/components/dashboard/backend-waking-screen';
 
 export function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const { status } = useSession();
+
+  // App-wide backend health monitor. Shows the waking overlay whenever the
+  // Render backend is unreachable — on any authed page, regardless of cached
+  // data — and keep-alive pings it so it stays warm while the app is open.
+  const backend = useBackendWarmup();
 
   const invalidateSession = useCallback(() => {
     captureEvent(POSTHOG_EVENTS.SESSION_INVALIDATED_CROSS_TAB);
@@ -58,6 +65,13 @@ export function AuthenticatedAppShell({ children }: { children: ReactNode }) {
         <ResumePreviewProvider>
           <LocalizedErrorBoundary>
             <main className="min-h-screen flex flex-col">{children}</main>
+            {backend.state === 'cold' && (
+              <BackendWakingScreen
+                elapsedMs={backend.elapsedMs}
+                gaveUp={backend.gaveUp}
+                onRetry={backend.retry}
+              />
+            )}
           </LocalizedErrorBoundary>
         </ResumePreviewProvider>
       </LanguageProvider>

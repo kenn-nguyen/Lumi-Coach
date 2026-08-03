@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PublicHeader } from './public-header';
 import { AuthCta } from './auth-cta';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
+import { warmupBackend } from '@/lib/api/warmup';
 
 const CHROME_WEB_STORE_URL =
   'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
@@ -212,6 +213,8 @@ function WorkflowCard({
 export default function Homepage(): React.ReactElement {
   useEffect(() => {
     captureEvent(POSTHOG_EVENTS.LANDING_VIEWED);
+    // Wake the Render free-tier backend early so it's warm by sign-in time.
+    warmupBackend();
   }, []);
 
   return (

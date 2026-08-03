@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { captureEvent, POSTHOG_EVENTS } from '@/lib/analytics/posthog';
+import { warmupBackend } from '@/lib/api/warmup';
 
 type AuthCtaProps = {
   className?: string;
@@ -31,12 +32,14 @@ export function AuthCta({
   return (
     <Link
       href={href}
-      onClick={() =>
+      onClick={() => {
+        // Wake the backend in parallel with heading into the sign-in flow.
+        if (!isAuthed) warmupBackend();
         captureEvent(POSTHOG_EVENTS.PUBLIC_SIGN_IN_CLICKED, {
           target: eventTarget,
           authed: isAuthed,
-        })
-      }
+        });
+      }}
       className={className}
     >
       {isAuthed ? signedInLabel : signedOutLabel}
