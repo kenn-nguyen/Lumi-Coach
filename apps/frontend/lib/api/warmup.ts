@@ -15,12 +15,14 @@ let lastWarmupAt = 0;
 /**
  * Fire-and-forget ping to wake a spun-down backend. Throttled so repeated calls
  * (e.g. homepage remount) don't stack up. `keepalive` lets the request survive a
- * navigation such as the sign-in redirect. No-ops on the server.
+ * navigation such as the sign-in redirect. No-ops on the server. Pass
+ * `force: true` for a deliberate user action (e.g. clicking sign-in) that should
+ * always fire a fresh ping regardless of the throttle.
  */
-export function warmupBackend(): void {
+export function warmupBackend(force = false): void {
   if (typeof window === 'undefined') return;
   const now = Date.now();
-  if (now - lastWarmupAt < WARMUP_THROTTLE_MS) return;
+  if (!force && now - lastWarmupAt < WARMUP_THROTTLE_MS) return;
   lastWarmupAt = now;
   fetch(HEALTH_URL, { method: 'GET', cache: 'no-store', keepalive: true }).catch(() => {});
 }
