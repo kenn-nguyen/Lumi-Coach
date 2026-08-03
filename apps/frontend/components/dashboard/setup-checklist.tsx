@@ -104,10 +104,10 @@ export function SetupChecklist({
               Welcome — let&apos;s get you set up
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Complete these two steps before you can start tailoring resumes.
+              Two quick steps and you&apos;re ready to tailor.
             </p>
             <p className="mt-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-              Wrong account? Close this and use the account menu to switch or log out.
+              Wrong account? Close this to switch or log out.
             </p>
             <button
               type="button"
@@ -139,11 +139,6 @@ export function SetupChecklist({
                     <p className="text-sm font-semibold text-foreground">
                       {step1Done ? 'AI connected' : 'Connect your AI'}
                     </p>
-                    {!step1Done && (
-                      <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                        Add an API key to enable tailoring
-                      </p>
-                    )}
                   </div>
                   {!step1Done && (
                     <Link href="/settings" className="shrink-0">
@@ -157,11 +152,11 @@ export function SetupChecklist({
                   <div className="flex items-start gap-2 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
                     <span>
-                      Free Gemini tier active — may be unstable during peak hours.{' '}
+                      Free Gemini tier — can be slow at peak times.{' '}
                       <Link href="/settings" className="font-semibold underline underline-offset-2">
                         Add your own key
                       </Link>{' '}
-                      for reliable results.
+                      for reliable runs.
                     </span>
                   </div>
                 )}
@@ -214,58 +209,11 @@ export function SetupChecklist({
                 {isMasterFailed && (
                   <div className="flex items-start gap-2 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>Processing failed. Upload a new file to try again.</span>
+                    <span>Processing failed — upload a new file.</span>
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Optional — Apify for LinkedIn link auto-extract (does not gate setup) */}
-            <div className="flex items-start gap-4 px-6 py-5">
-              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border bg-secondary/40 font-mono text-[13px] font-bold text-muted-foreground">
-                +
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        Auto-extract LinkedIn jobs
-                      </p>
-                      <span className="rounded-full border border-border bg-secondary px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                        Optional
-                      </span>
-                    </div>
-                    <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                      Add an Apify key only if you paste LinkedIn job links on the website — skip it
-                      if you use the extension
-                    </p>
-                  </div>
-                  <Link href="/settings" className="shrink-0">
-                    <Button size="sm" variant="outline">
-                      Add key
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Cost-saving tip */}
-          <div className="border-t border-border bg-secondary/30 px-6 py-3">
-            <p className="text-xs text-muted-foreground">
-              💡 Tip: to save on API costs, use the{' '}
-              <a
-                href={CHROME_EXTENSION_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold underline underline-offset-2 hover:text-foreground"
-              >
-                extension
-              </a>{' '}
-              with Web Automation and pick ChatGPT — it tailors through your existing ChatGPT login,
-              with no API key or usage charges.
-            </p>
           </div>
 
           {/* Footer progress */}
@@ -281,6 +229,27 @@ export function SetupChecklist({
                 />
               ))}
             </div>
+          </div>
+
+          {/* Recommended path — the extension (also the cost-saving answer) */}
+          <div className="flex items-center justify-between gap-4 border-t border-border bg-secondary/30 px-6 py-4">
+            <p className="text-xs leading-5 text-muted-foreground">
+              💡 <span className="font-semibold text-foreground">Best experience:</span> the{' '}
+              <a
+                href={CHROME_EXTENSION_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold underline underline-offset-2 hover:text-foreground"
+              >
+                extension
+              </a>{' '}
+              tailors any LinkedIn job through your ChatGPT login — no API key, no cost.
+            </p>
+            <a href={CHROME_EXTENSION_URL} target="_blank" rel="noreferrer" className="shrink-0">
+              <Button size="sm" variant="outline">
+                Get extension
+              </Button>
+            </a>
           </div>
         </div>
       </div>
