@@ -726,13 +726,13 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
       }
       headerActions={
         <>
-          <div className="relative group" ref={masterMenuRef}>
+          <div className="relative group w-full sm:w-auto" ref={masterMenuRef}>
             {masterResumeId ? (
-              <div className="flex items-stretch">
+              <div className="flex items-stretch w-full sm:w-auto">
                 <Button
                   variant="secondary"
                   onClick={handleOpenMasterResume}
-                  className="h-10 min-w-[15rem] justify-start px-4 text-left"
+                  className="h-10 flex-1 justify-start px-4 text-left sm:flex-initial sm:min-w-[15rem]"
                 >
                   <span
                     className={cn(
@@ -834,7 +834,7 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
             ) : (
               <Button
                 variant="outline"
-                className="h-10 min-w-[15rem] justify-start px-4"
+                className="h-10 w-full justify-start px-4 sm:w-auto sm:min-w-[15rem]"
                 onClick={() => setSetupDismissed(false)}
               >
                 <span className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/10 bg-primary text-white">
@@ -850,12 +850,12 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
             )}
           </div>
           {masterResumeId && processingStatus === 'ready' ? (
-            <div className="relative group" ref={tailorMenuRef}>
-              <div className="flex items-stretch">
+            <div className="relative group w-full sm:w-auto" ref={tailorMenuRef}>
+              <div className="flex items-stretch w-full sm:w-auto">
                 <Button
                   variant="outline"
                   onClick={() => setShowTailorDialog(true)}
-                  className="h-10 min-w-[12rem] justify-start px-4 text-left"
+                  className="h-10 flex-1 justify-start px-4 text-left sm:flex-initial sm:min-w-[12rem]"
                 >
                   <Wand2 className="h-3.5 w-3.5 mr-2" />
                   <span className="flex min-w-0 flex-col items-start">

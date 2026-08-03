@@ -26,8 +26,8 @@ export const SwissGrid = ({
   const { t } = useTranslations();
 
   return (
-    <div className="skin-page-brand flex h-screen w-full items-start justify-center overflow-hidden px-4 py-12 md:px-8">
-      <div className="skin-shell flex max-h-full w-full max-w-[86rem] flex-col overflow-hidden rounded-[28px]">
+    <div className="skin-page-brand flex min-h-dvh w-full items-start justify-center px-4 py-6 md:h-screen md:overflow-hidden md:py-12 md:px-8">
+      <div className="skin-shell flex w-full max-w-[86rem] flex-col rounded-[28px] md:max-h-full md:overflow-hidden">
         <div className="relative z-30 shrink-0 border-b border-border bg-white/60 px-8 py-5 md:px-10 md:py-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -49,7 +49,7 @@ export const SwissGrid = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative z-10">
+        <div className="relative z-10 flex-1 overflow-x-hidden md:overflow-y-auto">
           <div className={cn('p-6 md:p-8', contentClassName)}>
             <div className="min-h-full">{children}</div>
           </div>

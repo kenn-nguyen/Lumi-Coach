@@ -80,7 +80,7 @@ export function AccountControl({ compact = false }: { compact?: boolean }) {
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-full z-50 mt-2 min-w-[16rem] overflow-hidden rounded-2xl border border-border bg-card shadow-sw-default">
+        <div className="absolute left-0 top-full z-50 mt-2 min-w-[16rem] overflow-hidden rounded-2xl border border-border bg-card shadow-sw-default lg:left-auto lg:right-0">
           <div className="border-b border-border px-4 py-3">
             <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
               Signed in
