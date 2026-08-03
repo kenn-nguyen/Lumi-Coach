@@ -1152,7 +1152,7 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
                       role="button"
                       tabIndex={0}
                       className={cn(
-                        'flex w-full items-center gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80',
+                        'flex w-full items-start gap-4 bg-card px-6 py-3 text-left transition-colors hover:bg-secondary/80 sm:items-center',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         index > 0 && 'border-t border-border'
                       )}
@@ -1166,48 +1166,50 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
                       <div className="min-w-0 flex-1 py-0.5">
                         <div className="flex min-w-0 items-start gap-3">
                           <h3
-                            className="min-w-0 flex-1 truncate font-serif text-[1.2rem] leading-tight"
+                            className="min-w-0 flex-1 break-words font-serif text-[1.2rem] leading-tight sm:truncate"
                             title={title}
                           >
                             {title}
                           </h3>
                         </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-wide text-gray-500">
+                        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <p className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wide text-gray-500 sm:flex-1">
                             {t('dashboard.edited', {
                               date: formatDate(resume.updated_at || resume.created_at),
                             })}
                           </p>
-                          {resume.job_source_url ? (
-                            <a
-                              href={resume.job_source_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(event) => event.stopPropagation()}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {resume.job_source_url ? (
+                              <a
+                                href={resume.job_source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                                className="inline-flex h-8 shrink-0 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                              >
+                                Open JD
+                              </a>
+                            ) : null}
+                            <div className="shrink-0">
+                              {renderStatusPill(resume.processing_status, resume.resume_id)}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={t('dashboard.deleteResume')}
+                              className="h-8 w-8 shrink-0 rounded-xl border border-transparent text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:border-red-200 focus-visible:bg-red-50 focus-visible:text-red-700"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setDeleteError(null);
+                                setResumePendingDelete(resume);
+                              }}
                               onKeyDown={(event) => event.stopPropagation()}
-                              className="inline-flex h-8 shrink-0 items-center rounded-full border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                             >
-                              Open JD
-                            </a>
-                          ) : null}
-                          <div className="shrink-0">
-                            {renderStatusPill(resume.processing_status, resume.resume_id)}
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label={t('dashboard.deleteResume')}
-                            className="h-8 w-8 shrink-0 rounded-xl border border-transparent text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:border-red-200 focus-visible:bg-red-50 focus-visible:text-red-700"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setDeleteError(null);
-                              setResumePendingDelete(resume);
-                            }}
-                            onKeyDown={(event) => event.stopPropagation()}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
                         </div>
                       </div>
                     </div>

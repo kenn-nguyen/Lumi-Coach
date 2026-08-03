@@ -13,24 +13,28 @@ export interface BackendWarmup {
   retry: () => void;
 }
 
-// A warm backend answers the first probe well under a second, so callers can
-// keep the normal UI during 'checking' and only react to 'cold'.
-const FIRST_PROBE_TIMEOUT_MS = 2_000;
+const PROBE_TIMEOUT_MS = 2_000;
+// Require this many consecutive failed probes before showing the overlay, so a
+// single transient blip on a healthy backend never triggers a false alarm.
+const CONFIRM_ATTEMPTS = 3;
+const CONFIRM_INTERVAL_MS = 800;
+// While cold (overlay shown), keep polling for recovery at this cadence.
 const POLL_TIMEOUT_MS = 4_000;
 const POLL_INTERVAL_MS = 2_500;
 // Ping every 10 minutes while healthy to keep Render's free tier from spinning
 // down, and to detect a backend that has gone down.
 const KEEPALIVE_MS = 10 * 60 * 1_000;
-// Stop hammering a backend that hasn't come up after 3 minutes; require a
-// manual retry. A Render cold start almost always completes well before this.
+// Stop polling (and show the terminal state) after this long without recovery.
 const GIVE_UP_MS = 3 * 60 * 1_000;
 
 /**
  * Continuously monitors backend health (Render free tier spins down when idle).
- * On mount it probes /api/v1/health; while healthy it keep-alive pings every
- * 10 min and re-probes when the tab regains focus; when a probe fails it enters
- * 'cold' and polls until the backend answers (then 'ready') or until 3 minutes
- * pass (then `gaveUp` and polling stops). `retry()` restarts the probe loop.
+ * A failed probe does NOT immediately show the overlay — it first re-probes up
+ * to CONFIRM_ATTEMPTS times, and only shows the "waking up" overlay if every
+ * one fails, so a transient blip on a healthy backend never causes a false
+ * alarm. Once cold, it polls until the backend answers ('ready') or GIVE_UP_MS
+ * passes ('gaveUp', polling stops). While healthy it keep-alive pings every
+ * 10 min and re-probes on tab focus. `retry()` restarts the loop.
  */
 export function useBackendWarmup(): BackendWarmup {
   const [state, setState] = useState<BackendWarmState>('checking');
@@ -47,19 +51,24 @@ export function useBackendWarmup(): BackendWarmup {
 
   useEffect(() => {
     let cancelled = false;
-    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let keepAlive: ReturnType<typeof setInterval> | undefined;
     let ticker: ReturnType<typeof setInterval> | undefined;
     let coldStartedAt = 0;
 
-    const stopTimers = () => {
-      if (pollTimer) clearTimeout(pollTimer);
+    const clearTimer = () => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+    };
+    const stopAll = () => {
+      clearTimer();
       if (keepAlive) clearInterval(keepAlive);
       if (ticker) clearInterval(ticker);
     };
 
     const goReady = () => {
       if (cancelled) return;
+      clearTimer();
       if (ticker) clearInterval(ticker);
       phaseRef.current = 'ready';
       setGaveUp(false);
@@ -67,7 +76,7 @@ export function useBackendWarmup(): BackendWarmup {
       if (keepAlive) clearInterval(keepAlive);
       keepAlive = setInterval(() => {
         void pingBackend(POLL_TIMEOUT_MS).then((ok) => {
-          if (!cancelled && !ok) goCold();
+          if (!cancelled && !ok) confirmDown();
         });
       }, KEEPALIVE_MS);
     };
@@ -92,23 +101,35 @@ export function useBackendWarmup(): BackendWarmup {
             return;
           }
           if (Date.now() - coldStartedAt >= GIVE_UP_MS) {
-            // Give up: stop polling and freeze the elapsed counter until retry.
             if (ticker) clearInterval(ticker);
             setGaveUp(true);
             return;
           }
-          pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+          timer = setTimeout(poll, POLL_INTERVAL_MS);
         });
       };
       poll();
     };
 
-    // Initial probe.
-    void pingBackend(FIRST_PROBE_TIMEOUT_MS).then((ok) => {
+    // Probe up to CONFIRM_ATTEMPTS times without showing the overlay; only go
+    // cold if every attempt fails. Any success returns to 'ready'.
+    const confirmDown = (attemptsLeft = CONFIRM_ATTEMPTS) => {
       if (cancelled) return;
-      if (ok) goReady();
-      else goCold();
-    });
+      void pingBackend(PROBE_TIMEOUT_MS).then((ok) => {
+        if (cancelled) return;
+        if (ok) {
+          goReady();
+          return;
+        }
+        if (attemptsLeft <= 1) {
+          goCold();
+          return;
+        }
+        timer = setTimeout(() => confirmDown(attemptsLeft - 1), CONFIRM_INTERVAL_MS);
+      });
+    };
+
+    confirmDown();
 
     // Re-probe when the tab becomes visible again — catches a backend that went
     // down while the tab was hidden, without waiting for the 10-min keep-alive.
@@ -116,8 +137,8 @@ export function useBackendWarmup(): BackendWarmup {
       if (cancelled || document.visibilityState !== 'visible' || phaseRef.current !== 'ready') {
         return;
       }
-      void pingBackend(FIRST_PROBE_TIMEOUT_MS).then((ok) => {
-        if (!cancelled && !ok) goCold();
+      void pingBackend(PROBE_TIMEOUT_MS).then((ok) => {
+        if (!cancelled && !ok) confirmDown();
       });
     };
     window.addEventListener('focus', recheck);
@@ -125,7 +146,7 @@ export function useBackendWarmup(): BackendWarmup {
 
     return () => {
       cancelled = true;
-      stopTimers();
+      stopAll();
       window.removeEventListener('focus', recheck);
       document.removeEventListener('visibilitychange', recheck);
     };
