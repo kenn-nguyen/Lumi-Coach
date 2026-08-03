@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import type { SystemStatus } from '@/lib/api/config';
 import { useStatusCache } from '@/lib/context/status-cache';
 
+const CHROME_EXTENSION_URL =
+  'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
+
 type ProcessingStatus = 'loading' | 'pending' | 'processing' | 'ready' | 'failed' | null;
 
 interface SetupChecklistProps {
@@ -216,6 +219,53 @@ export function SetupChecklist({
                 )}
               </div>
             </div>
+
+            {/* Optional — Apify for LinkedIn link auto-extract (does not gate setup) */}
+            <div className="flex items-start gap-4 px-6 py-5">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border bg-secondary/40 font-mono text-[13px] font-bold text-muted-foreground">
+                +
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        Auto-extract LinkedIn jobs
+                      </p>
+                      <span className="rounded-full border border-border bg-secondary px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Optional
+                      </span>
+                    </div>
+                    <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Add an Apify key only if you paste LinkedIn job links on the website — skip it
+                      if you use the extension
+                    </p>
+                  </div>
+                  <Link href="/settings" className="shrink-0">
+                    <Button size="sm" variant="outline">
+                      Add key
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Cost-saving tip */}
+          <div className="border-t border-border bg-secondary/30 px-6 py-3">
+            <p className="text-xs text-muted-foreground">
+              💡 Tip: to save on API costs, use the{' '}
+              <a
+                href={CHROME_EXTENSION_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold underline underline-offset-2 hover:text-foreground"
+              >
+                extension
+              </a>{' '}
+              with Web Automation and pick ChatGPT — it tailors through your existing ChatGPT login,
+              with no API key or usage charges.
+            </p>
           </div>
 
           {/* Footer progress */}

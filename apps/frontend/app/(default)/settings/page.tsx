@@ -90,7 +90,7 @@ type ApiKeyDisclosureAction = 'save' | 'test';
 
 const CHROME_EXTENSION_URL =
   'https://chromewebstore.google.com/detail/lumi-coach/iklflomjpppjfkaegdimkgabancffdhb';
-const PROVIDERS: LLMProvider[] = ['openai', 'anthropic', 'openrouter', 'gemini', 'deepseek'];
+const PROVIDERS: LLMProvider[] = ['openai', 'anthropic', 'gemini', 'deepseek'];
 
 const SEGMENTED_BUTTON_BASE =
   'rounded-xl border border-border font-mono transition-colors duration-150 ease-out shadow-xs disabled:cursor-not-allowed disabled:opacity-50';
@@ -1082,7 +1082,7 @@ export default function SettingsPage() {
             {/* Provider */}
             <div className="space-y-2">
               <Label>{t('settings.providerLabel')}</Label>
-              <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
                 {PROVIDERS.map((p) => (
                   <button
                     key={p}
@@ -1187,6 +1187,9 @@ export default function SettingsPage() {
                     <p className="text-xs text-amber-700 font-mono bg-amber-50 border border-amber-200 px-2 py-1.5">
                       Used for: bullet regeneration, outreach, cover letter, resume import.
                       Tailoring uses per-stage models from the stage config in Advanced.
+                    </p>
+                    <p className="text-xs text-gray-500 font-mono">
+                      Tip: pick a thinking / reasoning model for higher-quality output.
                     </p>
                   </div>
                   <div className="space-y-1.5">
@@ -1547,7 +1550,10 @@ export default function SettingsPage() {
                       </p>
                       <div className="space-y-2">
                         {(Object.keys(API_KEY_PROVIDER_INFO) as ApiKeyProvider[])
-                          .filter((pk) => llmProviderToApiKeyProvider(provider) !== pk)
+                          .filter(
+                            (pk) =>
+                              llmProviderToApiKeyProvider(provider) !== pk && pk !== 'openrouter'
+                          )
                           .map((pk) => {
                             const isSaved = savedProviders.has(pk);
                             const isSaving = providerKeysSavingMap[pk] ?? false;
