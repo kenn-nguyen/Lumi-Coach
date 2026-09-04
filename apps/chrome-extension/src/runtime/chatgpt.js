@@ -344,6 +344,31 @@ function waitForTopFrameLoad(tabId, timeoutMs = 20000) {
   });
 }
 
+// Wait for a freshly opened popup's top frame to finish loading. `waitForChatGptTab`
+// returns as soon as a chatgpt.com tab EXISTS, which is well before its document is
+// done — injecting a prompt runner into that still-loading document lets a later
+// navigation tear the frame down, and `executeScript` then resolves with no result
+// (observed in the 2026-08-29 and 2026-09-03 log exports: `hasResult: false` while
+// `tab.status` was still "loading"). Polls `tab.status` rather than listening for
+// webNavigation.onCompleted: the tab already exists here (unlike the reload paths,
+// which must register a listener BEFORE triggering the reload), so a poll has no
+// missed-event race and leaves no listener or timer to leak on the fast path.
+// Bounded by a timeout so a page that never reports complete can still proceed —
+// the same forgiving posture the readiness probe already takes.
+async function waitForChatGptTabLoaded(tabId, timeoutMs = 15000, pollIntervalMs = 100) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab?.status === 'complete') return true;
+    } catch {
+      return false; // tab/window gone — the caller's own checks handle it
+    }
+    await wait(pollIntervalMs);
+  }
+  return false;
+}
+
 async function closeWindow(windowId) {
   await removePersistedPopupWindowId(windowId);
   return chrome.windows.remove(windowId).catch(() => {});
@@ -1942,6 +1967,16 @@ async function openChatGptSession(options = {}) {
     logInfo('ChatGptAutomation', 'Waiting for ChatGPT tab to become reachable.', { promptLabel, popupWindowId });
     const tabId = await waitForChatGptTab(popupWindowId);
     logInfo('ChatGptAutomation', 'ChatGPT tab reachable.', { promptLabel, popupWindowId, tabId });
+    // Let the first document finish before probing or injecting; see
+    // waitForChatGptTabLoaded for why.
+    const topFrameLoaded = await waitForChatGptTabLoaded(tabId);
+    if (!topFrameLoaded) {
+      logWarn(
+        'ChatGptAutomation',
+        'ChatGPT popup did not report a finished top-frame load; continuing anyway.',
+        { promptLabel, popupWindowId, tabId },
+      );
+    }
     await installVisibilityKeepAlive(tabId);
     if (warmupDelayMs > 0) {
       logInfo('ChatGptAutomation', 'Probing ChatGPT startup readiness.', {
@@ -2505,7 +2540,22 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
         message: 'Run canceled.',
       };
     }
-    throw new Error(`Prompt automation did not return a result. Tab URL: ${tab?.url ?? 'unknown'}`);
+    // The injected runner resolved with nothing while its tab is still alive —
+    // its frame was almost certainly torn down by a navigation mid-run. Log it as
+    // an ERROR: before this, two separate failed runs produced log exports
+    // containing zero error entries, with the failure visible only as an
+    // info-level "Discarded uncommitted tailored resume clone { reason: 'failed' }".
+    logError('ChatGptAutomation', 'Prompt automation returned no result (injected frame was lost).', {
+      promptLabel,
+      tabId: session.tabId,
+      tabUrl: tab?.url ?? null,
+    });
+    // Recoverable: the popup is healthy, so the caller refreshes it and retries
+    // once rather than failing the run and discarding the cloned resume.
+    return {
+      status: 'frame_lost',
+      message: 'The ChatGPT page reloaded before the prompt finished.',
+    };
   }
   if (result.status !== 'success') {
     logError('ChatGptAutomation', 'Prompt run returned a non-success result.', normalizeResultForLogging(result));
@@ -2766,13 +2816,35 @@ export async function runChatGptPrompt(prompt, options = {}) {
     const wasUserCanceled = () =>
       getActiveRun(reusableRunId)?.cancelRequested === true;
 
-    // Recover a reusable-popup run by reopening a fresh popup and retrying the
-    // prompt once. `reason` is 'popup_closed' or 'error_page'.
+    // Recover a reusable-popup run by refreshing or reopening the popup and
+    // retrying the prompt once. `reason` is 'popup_closed', 'error_page', or
+    // 'frame_lost'.
     const recoverOrReturn = async (reason) => {
       // Never fight a user who stopped the run: an explicit cancel closes the
       // popup via cleanup — treat as canceled, don't reopen.
       if (wasUserCanceled()) {
         return { status: 'canceled', message: 'Run canceled.' };
+      }
+      // The injected runner's frame was torn down by a navigation while the popup
+      // itself stayed healthy. Refresh the SAME popup (which waits for the top
+      // frame to load) and run the prompt once more — not the error_page path,
+      // whose aggressive cookie purge and 1–2s stall would be wrong here: nothing
+      // about a lost frame suggests a cookie or network problem.
+      if (reason === 'frame_lost') {
+        const lostSession = chatGptRunSessions.get(reusableRunId);
+        if (
+          lostSession &&
+          !(await isPopupWindowGone(lostSession.popupWindowId))
+        ) {
+          logWarn(
+            'ChatGptAutomation',
+            'Retrying the prompt after the injected frame was lost.',
+            { runId: reusableRunId, promptLabel, tabId: lostSession.tabId },
+          );
+          lostSession.needsReset = true;
+          return runReusableChatGptPromptOnce(prompt, options, reusableRunId);
+        }
+        // Window is gone — fall through to the reopen path below.
       }
       // For a CLOSED popup, distinguish "the user closed the window" from
       // "Chrome discarded the backgrounded tab": if the window is gone, the user
@@ -2833,7 +2905,11 @@ export async function runChatGptPrompt(prompt, options = {}) {
         options,
         reusableRunId,
       );
-      if (result.status === 'popup_closed' || result.status === 'error_page') {
+      if (
+        result.status === 'popup_closed' ||
+        result.status === 'error_page' ||
+        result.status === 'frame_lost'
+      ) {
         return recoverOrReturn(result.status);
       }
       return result;
@@ -2851,7 +2927,13 @@ export async function runChatGptPrompt(prompt, options = {}) {
   });
 
   try {
-    return await runChatGptPromptInExistingSession(prompt, session, options);
+    const result = await runChatGptPromptInExistingSession(prompt, session, options);
+    if (result.status === 'frame_lost') {
+      // No reusable session to refresh here, and 'frame_lost' must never escape
+      // this module — preserve the pre-existing legacy behavior of throwing.
+      throw new Error(`Prompt automation did not return a result. Tab URL: ${session.targetUrl}`);
+    }
+    return result;
   } finally {
     await closeChatGptSession(session);
   }
