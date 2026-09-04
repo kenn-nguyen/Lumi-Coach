@@ -7,6 +7,13 @@ vi.mock('../../fire-gate.js', () => ({
   resetWebFireGate: () => {},
 }));
 
+// Spy on logError so a lost injected frame can be asserted to surface at error
+// level rather than only as a generic downstream failure.
+vi.mock('../../log.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, logError: vi.fn(actual.logError) };
+});
+
 import { injectedProviderPromptEntry, runWebAutomationPrompt } from './web-automation.js';
 
 function flushMicrotasks() {
@@ -507,6 +514,9 @@ function createChromeMock() {
   let lastWatchdogState = null;
   let scrapeResult = '';
   let holdWatcher = false;
+  // How many upcoming prompt-runner injections resolve with no frame result
+  // (i.e. the injected frame was torn down by a navigation mid-run).
+  let lostFrameRuns = 0;
 
   function createTab(url, windowId) {
     const tab = {
@@ -586,6 +596,10 @@ function createChromeMock() {
           lastWatchdogState = state ?? lastWatchdogState;
           return [{ result: state ?? null, request }];
         }
+        if (name === 'injectedProviderPromptEntry' && lostFrameRuns > 0) {
+          lostFrameRuns -= 1;
+          return [{ request }];
+        }
         if (name === 'injectedProviderPromptEntry' && holdWatcher) {
           return new Promise(() => {});
         }
@@ -610,6 +624,9 @@ function createChromeMock() {
     },
     holdWatcher() {
       holdWatcher = true;
+    },
+    loseNextFrames(count = 1) {
+      lostFrameRuns = count;
     },
   };
 }
@@ -733,5 +750,52 @@ describe('runWebAutomationPrompt startup readiness', () => {
     expect(result.status).toBe('success');
     expect(result.rawText).toContain('final answer');
     expect(result.recoveredByWatchdog).toBe(true);
+  });
+
+  it('logs an error when the injected runner returns no result', async () => {
+    const { logError } = await import('../../log.js');
+    logError.mockClear();
+    const chromeMock = createChromeMock();
+    vi.stubGlobal('chrome', chromeMock.chrome);
+    chromeMock.loseNextFrames(1);
+
+    const config = {
+      providerLabel: 'Claude',
+      scope: 'ClaudeAutomation',
+      defaultTargetUrl: 'https://claude.ai/new',
+      urlMatchers: ['https://claude.ai/'],
+      inputSelectors: ['#composer'],
+      sendButtonSelectors: ['#send-button'],
+      stopButtonSelectors: ['button[aria-label*="Stop"]'],
+      responseBusySelectors: [],
+      assistantTextSelectors: ['[data-assistant]'],
+      loginSelectors: [],
+      authRequiredMessage: 'x',
+      openPopupMessage: 'x',
+      popupCreatedMessage: 'x',
+      waitForTabMessage: 'x',
+      tabReadyMessage: 'x',
+      waitForHydrationMessage: 'x',
+      progressMessage: 'x',
+      retryMessage: 'x',
+      partialSuccessMessage: 'x',
+      partialRetrySuccessMessage: 'x',
+      responseTimeoutMs: 120000,
+      responseIdleTimeoutMs: 25000,
+      responseFirstTokenTimeoutMs: 60000,
+    };
+
+    await expect(
+      runWebAutomationPrompt('Return JSON', config, {
+        promptLabel: 'Prompt',
+        warmupDelayMs: 0,
+      }),
+    ).rejects.toThrow('did not return a result');
+
+    expect(
+      logError.mock.calls.some(([, message]) =>
+        String(message).includes('returned no result'),
+      ),
+    ).toBe(true);
   });
 });
