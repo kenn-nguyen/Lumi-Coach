@@ -166,6 +166,13 @@ function createChromeMock() {
         const name = request?.func?.name;
         const src =
           typeof request?.func === 'function' ? request.func.toString() : '';
+        // The MAIN-world visibility keep-alive is fire-and-forget and returns
+        // nothing useful. It needs its own branch: without one it fell through to
+        // the queue below and ate the FIRST entry of every scriptingResults push,
+        // silently shifting each test's queued results by one.
+        if (name === 'injectedVisibilityKeepAlive') {
+          return [{ result: null, request }];
+        }
         // The poll's reads are inline arrows (property name 'func'); gate on that
         // so the NAMED watcher (which also references __rmWatcherState because it
         // sets it) doesn't match these branches.
@@ -453,9 +460,19 @@ describe('chatgpt run-scoped popup reuse', () => {
       status: 'success',
       rawText: '{"ok":true}',
     });
+    // A repair actually ran: the invalid first answer was followed by a SECOND
+    // prompt injection in the same popup. Without this the test passed while
+    // never repairing anything (the keep-alive used to eat the invalid result,
+    // so the first prompt got the valid one and validation short-circuited).
+    const promptRuns = chromeMock.chrome.scripting.executeScript.mock.calls.filter(
+      ([request]) => request?.func?.name === 'injectedChatGptPromptEntry',
+    );
+    expect(promptRuns).toHaveLength(2);
+    expect(promptRuns[0][0].target.tabId).toBe(promptRuns[1][0].target.tabId);
     expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
     expect(chromeMock.chrome.tabs.update).not.toHaveBeenCalled();
-    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(2);
+    // keep-alive + two prompt runs.
+    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(3);
     expect(chromeMock.chrome.windows.remove).not.toHaveBeenCalled();
   });
 
