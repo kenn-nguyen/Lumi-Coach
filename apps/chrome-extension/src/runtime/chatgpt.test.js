@@ -554,11 +554,19 @@ describe('chatgpt run-scoped popup reuse', () => {
   });
 
   it('does not retry a lost frame when the user canceled the run', async () => {
-    ensureActiveRun({ runId: 'run-frame-cancel', phase: 'running', inFlight: true });
-    // Cancel at the exact moment the frame is lost — a pre-cancel would be caught
-    // by the earlier throwIfRunCanceled guard and never reach the frame_lost path.
-    chromeMock.loseNextFrames(1, async () => {
-      await requestActiveRunCancel({ runId: 'run-frame-cancel', reason: 'user' });
+    const run = ensureActiveRun({
+      runId: 'run-frame-cancel',
+      phase: 'running',
+      inFlight: true,
+    });
+    // Cancel at the exact moment the frame is lost: a pre-cancel would be caught
+    // by the earlier throwIfRunCanceled guard and never reach the frame_lost
+    // path. Set the flag directly rather than calling requestActiveRunCancel,
+    // whose cleanups close the popup window — that would take the "tab is gone"
+    // branch instead of the frame_lost cancel guard this test is about.
+    chromeMock.loseNextFrames(1, () => {
+      run.cancelRequested = true;
+      run.cancelReason = 'user';
     });
 
     const result = await runChatGptPrompt('Prompt 1', {
