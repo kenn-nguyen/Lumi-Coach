@@ -7,6 +7,13 @@ vi.mock('./fire-gate.js', () => ({
   resetWebFireGate: () => {},
 }));
 
+// Spy on logError so tests can assert that a lost injected frame is reported at
+// error level (it used to fail a run while logging nothing above info).
+vi.mock('./log.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, logError: vi.fn(actual.logError) };
+});
+
 import {
   clearChatGptRunSessionsForTests,
   closeChatGptRunSession,
@@ -37,6 +44,11 @@ function createChromeMock() {
   let lastWatcherStateRead = null;
   let scrapeResult = '';
   let holdWatcher = false;
+  // How many upcoming prompt-runner injections resolve with no frame result,
+  // plus an optional hook that runs at the moment a frame is lost (lets a test
+  // cancel the run at exactly that point).
+  let lostFrameRuns = 0;
+  let onFrameLost = null;
   const scriptingResults = [];
   const readinessResults = [];
 
@@ -62,6 +74,16 @@ function createChromeMock() {
         const windowId = nextWindowId++;
         createTab(options.url, windowId);
         callback({ id: windowId });
+      }),
+      // The runtime calls windows.get to tell a user-closed popup from a live one
+      // (isPopupWindowGone) and to detect a minimized popup. Without it those
+      // lookups always threw, so every "is the window still there?" check silently
+      // answered "gone".
+      get: vi.fn(async (windowId) => {
+        if (!windowsById.has(windowId)) {
+          throw new Error(`No window with id ${windowId}`);
+        }
+        return { id: windowId, state: 'normal' };
       }),
       remove: vi.fn(async (windowId) => {
         const tabIds = windowsById.get(windowId) ?? [];
@@ -144,6 +166,13 @@ function createChromeMock() {
         const name = request?.func?.name;
         const src =
           typeof request?.func === 'function' ? request.func.toString() : '';
+        // The MAIN-world visibility keep-alive is fire-and-forget and returns
+        // nothing useful. It needs its own branch: without one it fell through to
+        // the queue below and ate the FIRST entry of every scriptingResults push,
+        // silently shifting each test's queued results by one.
+        if (name === 'injectedVisibilityKeepAlive') {
+          return [{ result: null, request }];
+        }
         // The poll's reads are inline arrows (property name 'func'); gate on that
         // so the NAMED watcher (which also references __rmWatcherState because it
         // sets it) doesn't match these branches.
@@ -159,6 +188,13 @@ function createChromeMock() {
           return [
             { result: { visibilityState: 'hidden', watcher: watcher ?? null }, request },
           ];
+        }
+        // Simulate the injected runner's frame being torn down by a navigation:
+        // executeScript resolves, but the frame result carries no `result`.
+        if (name === 'injectedChatGptPromptEntry' && lostFrameRuns > 0) {
+          lostFrameRuns -= 1;
+          if (onFrameLost) await onFrameLost();
+          return [{ request }];
         }
         // The in-page watcher (injectedChatGptPromptEntry). Optionally hold it
         // pending forever to simulate a hidden popup starving its settle timers.
@@ -187,8 +223,26 @@ function createChromeMock() {
     holdWatcher() {
       holdWatcher = true;
     },
+    loseNextFrames(count = 1, hook = null) {
+      lostFrameRuns = count;
+      onFrameLost = hook;
+    },
     setDefaultTabStatus(status) {
       defaultTabStatus = status;
+    },
+    // `chrome.windows.create` does not fire webNavigation.onCompleted in this
+    // mock (only `tabs.reload` does), so tests that need a freshly opened popup
+    // to finish loading drive it explicitly.
+    completeTopFrameLoad(tabId) {
+      const targetIds =
+        typeof tabId === 'number' ? [tabId] : Array.from(tabsById.keys());
+      for (const id of targetIds) {
+        const tab = tabsById.get(id);
+        if (tab) tab.status = 'complete';
+        for (const fn of Array.from(webNavCompletedListeners)) {
+          fn({ tabId: id, frameId: 0 });
+        }
+      }
     },
     holdNextTabUpdate() {
       let release;
@@ -328,14 +382,49 @@ describe('chatgpt run-scoped popup reuse', () => {
     await sessionPromise;
   });
 
-  it('opens a reusable session without waiting for tab completion when the page is already reachable', async () => {
+  it('waits for the popup top frame to finish loading before injecting anything', async () => {
+    ensureActiveRun({ runId: 'run-slow-load', phase: 'running', inFlight: true });
+    chromeMock.setDefaultTabStatus('loading');
+
+    const injectedKeepAlive = () =>
+      chromeMock.chrome.scripting.executeScript.mock.calls.some(
+        ([request]) => request?.func?.name === 'injectedVisibilityKeepAlive',
+      );
+
+    let settled = false;
+    const sessionPromise = getOrOpenChatGptRunSession('run-slow-load', {
+      warmupDelayMs: 0,
+    }).then((value) => {
+      settled = true;
+      return value;
+    });
+
+    // Let the open path run up to the load wait, then confirm it is parked there:
+    // nothing has been injected into the still-loading document.
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(injectedKeepAlive()).toBe(false);
+
+    chromeMock.completeTopFrameLoad();
+
+    const session = await sessionPromise;
+    expect(session.tabId).toBeTruthy();
+    expect(injectedKeepAlive()).toBe(true);
+  });
+
+  it('opens a reusable session even when the page never reports a finished load', async () => {
+    vi.useFakeTimers();
     ensureActiveRun({ runId: 'run-loading-tab', phase: 'running', inFlight: true });
     chromeMock.setDefaultTabStatus('loading');
 
-    const session = await getOrOpenChatGptRunSession('run-loading-tab', {
+    const sessionPromise = getOrOpenChatGptRunSession('run-loading-tab', {
       warmupDelayMs: 0,
     });
 
+    // No webNavigation.onCompleted ever fires; the bounded wait must give up.
+    await vi.advanceTimersByTimeAsync(15000);
+
+    const session = await sessionPromise;
     expect(session.tabId).toBeTruthy();
     expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
   });
@@ -371,9 +460,19 @@ describe('chatgpt run-scoped popup reuse', () => {
       status: 'success',
       rawText: '{"ok":true}',
     });
+    // A repair actually ran: the invalid first answer was followed by a SECOND
+    // prompt injection in the same popup. Without this the test passed while
+    // never repairing anything (the keep-alive used to eat the invalid result,
+    // so the first prompt got the valid one and validation short-circuited).
+    const promptRuns = chromeMock.chrome.scripting.executeScript.mock.calls.filter(
+      ([request]) => request?.func?.name === 'injectedChatGptPromptEntry',
+    );
+    expect(promptRuns).toHaveLength(2);
+    expect(promptRuns[0][0].target.tabId).toBe(promptRuns[1][0].target.tabId);
     expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
     expect(chromeMock.chrome.tabs.update).not.toHaveBeenCalled();
-    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(2);
+    // keep-alive + two prompt runs.
+    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(3);
     expect(chromeMock.chrome.windows.remove).not.toHaveBeenCalled();
   });
 
@@ -444,6 +543,69 @@ describe('chatgpt run-scoped popup reuse', () => {
     expect(secondSession.tabId).toBe(session.tabId);
     expect(session.needsReset).toBe(false);
     expect(session.pendingResetPromise).toBe(null);
+  });
+
+  it('logs an error when the injected runner returns no result', async () => {
+    const { logError } = await import('./log.js');
+    logError.mockClear();
+    chromeMock.loseNextFrames(1);
+
+    // Legacy (non-reusable) path: no session to refresh, so this still throws.
+    await expect(
+      runChatGptPrompt('Prompt 1', { promptLabel: 'Prompt 1', warmupDelayMs: 0 }),
+    ).rejects.toThrow('did not return a result');
+
+    expect(
+      logError.mock.calls.some(([, message]) =>
+        String(message).includes('returned no result'),
+      ),
+    ).toBe(true);
+  });
+
+  it('recovers a run once when the injected frame is lost mid-prompt', async () => {
+    ensureActiveRun({ runId: 'run-frame-lost', phase: 'running', inFlight: true });
+    // First prompt injection loses its frame; the retry after the refresh works.
+    chromeMock.loseNextFrames(1);
+
+    const result = await runChatGptPrompt('Prompt 1', {
+      promptLabel: 'Prompt 1',
+      runId: 'run-frame-lost',
+      reusePopupSession: true,
+      warmupDelayMs: 0,
+    });
+
+    expect(result.status).toBe('success');
+    // Recovered by refreshing the SAME popup, not by opening a new one.
+    expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
+    expect(chromeMock.chrome.tabs.reload).toHaveBeenCalled();
+  });
+
+  it('does not retry a lost frame when the user canceled the run', async () => {
+    const run = ensureActiveRun({
+      runId: 'run-frame-cancel',
+      phase: 'running',
+      inFlight: true,
+    });
+    // Cancel at the exact moment the frame is lost: a pre-cancel would be caught
+    // by the earlier throwIfRunCanceled guard and never reach the frame_lost
+    // path. Set the flag directly rather than calling requestActiveRunCancel,
+    // whose cleanups close the popup window — that would take the "tab is gone"
+    // branch instead of the frame_lost cancel guard this test is about.
+    chromeMock.loseNextFrames(1, () => {
+      run.cancelRequested = true;
+      run.cancelReason = 'user';
+    });
+
+    const result = await runChatGptPrompt('Prompt 1', {
+      promptLabel: 'Prompt 1',
+      runId: 'run-frame-cancel',
+      reusePopupSession: true,
+      warmupDelayMs: 0,
+    }).catch((error) => ({ status: 'threw', message: String(error) }));
+
+    // The deliberate user cancel wins; we never refresh and retry against them.
+    expect(result.status).toBe('canceled');
+    expect(chromeMock.chrome.tabs.reload).not.toHaveBeenCalled();
   });
 
   it('recovers a completed response from the background poll when the hidden popup starves the in-page settle', async () => {

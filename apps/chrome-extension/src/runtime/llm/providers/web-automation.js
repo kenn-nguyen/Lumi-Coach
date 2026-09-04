@@ -1988,6 +1988,17 @@ async function executeWebAutomationPromptInSession(session, prompt, config, opti
         message: 'Run canceled.',
       };
     }
+    // Mirrors the same case in ../../chatgpt.js: the injected runner resolved
+    // with nothing while its tab is still alive, meaning its frame was torn down
+    // by a navigation mid-run. Log it at ERROR level so it is visible in an
+    // exported log rather than surfacing only as a generic downstream failure.
+    // (Unlike ChatGPT, waitForProviderTab already gates on tab.status
+    // 'complete', and there is no reusable session here to refresh and retry.)
+    logError(config.scope, 'Prompt automation returned no result (injected frame was lost).', {
+      promptLabel,
+      tabId: session.tabId,
+      tabUrl: tab?.url ?? null,
+    });
     throw new Error(`Prompt automation did not return a result. Tab URL: ${tab?.url ?? 'unknown'}`);
   }
   if (result.status !== 'success') {
