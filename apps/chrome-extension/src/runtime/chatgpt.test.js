@@ -75,6 +75,16 @@ function createChromeMock() {
         createTab(options.url, windowId);
         callback({ id: windowId });
       }),
+      // The runtime calls windows.get to tell a user-closed popup from a live one
+      // (isPopupWindowGone) and to detect a minimized popup. Without it those
+      // lookups always threw, so every "is the window still there?" check silently
+      // answered "gone".
+      get: vi.fn(async (windowId) => {
+        if (!windowsById.has(windowId)) {
+          throw new Error(`No window with id ${windowId}`);
+        }
+        return { id: windowId, state: 'normal' };
+      }),
       remove: vi.fn(async (windowId) => {
         const tabIds = windowsById.get(windowId) ?? [];
         for (const tabId of tabIds) {
