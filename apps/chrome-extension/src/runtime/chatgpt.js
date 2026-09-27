@@ -778,7 +778,7 @@ async function waitForChatGptStartupReady(
   };
 }
 
-function injectedChatGptPromptEntry(prompt, options = {}) {
+export function injectedChatGptPromptEntry(prompt, options = {}) {
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 600000;
   const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 600000;
   const composerWaitTimeoutMs = 45000;
@@ -829,6 +829,11 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     'button[aria-label*="Retry"]',
   ];
   const ASSISTANT_TEXT_SELECTORS = [
+    // Lightweight ChatGPT shell served signed out (seen Sept 2026):
+    // <li data-message-role="assistant"> wrapping <div data-assistant-markdown>,
+    // atomic CSS classes only. The signed-in React UI still matches the
+    // data-message-author-role selectors below.
+    '[data-message-role="assistant"] [data-assistant-markdown]',
     '[data-message-author-role="assistant"] .markdown',
     '[data-message-author-role="assistant"] [class*="markdown"]',
     '[data-message-author-role="assistant"] .prose',
@@ -1168,20 +1173,25 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   }
 
   function scrapeAssistantTextLenient() {
-    // Gate-free last resort: the single longest assistant-looking text block.
-    // Used to resolve and to rescue on timeout so a finished answer is never
-    // lost just because the structural selectors drifted.
-    const seen = new Set();
-    let best = '';
-    for (const selector of ASSISTANT_TEXT_SELECTORS) {
-      for (const node of document.querySelectorAll(selector)) {
-        if (seen.has(node)) continue;
-        seen.add(node);
-        const text = node.textContent?.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim() ?? '';
-        if (text.length > best.length) best = text;
-      }
+    // Gate-free last resort, deliberately NOT built on ASSISTANT_TEXT_SELECTORS
+    // (when those drift, a fallback that reuses them misses too). Instead take
+    // the latest element any data-* attribute marks as "assistant" — ChatGPT has
+    // used data-message-author-role, data-message-role and data-turn — and read
+    // its text minus UI chrome. Used to resolve and to rescue on timeout so a
+    // finished answer is never lost just because the text selectors drifted.
+    // Scans the whole DOM, so it must stay out of the per-mutation snapshot.
+    const containers = Array.from(document.body?.querySelectorAll('*') ?? []).filter((node) =>
+      Array.from(node.attributes).some((attr) => attr.name.startsWith('data-') && attr.value === 'assistant')
+    );
+    for (let index = containers.length - 1; index >= 0; index -= 1) {
+      const clone = containers[index].cloneNode(true);
+      clone
+        .querySelectorAll('button, svg, [role="group"], [hidden], [aria-hidden="true"], [data-message-attribution], .sr-only')
+        .forEach((node) => node.remove());
+      const text = clone.textContent?.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim() ?? '';
+      if (text) return text;
     }
-    return best;
+    return '';
   }
 
   function getAssistantSnapshot() {
@@ -1194,7 +1204,8 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       })
       .map((node, index) => {
         const article = node.closest('article[data-testid^="conversation-turn-"]');
-        const key = article?.getAttribute('data-testid') ?? `assistant-node-${index}`;
+        const message = node.closest('[data-message-role="assistant"][id]');
+        const key = article?.getAttribute('data-testid') ?? message?.id ?? `assistant-node-${index}`;
         const text = node.textContent?.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim() ?? '';
         return { key, text };
       })
@@ -1795,9 +1806,22 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
 // visible/focused so ChatGPT does not pause streaming/rendering when the window
 // is backgrounded (another app focused, or covered by the main window). Without
 // this the run stalls until the user clicks back to the popup.
-function injectedVisibilityKeepAlive() {
-  if (window.__rmVisibilityKeepAlive) return;
+// Returns its status for logging: whether it was already on this document
+// (vs. just installed — i.e. the page had reloaded and lost it), whether the
+// rAF shim is active, and the page's real (unspoofed) hidden state.
+export function injectedVisibilityKeepAlive() {
+  const readHiddenNow = () => {
+    try {
+      return Object.getOwnPropertyDescriptor(Document.prototype, 'hidden').get.call(document) === true;
+    } catch {
+      return null;
+    }
+  };
+  if (window.__rmVisibilityKeepAlive) {
+    return { status: 'already_active', rafShim: window.__rmVisibilityKeepAliveRaf === true, hidden: readHiddenNow() };
+  }
   window.__rmVisibilityKeepAlive = true;
+  window.__rmVisibilityKeepAliveRaf = false;
   try {
     // Capture the REAL visibility getter before we spoof it, so the
     // requestAnimationFrame shim below only activates when the window is
@@ -1904,20 +1928,25 @@ function injectedVisibilityKeepAlive() {
             nativeCancel(id);
           } catch {}
         };
+        window.__rmVisibilityKeepAliveRaf = true;
       }
     } catch {}
   } catch {}
+  return { status: 'installed', rafShim: window.__rmVisibilityKeepAliveRaf === true, hidden: readHiddenNow() };
 }
 
 async function installVisibilityKeepAlive(tabId) {
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN',
-      func: injectedVisibilityKeepAlive,
-    });
-  } catch {
+    const [{ result } = {}] =
+      (await chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: injectedVisibilityKeepAlive,
+      })) ?? [];
+    return result ?? { status: 'no_result' };
+  } catch (error) {
     // Best-effort — never block the run if the keep-alive can't be installed.
+    return { status: 'inject_failed', error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -2290,6 +2319,21 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       provider: 'chatgpt',
     });
     if (fireRunId) throwIfRunCanceled(fireRunId, promptLabel);
+    // Re-assert the keep-alive on the document we are about to prompt. It is
+    // installed after our own loads/reloads, but a page that reloaded on its own
+    // since (Cloudflare re-check, ChatGPT redirect) has lost it — and in a hidden
+    // popup ChatGPT then never paints the streamed reply (Stop comes and goes,
+    // text never appears -> "empty assistant response"). No-op if still present.
+    // Logged so a failed run shows whether the keep-alive was actually on.
+    const keepAlive = await installVisibilityKeepAlive(session.tabId);
+    logInfo('ChatGptAutomation', 'Visibility keep-alive status before prompt.', {
+      promptLabel,
+      tabId: session.tabId,
+      keepAliveStatus: keepAlive.status,
+      rafShim: keepAlive.rafShim ?? null,
+      pageHidden: keepAlive.hidden ?? null,
+      error: keepAlive.error ?? null,
+    });
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedChatGptPromptEntry,
@@ -2638,6 +2682,19 @@ async function runChatGptPromptWithRetryInSession(prompt, session, options = {})
     firstAttempt: normalizeResultForLogging(firstResult),
   });
 
+  // Retry in a FRESH temporary chat, not the one that just failed. Re-injecting
+  // into the failed thread (a temporary /c/<id> URL) makes ChatGPT show
+  // "Conversation not found", so the retry was doomed. Repair retries opt out:
+  // they are in-thread follow-ups that must keep the earlier answer in context.
+  if (!options.keepThreadOnRetry) {
+    logInfo('ChatGptAutomation', 'Starting a fresh ChatGPT chat before retrying.', {
+      promptLabel: options.promptLabel ?? 'Prompt',
+      tabId: session.tabId,
+      failedConversationUrl: firstResult.conversationUrl ?? null,
+    });
+    await performChatGptRunSessionReset(options.runId ?? null, session, options);
+  }
+
   const retryResult = await executeChatGptPromptInSession(session, prompt, {
     ...options,
     disableRetry: true,
@@ -2728,6 +2785,7 @@ async function runChatGptPromptInExistingSession(prompt, session, options = {}) 
       result = await runChatGptPromptWithRetryInSession(repairPrompt, session, {
         ...options,
         disableRetry: false,
+        keepThreadOnRetry: true,
         composeReadyTimeoutMs: Math.min(
           30000,
           Math.max(options.composeReadyTimeoutMs ?? 0, 12000),

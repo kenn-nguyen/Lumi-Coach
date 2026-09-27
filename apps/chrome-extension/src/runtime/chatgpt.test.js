@@ -471,8 +471,9 @@ describe('chatgpt run-scoped popup reuse', () => {
     expect(promptRuns[0][0].target.tabId).toBe(promptRuns[1][0].target.tabId);
     expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
     expect(chromeMock.chrome.tabs.update).not.toHaveBeenCalled();
-    // keep-alive + two prompt runs.
-    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(3);
+    // keep-alive on open, keep-alive re-asserted before each prompt, two prompt
+    // runs — and nothing else (no reload/reset between repair attempts).
+    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(5);
     expect(chromeMock.chrome.windows.remove).not.toHaveBeenCalled();
   });
 
@@ -647,6 +648,82 @@ describe('chatgpt run-scoped popup reuse', () => {
     expect(result.status).toBe('success');
     expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
     expect(chromeMock.chrome.windows.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a failed prompt in a fresh chat instead of the failed thread', async () => {
+    ensureActiveRun({ runId: 'run-fresh-retry', phase: 'running', inFlight: true });
+    chromeMock.scriptingResults.push(
+      {
+        status: 'dom_changed',
+        message: 'ChatGPT returned an empty assistant response after prompt submission.',
+        conversationUrl: 'https://chatgpt.com/c/failed?temporary-chat=true',
+      },
+      {
+        status: 'success',
+        rawText: '{"ok":true}',
+        conversationUrl: 'https://chatgpt.com/c/fresh',
+      },
+    );
+
+    const result = await runChatGptPrompt('Prompt 1', {
+      promptLabel: 'Prompt 1',
+      runId: 'run-fresh-retry',
+      reusePopupSession: true,
+      warmupDelayMs: 0,
+    });
+
+    expect(result).toMatchObject({ status: 'success', rawText: '{"ok":true}' });
+    // The popup was refreshed (fresh temporary chat) BEFORE the retry was
+    // injected, so the retry never lands in the failed conversation.
+    expect(chromeMock.chrome.tabs.reload).toHaveBeenCalledTimes(1);
+    const calls = chromeMock.chrome.scripting.executeScript.mock.invocationCallOrder;
+    const promptRunOrders = chromeMock.chrome.scripting.executeScript.mock.calls
+      .map(([request], index) => ({ request, order: calls[index] }))
+      .filter(({ request }) => request?.func?.name === 'injectedChatGptPromptEntry')
+      .map(({ order }) => order);
+    expect(promptRunOrders).toHaveLength(2);
+    const reloadOrder = chromeMock.chrome.tabs.reload.mock.invocationCallOrder[0];
+    expect(reloadOrder).toBeGreaterThan(promptRunOrders[0]);
+    expect(reloadOrder).toBeLessThan(promptRunOrders[1]);
+    expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a repair retry in the same thread', async () => {
+    ensureActiveRun({ runId: 'run-repair-retry', phase: 'running', inFlight: true });
+    chromeMock.scriptingResults.push(
+      {
+        status: 'success',
+        rawText: '{"ok":false}',
+        conversationUrl: 'https://chatgpt.com/c/repair',
+      },
+      {
+        status: 'dom_changed',
+        message: 'ChatGPT returned an empty assistant response after prompt submission.',
+        conversationUrl: 'https://chatgpt.com/c/repair',
+      },
+      {
+        status: 'success',
+        rawText: '{"ok":true}',
+        conversationUrl: 'https://chatgpt.com/c/repair',
+      },
+    );
+
+    const result = await runChatGptPrompt('Return JSON', {
+      runId: 'run-repair-retry',
+      reusePopupSession: true,
+      warmupDelayMs: 0,
+      validateResponse: (rawText) =>
+        rawText.includes('"ok":true')
+          ? { valid: true }
+          : { valid: false, message: 'Need ok true' },
+      buildRepairPrompt: ({ attempt }) => `repair-${attempt}`,
+      maxRepairAttempts: 1,
+    });
+
+    expect(result).toMatchObject({ status: 'success', rawText: '{"ok":true}' });
+    // The repair depends on the earlier answer in the thread, so its retry must
+    // not refresh the popup into a new chat.
+    expect(chromeMock.chrome.tabs.reload).not.toHaveBeenCalled();
   });
 
   it('closes a cached popup when the active run is canceled', async () => {
