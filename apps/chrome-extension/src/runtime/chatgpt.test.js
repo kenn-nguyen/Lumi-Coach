@@ -471,8 +471,9 @@ describe('chatgpt run-scoped popup reuse', () => {
     expect(promptRuns[0][0].target.tabId).toBe(promptRuns[1][0].target.tabId);
     expect(chromeMock.chrome.windows.create).toHaveBeenCalledTimes(1);
     expect(chromeMock.chrome.tabs.update).not.toHaveBeenCalled();
-    // keep-alive + two prompt runs.
-    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(3);
+    // keep-alive on open, keep-alive re-asserted before each prompt, two prompt
+    // runs — and nothing else (no reload/reset between repair attempts).
+    expect(chromeMock.chrome.scripting.executeScript).toHaveBeenCalledTimes(5);
     expect(chromeMock.chrome.windows.remove).not.toHaveBeenCalled();
   });
 

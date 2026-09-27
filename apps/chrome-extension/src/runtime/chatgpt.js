@@ -2301,6 +2301,12 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
       provider: 'chatgpt',
     });
     if (fireRunId) throwIfRunCanceled(fireRunId, promptLabel);
+    // Re-assert the keep-alive on the document we are about to prompt. It is
+    // installed after our own loads/reloads, but a page that reloaded on its own
+    // since (Cloudflare re-check, ChatGPT redirect) has lost it — and in a hidden
+    // popup ChatGPT then never paints the streamed reply (Stop comes and goes,
+    // text never appears -> "empty assistant response"). No-op if still present.
+    await installVisibilityKeepAlive(session.tabId);
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedChatGptPromptEntry,
