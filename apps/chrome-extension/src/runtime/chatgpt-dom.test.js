@@ -23,6 +23,18 @@ const STREAMING_MESSAGE = readFixture(
   "chatgpt-assistant-message-2026-09.streaming.html",
 );
 const COMPLETE_MESSAGE = readFixture("chatgpt-assistant-message-2026-09.html");
+// Captured 2026-09-27 from a signed-in Plus account (attribute values trimmed):
+// the finished turn, user message + assistant reply + its action bar.
+const PLUS_TURN = readFixture("chatgpt-assistant-turn-plus-2026-09.html");
+// Mid-stream: partial reply and no action bar yet ("Regenerate response"
+// only appears once the reply is finished).
+const plusStreaming = (html) =>
+  html
+    .replace(":[1,2,3]<span>}</span>", ":[1,2")
+    .replace(
+      /<button[^>]*aria-label="Regenerate response"[^>]*><\/button>/,
+      "",
+    );
 const PROMPT =
   'Reply with exactly this JSON and nothing else: {"probe":"LUMI_PROBE_OK","items":[1,2,3]}';
 const EXPECTED = '{"probe":"LUMI_PROBE_OK","items":[1,2,3]}';
@@ -156,6 +168,56 @@ describe("injectedChatGptPromptEntry against captured ChatGPT markup", () => {
     const { result } = await runPrompt(finish);
 
     expect(result).toMatchObject({ status: "success", rawText: EXPECTED });
+  });
+
+  it("reads the reply from the paid-account (Plus) markup", async () => {
+    // Finishing shows "Regenerate response", which the watcher also treats as a
+    // failure signal when it has seen no text — so this only passes if the
+    // reply text is found before that button appears.
+    const shell = mountChatGptShell();
+    const finish = simulateGeneration(
+      shell,
+      plusStreaming(PLUS_TURN),
+      PLUS_TURN,
+    );
+
+    const { result, settledWhileStreaming } = await runPrompt(finish);
+
+    expect(settledWhileStreaming).toBe(false);
+    expect(result).toMatchObject({ status: "success", rawText: EXPECTED });
+  });
+
+  it("recovers the Plus reply via the lenient scrape, not its role heading", async () => {
+    // The only element Plus marks "assistant" is <h4>ChatGPT said:</h4>. With
+    // the body selector gone, the lenient scrape must read the message the
+    // heading belongs to — 0.4.5 returned the heading text as the answer.
+    const drift = (html) =>
+      html.replaceAll(
+        'data-markdown-text-style="assistant-message"',
+        'data-markdown-text-style="assistant-body"',
+      );
+    const shell = mountChatGptShell();
+    const finish = simulateGeneration(
+      shell,
+      drift(plusStreaming(PLUS_TURN)),
+      drift(PLUS_TURN),
+    );
+
+    const { result } = await runPrompt(finish);
+
+    expect(result).toMatchObject({ status: "success", rawText: EXPECTED });
+  });
+
+  it("never returns the Plus role heading as the answer when the body is missing", async () => {
+    const headingOnly = PLUS_TURN.replace(/<p dir="auto">.*?<\/p>/, "");
+    const shell = mountChatGptShell();
+    const finish = simulateGeneration(shell, headingOnly, headingOnly);
+
+    const { result } = await runPrompt(finish);
+
+    expect(result.status).toBe("dom_changed");
+    expect(result.rawText).toBeUndefined();
+    expect(result.partialRawText ?? "").not.toContain("said:");
   });
 
   it("still reads the older data-message-author-role markup", async () => {
