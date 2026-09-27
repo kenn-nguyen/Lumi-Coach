@@ -1172,8 +1172,26 @@ export function injectedChatGptPromptEntry(prompt, options = {}) {
     return findStopButton() !== null;
   }
 
+  // A conversation turn, across the UIs seen so far (Plus data-turn-key, the
+  // classic article/section conversation-turn-N, the signed-out li).
+  const TURN_CONTAINER_SELECTOR =
+    '[data-turn-key], article[data-testid^="conversation-turn-"], section[data-testid^="conversation-turn-"], [data-message-role="assistant"]';
+
   function hasErrorState() {
-    return ERROR_STATE_SELECTORS.some((selector) => document.querySelector(selector));
+    // The Plus UI puts "Regenerate response" on EVERY finished reply, so a
+    // matching button only signals an error when its turn has no reply text
+    // (or it sits outside any turn, like a page-level error banner). Otherwise
+    // hasError was permanently true there, which also blocked the background
+    // poll's hidden-popup completion backstop.
+    return ERROR_STATE_SELECTORS.some((selector) =>
+      Array.from(document.querySelectorAll(selector)).some((button) => {
+        const turn = button.closest(TURN_CONTAINER_SELECTOR);
+        if (!turn) return true;
+        return !ASSISTANT_TEXT_SELECTORS.some((textSelector) =>
+          Array.from(turn.querySelectorAll(textSelector)).some((node) => node.textContent?.trim())
+        );
+      })
+    );
   }
 
   function scrapeAssistantTextLenient() {

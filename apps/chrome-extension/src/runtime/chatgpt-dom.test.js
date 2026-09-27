@@ -185,6 +185,36 @@ describe("injectedChatGptPromptEntry against captured ChatGPT markup", () => {
 
     expect(settledWhileStreaming).toBe(false);
     expect(result).toMatchObject({ status: "success", rawText: EXPECTED });
+    // "Regenerate response" on a finished reply is not an error. The background
+    // poll's hidden-popup backstop only runs while hasError is false.
+    expect(window.__rmWatcherState.hasError).toBe(false);
+  });
+
+  it("returns the new reply for a follow-up in the same Plus thread", async () => {
+    // Repair prompts are sent into the same chat, so a finished reply (with its
+    // Regenerate button) is already on the page. The watcher must wait for and
+    // return the second reply, not resolve with the first.
+    const FOLLOWUP = '{"probe":"FOLLOWUP_OK","turn":2}';
+    const secondTurn = (text) =>
+      PLUS_TURN.replaceAll(
+        "65643bf9-bc8d-4077-b7c0-ec7bbe93d496",
+        "second-reply-id",
+      ).replace(
+        '<span>{"probe":"LUMI_PROBE_OK","items"</span>:[1,2,3]<span>}</span>',
+        text,
+      );
+    const shell = mountChatGptShell();
+    shell.transcript.insertAdjacentHTML("beforeend", PLUS_TURN);
+    const finish = simulateGeneration(
+      shell,
+      plusStreaming(secondTurn('{"probe":')),
+      secondTurn(FOLLOWUP),
+    );
+
+    const { result, settledWhileStreaming } = await runPrompt(finish);
+
+    expect(settledWhileStreaming).toBe(false);
+    expect(result).toMatchObject({ status: "success", rawText: FOLLOWUP });
   });
 
   it("recovers the Plus reply via the lenient scrape, not its role heading", async () => {
@@ -218,6 +248,8 @@ describe("injectedChatGptPromptEntry against captured ChatGPT markup", () => {
     expect(result.status).toBe("dom_changed");
     expect(result.rawText).toBeUndefined();
     expect(result.partialRawText ?? "").not.toContain("said:");
+    // A turn with Regenerate but no reply text is a real error state.
+    expect(result.message).toContain("error state detected");
   });
 
   it("still reads the older data-message-author-role markup", async () => {
