@@ -2638,6 +2638,19 @@ async function runChatGptPromptWithRetryInSession(prompt, session, options = {})
     firstAttempt: normalizeResultForLogging(firstResult),
   });
 
+  // Retry in a FRESH temporary chat, not the one that just failed. Re-injecting
+  // into the failed thread (a temporary /c/<id> URL) makes ChatGPT show
+  // "Conversation not found", so the retry was doomed. Repair retries opt out:
+  // they are in-thread follow-ups that must keep the earlier answer in context.
+  if (!options.keepThreadOnRetry) {
+    logInfo('ChatGptAutomation', 'Starting a fresh ChatGPT chat before retrying.', {
+      promptLabel: options.promptLabel ?? 'Prompt',
+      tabId: session.tabId,
+      failedConversationUrl: firstResult.conversationUrl ?? null,
+    });
+    await performChatGptRunSessionReset(options.runId ?? null, session, options);
+  }
+
   const retryResult = await executeChatGptPromptInSession(session, prompt, {
     ...options,
     disableRetry: true,
@@ -2728,6 +2741,7 @@ async function runChatGptPromptInExistingSession(prompt, session, options = {}) 
       result = await runChatGptPromptWithRetryInSession(repairPrompt, session, {
         ...options,
         disableRetry: false,
+        keepThreadOnRetry: true,
         composeReadyTimeoutMs: Math.min(
           30000,
           Math.max(options.composeReadyTimeoutMs ?? 0, 12000),
