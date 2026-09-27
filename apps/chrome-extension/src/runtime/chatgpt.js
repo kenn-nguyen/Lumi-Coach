@@ -778,7 +778,7 @@ async function waitForChatGptStartupReady(
   };
 }
 
-function injectedChatGptPromptEntry(prompt, options = {}) {
+export function injectedChatGptPromptEntry(prompt, options = {}) {
   const responseIdleTimeoutMs = options.responseIdleTimeoutMs ?? 600000;
   const responseFirstTokenTimeoutMs = options.responseFirstTokenTimeoutMs ?? 600000;
   const composerWaitTimeoutMs = 45000;
@@ -829,6 +829,11 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
     'button[aria-label*="Retry"]',
   ];
   const ASSISTANT_TEXT_SELECTORS = [
+    // Lightweight ChatGPT shell served signed out (seen Sept 2026):
+    // <li data-message-role="assistant"> wrapping <div data-assistant-markdown>,
+    // atomic CSS classes only. The signed-in React UI still matches the
+    // data-message-author-role selectors below.
+    '[data-message-role="assistant"] [data-assistant-markdown]',
     '[data-message-author-role="assistant"] .markdown',
     '[data-message-author-role="assistant"] [class*="markdown"]',
     '[data-message-author-role="assistant"] .prose',
@@ -1168,20 +1173,25 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
   }
 
   function scrapeAssistantTextLenient() {
-    // Gate-free last resort: the single longest assistant-looking text block.
-    // Used to resolve and to rescue on timeout so a finished answer is never
-    // lost just because the structural selectors drifted.
-    const seen = new Set();
-    let best = '';
-    for (const selector of ASSISTANT_TEXT_SELECTORS) {
-      for (const node of document.querySelectorAll(selector)) {
-        if (seen.has(node)) continue;
-        seen.add(node);
-        const text = node.textContent?.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim() ?? '';
-        if (text.length > best.length) best = text;
-      }
+    // Gate-free last resort, deliberately NOT built on ASSISTANT_TEXT_SELECTORS
+    // (when those drift, a fallback that reuses them misses too). Instead take
+    // the latest element any data-* attribute marks as "assistant" — ChatGPT has
+    // used data-message-author-role, data-message-role and data-turn — and read
+    // its text minus UI chrome. Used to resolve and to rescue on timeout so a
+    // finished answer is never lost just because the text selectors drifted.
+    // Scans the whole DOM, so it must stay out of the per-mutation snapshot.
+    const containers = Array.from(document.body?.querySelectorAll('*') ?? []).filter((node) =>
+      Array.from(node.attributes).some((attr) => attr.name.startsWith('data-') && attr.value === 'assistant')
+    );
+    for (let index = containers.length - 1; index >= 0; index -= 1) {
+      const clone = containers[index].cloneNode(true);
+      clone
+        .querySelectorAll('button, svg, [role="group"], [hidden], [aria-hidden="true"], [data-message-attribution], .sr-only')
+        .forEach((node) => node.remove());
+      const text = clone.textContent?.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim() ?? '';
+      if (text) return text;
     }
-    return best;
+    return '';
   }
 
   function getAssistantSnapshot() {
@@ -1194,7 +1204,8 @@ function injectedChatGptPromptEntry(prompt, options = {}) {
       })
       .map((node, index) => {
         const article = node.closest('article[data-testid^="conversation-turn-"]');
-        const key = article?.getAttribute('data-testid') ?? `assistant-node-${index}`;
+        const message = node.closest('[data-message-role="assistant"][id]');
+        const key = article?.getAttribute('data-testid') ?? message?.id ?? `assistant-node-${index}`;
         const text = node.textContent?.replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim() ?? '';
         return { key, text };
       })
