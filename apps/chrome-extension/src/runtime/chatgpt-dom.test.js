@@ -3,7 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { injectedChatGptPromptEntry } from "./chatgpt.js";
+import {
+  injectedChatGptPromptEntry,
+  injectedVisibilityKeepAlive,
+} from "./chatgpt.js";
 
 // Runs the in-page ChatGPT watcher against markup captured from the live site,
 // so a ChatGPT DOM change shows up here instead of as an empty-response run.
@@ -169,5 +172,60 @@ describe("injectedChatGptPromptEntry against captured ChatGPT markup", () => {
     const { result } = await runPrompt(finish);
 
     expect(result).toMatchObject({ status: "success", rawText: EXPECTED });
+  });
+});
+
+describe("injectedVisibilityKeepAlive status", () => {
+  const SPOOFED = [
+    "hidden",
+    "visibilityState",
+    "webkitHidden",
+    "webkitVisibilityState",
+    "hasFocus",
+  ];
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  });
+
+  afterEach(() => {
+    // Undo the MAIN-world spoofing so it can't leak into other tests.
+    for (const prop of SPOOFED) delete document[prop];
+    delete window.__rmVisibilityKeepAlive;
+    delete window.__rmVisibilityKeepAliveRaf;
+    vi.unstubAllGlobals();
+  });
+
+  it("reports a fresh install, then already_active on the same document", () => {
+    // A document that reloaded has no flag -> "installed" is what a log shows
+    // when the keep-alive had been lost before the prompt.
+    expect(injectedVisibilityKeepAlive()).toEqual({
+      status: "installed",
+      rafShim: true,
+      hidden: false,
+    });
+    expect(injectedVisibilityKeepAlive()).toEqual({
+      status: "already_active",
+      rafShim: true,
+      hidden: false,
+    });
+  });
+
+  it("reports the real hidden state, not the value it spoofs", () => {
+    injectedVisibilityKeepAlive();
+    const realHidden = vi
+      .spyOn(Document.prototype, "hidden", "get")
+      .mockReturnValue(true);
+
+    expect(document.hidden).toBe(false);
+    expect(injectedVisibilityKeepAlive()).toMatchObject({
+      status: "already_active",
+      hidden: true,
+    });
+    realHidden.mockRestore();
   });
 });

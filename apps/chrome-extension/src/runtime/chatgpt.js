@@ -1806,9 +1806,22 @@ export function injectedChatGptPromptEntry(prompt, options = {}) {
 // visible/focused so ChatGPT does not pause streaming/rendering when the window
 // is backgrounded (another app focused, or covered by the main window). Without
 // this the run stalls until the user clicks back to the popup.
-function injectedVisibilityKeepAlive() {
-  if (window.__rmVisibilityKeepAlive) return;
+// Returns its status for logging: whether it was already on this document
+// (vs. just installed — i.e. the page had reloaded and lost it), whether the
+// rAF shim is active, and the page's real (unspoofed) hidden state.
+export function injectedVisibilityKeepAlive() {
+  const readHiddenNow = () => {
+    try {
+      return Object.getOwnPropertyDescriptor(Document.prototype, 'hidden').get.call(document) === true;
+    } catch {
+      return null;
+    }
+  };
+  if (window.__rmVisibilityKeepAlive) {
+    return { status: 'already_active', rafShim: window.__rmVisibilityKeepAliveRaf === true, hidden: readHiddenNow() };
+  }
   window.__rmVisibilityKeepAlive = true;
+  window.__rmVisibilityKeepAliveRaf = false;
   try {
     // Capture the REAL visibility getter before we spoof it, so the
     // requestAnimationFrame shim below only activates when the window is
@@ -1915,20 +1928,25 @@ function injectedVisibilityKeepAlive() {
             nativeCancel(id);
           } catch {}
         };
+        window.__rmVisibilityKeepAliveRaf = true;
       }
     } catch {}
   } catch {}
+  return { status: 'installed', rafShim: window.__rmVisibilityKeepAliveRaf === true, hidden: readHiddenNow() };
 }
 
 async function installVisibilityKeepAlive(tabId) {
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN',
-      func: injectedVisibilityKeepAlive,
-    });
-  } catch {
+    const [{ result } = {}] =
+      (await chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: injectedVisibilityKeepAlive,
+      })) ?? [];
+    return result ?? { status: 'no_result' };
+  } catch (error) {
     // Best-effort — never block the run if the keep-alive can't be installed.
+    return { status: 'inject_failed', error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -2306,7 +2324,16 @@ async function executeChatGptPromptInSession(session, prompt, options = {}) {
     // since (Cloudflare re-check, ChatGPT redirect) has lost it — and in a hidden
     // popup ChatGPT then never paints the streamed reply (Stop comes and goes,
     // text never appears -> "empty assistant response"). No-op if still present.
-    await installVisibilityKeepAlive(session.tabId);
+    // Logged so a failed run shows whether the keep-alive was actually on.
+    const keepAlive = await installVisibilityKeepAlive(session.tabId);
+    logInfo('ChatGptAutomation', 'Visibility keep-alive status before prompt.', {
+      promptLabel,
+      tabId: session.tabId,
+      keepAliveStatus: keepAlive.status,
+      rafShim: keepAlive.rafShim ?? null,
+      pageHidden: keepAlive.hidden ?? null,
+      error: keepAlive.error ?? null,
+    });
     const executionPromise = chrome.scripting.executeScript({
       target: { tabId: session.tabId },
       func: injectedChatGptPromptEntry,
