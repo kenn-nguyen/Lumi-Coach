@@ -239,3 +239,30 @@ def test_validate_reports_a_runnable_setup(client: TestClient) -> None:
 
 def test_runs_history_is_readable(client: TestClient) -> None:
     assert "runs" in client.get("/api/v1/tracker/runs").json()
+
+
+# --- what the assignee may not do --------------------------------------------
+
+def test_the_assignee_cannot_reach_settings_or_reassign(monkeypatch: pytest.MonkeyPatch) -> None:
+    """They share the rows, not the controls — as the sheet protects its tabs."""
+    import app.tracker.auth as auth_module
+    from app.tracker.auth import TrackerUser
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[auth_module.current_tracker_user] = lambda: TrackerUser(
+        user_id="owner", email="helper@example.com", is_owner=False)
+    helper = TestClient(app)
+
+    assert helper.get("/api/v1/tracker/jobs").status_code == 200, "they still see the queue"
+    for path in ("/api/v1/tracker/settings",):
+        assert helper.get(path).status_code == 403
+    assert helper.post("/api/v1/tracker/maintenance/reassign").status_code == 403
+    assert helper.post("/api/v1/tracker/jobs/bulk",
+                       json={"job_ids": ["1"], "op": "assign"}).status_code == 403
+
+    job_id = helper.get("/api/v1/tracker/jobs").json()["jobs"][0]["job_id"]
+    assert helper.patch(f"/api/v1/tracker/jobs/{job_id}",
+                        json={"owner": "Me"}).status_code == 403, "cannot re-assign away"
+    assert helper.patch(f"/api/v1/tracker/jobs/{job_id}",
+                        json={"notes": "on it"}).status_code == 200, "but can leave a note"

@@ -42,7 +42,7 @@ services:
       - -lc
       - |
         set -e
-        pip install -q pytest sqlalchemy "psycopg[binary]" openpyxl
+        pip install -q pytest sqlalchemy "psycopg[binary]" openpyxl fastapi "httpx<0.29"
         if [ -s /data/sheet.xlsx ] && [ "$${TRACKER_SKIP_MIGRATE:-0}" != "1" ]; then
           echo "--- migrating the workbook into the test database ---"
           python -m scripts.migrate_tracker_sheet --xlsx /data/sheet.xlsx \
