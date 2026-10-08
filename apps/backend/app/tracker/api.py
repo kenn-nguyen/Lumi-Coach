@@ -21,6 +21,7 @@ from app.tracker import repo
 from app.tracker.auth import TrackerUser, current_tracker_user, require_owner
 from app.tracker.enums import (
     ACTION_OPTIONS,
+    ASSIGNEE_STATUS_OPTIONS,
     OWNER_OPTIONS,
     PRIORITY_OPTIONS,
     STATUS_OPTIONS,
@@ -107,6 +108,10 @@ def meta(user: TrackerUser = Depends(current_tracker_user)) -> dict[str, Any]:
         "role": user.role,
         "email": user.email,
         "statuses": list(STATUS_OPTIONS),
+        # The shorter list the assignee works with. The sheet restricts their
+        # dropdown the same way: the other statuses describe decisions that are
+        # the owner's to make.
+        "assignee_statuses": list(ASSIGNEE_STATUS_OPTIONS),
         "owners": list(OWNER_OPTIONS),
         "actions": list(ACTION_OPTIONS),
         "priorities": list(PRIORITY_OPTIONS),
@@ -199,10 +204,12 @@ def patch_job(
 def dead_link(
     job_id: str,
     link_id: str = Body(..., embed=True),
+    dead: bool = Body(default=True, embed=True),
     session: Session = Depends(get_session),
     user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
-    updated = repo.mark_link_dead(session, user_id=user.user_id, job_id=job_id, link_id=link_id)
+    updated = repo.set_link_state(session, user_id=user.user_id, job_id=job_id,
+                                  link_id=link_id, dead=dead)
     if updated is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
     return _row(updated)

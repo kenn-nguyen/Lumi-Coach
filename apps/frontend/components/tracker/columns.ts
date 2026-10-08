@@ -48,7 +48,7 @@ export const COLUMNS: ColumnDef[] = [
   { key: 'applicants', label: 'Applicants', all: false, assigned: false, align: 'right' },
   { key: 'links', label: 'Job links', all: true, assigned: true },
   { key: 'notes', label: 'Notes', all: true, assigned: true, wide: true },
-  { key: 'applied_at', label: 'Applied', all: false, assigned: true },
+  { key: 'applied_at', label: 'Submitted on', all: false, assigned: true },
   { key: 'expand', label: '', fixed: true, all: true, assigned: true },
 ];
 

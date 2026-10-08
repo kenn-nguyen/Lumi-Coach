@@ -55,11 +55,16 @@ const JOB = {
 
 const COLUMNS = [
   { key: 'job', label: 'Job', all: true, assigned: true },
+  { key: 'status', label: 'Status', all: true, assigned: true },
   { key: 'links', label: 'Job links', all: true, assigned: true },
   { key: 'expand', label: '', fixed: true, all: true, assigned: true },
 ];
 
-function renderRow(expanded: boolean, overrides: Partial<typeof JOB> = {}) {
+function renderRow(
+  expanded: boolean,
+  overrides: Partial<typeof JOB> = {},
+  extra: { statusOptions?: string[] } = {}
+) {
   return render(
     <table>
       <tbody>
@@ -67,14 +72,15 @@ function renderRow(expanded: boolean, overrides: Partial<typeof JOB> = {}) {
           job={{ ...JOB, ...overrides } as never}
           rank={1}
           columns={COLUMNS as never}
-          meta={null}
+          meta={extra.statusOptions ? ({ actions: [] } as never) : null}
           selected={false}
           expanded={expanded}
           canEditEverything
           onToggleSelect={() => {}}
           onToggleExpand={() => {}}
           onPatch={() => {}}
-          onMarkDead={() => {}}
+          onSetDead={() => {}}
+          statusOptions={extra.statusOptions ?? []}
           onToast={() => {}}
         />
       </tbody>
@@ -115,7 +121,8 @@ describe('row detail loading', () => {
               onToggleSelect={() => {}}
               onToggleExpand={() => {}}
               onPatch={() => {}}
-              onMarkDead={() => {}}
+              onSetDead={() => {}}
+              statusOptions={[]}
               onToast={() => {}}
             />
           ))}
@@ -162,5 +169,26 @@ describe('job links', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /0\/2/ }));
     expect(screen.getByText(/every posting is dead/i)).toBeInTheDocument();
+  });
+});
+
+describe('statuses offered in a row', () => {
+  const ASSIGNEE = ['New', 'Filled', 'Submitted', 'Flagged'];
+
+  function statusValues() {
+    const select = screen.getByRole('combobox', { name: /status/i });
+    return Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
+  }
+
+  it('offers the assignee only the statuses they act on', () => {
+    renderRow(false, { status: 'New' }, { statusOptions: ASSIGNEE });
+    expect(statusValues()).toEqual(ASSIGNEE);
+    expect(statusValues()).not.toContain('Skip (auto)');
+  });
+
+  it('keeps a row in some other state selectable', () => {
+    renderRow(false, { status: 'Networking' }, { statusOptions: ASSIGNEE });
+    expect(statusValues()).toContain('Networking');
+    expect(screen.getByRole('combobox', { name: /status/i })).toHaveValue('Networking');
   });
 });

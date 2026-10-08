@@ -25,7 +25,9 @@ interface JobRowProps {
   onToggleSelect: (jobId: string) => void;
   onToggleExpand: (jobId: string) => void;
   onPatch: (jobId: string, changes: Partial<TrackerJob>) => void;
-  onMarkDead: (jobId: string, linkId: string) => void;
+  onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
+  /** The statuses this view offers. Shorter in the assigned view. */
+  statusOptions: string[];
   onToast: (message: string) => void;
 }
 
@@ -42,7 +44,8 @@ export function JobRow({
   onToggleSelect,
   onToggleExpand,
   onPatch,
-  onMarkDead,
+  onSetDead,
+  statusOptions,
   onToast,
 }: JobRowProps) {
   const { live, total } = liveLinkCount(job);
@@ -147,7 +150,12 @@ export function JobRow({
             onChange={(e) => changeStatus(e.target.value)}
             aria-label={`Status for ${job.company ?? job.job_id}`}
           >
-            {meta.statuses.map((s) => (
+            {/* A row already in some other state keeps its own value in the list,
+                or the select would render with nothing selected. */}
+            {(statusOptions.includes(job.status)
+              ? statusOptions
+              : [...statusOptions, job.status]
+            ).map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -323,7 +331,7 @@ export function JobRow({
         <LinkMenu
           job={job}
           anchor={linkMenu}
-          onMarkDead={onMarkDead}
+          onSetDead={onSetDead}
           onClose={() => setLinkMenu(null)}
         />
       )}
@@ -334,7 +342,7 @@ export function JobRow({
               job={job}
               canEditEverything={canEditEverything}
               onPatch={onPatch}
-              onMarkDead={onMarkDead}
+              onSetDead={onSetDead}
             />
           </td>
         </tr>

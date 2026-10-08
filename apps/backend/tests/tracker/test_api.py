@@ -313,3 +313,25 @@ def test_a_run_can_be_asked_what_it_produced(client: TestClient) -> None:
 def test_an_unknown_run_returns_nothing_rather_than_everything(client: TestClient) -> None:
     body = client.get("/api/v1/tracker/jobs?view=all&from_run=no-such-run").json()
     assert body["total"] == 0, "a bad filter must not silently show the whole backlog"
+
+
+# --- dead links are reversible -----------------------------------------------
+
+def test_a_posting_can_be_written_off_and_taken_back(client: TestClient, scratch_job: str) -> None:
+    """A link can fail for a minute; a posting wrongly written off is one nobody
+    will try again."""
+    link = client.get(f"/api/v1/tracker/jobs/{scratch_job}").json()["merged_job_ids"][0]
+
+    marked = client.post(f"/api/v1/tracker/jobs/{scratch_job}/dead-link",
+                         json={"link_id": link}).json()
+    assert marked["dead_links"].get(link) is True
+
+    restored = client.post(f"/api/v1/tracker/jobs/{scratch_job}/dead-link",
+                           json={"link_id": link, "dead": False}).json()
+    assert link not in restored["dead_links"]
+
+
+def test_meta_publishes_the_assignees_shorter_status_list(client: TestClient) -> None:
+    body = client.get("/api/v1/tracker/meta").json()
+    assert body["assignee_statuses"] == ["New", "Filled", "Submitted", "Flagged"]
+    assert "Skip (auto)" in body["statuses"], "the owner still sees everything"

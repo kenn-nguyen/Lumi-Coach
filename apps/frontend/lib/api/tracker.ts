@@ -63,6 +63,8 @@ export interface TrackerMeta {
   role: 'owner' | 'assignee';
   email: string;
   statuses: string[];
+  /** What the assignee may set. Shorter: the rest are the owner's decisions. */
+  assignee_statuses: string[];
   owners: string[];
   actions: string[];
   priorities: string[];
@@ -176,8 +178,8 @@ export function bulkJobs(jobIds: string[], op: BulkOp): Promise<{ updated: numbe
   return post('/jobs/bulk', { job_ids: jobIds, op });
 }
 
-export function markLinkDead(jobId: string, linkId: string): Promise<TrackerJobDetail> {
-  return post(`/jobs/${encodeURIComponent(jobId)}/dead-link`, { link_id: linkId });
+export function setLinkDead(jobId: string, linkId: string, dead = true): Promise<TrackerJobDetail> {
+  return post(`/jobs/${encodeURIComponent(jobId)}/dead-link`, { link_id: linkId, dead });
 }
 
 export function fetchSettings(): Promise<{

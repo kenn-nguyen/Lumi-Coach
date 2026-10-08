@@ -29,7 +29,7 @@ import {
   fetchJobs,
   fetchMeta,
   fetchRuns,
-  markLinkDead,
+  setLinkDead,
   patchJob,
 } from '@/lib/api/tracker';
 
@@ -170,6 +170,11 @@ export function TrackerClient() {
   }, [toast]);
 
   const columns = React.useMemo(() => visibleColumns(view, overrides), [view, overrides]);
+  const statusOptions = React.useMemo(() => {
+    if (!meta) return [];
+    if (view !== 'assigned') return meta.statuses;
+    return meta.assignee_statuses?.length ? meta.assignee_statuses : meta.statuses;
+  }, [meta, view]);
   const jobs = data?.jobs ?? [];
   const total = data?.total ?? 0;
   const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
@@ -235,9 +240,9 @@ export function TrackerClient() {
     }
   }
 
-  async function handleMarkDead(jobId: string, linkId: string) {
+  async function handleSetDead(jobId: string, linkId: string, dead: boolean) {
     try {
-      const updated = await markLinkDead(jobId, linkId);
+      const updated = await setLinkDead(jobId, linkId, dead);
       setData((current) =>
         current
           ? {
@@ -593,7 +598,8 @@ export function TrackerClient() {
                         setExpanded(next);
                       }}
                       onPatch={handlePatch}
-                      onMarkDead={handleMarkDead}
+                      onSetDead={handleSetDead}
+                      statusOptions={statusOptions}
                       onToast={setToast}
                     />
                   ))}

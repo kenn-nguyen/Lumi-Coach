@@ -195,14 +195,23 @@ def bulk_update(
     return len(jobs)
 
 
-def mark_link_dead(session: Session, *, user_id: str, job_id: str, link_id: str) -> dict | None:
-    """Record that one of a role's postings no longer loads, so nobody retries it."""
+def set_link_state(
+    session: Session, *, user_id: str, job_id: str, link_id: str, dead: bool
+) -> dict | None:
+    """Mark a posting as expired, or take that mark back.
+
+    Reversible on purpose: a link can fail for a minute and work later, and a
+    posting wrongly written off is one nobody will try again.
+    """
     job = session.get(TrackerJob, job_id)
     if job is None or job.user_id != user_id:
         return None
-    dead = dict(job.dead_links or {})
-    dead[link_id] = True
-    job.dead_links = dead
+    marks = dict(job.dead_links or {})
+    if dead:
+        marks[link_id] = True
+    else:
+        marks.pop(link_id, None)
+    job.dead_links = marks
     session.commit()
     return get_job(session, user_id=user_id, job_id=job_id)
 

@@ -9,7 +9,7 @@ interface JobWorkAreaProps {
   job: TrackerJob;
   canEditEverything: boolean;
   onPatch: (jobId: string, changes: Partial<TrackerJob>) => void;
-  onMarkDead: (jobId: string, linkId: string) => void;
+  onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
 }
 
 const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground';
@@ -22,7 +22,7 @@ const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-fore
  * They are the same row because they are the same job — the sheet never separated
  * them either.
  */
-export function JobWorkArea({ job, canEditEverything, onPatch, onMarkDead }: JobWorkAreaProps) {
+export function JobWorkArea({ job, canEditEverything, onPatch, onSetDead }: JobWorkAreaProps) {
   const [detail, setDetail] = React.useState<TrackerJobDetail | null>(null);
   const [loaded, setLoaded] = React.useState(false);
   const [note, setNote] = React.useState(job.notes ?? '');
@@ -112,11 +112,17 @@ export function JobWorkArea({ job, canEditEverything, onPatch, onMarkDead }: Job
                   </span>
                   {index === 0 && <span className="text-[11px] text-muted-foreground">newest</span>}
                   {isDead ? (
-                    <span className="text-[11px] text-destructive">dead</span>
+                    <button
+                      type="button"
+                      onClick={() => onSetDead(job.job_id, id, false)}
+                      className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-success hover:text-success"
+                    >
+                      still works?
+                    </button>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => onMarkDead(job.job_id, id)}
+                      onClick={() => onSetDead(job.job_id, id, true)}
                       className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-destructive hover:text-destructive"
                     >
                       doesn&apos;t load

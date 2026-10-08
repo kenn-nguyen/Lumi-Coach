@@ -17,7 +17,7 @@ interface LinkMenuProps {
   job: TrackerJob;
   /** Where to put the menu: the button the user clicked. */
   anchor: DOMRect;
-  onMarkDead: (jobId: string, linkId: string) => void;
+  onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
   onClose: () => void;
 }
 
@@ -31,7 +31,7 @@ interface LinkMenuProps {
  *
  * Rendered through a portal so the table's horizontal scrolling cannot clip it.
  */
-export function LinkMenu({ job, anchor, onMarkDead, onClose }: LinkMenuProps) {
+export function LinkMenu({ job, anchor, onSetDead, onClose }: LinkMenuProps) {
   const ref = React.useRef<HTMLDivElement>(null);
   const ids = jobLinkIds(job);
   const dead = job.dead_links ?? {};
@@ -103,11 +103,18 @@ export function LinkMenu({ job, anchor, onMarkDead, onClose }: LinkMenuProps) {
                 )}
               </a>
               {isDead ? (
-                <span className="text-[10px] uppercase tracking-wider text-destructive">dead</span>
+                <button
+                  type="button"
+                  onClick={() => onSetDead(job.job_id, id, false)}
+                  className="rounded border border-border px-1.5 py-px text-[10px] text-muted-foreground hover:border-success hover:text-success"
+                  title="Put this posting back — it loads after all"
+                >
+                  still works?
+                </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() => onMarkDead(job.job_id, id)}
+                  onClick={() => onSetDead(job.job_id, id, true)}
                   className="rounded border border-border px-1.5 py-px text-[10px] text-muted-foreground hover:border-destructive hover:text-destructive"
                   title="Mark this posting as expired so nobody retries it"
                 >
