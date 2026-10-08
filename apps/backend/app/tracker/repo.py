@@ -208,19 +208,32 @@ def mark_link_dead(session: Session, *, user_id: str, job_id: str, link_id: str)
 
 
 def queue_counts(session: Session, *, user_id: str) -> dict[str, int]:
-    """The figures above the list: what needs attention, in one round trip."""
-    base = select(func.count()).select_from(TrackerJob).where(TrackerJob.user_id == user_id)
+    """The figures above the list, in one query.
+
+    These are recomputed on every list request — including after each edit — so the
+    cost is paid constantly. Five separate COUNTs meant five round trips to the
+    database for numbers that come from a single scan of the same rows.
+    """
+    row = session.execute(
+        select(
+            func.count().filter(TrackerJob.status == "Flagged").label("flagged"),
+            func.count().filter(
+                TrackerJob.in_assigned_queue.is_(True),
+                TrackerJob.status != "Submitted").label("assigned"),
+            func.count().filter(TrackerJob.status == "Submitted").label("submitted"),
+            func.count().filter(
+                or_(TrackerJob.owner == "", TrackerJob.owner.is_(None)),
+                TrackerJob.priority.in_(["P01", "P02"]),
+                TrackerJob.status.notin_(["Skip", "Skip (auto)", "Closed"])).label("unowned_top"),
+            func.count().label("total"),
+        ).select_from(TrackerJob).where(TrackerJob.user_id == user_id)
+    ).one()
     return {
-        "flagged": session.scalar(base.where(TrackerJob.status == "Flagged")) or 0,
-        "assigned": session.scalar(
-            base.where(TrackerJob.in_assigned_queue.is_(True),
-                       TrackerJob.status != "Submitted")) or 0,
-        "submitted": session.scalar(base.where(TrackerJob.status == "Submitted")) or 0,
-        "unowned_top": session.scalar(
-            base.where(or_(TrackerJob.owner == "", TrackerJob.owner.is_(None)),
-                       TrackerJob.priority.in_(["P01", "P02"]),
-                       TrackerJob.status.notin_(["Skip", "Skip (auto)", "Closed"]))) or 0,
-        "total": session.scalar(base) or 0,
+        "flagged": row.flagged or 0,
+        "assigned": row.assigned or 0,
+        "submitted": row.submitted or 0,
+        "unowned_top": row.unowned_top or 0,
+        "total": row.total or 0,
     }
 
 
