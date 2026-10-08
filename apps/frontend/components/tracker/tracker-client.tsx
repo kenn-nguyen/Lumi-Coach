@@ -68,7 +68,7 @@ export function TrackerClient() {
   const [loading, setLoading] = React.useState(true);
   const [loadFailed, setLoadFailed] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [toast, setToast] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<{ message: string; undo?: () => void } | null>(null);
   //
 
   const [watchToken, setWatchToken] = React.useState(0);
@@ -168,7 +168,10 @@ export function TrackerClient() {
 
   React.useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 4000);
+    // A plain confirmation only has to be read. One carrying an undo has to be
+    // noticed, understood and acted on, which takes longer than reading does —
+    // and the row it would bring back has usually re-sorted out of sight.
+    const timer = setTimeout(() => setToast(null), toast.undo ? 12000 : 4000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -223,7 +226,11 @@ export function TrackerClient() {
     setPage(0);
   }
 
-  async function handlePatch(jobId: string, changes: Partial<TrackerJob>) {
+  async function handlePatch(
+    jobId: string,
+    changes: Partial<TrackerJob>,
+    said?: { message: string; revert?: Partial<TrackerJob> },
+  ) {
     // Optimistic: the row is the user's own edit, so showing it immediately is
     // honest. A failure reloads and surfaces the real state.
     setData((current) =>
@@ -236,9 +243,19 @@ export function TrackerClient() {
     );
     try {
       await patchJob(jobId, changes);
+      if (said) {
+        setToast({
+          message: said.message,
+          undo: said.revert
+            ? () => void handlePatch(jobId, said.revert as Partial<TrackerJob>, {
+                message: 'Put back.',
+              })
+            : undefined,
+        });
+      }
       await load();
     } catch (e) {
-      setToast(`Could not save: ${(e as Error).message}`);
+      setToast({ message: `Could not save: ${(e as Error).message}` });
       await load();
     }
   }
@@ -255,13 +272,16 @@ export function TrackerClient() {
           : current
       );
       const live = updated.merged_job_ids.filter((id) => !updated.dead_links?.[id]).length;
-      setToast(
-        live === 0
-          ? 'That was the last working link — build the resume from the saved description instead.'
-          : 'Marked dead. Nobody has to try it again.'
-      );
+      setToast({
+        message: !dead
+          ? 'Put back. It shows as working again.'
+          : live === 0
+            ? 'That was the last working link — build the resume from the saved description instead.'
+            : 'Marked dead. Nobody has to try it again.',
+        undo: () => void handleSetDead(jobId, linkId, !dead),
+      });
     } catch (e) {
-      setToast(`Could not save: ${(e as Error).message}`);
+      setToast({ message: `Could not save: ${(e as Error).message}` });
     }
   }
 
@@ -271,10 +291,10 @@ export function TrackerClient() {
     try {
       const result = await bulkJobs(ids, op);
       setSelected(new Set());
-      setToast(`${result.updated} job${result.updated === 1 ? '' : 's'} updated.`);
+      setToast({ message: `${result.updated} job${result.updated === 1 ? '' : 's'} updated.` });
       await load();
     } catch (e) {
-      setToast(`Could not apply: ${(e as Error).message}`);
+      setToast({ message: `Could not apply: ${(e as Error).message}` });
     }
   }
 
@@ -630,7 +650,7 @@ export function TrackerClient() {
                       onPatch={handlePatch}
                       onSetDead={handleSetDead}
                       statusOptions={statusOptions}
-                      onToast={setToast}
+                      onToast={(message) => setToast({ message })}
                     />
                   ))}
                 </tbody>
@@ -666,17 +686,33 @@ export function TrackerClient() {
       )}
 
       {tab === 'runs' && (
-        <TrackerRuns onToast={setToast} onRunStarted={() => setWatchToken((n) => n + 1)} />
+        <TrackerRuns
+          onToast={(message) => setToast({ message })}
+          onRunStarted={() => setWatchToken((n) => n + 1)}
+        />
       )}
-      {tab === 'settings' && <TrackerSettings onToast={setToast} />}
+      {tab === 'settings' && <TrackerSettings onToast={(message) => setToast({ message })} />}
       {tab === 'help' && <TrackerHelp />}
 
       {toast && (
         <div
           role="status"
-          className="fixed bottom-4 left-4 z-50 max-w-sm rounded border border-border border-l-[3px] border-l-primary bg-card px-3.5 py-2.5 text-sm shadow-sw-card"
+          className="fixed bottom-4 left-4 z-50 flex max-w-md items-center gap-3 rounded border border-border border-l-[3px] border-l-primary bg-card px-3.5 py-2.5 text-sm shadow-sw-card"
         >
-          {toast}
+          <span>{toast.message}</span>
+          {toast.undo && (
+            <button
+              type="button"
+              onClick={() => {
+                const run = toast.undo;
+                setToast(null);
+                run?.();
+              }}
+              className="ml-auto rounded border border-border px-2 py-0.5 text-xs hover:bg-muted"
+            >
+              Undo
+            </button>
+          )}
         </div>
       )}
     </div>

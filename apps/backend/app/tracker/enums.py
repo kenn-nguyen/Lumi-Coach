@@ -48,6 +48,15 @@ ASSIGNEE_STATUS_OPTIONS: tuple[str, ...] = (
     STATUS_FLAGGED,
 )
 
+#: Statuses that mean the application has not gone out yet. Moving a row to one of
+#: these takes back a submission, so the submitted-on stamp must go with it — but
+#: only for these: ``Closed`` and ``Flagged`` can legitimately follow a submission,
+#: and there the date is the record of having applied.
+PRE_SUBMISSION_STATUSES: frozenset[str] = frozenset(
+    {STATUS_NEW, STATUS_NETWORKING, STATUS_FILLED}
+)
+
+
 # --- owners -------------------------------------------------------------------
 OWNER_ME = "Me"
 OWNER_ASSIGNEE = "Assignee"

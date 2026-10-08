@@ -151,6 +151,33 @@ def test_submitting_stamps_the_application_date(client: TestClient, scratch_job:
     assert updated["applied_at"] is not None
 
 
+def test_taking_a_submission_back_clears_the_date(client: TestClient, scratch_job: str) -> None:
+    """Undo, or picking an earlier status, must not leave a submitted-on date behind."""
+    client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"status": "Submitted"})
+    for status in ("New", "Filled", "Networking"):
+        client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"status": "Submitted"})
+        updated = client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                               json={"status": status}).json()
+        assert updated["applied_at"] is None, f"{status} still showed a submitted date"
+
+
+def test_closing_an_application_keeps_the_date(client: TestClient, scratch_job: str) -> None:
+    """Closed follows a submission, so the date is the record of having applied."""
+    client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"status": "Submitted"})
+    updated = client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                           json={"status": "Closed"}).json()
+    assert updated["applied_at"] is not None
+
+
+def test_an_edit_that_is_not_a_status_change_leaves_the_date_alone(
+    client: TestClient, scratch_job: str
+) -> None:
+    client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"status": "Submitted"})
+    updated = client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                           json={"notes": "a note"}).json()
+    assert updated["applied_at"] is not None
+
+
 def test_a_dead_status_leaves_the_assigned_queue(client: TestClient, scratch_job: str) -> None:
     client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"owner": "Assignee"})
     updated = client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"status": "Skip"}).json()

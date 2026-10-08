@@ -20,7 +20,7 @@ from sqlalchemy import Select, and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, load_only
 
-from .enums import is_assignee, is_dead_status
+from .enums import PRE_SUBMISSION_STATUSES, is_assignee, is_dead_status
 from .models import (
     TrackerApifyAccount,
     TrackerJob,
@@ -145,6 +145,23 @@ def _recompute_derived(job: TrackerJob) -> None:
 EDITABLE = {"status", "owner", "action", "notes", "referral_contact", "resume_file"}
 
 
+def _stamp_submission(job: TrackerJob, changes: dict[str, Any]) -> None:
+    """Keep the submitted-on date honest when the status moves.
+
+    Submitting stamps the date, as the sheet's edit handler did. Taking the
+    submission back — by undo, or by picking an earlier status from the dropdown —
+    has to clear it, or the row reads ``New`` while still showing a submitted date.
+    """
+    status = changes.get("status")
+    if status is None:
+        return
+    if status == "Submitted":
+        if job.applied_at is None:
+            job.applied_at = datetime.now(timezone.utc)
+    elif status in PRE_SUBMISSION_STATUSES:
+        job.applied_at = None
+
+
 def update_job(
     session: Session, *, user_id: str, job_id: str, changes: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -162,8 +179,7 @@ def update_job(
         if field in EDITABLE and value is not None:
             setattr(job, field, value)
 
-    if changes.get("status") == "Submitted" and job.applied_at is None:
-        job.applied_at = datetime.now(timezone.utc)
+    _stamp_submission(job, changes)
     if is_assignee(job.owner) and not (job.action or "").strip():
         job.action = "Fill & Submit"
     if "notes" in changes or "status" in changes:
@@ -194,8 +210,7 @@ def bulk_update(
                 setattr(job, field, value)
         if is_assignee(job.owner) and not (job.action or "").strip():
             job.action = "Fill & Submit"
-        if changes.get("status") == "Submitted" and job.applied_at is None:
-            job.applied_at = datetime.now(timezone.utc)
+        _stamp_submission(job, changes)
         _recompute_derived(job)
     session.commit()
     return len(jobs)
