@@ -188,3 +188,20 @@ def test_a_tiny_cap_is_raised_to_the_actors_floor() -> None:
 def test_a_short_window_is_what_keeps_a_test_run_cheap() -> None:
     assert time_filter(1) == "r3600"
     assert time_filter(24) == "r86400"
+
+
+# --- routing reaches the jobs a run produced ---------------------------------
+
+@pytest.mark.unit
+def test_routing_targets_the_runs_own_jobs_not_a_page_of_the_backlog() -> None:
+    """A newly scraped job is usually low-ranked, so a page of the backlog ordered
+    by rank would never reach it. Regression guard for exactly that."""
+    import inspect
+
+    from app.tracker import pipeline
+
+    source = inspect.getsource(pipeline.run_pipeline)
+    route_section = source[source.index("# --- route"):]
+    assert "_rows_for_routing" in route_section
+    assert "JobFilters(view=\"all\", status=\"New\")" not in route_section, (
+        "routing must not re-page the backlog by rank")

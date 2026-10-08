@@ -238,9 +238,12 @@ def run_pipeline(
 
     # --- route ----------------------------------------------------------------
     rules = RoutingRules.from_settings(settings)
-    rows, _ = repo.list_jobs(session, user_id=user_id,
-                             filters=repo.JobFilters(view="all", status="New"),
-                             limit=repo.MAX_PAGE_SIZE)
+    # Route the jobs this run actually touched. Taking a page of the New backlog
+    # instead would order it by rank and never reach the jobs that just arrived —
+    # they are new, so they are usually the lowest-ranked rows in that list.
+    rows = _rows_for_routing(
+        session, user_id=user_id,
+        job_ids=[j["job_id"] for j in normalized if not j.get("_merge_into")])
     decisions = route_jobs(rows, rules)
     for job_id, decision in decisions.decisions.items():
         changes: dict[str, Any] = {"owner": decision.owner, "status": decision.status}
@@ -250,6 +253,20 @@ def run_pipeline(
     counters.assigned = decisions.assigned
     step("done")
     return counters
+
+
+def _rows_for_routing(
+    session: Session, *, user_id: str, job_ids: list[str]
+) -> list[dict[str, Any]]:
+    """Only the fields the routing rules read, for a known set of jobs."""
+    if not job_ids:
+        return []
+    rows = session.execute(
+        select(TrackerJob.job_id, TrackerJob.owner, TrackerJob.status, TrackerJob.priority,
+               TrackerJob.company, TrackerJob.us_visa, TrackerJob.score)
+        .where(TrackerJob.user_id == user_id, TrackerJob.job_id.in_(job_ids))
+    ).all()
+    return [dict(r._mapping) for r in rows]
 
 
 def _last_success(session: Session, *, user_id: str) -> datetime | None:
