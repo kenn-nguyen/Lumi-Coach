@@ -11,6 +11,7 @@ import {
   visaClass,
 } from '@/components/tracker/columns';
 import { JobWorkArea } from '@/components/tracker/job-work-area';
+import { LinkMenu, jobLinkIds, linkUrl } from '@/components/tracker/link-menu';
 import type { TrackerJob, TrackerMeta } from '@/lib/api/tracker';
 
 interface JobRowProps {
@@ -49,6 +50,7 @@ export function JobRow({
 
   // The note is edited in place, so it is held locally and written on blur rather
   // than on every keystroke.
+  const [linkMenu, setLinkMenu] = React.useState<DOMRect | null>(null);
   const [noteDraft, setNoteDraft] = React.useState(job.notes ?? '');
   const noteRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => setNoteDraft(job.notes ?? ''), [job.notes]);
@@ -223,19 +225,39 @@ export function JobRow({
         return (
           <span className="font-mono text-xs text-muted-foreground">{job.applicants ?? '—'}</span>
         );
-      case 'links':
+      case 'links': {
+        const ids = jobLinkIds(job);
+        const cls = `whitespace-nowrap rounded border px-2 py-0.5 font-mono text-[11px] ${
+          dead ? 'border-destructive/50 text-destructive' : 'border-border text-primary'
+        }`;
+        // One posting is not a choice, so clicking opens it. Several is a choice,
+        // because the older ones are often expired.
+        if (ids.length === 1) {
+          return (
+            <a
+              href={linkUrl(ids[0])}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cls}
+              title={dead ? 'Marked dead — it may still open' : 'Open this posting'}
+            >
+              {live}/{total} ↗
+            </a>
+          );
+        }
         return (
           <button
             type="button"
-            onClick={() => onToggleExpand(job.job_id)}
-            className={`whitespace-nowrap rounded border px-2 py-0.5 font-mono text-[11px] ${
-              dead ? 'border-destructive/50 text-destructive' : 'border-border text-primary'
-            }`}
-            title={dead ? 'Every link to this role is dead' : 'Open the links for this role'}
+            onClick={(e) => setLinkMenu(e.currentTarget.getBoundingClientRect())}
+            aria-haspopup="dialog"
+            aria-expanded={Boolean(linkMenu)}
+            className={cls}
+            title={`${ids.length} postings for this role`}
           >
-            {live}/{total} ↗
+            {live}/{total} ▾
           </button>
         );
+      }
       case 'notes':
         return (
           <input
@@ -297,6 +319,14 @@ export function JobRow({
           </td>
         ))}
       </tr>
+      {linkMenu && (
+        <LinkMenu
+          job={job}
+          anchor={linkMenu}
+          onMarkDead={onMarkDead}
+          onClose={() => setLinkMenu(null)}
+        />
+      )}
       {expanded && (
         <tr data-testid="job-detail">
           <td colSpan={columns.length} className="border-b border-border bg-muted p-0">

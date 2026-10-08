@@ -55,15 +55,16 @@ const JOB = {
 
 const COLUMNS = [
   { key: 'job', label: 'Job', all: true, assigned: true },
+  { key: 'links', label: 'Job links', all: true, assigned: true },
   { key: 'expand', label: '', fixed: true, all: true, assigned: true },
 ];
 
-function renderRow(expanded: boolean) {
+function renderRow(expanded: boolean, overrides: Partial<typeof JOB> = {}) {
   return render(
     <table>
       <tbody>
         <JobRow
-          job={JOB as never}
+          job={{ ...JOB, ...overrides } as never}
           rank={1}
           columns={COLUMNS as never}
           meta={null}
@@ -122,5 +123,44 @@ describe('row detail loading', () => {
       </table>
     );
     expect(fetchJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('job links', () => {
+  beforeEach(() => fetchJob.mockClear());
+
+  it('opens a single posting directly, with no menu and no detail query', () => {
+    renderRow(false, { merged_job_ids: ['4071200001'] });
+    const link = screen.getByRole('link', { name: /1\/1/ });
+    expect(link).toHaveAttribute('href', 'https://www.linkedin.com/jobs/view/4071200001');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(fetchJob).not.toHaveBeenCalled();
+  });
+
+  it('offers a choice when a role was posted more than once', () => {
+    renderRow(false, { merged_job_ids: ['4071200001', '4071200002', '4071200003'] });
+    fireEvent.click(screen.getByRole('button', { name: /3\/3/ }));
+
+    expect(screen.getByText(/3 postings/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /4071200001/ })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/jobs/view/4071200001'
+    );
+    expect(screen.getByText(/newest/i)).toBeInTheDocument();
+  });
+
+  it('choosing a link never loads the row detail', () => {
+    renderRow(false, { merged_job_ids: ['4071200001', '4071200002'] });
+    fireEvent.click(screen.getByRole('button', { name: /2\/2/ }));
+    expect(fetchJob).not.toHaveBeenCalled();
+  });
+
+  it('says so when every posting has expired', () => {
+    renderRow(false, {
+      merged_job_ids: ['1', '2'],
+      dead_links: { '1': true, '2': true },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /0\/2/ }));
+    expect(screen.getByText(/every posting is dead/i)).toBeInTheDocument();
   });
 });
