@@ -65,9 +65,15 @@ def _apply_filters(stmt: Select, f: JobFilters, user_id: str) -> Select:
     if f.view == "assigned":
         stmt = stmt.where(TrackerJob.in_assigned_queue.is_(True))
     if f.q:
-        like = f"%{f.q.strip().lower()}%"
-        stmt = stmt.where(or_(func.lower(TrackerJob.company).like(like),
-                              func.lower(TrackerJob.title).like(like)))
+        # LIKE reads % and _ as wildcards, so an unescaped search for "100%" matches
+        # far more than the user typed, and a bare "%" returns the whole table.
+        # People type punctuation; it should be searched for, not obeyed.
+        term = f.q.strip().lower()
+        for special in ("\\", "%", "_"):
+            term = term.replace(special, f"\\{special}")
+        like = f"%{term}%"
+        stmt = stmt.where(or_(func.lower(TrackerJob.company).like(like, escape="\\"),
+                              func.lower(TrackerJob.title).like(like, escape="\\")))
     if f.status:
         stmt = stmt.where(TrackerJob.status == f.status)
     if f.priority:

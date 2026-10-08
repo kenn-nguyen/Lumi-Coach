@@ -38,6 +38,10 @@ from .scoring import build_scoring_fingerprint, needs_scoring, normalize_payload
 
 logger = logging.getLogger(__name__)
 
+class RunCancelled(RuntimeError):
+    """The owner stopped the run. Raised at a phase boundary so nothing half-writes."""
+
+
 #: Hard ceilings. Settings can lower these; nothing can raise them.
 ABSOLUTE_MAX_ITEMS = 1000
 ABSOLUTE_MAX_SCORED = 500
@@ -108,6 +112,15 @@ def run_pipeline(
     started = run.started_at or datetime.now(timezone.utc)
 
     def step(phase: str) -> None:
+        """Record progress, and stop here if the owner has cancelled.
+
+        Checked at every phase, not only between scoring batches: a cancel during
+        the scrape used to be ignored entirely, so the run carried on spending and
+        writing after the page said it had stopped.
+        """
+        session.refresh(run)
+        if run.cancel_requested or (run.finished_at is not None and phase != "done"):
+            raise RunCancelled(f"cancelled during {run.phase}")
         run.phase = phase
         run.counters = counters.as_dict()
         run.errors = counters.errors[:50]

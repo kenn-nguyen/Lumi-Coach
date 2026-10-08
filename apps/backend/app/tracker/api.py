@@ -59,13 +59,20 @@ def get_session() -> Session:
 
 # --- shapes -------------------------------------------------------------------
 
+#: A note is a line or two for the other person, and it travels in every list
+#: response for that page. Rejecting an overlong one is kinder than truncating it,
+#: because the text is still in the field for the user to shorten.
+NOTE_LIMIT = 2_000
+SHORT_TEXT_LIMIT = 500
+
+
 class JobPatch(BaseModel):
     status: str | None = None
     owner: str | None = None
     action: str | None = None
-    notes: str | None = None
-    referral_contact: str | None = None
-    resume_file: str | None = None
+    notes: str | None = Field(default=None, max_length=NOTE_LIMIT)
+    referral_contact: str | None = Field(default=None, max_length=SHORT_TEXT_LIMIT)
+    resume_file: str | None = Field(default=None, max_length=SHORT_TEXT_LIMIT)
 
 
 class BulkRequest(BaseModel):
@@ -295,7 +302,7 @@ def _execute_run(run_id: str, user_id: str) -> None:
     """
     from pathlib import Path
 
-    from app.tracker.pipeline import run_pipeline
+    from app.tracker.pipeline import RunCancelled, run_pipeline
     from app.tracker.scorer import build_scorer
 
     rubric_path = Path(__file__).resolve().parent / "default_rubric.txt"
@@ -315,6 +322,9 @@ def _execute_run(run_id: str, user_id: str) -> None:
                 rubric=rubric_path.read_text() if rubric_path.exists() else "",
             )
             repo.finish_run(session, run=run, status="Completed")
+        except RunCancelled:
+            logger.info("Tracker run %s stopped on request", run_id)
+            repo.finish_run(session, run=run, status="Cancelled")
         except Exception as error:  # the run record is how the owner learns what broke
             logger.exception("Tracker run %s failed", run_id)
             run.errors = [str(error)][:50]

@@ -335,3 +335,42 @@ def test_meta_publishes_the_assignees_shorter_status_list(client: TestClient) ->
     body = client.get("/api/v1/tracker/meta").json()
     assert body["assignee_statuses"] == ["New", "Filled", "Submitted", "Flagged"]
     assert "Skip (auto)" in body["statuses"], "the owner still sees everything"
+
+
+# --- search treats punctuation as text ---------------------------------------
+
+@pytest.mark.parametrize("term", ["%", "_", "a%b", "%%%"])
+def test_wildcards_are_searched_for_not_obeyed(client: TestClient, term: str) -> None:
+    """LIKE reads % and _ as wildcards. A user typing them means the characters."""
+    everything = client.get("/api/v1/tracker/jobs?view=all").json()["total"]
+    found = client.get(f"/api/v1/tracker/jobs?view=all&q={term}").json()["total"]
+    assert found < everything, f"searching {term!r} returned the whole table"
+
+
+def test_a_real_percentage_matches_only_itself(client: TestClient) -> None:
+    body = client.get("/api/v1/tracker/jobs?view=all&q=100%25").json()
+    for job in body["jobs"]:
+        assert "100%" in f"{job['company']} {job['title']}".lower()
+
+
+def test_search_is_case_insensitive(client: TestClient) -> None:
+    lower = client.get("/api/v1/tracker/jobs?view=all&q=stripe").json()["total"]
+    upper = client.get("/api/v1/tracker/jobs?view=all&q=STRIPE").json()["total"]
+    assert lower == upper and lower > 0
+
+
+# --- text fields have a size ---------------------------------------------------
+
+def test_an_overlong_note_is_refused_rather_than_truncated(client: TestClient, scratch_job: str) -> None:
+    """Notes ride along in every list response, and silently losing the tail of
+    someone's text is worse than telling them it is too long."""
+    refused = client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                           json={"notes": "x" * 5_000})
+    assert refused.status_code == 422
+    assert (client.get(f"/api/v1/tracker/jobs/{scratch_job}").json()["notes"] or "") == ""
+
+
+def test_a_normal_note_is_fine(client: TestClient, scratch_job: str) -> None:
+    note = "Applied through their own site; they asked for a cover letter too."
+    assert client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                        json={"notes": note}).json()["notes"] == note

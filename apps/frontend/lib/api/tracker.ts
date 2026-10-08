@@ -101,6 +101,14 @@ export interface ApifyAccount {
 
 const BASE = '/api/v1/tracker';
 
+/** Raised when the request never reached the service, as opposed to being refused. */
+export class TrackerUnreachableError extends Error {
+  constructor() {
+    super('Cannot reach the tracker service. Check that the backend is running.');
+    this.name = 'TrackerUnreachableError';
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -108,20 +116,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     // No session (dev bypass, or the auth service is unreachable). Try the same
     // call without a token rather than showing an error the user cannot act on.
-    res = await fetch(`${BASE}${path}`, {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    });
+    try {
+      res = await fetch(`${BASE}${path}`, {
+        ...init,
+        headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      });
+    } catch {
+      throw new TrackerUnreachableError();
+    }
   }
+
   if (!res.ok) {
-    let detail = `${res.status}`;
+    let detail = '';
     try {
       const body = await res.json();
-      detail = body?.detail ?? detail;
+      detail = typeof body?.detail === 'string' ? body.detail : '';
     } catch {
       /* a non-JSON error body is still an error */
     }
-    throw new Error(String(detail));
+    // A bare status code tells the reader nothing they can act on.
+    if (!detail) {
+      if (res.status >= 500) detail = `The tracker service had a problem (${res.status}).`;
+      else if (res.status === 404) detail = 'That is no longer there.';
+      else if (res.status === 403) detail = 'Your account cannot do that.';
+      else detail = `The request was refused (${res.status}).`;
+    }
+    throw new Error(detail);
   }
   return (await res.json()) as T;
 }

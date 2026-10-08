@@ -66,6 +66,7 @@ export function TrackerClient() {
   const [data, setData] = React.useState<JobsResponse | null>(null);
   const [counts, setCounts] = React.useState<QueueCounts>(EMPTY_COUNTS);
   const [loading, setLoading] = React.useState(true);
+  const [loadFailed, setLoadFailed] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
   //
@@ -115,8 +116,10 @@ export function TrackerClient() {
       setData(body);
       setCounts(body.counts);
       setError(null);
+      setLoadFailed(false);
     } catch (e) {
       setError((e as Error).message);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -321,23 +324,27 @@ export function TrackerClient() {
       {isOwner && (
         <div className="grid gap-2.5 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatChip
+            unknown={loadFailed}
             value={counts.flagged}
             label="flagged"
             tone="alert"
             onClick={() => applyShortcut('all', { status: 'Flagged' })}
           />
           <StatChip
+            unknown={loadFailed}
             value={counts.assigned}
             label="assigned out"
             tone="calm"
             onClick={() => applyShortcut('assigned', {})}
           />
           <StatChip
+            unknown={loadFailed}
             value={counts.submitted}
             label="submitted"
             onClick={() => applyShortcut('all', { status: 'Submitted' })}
           />
           <StatChip
+            unknown={loadFailed}
             value={counts.unowned_top}
             label="P01–P02 unowned"
             tone="hot"
@@ -552,7 +559,30 @@ export function TrackerClient() {
                       </td>
                     </tr>
                   )}
-                  {!loading && jobs.length === 0 && (
+                  {!loading && jobs.length === 0 && loadFailed && (
+                    <tr>
+                      <td
+                        colSpan={columns.length}
+                        className="px-4 py-10 text-center text-muted-foreground"
+                      >
+                        {/* An empty state tells the user to act. That is wrong when
+                            nothing loaded: there may be thousands of jobs. */}
+                        <strong className="text-destructive">The list could not be loaded.</strong>
+                        <br />
+                        {error}
+                        <br />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-3"
+                          onClick={() => void load()}
+                        >
+                          Try again
+                        </Button>
+                      </td>
+                    </tr>
+                  )}
+                  {!loading && jobs.length === 0 && !loadFailed && (
                     <tr>
                       <td
                         colSpan={columns.length}
@@ -718,11 +748,13 @@ function StatChip({
   label,
   tone,
   onClick,
+  unknown = false,
 }: {
   value: number;
   label: string;
   tone?: 'alert' | 'calm' | 'hot';
   onClick: () => void;
+  unknown?: boolean;
 }) {
   const border =
     tone === 'alert'
@@ -739,8 +771,14 @@ function StatChip({
       onClick={onClick}
       className={`grid gap-0.5 rounded border border-border border-l-[3px] ${border} bg-card px-3.5 py-3 text-left hover:bg-muted`}
     >
-      <span className={`text-[22px] font-semibold leading-none tabular-nums ${value_tone}`}>
-        {value}
+      {/* A zero here reads as "you have none", which is a different thing from
+          "we could not find out". */}
+      <span
+        className={`text-[22px] font-semibold leading-none tabular-nums ${
+          unknown ? 'text-muted-foreground' : value_tone
+        }`}
+      >
+        {unknown ? '—' : value}
       </span>
       <span className="text-[12.5px] text-muted-foreground">{label}</span>
     </button>

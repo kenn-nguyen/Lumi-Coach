@@ -205,3 +205,30 @@ def test_routing_targets_the_runs_own_jobs_not_a_page_of_the_backlog() -> None:
     assert "_rows_for_routing" in route_section
     assert "JobFilters(view=\"all\", status=\"New\")" not in route_section, (
         "routing must not re-page the backlog by rank")
+
+
+# --- cancelling actually stops the work --------------------------------------
+
+@pytest.mark.unit
+def test_cancel_is_checked_at_every_phase_not_only_while_scoring() -> None:
+    """A cancel during the scrape used to be ignored, so the run kept spending and
+    writing after the page said it had stopped."""
+    import inspect
+
+    from app.tracker import pipeline
+
+    step = inspect.getsource(pipeline.run_pipeline)
+    step_body = step[step.index("def step("):step.index("cap_items")]
+    assert "cancel_requested" in step_body, "every phase boundary must check for a cancel"
+    assert "RunCancelled" in step_body
+
+
+@pytest.mark.unit
+def test_a_finished_run_is_not_resurrected_by_a_late_task() -> None:
+    import inspect
+
+    from app.tracker import pipeline
+
+    source = inspect.getsource(pipeline.run_pipeline)
+    assert "finished_at is not None" in source, (
+        "a task that outlives its run record must stop rather than write on")
