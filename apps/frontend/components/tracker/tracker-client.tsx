@@ -519,6 +519,7 @@ export function TrackerClient() {
                       }}
                       onPatch={handlePatch}
                       onMarkDead={handleMarkDead}
+                      onToast={setToast}
                     />
                   ))}
                 </tbody>

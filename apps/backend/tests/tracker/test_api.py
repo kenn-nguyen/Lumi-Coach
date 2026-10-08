@@ -264,5 +264,31 @@ def test_the_assignee_cannot_reach_settings_or_reassign(monkeypatch: pytest.Monk
     job_id = helper.get("/api/v1/tracker/jobs").json()["jobs"][0]["job_id"]
     assert helper.patch(f"/api/v1/tracker/jobs/{job_id}",
                         json={"owner": "Me"}).status_code == 403, "cannot re-assign away"
+    before = helper.get(f"/api/v1/tracker/jobs/{job_id}").json()["notes"] or ""
     assert helper.patch(f"/api/v1/tracker/jobs/{job_id}",
                         json={"notes": "on it"}).status_code == 200, "but can leave a note"
+    helper.patch(f"/api/v1/tracker/jobs/{job_id}", json={"notes": before})
+
+
+# --- flagging ----------------------------------------------------------------
+
+def test_flagging_without_a_reason_is_refused(client: TestClient, scratch_job: str) -> None:
+    """A flag hands the job back to the owner; without a reason it is just noise."""
+    client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"notes": ""})
+    refused = client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"status": "Flagged"})
+    assert refused.status_code == 422
+    assert "note" in refused.json()["detail"].lower()
+    assert client.get(f"/api/v1/tracker/jobs/{scratch_job}").json()["status"] != "Flagged"
+
+
+def test_flagging_works_when_the_note_comes_with_it(client: TestClient, scratch_job: str) -> None:
+    updated = client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                           json={"status": "Flagged", "notes": "form wants a portfolio URL"}).json()
+    assert updated["status"] == "Flagged"
+    assert updated["notes"] == "form wants a portfolio URL"
+
+
+def test_flagging_works_when_a_note_is_already_there(client: TestClient, scratch_job: str) -> None:
+    client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"notes": "asked about salary"})
+    assert client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                        json={"status": "Flagged"}).status_code == 200

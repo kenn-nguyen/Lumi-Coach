@@ -25,6 +25,7 @@ interface JobRowProps {
   onToggleExpand: (jobId: string) => void;
   onPatch: (jobId: string, changes: Partial<TrackerJob>) => void;
   onMarkDead: (jobId: string, linkId: string) => void;
+  onToast: (message: string) => void;
 }
 
 const CELL = 'border-b border-border px-3 py-2 align-middle';
@@ -41,9 +42,31 @@ export function JobRow({
   onToggleExpand,
   onPatch,
   onMarkDead,
+  onToast,
 }: JobRowProps) {
   const { live, total } = liveLinkCount(job);
   const dead = total > 0 && live === 0;
+
+  // The note is edited in place, so it is held locally and written on blur rather
+  // than on every keystroke.
+  const [noteDraft, setNoteDraft] = React.useState(job.notes ?? '');
+  const noteRef = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => setNoteDraft(job.notes ?? ''), [job.notes]);
+
+  function changeStatus(next: string) {
+    // Flagging sends a job back to the owner, and a flag with no reason gives them
+    // nothing to act on. Refuse it here and put the cursor where the fix is.
+    if (next === 'Flagged' && !noteDraft.trim()) {
+      onToast('Add a note first — a flagged job needs a reason.');
+      noteRef.current?.focus();
+      return;
+    }
+    onPatch(job.job_id, { status: next });
+  }
+
+  function saveNote() {
+    if (noteDraft !== (job.notes ?? '')) onPatch(job.job_id, { notes: noteDraft });
+  }
 
   function cell(col: ColumnDef): React.ReactNode {
     switch (col.key) {
@@ -91,7 +114,7 @@ export function JobRow({
           <select
             className={`cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-border ${statusClass(job.status)}`}
             value={job.status}
-            onChange={(e) => onPatch(job.job_id, { status: e.target.value })}
+            onChange={(e) => changeStatus(e.target.value)}
             aria-label={`Status for ${job.company ?? job.job_id}`}
           >
             {meta.statuses.map((s) => (
@@ -172,13 +195,22 @@ export function JobRow({
           </button>
         );
       case 'notes':
-        return job.notes ? (
-          <span className={`text-xs ${job.status === 'Flagged' ? 'text-destructive' : ''}`}>
-            {job.status === 'Flagged' ? '⚑ ' : ''}
-            {job.notes}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
+        return (
+          <input
+            ref={noteRef}
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            onBlur={saveNote}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setNoteDraft(job.notes ?? '');
+            }}
+            placeholder="Add a note…"
+            aria-label={`Note for ${job.company ?? job.job_id}`}
+            className={`w-full min-w-[200px] rounded border border-transparent bg-transparent px-1.5 py-1 text-xs hover:border-border focus:border-border focus:bg-card ${
+              job.status === 'Flagged' ? 'text-destructive' : ''
+            }`}
+          />
         );
       case 'applied_at':
         return (
@@ -213,7 +245,12 @@ export function JobRow({
         } hover:bg-muted`}
       >
         {columns.map((col) => (
-          <td key={col.key} className={`${CELL} ${col.align === 'right' ? 'text-right' : ''}`}>
+          <td
+            key={col.key}
+            className={`${CELL} ${col.align === 'right' ? 'text-right' : ''} ${
+              col.wide ? 'min-w-[220px]' : ''
+            }`}
+          >
             {cell(col)}
           </td>
         ))}

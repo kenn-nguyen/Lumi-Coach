@@ -169,6 +169,16 @@ def patch_job(
     if changes.get("owner") is not None and changes["owner"] not in ("",) + tuple(OWNER_OPTIONS):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown owner")
 
+    # Flagging hands a job back to the owner, and a flag with no reason gives them
+    # nothing to act on. Enforced here as well as in the page, because the rule
+    # belongs to the data rather than to one client.
+    if changes.get("status") == "Flagged":
+        current = repo.get_job(session, user_id=user.user_id, job_id=job_id) or {}
+        note = changes.get("notes") if changes.get("notes") is not None else current.get("notes")
+        if not (note or "").strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "A flagged job needs a note explaining why")
+
     # The assignee works the same rows but must not be able to re-assign them away
     # from themselves or edit the owner's own fields.
     if not user.is_owner:

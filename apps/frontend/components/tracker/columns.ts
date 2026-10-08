@@ -21,6 +21,8 @@ export interface ColumnDef {
   assigned: boolean;
   sort?: 'fit' | 'posted';
   align?: 'right';
+  /** Gets a minimum width: it is edited in place, so it needs room to type in. */
+  wide?: boolean;
 }
 
 export const COLUMNS: ColumnDef[] = [
@@ -39,7 +41,7 @@ export const COLUMNS: ColumnDef[] = [
   { key: 'posted', label: 'Posted', all: true, assigned: true, sort: 'posted' },
   { key: 'applicants', label: 'Applicants', all: false, assigned: false, align: 'right' },
   { key: 'links', label: 'Job links', all: true, assigned: true },
-  { key: 'notes', label: 'Notes', all: true, assigned: true },
+  { key: 'notes', label: 'Notes', all: true, assigned: true, wide: true },
   { key: 'applied_at', label: 'Applied', all: false, assigned: true },
   { key: 'expand', label: '', fixed: true, all: true, assigned: true },
 ];
