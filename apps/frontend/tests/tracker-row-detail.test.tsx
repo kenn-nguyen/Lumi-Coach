@@ -301,3 +301,60 @@ describe('changing status from the row', () => {
     expect(patch).not.toHaveBeenCalled();
   });
 });
+
+describe('the one-click status button on the row', () => {
+  const patch = vi.fn();
+
+  function renderRowWith(overrides: Partial<typeof JOB> = {}) {
+    patch.mockClear();
+    render(
+      <table>
+        <tbody>
+          <JobRow
+            job={{ ...JOB, ...overrides } as never}
+            rank={1}
+            columns={COLUMNS as never}
+            meta={{ actions: [] } as never}
+            selected={false}
+            expanded={false}
+            canEditEverything
+            onToggleSelect={() => {}}
+            onToggleExpand={() => {}}
+            onPatch={patch}
+            onSetDead={() => {}}
+            statusOptions={['New', 'Filled', 'Submitted', 'Flagged']}
+            onToast={() => {}}
+          />
+        </tbody>
+      </table>
+    );
+  }
+
+  it('marks a job submitted in one click, with the way back', () => {
+    renderRowWith({ status: 'New' });
+    fireEvent.click(screen.getByRole('button', { name: /✓ Submitted/ }));
+
+    const [jobId, changes, said] = patch.mock.calls[0];
+    expect(jobId).toBe('1');
+    expect(changes).toEqual({ status: 'Submitted' });
+    expect(said?.revert).toEqual({ status: 'New' });
+  });
+
+  it('offers Filled, not Submitted, on work that is reviewed before it is sent', () => {
+    renderRowWith({ status: 'New', action: 'Fill Only' });
+    expect(screen.getByRole('button', { name: /✓ Filled/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /✓ Submitted/ })).toBeNull();
+  });
+
+  it('disappears once the job is already there', () => {
+    renderRowWith({ status: 'Submitted' });
+    expect(screen.queryByRole('button', { name: /✓ Submitted/ })).toBeNull();
+  });
+
+  it('stays out of the way on rows nobody is working', () => {
+    for (const status of ['Skip', 'Skip (auto)', 'Closed']) {
+      renderRowWith({ status });
+      expect(screen.queryByRole('button', { name: /✓/ })).toBeNull();
+    }
+  });
+});

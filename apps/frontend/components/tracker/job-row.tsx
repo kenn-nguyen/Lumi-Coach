@@ -7,6 +7,7 @@ import {
   formatDate,
   liveLinkCount,
   priorityClass,
+  quickAction,
   statusClass,
   visaClass,
 } from '@/components/tracker/columns';
@@ -24,7 +25,12 @@ interface JobRowProps {
   canEditEverything: boolean;
   onToggleSelect: (jobId: string) => void;
   onToggleExpand: (jobId: string) => void;
-  onPatch: (jobId: string, changes: Partial<TrackerJob>) => void;
+  onPatch: (
+    jobId: string,
+    changes: Partial<TrackerJob>,
+    /** What to confirm, and the values an undo would restore. */
+    said?: { message: string; revert?: Partial<TrackerJob> },
+  ) => void;
   onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
   /** The statuses this view offers. Shorter in the assigned view. */
   statusOptions: string[];
@@ -149,8 +155,10 @@ export function JobRow({
             <span className="opacity-70">JD: {job.jd_implied_level ?? '—'}</span>
           </span>
         );
-      case 'status':
+      case 'status': {
+        const quick = quickAction(job.status, job.action);
         return meta ? (
+          <div className="flex items-center gap-1.5">
           <select
             // Styled as a control rather than as text: this is the row's primary
             // action, and a bare value with no edges does not read as one.
@@ -170,9 +178,22 @@ export function JobRow({
               </option>
             ))}
           </select>
+          {/* The one outcome that happens hundreds of times, as one click. */}
+          {quick && (
+            <button
+              type="button"
+              onClick={() => changeStatus(quick.status)}
+              title={`Mark ${job.company ?? 'this job'} as ${quick.status.toLowerCase()}`}
+              className="whitespace-nowrap rounded-full border border-success/30 bg-success/10 px-2 py-1 text-xs font-semibold text-success transition-colors hover:bg-success hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+            >
+              {quick.label}
+            </button>
+          )}
+          </div>
         ) : (
           job.status
         );
+      }
       case 'owner':
         return meta && canEditEverything ? (
           <select

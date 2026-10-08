@@ -108,6 +108,33 @@ export function visaClass(visa: string | null): string {
   return 'text-warning';
 }
 
+/** The statuses that mean nobody is working the row any more. */
+const PARKED_STATUSES = ['Skip', 'Skip (auto)', 'Closed'];
+
+export interface QuickAction {
+  status: string;
+  label: string;
+}
+
+/**
+ * The one status change a row is most likely to need, offered as a single click.
+ *
+ * Picking from a dropdown is three actions (open, find, choose) for the one
+ * outcome that happens hundreds of times: the job went out. The dropdown stays
+ * for everything else.
+ *
+ * ``Fill Only`` work is reviewed before it is sent, so its finish line is
+ * ``Filled`` — offering "submitted" there would invite exactly the thing the
+ * action exists to prevent.
+ */
+export function quickAction(status: string, action: string | null): QuickAction | null {
+  if (PARKED_STATUSES.includes(status)) return null;
+  if ((action ?? '') === 'Fill Only') {
+    return status === 'Filled' ? null : { status: 'Filled', label: '✓ Filled' };
+  }
+  return status === 'Submitted' ? null : { status: 'Submitted', label: '✓ Submitted' };
+}
+
 export function statusClass(status: string): string {
   switch (status) {
     case 'New':
