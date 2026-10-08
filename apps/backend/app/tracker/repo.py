@@ -53,6 +53,9 @@ class JobFilters:
     priority: str | None = None
     us_visa: str | None = None
     owner: str | None = None        # "__none" means unowned
+    #: Narrow to the jobs one run produced. This is how "show me what just arrived"
+    #: works, since a new job is usually low-ranked and invisible near the top.
+    from_run: str | None = None
     sort: str | None = None         # "fit" | "posted"
     direction: str = "asc"
 
@@ -71,6 +74,9 @@ def _apply_filters(stmt: Select, f: JobFilters, user_id: str) -> Select:
         stmt = stmt.where(TrackerJob.priority == f.priority)
     if f.us_visa:
         stmt = stmt.where(TrackerJob.us_visa == f.us_visa)
+    if f.from_run:
+        stmt = stmt.where(TrackerJob.job_id.in_(
+            select(TrackerRunHandled.job_id).where(TrackerRunHandled.run_id == f.from_run)))
     if f.owner == "__none":
         stmt = stmt.where(or_(TrackerJob.owner == "", TrackerJob.owner.is_(None)))
     elif f.owner:

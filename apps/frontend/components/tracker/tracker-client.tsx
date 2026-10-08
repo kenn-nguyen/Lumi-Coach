@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { RetroTabs } from '@/components/ui/retro-tabs';
 import {
   type BulkOp,
+  type TrackerRun,
   type JobsResponse,
   type QueueCounts,
   type TrackerJob,
@@ -27,6 +28,7 @@ import {
   bulkJobs,
   fetchJobs,
   fetchMeta,
+  fetchRuns,
   markLinkDead,
   patchJob,
 } from '@/lib/api/tracker';
@@ -66,6 +68,15 @@ export function TrackerClient() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
+  //
+
+  const [watchToken, setWatchToken] = React.useState(0);
+
+  const [fromRun, setFromRun] = React.useState<string | null>(null);
+  // A run finishes in the background, so the page has to notice and say so;
+  // otherwise Run Now looks like it did nothing.
+  const [finishedRun, setFinishedRun] = React.useState<TrackerRun | null>(null);
+  const activeRunId = React.useRef<string | null>(null);
 
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
@@ -90,6 +101,7 @@ export function TrackerClient() {
     try {
       const body = await fetchJobs({
         view,
+        from_run: fromRun || undefined,
         q: debounced || undefined,
         status: status || undefined,
         priority: priority || undefined,
@@ -108,11 +120,48 @@ export function TrackerClient() {
     } finally {
       setLoading(false);
     }
-  }, [view, debounced, status, priority, visa, owner, sort, direction, page]);
+  }, [view, fromRun, debounced, status, priority, visa, owner, sort, direction, page]);
 
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  // Poll only while something is running: a finished run needs no watching, and
+  // an idle page should not be asking every few seconds.
+  const checkRuns = React.useCallback(async () => {
+    try {
+      const { runs } = await fetchRuns(3);
+      const running = runs.find((r) => !r.finished_at) ?? null;
+      if (running) {
+        activeRunId.current = running.run_id;
+        return true;
+      }
+      if (activeRunId.current) {
+        const done = runs.find((r) => r.run_id === activeRunId.current) ?? null;
+        activeRunId.current = null;
+        if (done) {
+          setFinishedRun(done);
+          await load();
+        }
+      }
+      return false;
+    } catch {
+      return false; // a failed poll is not worth interrupting the page for
+    }
+  }, [load]);
+
+  React.useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+    void (async () => {
+      const running = await checkRuns();
+      if (running && !cancelled) timer = setInterval(() => void checkRuns(), 5000);
+    })();
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [checkRuns, watchToken]);
 
   React.useEffect(() => {
     if (!toast) return;
@@ -138,6 +187,7 @@ export function TrackerClient() {
   }
 
   function clearFilters() {
+    setFromRun(null);
     setStatus('');
     setPriority('');
     setVisa('');
@@ -148,6 +198,7 @@ export function TrackerClient() {
 
   function applyShortcut(next: ViewKey, filters: { status?: string; owner?: string }) {
     clearFilters();
+    setFinishedRun(null);
     setView(next);
     setStatus(filters.status ?? '');
     setOwner(filters.owner ?? '');
@@ -290,6 +341,21 @@ export function TrackerClient() {
         </div>
       )}
 
+      {finishedRun && (
+        <RunFinishedBanner
+          run={finishedRun}
+          onShow={() => {
+            clearFilters();
+            setView('all');
+            setFromRun(finishedRun.run_id);
+            setPage(0);
+            setTab('jobs');
+            setFinishedRun(null);
+          }}
+          onDismiss={() => setFinishedRun(null)}
+        />
+      )}
+
       <div className="mt-5">
         <RetroTabs tabs={tabs} activeTab={tab} onTabChange={(id) => setTab(id as TabId)} />
       </div>
@@ -345,6 +411,15 @@ export function TrackerClient() {
               className="w-full max-w-[260px] rounded border border-border bg-card px-2.5 py-2 text-[13px]"
             />
           </div>
+
+          {fromRun && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-primary bg-primary/5 px-3.5 py-2">
+              <span className="font-mono text-xs">Showing only what one run produced</span>
+              <Button size="sm" variant="ghost" onClick={() => setFromRun(null)}>
+                Show everything
+              </Button>
+            </div>
+          )}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowColumns(!showColumns)}>
@@ -554,7 +629,9 @@ export function TrackerClient() {
         </section>
       )}
 
-      {tab === 'runs' && <TrackerRuns onToast={setToast} />}
+      {tab === 'runs' && (
+        <TrackerRuns onToast={setToast} onRunStarted={() => setWatchToken((n) => n + 1)} />
+      )}
       {tab === 'settings' && <TrackerSettings onToast={setToast} />}
       {tab === 'help' && <TrackerHelp />}
 
@@ -566,6 +643,66 @@ export function TrackerClient() {
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+function RunFinishedBanner({
+  run,
+  onShow,
+  onDismiss,
+}: {
+  run: TrackerRun;
+  onShow: () => void;
+  onDismiss: () => void;
+}) {
+  const at = run.finished_at
+    ? new Date(run.finished_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const added = Number(run.counters?.new_jobs ?? 0);
+  const scored = Number(run.counters?.scored ?? 0);
+  const failed = Number(run.counters?.failed ?? 0);
+  const known = Number(run.counters?.already_known ?? 0);
+  const broke = run.status === 'Failed';
+
+  return (
+    <div
+      role="status"
+      className={`mt-4 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 ${
+        broke ? 'border-destructive bg-destructive/5' : 'border-primary bg-primary/5'
+      }`}
+    >
+      <span className="text-sm">
+        {broke ? (
+          <>
+            <strong>The {at} run failed.</strong> {run.errors?.[0] ?? 'No reason recorded.'}
+          </>
+        ) : added > 0 ? (
+          <>
+            <strong>
+              {added} new job{added === 1 ? '' : 's'}
+            </strong>{' '}
+            from the {at} run.
+          </>
+        ) : (
+          <>
+            <strong>Nothing new</strong> in the {at} run.
+          </>
+        )}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {scored} scored
+        {known > 0 && `, ${known} already known`}
+        {failed > 0 && `, ${failed} failed`}
+      </span>
+      {added > 0 && !broke && (
+        <Button size="sm" variant="outline" onClick={onShow}>
+          Show them
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" onClick={onDismiss}>
+        Dismiss
+      </Button>
     </div>
   );
 }

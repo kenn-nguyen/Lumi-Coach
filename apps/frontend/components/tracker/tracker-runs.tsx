@@ -8,7 +8,14 @@ import { type TrackerRun, cancelRun, fetchRuns, startRun } from '@/lib/api/track
 const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground';
 
 /** Starting runs and reading what past ones did. */
-export function TrackerRuns({ onToast }: { onToast: (message: string) => void }) {
+export function TrackerRuns({
+  onToast,
+  onRunStarted,
+}: {
+  onToast: (message: string) => void;
+  /** Lets the page start watching, so it can say when the run finishes. */
+  onRunStarted?: () => void;
+}) {
   const [runs, setRuns] = React.useState<TrackerRun[]>([]);
   const [showImport, setShowImport] = React.useState(false);
   const [urls, setUrls] = React.useState('');
@@ -32,7 +39,8 @@ export function TrackerRuns({ onToast }: { onToast: (message: string) => void })
     setBusy(true);
     try {
       await startRun(mode, jobUrls);
-      onToast('Run started. It keeps going if you close this tab.');
+      onToast('Run started. You will be told here when it finishes.');
+      onRunStarted?.();
       await load();
     } catch (e) {
       onToast((e as Error).message);

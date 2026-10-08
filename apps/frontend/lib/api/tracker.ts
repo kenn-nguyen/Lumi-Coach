@@ -139,6 +139,7 @@ export function fetchMeta(): Promise<TrackerMeta> {
 export interface JobQuery {
   view: 'assigned' | 'all';
   q?: string;
+  from_run?: string;
   status?: string;
   priority?: string;
   us_visa?: string;

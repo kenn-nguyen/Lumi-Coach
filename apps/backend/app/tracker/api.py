@@ -124,6 +124,7 @@ def list_jobs(
     priority: str | None = None,
     us_visa: str | None = None,
     owner: str | None = None,
+    from_run: str | None = None,
     sort: str | None = None,
     direction: str = "asc",
     offset: int = 0,
@@ -132,7 +133,8 @@ def list_jobs(
     user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     filters = repo.JobFilters(view=view, q=q, status=job_status, priority=priority,
-                              us_visa=us_visa, owner=owner, sort=sort, direction=direction)
+                              us_visa=us_visa, owner=owner, from_run=from_run,
+                              sort=sort, direction=direction)
     rows, total = repo.list_jobs(session, user_id=user.user_id, filters=filters,
                                  offset=offset, limit=limit)
     return {

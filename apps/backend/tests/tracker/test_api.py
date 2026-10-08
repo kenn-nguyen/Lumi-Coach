@@ -292,3 +292,24 @@ def test_flagging_works_when_a_note_is_already_there(client: TestClient, scratch
     client.patch(f"/api/v1/tracker/jobs/{scratch_job}", json={"notes": "asked about salary"})
     assert client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
                         json={"status": "Flagged"}).status_code == 200
+
+
+# --- seeing what a run produced ----------------------------------------------
+
+def test_a_run_can_be_asked_what_it_produced(client: TestClient) -> None:
+    """New jobs are usually low-ranked, so 'what just arrived' needs its own filter."""
+    runs = client.get("/api/v1/tracker/runs").json()["runs"]
+    finished = [r for r in runs if r["finished_at"]]
+    if not finished:
+        pytest.skip("no completed run in this database")
+
+    run_id = finished[0]["run_id"]
+    body = client.get(f"/api/v1/tracker/jobs?view=all&from_run={run_id}").json()
+    assert body["total"] >= 0
+    unfiltered = client.get("/api/v1/tracker/jobs?view=all").json()["total"]
+    assert body["total"] <= unfiltered
+
+
+def test_an_unknown_run_returns_nothing_rather_than_everything(client: TestClient) -> None:
+    body = client.get("/api/v1/tracker/jobs?view=all&from_run=no-such-run").json()
+    assert body["total"] == 0, "a bad filter must not silently show the whole backlog"

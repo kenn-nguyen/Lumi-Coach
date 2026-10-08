@@ -125,6 +125,13 @@ def route_job(
 
     was_auto = (str(owner) if owner is not None else "").strip() == OWNER_ASSIGNEE_AUTO
     priority_text = (str(priority) if priority is not None else "").strip()
+
+    # An unscored job has no basis for a lane. Every rule below reads the priority
+    # or the visa signal, and both come from scoring — so a job that is waiting to
+    # be scored would be read as "below the assignee band" and skipped before it
+    # was ever judged. Leave it alone until it has a score.
+    if not priority_text:
+        return None
     company_key = (str(company) if company is not None else "").strip().lower()
     visa = (str(us_visa) if us_visa is not None else "").strip()
 

@@ -102,8 +102,10 @@ def test_unscored_job_cannot_clear_a_minimum_score() -> None:
 
 @pytest.mark.unit
 def test_below_the_band_is_skipped() -> None:
+    """A real low priority is a judgement and gets skipped. A missing one is not a
+    judgement at all — see test_an_unscored_job_is_left_alone_rather_than_skipped."""
     assert decide(priority="P07").outcome == SKIPPED
-    assert decide(priority="").outcome == SKIPPED
+    assert decide(priority="P10").outcome == SKIPPED
 
 
 @pytest.mark.unit
@@ -152,3 +154,21 @@ def test_rules_load_from_the_real_settings() -> None:
     assert "google" in rules.reserved_companies, "company lists are matched lowercased"
     assert rules.skip_visa_no is True
     assert "Yes (100%)" in rules.assign_visa
+
+
+@pytest.mark.unit
+def test_an_unscored_job_is_left_alone_rather_than_skipped() -> None:
+    """Scoring is capped per run, so jobs routinely wait their turn. Routing reads
+    the priority and visa signal, which only exist after scoring — judging a job
+    before then silently skips it on no evidence."""
+    assert route_job(owner="", status="New", priority=None, company="Acme",
+                     us_visa=None, score=None, rules=RULES) is None
+    assert route_job(owner="", status="New", priority="", company="Acme",
+                     us_visa="", score="", rules=RULES) is None
+
+
+@pytest.mark.unit
+def test_the_same_job_routes_normally_once_it_has_a_score() -> None:
+    decided = route_job(owner="", status="New", priority="P03", company="Acme",
+                        us_visa="Yes (100%)", score=80, rules=RULES)
+    assert decided is not None and decided.outcome == ASSIGNED
