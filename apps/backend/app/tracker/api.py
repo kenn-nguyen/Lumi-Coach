@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -267,9 +267,45 @@ def list_runs(
     } for r in runs]}
 
 
+def _execute_run(run_id: str, user_id: str) -> None:
+    """Run the pipeline outside the request, so the button returns immediately.
+
+    A background task dies with the process, which is why the run records its
+    progress as it goes: an interrupted run is re-runnable without re-scraping or
+    re-paying for what it already did.
+    """
+    from pathlib import Path
+
+    from app.tracker.pipeline import run_pipeline
+    from app.tracker.scorer import build_scorer
+
+    rubric_path = Path(__file__).resolve().parent / "default_rubric.txt"
+    session_factory = _Session
+    if session_factory is None:
+        return
+
+    with session_factory() as session:
+        run = session.get(repo.TrackerRun, run_id)
+        if run is None:
+            return
+        try:
+            settings = repo.get_settings(session, user_id=user_id, redact=False)
+            run_pipeline(
+                session, user_id=user_id, run=run,
+                score_job=build_scorer(settings),
+                rubric=rubric_path.read_text() if rubric_path.exists() else "",
+            )
+            repo.finish_run(session, run=run, status="Completed")
+        except Exception as error:  # the run record is how the owner learns what broke
+            logger.exception("Tracker run %s failed", run_id)
+            run.errors = [str(error)][:50]
+            repo.finish_run(session, run=run, status="Failed")
+
+
 @router.post("/runs")
 def start_run(
     request: RunRequest,
+    background: BackgroundTasks,
     session: Session = Depends(get_session),
     user: TrackerUser = Depends(require_owner),
 ) -> dict[str, Any]:
@@ -280,6 +316,7 @@ def start_run(
     if request.job_urls:
         run.cursor = {"job_urls": request.job_urls[:50]}
         session.commit()
+    background.add_task(_execute_run, run.run_id, user.user_id)
     return {"run_id": run.run_id, "status": run.status}
 
 
