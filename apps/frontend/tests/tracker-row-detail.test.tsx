@@ -252,3 +252,52 @@ describe('status actions in an opened row', () => {
     expect(patch).not.toHaveBeenCalled();
   });
 });
+
+describe('changing status from the row', () => {
+  const patch = vi.fn();
+
+  function renderWithPatch(overrides: Partial<typeof JOB> = {}) {
+    patch.mockClear();
+    render(
+      <table>
+        <tbody>
+          <JobRow
+            job={{ ...JOB, ...overrides } as never}
+            rank={1}
+            columns={COLUMNS as never}
+            meta={{ actions: [] } as never}
+            selected={false}
+            expanded={false}
+            canEditEverything
+            onToggleSelect={() => {}}
+            onToggleExpand={() => {}}
+            onPatch={patch}
+            onSetDead={() => {}}
+            statusOptions={['New', 'Filled', 'Submitted', 'Flagged']}
+            onToast={() => {}}
+          />
+        </tbody>
+      </table>
+    );
+  }
+
+  it('carries the way back, because this is where status actually gets changed', () => {
+    renderWithPatch({ status: 'New' });
+    fireEvent.change(screen.getByRole('combobox', { name: /status/i }), {
+      target: { value: 'Submitted' },
+    });
+
+    const [jobId, changes, said] = patch.mock.calls[0];
+    expect(jobId).toBe('1');
+    expect(changes).toEqual({ status: 'Submitted' });
+    expect(said?.revert).toEqual({ status: 'New' });
+  });
+
+  it('still refuses to flag from the row without a reason', () => {
+    renderWithPatch({ status: 'New', notes: null });
+    fireEvent.change(screen.getByRole('combobox', { name: /status/i }), {
+      target: { value: 'Flagged' },
+    });
+    expect(patch).not.toHaveBeenCalled();
+  });
+});

@@ -66,7 +66,14 @@ export function JobRow({
       noteRef.current?.focus();
       return;
     }
-    onPatch(job.job_id, { status: next });
+    // This is where status actually gets changed — from the row, not from the
+    // opened card. The new status re-sorts the row, usually off the page, so the
+    // way back has to travel with the confirmation or a mis-pick is unrecoverable.
+    onPatch(
+      job.job_id,
+      { status: next },
+      { message: `Marked ${next}.`, revert: { status: job.status } }
+    );
   }
 
   function saveNote() {
@@ -145,7 +152,9 @@ export function JobRow({
       case 'status':
         return meta ? (
           <select
-            className={`cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-border ${statusClass(job.status)}`}
+            // Styled as a control rather than as text: this is the row's primary
+            // action, and a bare value with no edges does not read as one.
+            className={`cursor-pointer rounded-full border border-border bg-card px-2.5 py-1 text-xs font-semibold shadow-xs transition-colors hover:border-foreground/30 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 ${statusClass(job.status)}`}
             value={job.status}
             onChange={(e) => changeStatus(e.target.value)}
             aria-label={`Status for ${job.company ?? job.job_id}`}
