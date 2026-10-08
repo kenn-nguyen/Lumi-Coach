@@ -28,15 +28,21 @@ export interface ColumnDef {
 export const COLUMNS: ColumnDef[] = [
   { key: 'select', label: '', fixed: true, all: true, assigned: true },
   { key: 'rank', label: '#', all: true, assigned: true, align: 'right' },
-  { key: 'priority', label: 'Priority', all: true, assigned: true, sort: 'fit' },
-  { key: 'score', label: 'Score', all: true, assigned: true, align: 'right' },
+  // Priority and score are one judgement at two precisions: the band you scan and
+  // the number that separates a 75 from an 83 inside it. One cell, both values.
+  { key: 'fit', label: 'Fit', all: true, assigned: true, sort: 'fit' },
   { key: 'us_visa', label: 'US visa', all: true, assigned: true },
-  { key: 'company', label: 'Company', all: true, assigned: true },
-  { key: 'title', label: 'Title', all: true, assigned: true },
+  // Company runs to ~9 characters and title to ~37, so separate columns squeezed
+  // the title into wrapping. Together they fit one line and the rows get shorter.
+  { key: 'job', label: 'Job', all: true, assigned: true },
+  { key: 'priority', label: 'Priority (alone)', all: false, assigned: false, sort: 'fit' },
+  { key: 'score', label: 'Score (alone)', all: false, assigned: false, align: 'right' },
+  { key: 'company', label: 'Company (alone)', all: false, assigned: false },
+  { key: 'title', label: 'Title (alone)', all: false, assigned: false },
   { key: 'level', label: 'Level', all: false, assigned: false },
   { key: 'status', label: 'Status', all: true, assigned: true },
   { key: 'owner', label: 'Owner', all: true, assigned: false },
-  { key: 'action', label: 'Action', all: true, assigned: true },
+  { key: 'action', label: 'Action', all: true, assigned: false },
   { key: 'location', label: 'Location', all: false, assigned: true },
   { key: 'posted', label: 'Posted', all: true, assigned: true, sort: 'posted' },
   { key: 'applicants', label: 'Applicants', all: false, assigned: false, align: 'right' },

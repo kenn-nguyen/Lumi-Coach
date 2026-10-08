@@ -81,6 +81,34 @@ export function JobRow({
         );
       case 'rank':
         return <span className="font-mono text-muted-foreground tabular-nums">{rank}</span>;
+      case 'fit':
+        return (
+          <span className="flex items-center gap-2 whitespace-nowrap">
+            <span
+              className={`inline-block rounded border px-1.5 py-0.5 font-mono text-[11px] font-semibold ${priorityClass(job.priority)}`}
+            >
+              {job.priority ?? '—'}
+            </span>
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              {job.score ?? '—'}
+            </span>
+          </span>
+        );
+      case 'job':
+        return (
+          <span className="block min-w-[260px]">
+            <span className="font-semibold">{job.company ?? '—'}</span>
+            {job.action === 'Fill Only' && (
+              <span
+                className="ml-2 rounded border border-warning/50 px-1.5 py-px align-middle font-mono text-[10px] uppercase tracking-wider text-warning"
+                title="Fill the form but do not submit it"
+              >
+                fill only
+              </span>
+            )}
+            <span className="block text-[13px] leading-snug">{job.title ?? '—'}</span>
+          </span>
+        );
       case 'priority':
         return (
           <span
@@ -145,12 +173,28 @@ export function JobRow({
           <span className="text-xs text-muted-foreground">{job.owner || '—'}</span>
         );
       case 'action':
-        return meta && canEditEverything ? (
+        if (!meta || !canEditEverything) {
+          return (
+            <span
+              className={`text-xs ${
+                job.action === 'Fill Only' ? 'text-warning' : 'text-muted-foreground'
+              }`}
+            >
+              {job.action === 'Fill & Submit' ? '—' : job.action || '—'}
+            </span>
+          );
+        }
+        return (
           <select
-            className="cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-muted-foreground hover:border-border"
+            className={`cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-xs hover:border-border ${
+              job.action === 'Fill Only' ? 'text-warning font-semibold' : 'text-muted-foreground'
+            }`}
             value={job.action ?? ''}
             onChange={(e) => onPatch(job.job_id, { action: e.target.value })}
             aria-label={`Action for ${job.company ?? job.job_id}`}
+            // "Fill & Submit" is what almost every delegated job is, so it reads as a
+            // dash. "Fill Only" is the exception that changes what the assignee does.
+            title={job.action || 'No action set'}
           >
             <option value="">—</option>
             {meta.actions.map((a) => (
@@ -159,8 +203,6 @@ export function JobRow({
               </option>
             ))}
           </select>
-        ) : (
-          <span className="text-xs text-muted-foreground">{job.action || '—'}</span>
         );
       case 'location':
         return (
