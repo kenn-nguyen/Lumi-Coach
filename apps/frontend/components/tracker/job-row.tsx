@@ -141,7 +141,10 @@ export function JobRow({
         );
       case 'location':
         return (
-          <span className="whitespace-nowrap text-xs text-muted-foreground">
+          <span
+            className="block max-w-[96px] truncate text-xs text-muted-foreground"
+            title={job.location ?? undefined}
+          >
             {job.location ?? '—'}
           </span>
         );

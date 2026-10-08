@@ -240,7 +240,7 @@ export function TrackerClient() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 pb-16 pt-5">
+    <div className="mx-auto w-full max-w-[2200px] px-4 pb-16 pt-5 2xl:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
