@@ -34,3 +34,44 @@ services:
         value: gpt-5-nano-2025-08-07
       - key: LLM_API_KEY
         sync: false
+
+      # --- job tracker ---------------------------------------------------
+      # The one Google account that may use the tracker. With the dev bypass
+      # off, this is the only way in: set it to the address you sign in with,
+      # or you will be locked out of your own queue.
+      - key: TRACKER_OWNER_EMAIL
+        sync: false
+      # The Vertex service account, as the JSON itself. There is nowhere to put
+      # a key file here, so the scorer parses it from the environment rather
+      # than writing it to disk.
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      # Caps on one run. The lookback window is the real cost lever; these stop
+      # a misconfiguration from being expensive.
+      - key: TRACKER_MAX_ITEMS_PER_RUN
+        value: "200"
+      - key: TRACKER_MAX_SCORED_PER_RUN
+        value: "120"
+      # TRACKER_DEV_NO_AUTH is deliberately absent. The backend refuses it on a
+      # deployed host anyway, but it should not be here to be switched on.
+
+  # Scheduled runs go in their own process. A run started from the web service
+  # keeps it alive and blocks a deploy; this one cannot.
+  - type: cron
+    name: som-career-coach-tracker
+    runtime: python
+    rootDir: apps/backend
+    schedule: "0 */6 * * *"
+    buildCommand: pip install .
+    startCommand: python scripts/run_pipeline.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TRACKER_OWNER_EMAIL
+        sync: false
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: TRACKER_MAX_ITEMS_PER_RUN
+        value: "200"
+      - key: TRACKER_MAX_SCORED_PER_RUN
+        value: "120"

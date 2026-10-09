@@ -8,6 +8,7 @@ runs out, which is a settings change rather than a redeploy.
 from __future__ import annotations
 
 import logging
+import json
 import os
 import time
 from typing import Any, Callable
@@ -95,8 +96,17 @@ def build_scorer(settings: dict[str, str]) -> Callable[[str], dict[str, Any] | N
     from google.oauth2 import service_account
 
     key_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    inline = (os.environ.get("GOOGLE_CREDENTIALS_JSON") or "").strip()
     if key_file and os.path.exists(key_file):
         credentials = service_account.Credentials.from_service_account_file(key_file, scopes=[SCOPE])
+        project = credentials.project_id
+    elif inline:
+        # A hosted environment has environment variables but nowhere to put a file,
+        # so the key may be supplied as the JSON itself. Parsed here rather than
+        # written to disk: a key on disk outlives the process that needed it.
+        credentials = service_account.Credentials.from_service_account_info(
+            json.loads(inline), scopes=[SCOPE]
+        )
         project = credentials.project_id
     else:
         import google.auth
