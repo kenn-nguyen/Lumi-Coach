@@ -373,7 +373,6 @@ export function JobRow({
               canEditEverything={canEditEverything}
               onPatch={onPatch}
               onSetDead={onSetDead}
-              onToast={onToast}
             />
           </td>
         </tr>

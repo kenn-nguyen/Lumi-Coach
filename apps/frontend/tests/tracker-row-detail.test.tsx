@@ -193,66 +193,6 @@ describe('statuses offered in a row', () => {
   });
 });
 
-describe('status actions in an opened row', () => {
-  const patch = vi.fn();
-
-  function openRow(overrides: Partial<typeof JOB> = {}) {
-    patch.mockClear();
-    render(
-      <table>
-        <tbody>
-          <JobRow
-            job={{ ...JOB, ...overrides } as never}
-            rank={1}
-            columns={COLUMNS as never}
-            meta={null}
-            selected={false}
-            expanded
-            canEditEverything
-            onToggleSelect={() => {}}
-            onToggleExpand={() => {}}
-            onPatch={patch}
-            onSetDead={() => {}}
-            statusOptions={['New', 'Filled', 'Submitted', 'Flagged']}
-            onToast={() => {}}
-          />
-        </tbody>
-      </table>
-    );
-  }
-
-  it('offers the submit action, and carries the way back with it', () => {
-    openRow({ status: 'New' });
-    fireEvent.click(screen.getByRole('button', { name: /i submitted it/i }));
-
-    expect(patch).toHaveBeenCalledTimes(1);
-    const [jobId, changes, said] = patch.mock.calls[0];
-    expect(jobId).toBe('1');
-    expect(changes).toEqual({ status: 'Submitted' });
-    // Without the previous status travelling with the confirmation there is
-    // nothing to undo to: the row re-sorts off the page the moment it saves.
-    expect(said.revert).toEqual({ status: 'New' });
-  });
-
-  it('asks a Fill Only job to be marked filled, not submitted', () => {
-    openRow({ status: 'New', action: 'Fill Only' });
-    expect(screen.getByRole('button', { name: /ready to send/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /i submitted it/i })).toBeNull();
-  });
-
-  it('reverts an already-submitted job to where it came from', () => {
-    openRow({ status: 'Submitted' });
-    fireEvent.click(screen.getByRole('button', { name: /^undo$/i }));
-    expect(patch.mock.calls[0][1]).toEqual({ status: 'New' });
-  });
-
-  it('refuses to flag without a reason rather than sending an empty complaint', () => {
-    openRow({ status: 'New' });
-    fireEvent.click(screen.getByRole('button', { name: /stuck/i }));
-    expect(patch).not.toHaveBeenCalled();
-  });
-});
-
 describe('changing status from the row', () => {
   const patch = vi.fn();
 

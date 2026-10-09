@@ -14,7 +14,6 @@ interface JobWorkAreaProps {
     said?: { message: string; revert?: Partial<TrackerJob> },
   ) => void;
   onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
-  onToast: (message: string) => void;
 }
 
 const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground';
@@ -32,7 +31,6 @@ export function JobWorkArea({
   canEditEverything,
   onPatch,
   onSetDead,
-  onToast,
 }: JobWorkAreaProps) {
   const [detail, setDetail] = React.useState<TrackerJobDetail | null>(null);
   const [loaded, setLoaded] = React.useState(false);
@@ -68,80 +66,8 @@ export function JobWorkArea({
   const deadLinks = job.dead_links ?? {};
   const allDead = linkIds.every((id) => deadLinks[id]);
 
-  const prepOnly = job.action === 'Fill Only';
-  const submitted = job.status === 'Submitted';
-  const filled = job.status === 'Filled';
-
-  function setStatus(status: string, said: string) {
-    // A status change re-sorts the row, often straight off the page, so the way
-    // back travels with the confirmation rather than making the user find it again.
-    onPatch(job.job_id, { status }, { message: said, revert: { status: job.status } });
-  }
-
-  function flag() {
-    // The same rule the status dropdown enforces: a flag with no reason gives the
-    // owner nothing to act on.
-    if (!(job.notes ?? '').trim()) {
-      onToast('Say what is blocking you in the note first, then flag it.');
-      noteRef.current?.focus();
-      return;
-    }
-    setStatus('Flagged', 'Sent back with your note.');
-  }
-
   return (
     <div className="grid gap-5 p-4 pl-10 md:grid-cols-2 lg:grid-cols-4">
-      {/* The bar stretches with the table, which is wider than the screen. Everything
-          in it is pinned to the left so no action can be pushed out of sight — an
-          action the user has to scroll sideways to find may as well not exist. */}
-      <div className="col-span-full sticky left-0 w-fit max-w-full rounded-lg border border-border bg-card px-4 py-3.5">
-        <div className="flex flex-wrap items-center gap-2.5">
-          {submitted ? (
-            <>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-sm font-semibold text-success">
-                ✓ Submitted
-                {job.applied_at
-                  ? ` on ${new Date(job.applied_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                  : ''}
-              </span>
-              <Button variant="outline" onClick={() => setStatus('New', 'Put back on the list.')}>
-                Undo
-              </Button>
-            </>
-          ) : (
-            <>
-              {prepOnly && !filled ? (
-                <Button onClick={() => setStatus('Filled', 'Marked filled. It is ready to send.')}>
-                  Form filled — ready to send
-                </Button>
-              ) : (
-                <Button onClick={() => setStatus('Submitted', 'Marked submitted.')}>
-                  I submitted it
-                </Button>
-              )}
-              {!prepOnly && !filled && (
-                <Button variant="outline" onClick={() => setStatus('Filled', 'Marked filled, not sent.')}>
-                  Filled, not sent yet
-                </Button>
-              )}
-              {/* Escalation, not progress: set apart so it is not picked by accident,
-                  but still beside the others rather than across the table. */}
-              <span className="mx-1 h-6 w-px bg-border" aria-hidden />
-              <Button variant="outline" onClick={flag}>
-                I&apos;m stuck
-              </Button>
-            </>
-          )}
-        </div>
-        {/* Instructions for work that is already done are just noise. */}
-        {!submitted && (
-          <p className="mt-2.5 text-[11.5px] text-muted-foreground">
-            {prepOnly
-              ? 'Fill the form but do not send it — this one is reviewed first.'
-              : 'Fill the form and send it, then mark it here.'}
-          </p>
-        )}
-      </div>
       <section>
         <h4 className={LABEL}>Summary</h4>
         <p className="mt-1 max-w-[60ch] text-sm">
@@ -277,7 +203,8 @@ export function JobWorkArea({
             aria-label="Notes for this job"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Write what is blocking you, then use <strong>I&apos;m stuck</strong> above.
+            Write what is blocking you, then set the status to <strong>Flagged</strong> on the
+            row. A flag without a reason is refused.
           </p>
         </section>
       </div>
