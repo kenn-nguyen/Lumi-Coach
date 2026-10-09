@@ -60,6 +60,8 @@ const COLUMNS = [
   { key: 'expand', label: '', fixed: true, all: true, assigned: true },
 ];
 
+const hold = vi.fn();
+
 function renderRow(
   expanded: boolean,
   overrides: Partial<typeof JOB> = {},
@@ -79,6 +81,8 @@ function renderRow(
           onToggleExpand={() => {}}
           onPatch={() => {}}
           onSetDead={() => {}}
+          onHoldStatus={hold}
+          onCancelHold={() => {}}
           statusOptions={extra.statusOptions ?? []}
           onToast={() => {}}
         />
@@ -120,6 +124,8 @@ describe('row detail loading', () => {
               onToggleExpand={() => {}}
               onPatch={() => {}}
               onSetDead={() => {}}
+            onHoldStatus={hold}
+            onCancelHold={() => {}}
               statusOptions={[]}
               onToast={() => {}}
             />
@@ -192,10 +198,10 @@ describe('statuses offered in a row', () => {
 });
 
 describe('changing status from the row', () => {
-  const patch = vi.fn();
+  const hold = vi.fn();
 
   function renderWithPatch(overrides: Partial<typeof JOB> = {}) {
-    patch.mockClear();
+    hold.mockClear();
     render(
       <table>
         <tbody>
@@ -208,8 +214,10 @@ describe('changing status from the row', () => {
             expanded={false}
             onToggleSelect={() => {}}
             onToggleExpand={() => {}}
-            onPatch={patch}
+            onPatch={() => {}}
             onSetDead={() => {}}
+            onHoldStatus={hold}
+            onCancelHold={() => {}}
             statusOptions={['New', 'Filled', 'Submitted', 'Flagged']}
             onToast={() => {}}
           />
@@ -224,9 +232,9 @@ describe('changing status from the row', () => {
       target: { value: 'Submitted' },
     });
 
-    const [jobId, changes, said] = patch.mock.calls[0];
+    const [jobId, status, said] = hold.mock.calls[0];
     expect(jobId).toBe('1');
-    expect(changes).toEqual({ status: 'Submitted' });
+    expect(status).toBe('Submitted');
     expect(said?.revert).toEqual({ status: 'New' });
   });
 
@@ -235,15 +243,15 @@ describe('changing status from the row', () => {
     fireEvent.change(screen.getByRole('combobox', { name: /status/i }), {
       target: { value: 'Flagged' },
     });
-    expect(patch).not.toHaveBeenCalled();
+    expect(hold).not.toHaveBeenCalled();
   });
 });
 
 describe('the one-click status button on the row', () => {
-  const patch = vi.fn();
+  const hold = vi.fn();
 
   function renderRowWith(overrides: Partial<typeof JOB> = {}) {
-    patch.mockClear();
+    hold.mockClear();
     render(
       <table>
         <tbody>
@@ -256,8 +264,10 @@ describe('the one-click status button on the row', () => {
             expanded={false}
             onToggleSelect={() => {}}
             onToggleExpand={() => {}}
-            onPatch={patch}
+            onPatch={() => {}}
             onSetDead={() => {}}
+            onHoldStatus={hold}
+            onCancelHold={() => {}}
             statusOptions={['New', 'Filled', 'Submitted', 'Flagged']}
             onToast={() => {}}
           />
@@ -270,9 +280,9 @@ describe('the one-click status button on the row', () => {
     renderRowWith({ status: 'New' });
     fireEvent.click(screen.getByRole('button', { name: /✓ Submitted/ }));
 
-    const [jobId, changes, said] = patch.mock.calls[0];
+    const [jobId, status, said] = hold.mock.calls[0];
     expect(jobId).toBe('1');
-    expect(changes).toEqual({ status: 'Submitted' });
+    expect(status).toBe('Submitted');
     expect(said?.revert).toEqual({ status: 'New' });
   });
 
@@ -292,5 +302,74 @@ describe('the one-click status button on the row', () => {
       renderRowWith({ status });
       expect(screen.queryByRole('button', { name: /✓/ })).toBeNull();
     }
+  });
+});
+
+describe('the hold before a status is written', () => {
+  const hold = vi.fn();
+  const cancel = vi.fn();
+  const patch = vi.fn();
+
+  function renderHeld(holdingStatus?: string) {
+    hold.mockClear();
+    cancel.mockClear();
+    patch.mockClear();
+    render(
+      <table>
+        <tbody>
+          <JobRow
+            job={{ ...JOB, status: 'New' } as never}
+            rank={1}
+            columns={COLUMNS as never}
+            meta={{ actions: [] } as never}
+            selected={false}
+            expanded={false}
+            onToggleSelect={() => {}}
+            onToggleExpand={() => {}}
+            onPatch={patch}
+            onSetDead={() => {}}
+            onHoldStatus={hold}
+            onCancelHold={cancel}
+            holdingStatus={holdingStatus}
+            statusOptions={['New', 'Filled', 'Submitted', 'Flagged']}
+            onToast={() => {}}
+          />
+        </tbody>
+      </table>
+    );
+  }
+
+  it('writes nothing straight away — the change is only scheduled', () => {
+    renderHeld();
+    fireEvent.click(screen.getByRole('button', { name: /✓ Submitted/ }));
+    expect(hold).toHaveBeenCalledTimes(1);
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('shows what the row is about to become, and the way out', () => {
+    renderHeld('Submitted');
+    expect(screen.getByRole('status')).toHaveTextContent('Submitted');
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+  });
+
+  it('hides the controls while held, so they cannot misreport the row', () => {
+    renderHeld('Submitted');
+    expect(screen.queryByRole('combobox', { name: /status/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /✓ Submitted/ })).toBeNull();
+  });
+
+  it('cancelling asks for the change to be dropped, not written', () => {
+    renderHeld('Submitted');
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(cancel).toHaveBeenCalledWith('1');
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('still refuses to flag without a reason before anything is scheduled', () => {
+    renderHeld();
+    fireEvent.change(screen.getByRole('combobox', { name: /status/i }), {
+      target: { value: 'Flagged' },
+    });
+    expect(hold).not.toHaveBeenCalled();
   });
 });

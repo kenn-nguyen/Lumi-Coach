@@ -225,6 +225,78 @@ export function TrackerClient() {
     setPage(0);
   }
 
+  // A status change re-sorts the row off the page the moment it lands. Holding it
+  // for a beat means the row is still under the cursor when the user realises they
+  // picked the wrong one, and cancelling inside the window writes nothing at all.
+  // Deliberately short: long enough to catch a mis-click, not long enough that the
+  // page feels unresponsive.
+  const HOLD_MS = 1000;
+
+  /** Status changes waiting out their hold, by job id, with what they will become. */
+  const [holding, setHolding] = React.useState<Record<string, string>>({});
+  const holdTimers = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  /** What each held change would write, so an unmount can finish it rather than drop it. */
+  const holdWrites = React.useRef<Record<string, Partial<TrackerJob>>>({});
+
+  // Leaving the page is not cancelling. A change still inside its window when the
+  // component goes away — switching to Settings, say — is sent rather than
+  // silently discarded; only Cancel discards.
+  React.useEffect(() => {
+    const timers = holdTimers.current;
+    const writes = holdWrites.current;
+    return () => {
+      for (const [jobId, timer] of Object.entries(timers)) {
+        clearTimeout(timer);
+        const changes = writes[jobId];
+        if (changes) void patchJob(jobId, changes);
+      }
+    };
+  }, []);
+
+  const commitHold = React.useCallback(
+    (jobId: string, changes: Partial<TrackerJob>, said: { message: string; revert?: Partial<TrackerJob> }) => {
+      delete holdTimers.current[jobId];
+      delete holdWrites.current[jobId];
+      setHolding((h) => {
+        const next = { ...h };
+        delete next[jobId];
+        return next;
+      });
+      void handlePatch(jobId, changes, said);
+    },
+    // handlePatch is redeclared each render but closes over nothing that changes
+    // the outcome of a write, so the timer may safely capture the first one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  function holdStatusChange(
+    jobId: string,
+    status: string,
+    said: { message: string; revert?: Partial<TrackerJob> }
+  ) {
+    // A second pick inside the window replaces the first rather than queueing it,
+    // so changing your mind twice still writes once.
+    clearTimeout(holdTimers.current[jobId]);
+    holdWrites.current[jobId] = { status };
+    setHolding((h) => ({ ...h, [jobId]: status }));
+    holdTimers.current[jobId] = setTimeout(
+      () => commitHold(jobId, { status }, said),
+      HOLD_MS
+    );
+  }
+
+  function cancelHold(jobId: string) {
+    clearTimeout(holdTimers.current[jobId]);
+    delete holdTimers.current[jobId];
+    delete holdWrites.current[jobId];
+    setHolding((h) => {
+      const next = { ...h };
+      delete next[jobId];
+      return next;
+    });
+  }
+
   async function handlePatch(
     jobId: string,
     changes: Partial<TrackerJob>,
@@ -639,6 +711,9 @@ export function TrackerClient() {
                       onPatch={handlePatch}
                       onSetDead={handleSetDead}
                       statusOptions={statusOptions}
+                      holdingStatus={holding[job.job_id]}
+                      onHoldStatus={holdStatusChange}
+                      onCancelHold={cancelHold}
                       onToast={(message) => setToast({ message })}
                     />
                   ))}

@@ -33,6 +33,14 @@ interface JobRowProps {
   onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
   /** The statuses this view offers. Shorter in the assigned view. */
   statusOptions: string[];
+  /** The status this row is about to become, while its change is still cancellable. */
+  holdingStatus?: string;
+  onHoldStatus: (
+    jobId: string,
+    status: string,
+    said: { message: string; revert?: Partial<TrackerJob> }
+  ) => void;
+  onCancelHold: (jobId: string) => void;
   onToast: (message: string) => void;
 }
 
@@ -50,6 +58,9 @@ export function JobRow({
   onPatch,
   onSetDead,
   statusOptions,
+  holdingStatus,
+  onHoldStatus,
+  onCancelHold,
   onToast,
 }: JobRowProps) {
   const { live, total } = liveLinkCount(job);
@@ -71,13 +82,13 @@ export function JobRow({
       return;
     }
     // This is where status actually gets changed — from the row, not from the
-    // opened card. The new status re-sorts the row, usually off the page, so the
-    // way back has to travel with the confirmation or a mis-pick is unrecoverable.
-    onPatch(
-      job.job_id,
-      { status: next },
-      { message: `Marked ${next}.`, revert: { status: job.status } }
-    );
+    // opened card. It is held briefly before it is written, so a mis-pick can be
+    // taken back while the row is still where the user is looking; the undo in the
+    // confirmation covers the rest, once it has re-sorted away.
+    onHoldStatus(job.job_id, next, {
+      message: `Marked ${next}.`,
+      revert: { status: job.status },
+    });
   }
 
   function saveNote() {
@@ -155,6 +166,28 @@ export function JobRow({
         );
       case 'status': {
         const quick = quickAction(job.status, job.action);
+        // While a change is held, the controls would be lying about the row's
+        // state, so they give way to what is about to happen and the way out of it.
+        if (holdingStatus) {
+          return (
+            <div className="flex items-center gap-1.5">
+              <span
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground"
+                role="status"
+              >
+                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-muted-foreground border-t-transparent" />
+                {holdingStatus}…
+              </span>
+              <button
+                type="button"
+                onClick={() => onCancelHold(job.job_id)}
+                className="whitespace-nowrap rounded-full border border-border px-2 py-1 text-xs font-semibold text-foreground transition-colors hover:border-destructive hover:text-destructive"
+              >
+                Cancel
+              </button>
+            </div>
+          );
+        }
         return meta ? (
           <div className="flex items-center gap-1.5">
           <select
