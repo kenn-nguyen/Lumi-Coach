@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.tracker.normalize import normalize_job_id
 from app.tracker.enums import is_assignee, is_dead_status  # noqa: E402
 from app.tracker.models import (  # noqa: E402
     TrackerApifyAccount,
@@ -103,7 +104,9 @@ def company_key(name: Any) -> str:
 
 
 def split_ids(v: Any) -> list[str]:
-    return [p for p in re.split(r"[,\s]+", text(v)) if p]
+    # The sheet stores these ids as numbers, so a single-value cell arrives as
+    # 4454136306.0 and would become a posting URL that 404s.
+    return [normalize_job_id(p) for p in re.split(r"[,\s]+", text(v)) if p]
 
 
 def extract_jd(raw_ref: str) -> str:

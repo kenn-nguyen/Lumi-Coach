@@ -39,8 +39,28 @@ _UNIT_DAYS = {"second": 1 / 86400, "minute": 1 / 1440, "hour": 1 / 24,
               "day": 1, "week": 7, "month": 30, "year": 365}
 
 
+_FLOATY_ID = re.compile(r"\d+\.0+")
+
+
 def text(value: Any) -> str:
     return "" if value is None else str(value).strip()
+
+
+def normalize_job_id(value: Any) -> str:
+    """A LinkedIn job id as digits, however the source wrote it.
+
+    Spreadsheet cells hold large ids as numbers, so a cell read through openpyxl
+    arrives as ``4454136306.0`` and ``str()`` keeps the ``.0``. That trailing
+    fragment turns the posting URL into a 404, which is worse than a missing link
+    because the row still looks workable.
+    """
+    raw = text(value)
+    if not raw:
+        return ""
+    # Only a whole number written as a float: never truncate a genuine fraction.
+    if _FLOATY_ID.fullmatch(raw):
+        return raw.split(".")[0]
+    return raw
 
 
 def extract_linkedin_job_id(value: Any) -> str:

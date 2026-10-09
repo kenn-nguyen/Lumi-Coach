@@ -182,6 +182,11 @@ def patch_job(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown status")
     if changes.get("owner") is not None and changes["owner"] not in ("",) + tuple(OWNER_OPTIONS):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown owner")
+    # The action decides whether the assignee sends the application or stops at a
+    # filled form, so an unrecognised one is not a cosmetic problem: anything that
+    # is not "Fill Only" is treated as send-it.
+    if changes.get("action") is not None and changes["action"] not in ("",) + tuple(ACTION_OPTIONS):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown action")
 
     # Flagging hands a job back to the owner, and a flag with no reason gives them
     # nothing to act on. Enforced here as well as in the page, because the rule

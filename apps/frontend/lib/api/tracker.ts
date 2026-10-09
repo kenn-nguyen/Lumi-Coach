@@ -128,15 +128,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     let detail = '';
+    let spokeToTheService = false;
     try {
       const body = await res.json();
+      spokeToTheService = true;
       detail = typeof body?.detail === 'string' ? body.detail : '';
     } catch {
       /* a non-JSON error body is still an error */
     }
     // A bare status code tells the reader nothing they can act on.
     if (!detail) {
-      if (res.status >= 500) detail = `The tracker service had a problem (${res.status}).`;
+      // The page reaches the backend through a Next.js rewrite. When the backend
+      // is not running, the rewrite itself fails and Next answers 500 with no
+      // JSON body — so an unanswered call is indistinguishable from a backend
+      // exception by status alone, and "the service had a problem" sends the
+      // reader to look at logs for a service that was never running.
+      if (res.status >= 500 && !spokeToTheService) detail = new TrackerUnreachableError().message;
+      else if (res.status >= 500) detail = `The tracker service had a problem (${res.status}).`;
       else if (res.status === 404) detail = 'That is no longer there.';
       else if (res.status === 403) detail = 'Your account cannot do that.';
       else detail = `The request was refused (${res.status}).`;

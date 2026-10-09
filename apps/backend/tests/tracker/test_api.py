@@ -202,6 +202,12 @@ def test_rubbish_values_are_rejected(client: TestClient, scratch_job: str) -> No
                         json={"status": "Banana"}).status_code == 422
     assert client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
                         json={"owner": "Somebody"}).status_code == 422
+    # The action decides whether the assignee sends the application: anything not
+    # "Fill Only" reads as send-it, so an unrecognised value is a real hazard.
+    assert client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                        json={"action": "Levitate"}).status_code == 422
+    assert client.patch(f"/api/v1/tracker/jobs/{scratch_job}",
+                        json={"action": "Fill Only"}).status_code == 200
 
 
 def test_marking_a_link_dead_is_recorded(client: TestClient, scratch_job: str) -> None:
