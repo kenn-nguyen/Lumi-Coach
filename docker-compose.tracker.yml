@@ -1,0 +1,57 @@
+# Tracker test stack: a throwaway Postgres plus a runner that migrates the sheet
+# into it and runs the suite. Self-contained, so it behaves the same on any machine
+# and can move to CI unchanged.
+#
+#   docker compose -f docker-compose.tracker.yml run --rm tracker-tests
+#
+# The workbook and fixtures are mounted read-only; nothing here writes to them.
+
+services:
+  tracker-db:
+    image: postgres:16
+    container_name: tracker-test-db
+    environment:
+      POSTGRES_DB: tracker_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    # No host port: the suite talks to it over the compose network, so this cannot
+    # collide with the dev database on 5432.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tracker_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  tracker-tests:
+    image: python:3.13-slim
+    depends_on:
+      tracker-db:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      TRACKER_DATABASE_URL: postgresql+psycopg://postgres:postgres@tracker-db:5432/tracker_test
+      TRACKER_FIXTURES: /fixtures
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    volumes:
+      - ./apps/backend:/app
+      - ${TRACKER_XLSX:-./apps/backend/README.md}:/data/sheet.xlsx:ro
+      - ${TRACKER_FIXTURES_DIR:-./apps/backend}:/fixtures:ro
+      - tracker-pip-cache:/root/.cache/pip
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        pip install -q pytest sqlalchemy "psycopg[binary]" openpyxl fastapi "httpx<0.29" requests google-auth
+        if [ -s /data/sheet.xlsx ] && [ "$${TRACKER_SKIP_MIGRATE:-0}" != "1" ]; then
+          echo "--- migrating the workbook into the test database ---"
+          python -m scripts.migrate_tracker_sheet --xlsx /data/sheet.xlsx \
+            --database-url "$$TRACKER_DATABASE_URL"
+        else
+          echo "--- no workbook mounted; database-backed checks will skip ---"
+        fi
+        echo "--- running the tracker suite ---"
+        python -m pytest tests/tracker -q -p no:cacheprovider
+
+volumes:
+  tracker-pip-cache:

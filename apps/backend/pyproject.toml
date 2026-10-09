@@ -18,6 +18,11 @@ dependencies = [
     "sqlalchemy==2.0.44",
     "psycopg[binary]==3.2.12",
     "cryptography==46.0.6",
+    # The job tracker: Vertex service-account auth, and the HTTP client its
+    # scraper and scorer use. Both are imported only when a run starts, so the
+    # app boots without them — and then every run fails.
+    "google-auth==2.61.0",
+    "requests==2.34.2",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,30 @@
+# The tracker's own dependencies.
+#
+# Separate from requirements.txt because that file is the resume app's: it pins
+# older FastAPI and SQLAlchemy than the tracker runs on, it pulls in litellm,
+# markitdown and playwright that the tracker never imports, and it is missing
+# google-auth, openpyxl, requests and httpx that it does. The two were already
+# installed into different virtualenvs; this writes that down so the environment
+# is reproducible rather than remembered.
+#
+# Pinned exactly: a scraper and a scorer that drift on their own are a cost and
+# a debugging problem, not a convenience.
+
+fastapi==0.142.4
+uvicorn==0.54.0
+sqlalchemy==2.1.4
+psycopg[binary]==3.3.6
+pydantic==2.13.5
+
+# Vertex AI service-account auth.
+google-auth==2.61.0
+
+# Apify and the scoring API are called over plain HTTP.
+requests==2.34.2
+
+# Reading the exported sheet during migration.
+openpyxl==3.1.5
+
+# Tests. httpx backs fastapi's TestClient.
+pytest==9.1.1
+httpx==0.28.1
