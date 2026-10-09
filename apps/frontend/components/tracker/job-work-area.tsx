@@ -19,12 +19,14 @@ interface JobWorkAreaProps {
 const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground';
 
 /**
- * Everything needed to actually work a job, in the row itself.
+ * What a job looks like when you open it: why it scored, where to apply, and
+ * whether the resume exists.
  *
- * The owner reads the top half (why the AI scored it this way); the assignee works
- * the bottom half (which link loads, is the resume built, what to tell the owner).
- * They are the same row because they are the same job — the sheet never separated
- * them either.
+ * Everything that *changes* the job — status and notes — stays on the row, which
+ * is where the work is actually done. This panel held a second copy of both, and
+ * a second copy of a field is not a convenience: the two note editors were on
+ * screen together, each holding its own draft of one value, and whichever lost
+ * focus last silently overwrote the other.
  */
 export function JobWorkArea({
   job,
@@ -34,9 +36,7 @@ export function JobWorkArea({
 }: JobWorkAreaProps) {
   const [detail, setDetail] = React.useState<TrackerJobDetail | null>(null);
   const [loaded, setLoaded] = React.useState(false);
-  const [note, setNote] = React.useState(job.notes ?? '');
   const [loadError, setLoadError] = React.useState<string | null>(null);
-  const noteRef = React.useRef<HTMLTextAreaElement>(null);
 
   // The description is only fetched when a row is opened, which is what keeps the
   // list query small.
@@ -59,8 +59,6 @@ export function JobWorkArea({
       cancelled = true;
     };
   }, [job.job_id]);
-
-  React.useEffect(() => setNote(job.notes ?? ''), [job.notes]);
 
   const linkIds = job.merged_job_ids?.length ? job.merged_job_ids : [job.job_id];
   const deadLinks = job.dead_links ?? {};
@@ -188,25 +186,6 @@ export function JobWorkArea({
           )}
         </section>
 
-        <section>
-          <h4 className={LABEL}>Notes</h4>
-          <textarea
-            ref={noteRef}
-            className="mt-2 w-full rounded border border-border bg-card p-2 text-sm"
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onBlur={() => {
-              if (note !== (job.notes ?? '')) onPatch(job.job_id, { notes: note });
-            }}
-            placeholder="e.g. used the fintech resume · wants a cover letter · applied on their own site"
-            aria-label="Notes for this job"
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Write what is blocking you, then set the status to <strong>Flagged</strong> on the
-            row. A flag without a reason is refused.
-          </p>
-        </section>
       </div>
 
       <div className="col-span-full border-t border-border pt-2 font-mono text-[10.5px] text-muted-foreground">
