@@ -1,0 +1,36 @@
+# Type errors do not fail the test suite: vitest runs through jsdom and never
+# type-checks, so a prop called with the wrong arguments passes every test and
+# still breaks the build. This catches that before it is merged.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch makes the previous run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Frontend typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Pinned rather than following "latest": a CI that changes runtime on
+          # its own turns an unrelated failure into a mystery.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
