@@ -13,8 +13,7 @@ frontend serves `/tracker`. Nothing extra is needed to deploy it beyond configur
 | `LLM_PROVIDER=vertex_ai` | Or set `GEMINI_API_ROUTE=developer` in Settings to use an AI Studio key instead. |
 | `VERTEXAI_PROJECT`, `VERTEXAI_LOCATION` | `global` is what has been verified. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to the service-account JSON. On Google Cloud this is unnecessary — the attached account is used. |
-| `TRACKER_OWNER_EMAIL` | The account that may change Settings. |
-| `TRACKER_ASSIGNEE_EMAILS` | Comma-separated. They share the queue, not the controls. |
+| `TRACKER_OWNER_EMAIL` | The one account that may use the tracker. Owner and helper share it. |
 
 **Never set `TRACKER_DEV_NO_AUTH` in production.** It is refused when a deployment
 marker (`RENDER`, `DYNO`, `KUBERNETES_SERVICE_HOST`…) is present or `ENVIRONMENT` is

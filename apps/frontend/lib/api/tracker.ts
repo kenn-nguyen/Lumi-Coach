@@ -60,10 +60,10 @@ export interface JobsResponse {
 }
 
 export interface TrackerMeta {
-  role: 'owner' | 'assignee';
   email: string;
   statuses: string[];
-  /** What the assignee may set. Shorter: the rest are the owner's decisions. */
+  /** The shorter set offered in the assigned view: the rest are the owner's own
+   *  bookkeeping and only clutter the queue being worked. */
   assignee_statuses: string[];
   owners: string[];
   actions: string[];

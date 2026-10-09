@@ -22,7 +22,6 @@ interface JobRowProps {
   meta: TrackerMeta | null;
   selected: boolean;
   expanded: boolean;
-  canEditEverything: boolean;
   onToggleSelect: (jobId: string) => void;
   onToggleExpand: (jobId: string) => void;
   onPatch: (
@@ -46,7 +45,6 @@ export function JobRow({
   meta,
   selected,
   expanded,
-  canEditEverything,
   onToggleSelect,
   onToggleExpand,
   onPatch,
@@ -195,7 +193,7 @@ export function JobRow({
         );
       }
       case 'owner':
-        return meta && canEditEverything ? (
+        return meta ? (
           <select
             className="cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-muted-foreground hover:border-border"
             value={job.owner ?? ''}
@@ -213,7 +211,7 @@ export function JobRow({
           <span className="text-xs text-muted-foreground">{job.owner || '—'}</span>
         );
       case 'action':
-        if (!meta || !canEditEverything) {
+        if (!meta) {
           return (
             <span
               className={`text-xs ${
@@ -370,7 +368,6 @@ export function JobRow({
           <td colSpan={columns.length} className="border-b border-border bg-muted p-0">
             <JobWorkArea
               job={job}
-              canEditEverything={canEditEverything}
               onPatch={onPatch}
               onSetDead={onSetDead}
             />

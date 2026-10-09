@@ -1,7 +1,8 @@
 """Who may use the tracker.
 
-Access mirrors the sheet: the owner sees everything, the assignee works the same
-rows but cannot reach Settings (the sheet protects every tab except Assigned).
+One account. The owner and their helper work the same queue from the same login,
+exactly as they shared one Google Sheet, so there is no second role to grant and
+nothing to keep one of them out of.
 
 A development bypass exists because the tracker has to be runnable headless — in
 Docker, in tests, without a Google sign-in. It is deliberately hard to enable by
@@ -24,13 +25,10 @@ DEPLOY_MARKERS = ("RENDER", "RENDER_SERVICE_ID", "KUBERNETES_SERVICE_HOST", "DYN
 
 @dataclass(frozen=True)
 class TrackerUser:
+    #: Always the same value: every row belongs to the one account. Kept as a
+    #: column and a filter so the data is not stranded if that ever changes.
     user_id: str
     email: str
-    is_owner: bool
-
-    @property
-    def role(self) -> str:
-        return "owner" if self.is_owner else "assignee"
 
 
 def _env(name: str, default: str = "") -> str:
@@ -59,28 +57,20 @@ def _owner_email() -> str:
     return _env("TRACKER_OWNER_EMAIL", "owner@localhost").lower()
 
 
-def _assignee_emails() -> set[str]:
-    raw = _env("TRACKER_ASSIGNEE_EMAILS")
-    return {part.strip().lower() for part in raw.split(",") if part.strip()}
-
-
 def classify(email: str) -> TrackerUser | None:
-    """Map a signed-in email to a tracker role, or ``None`` if they have no access."""
+    """The signed-in account, or ``None`` if it is not the one that owns the data."""
     normalized = (email or "").strip().lower()
     if not normalized:
         return None
     if normalized == _owner_email():
-        return TrackerUser(user_id="owner", email=normalized, is_owner=True)
-    if normalized in _assignee_emails():
-        # The assignee works the owner's rows, so they share the owner's data scope.
-        return TrackerUser(user_id="owner", email=normalized, is_owner=False)
+        return TrackerUser(user_id="owner", email=normalized)
     return None
 
 
 async def current_tracker_user(request: Request) -> TrackerUser:
     """Resolve the caller, honouring the dev bypass only where it is allowed."""
     if dev_bypass_enabled() and _host_is_local(request):
-        return TrackerUser(user_id="owner", email=_owner_email(), is_owner=True)
+        return TrackerUser(user_id="owner", email=_owner_email())
 
     try:
         from app.security import require_current_user
@@ -91,11 +81,4 @@ async def current_tracker_user(request: Request) -> TrackerUser:
     user = classify(authenticated.email)
     if user is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has no tracker access")
-    return user
-
-
-async def require_owner(user: TrackerUser = Depends(current_tracker_user)) -> TrackerUser:
-    """Settings, accounts and maintenance are the owner's alone."""
-    if not user.is_owner:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can change this")
     return user

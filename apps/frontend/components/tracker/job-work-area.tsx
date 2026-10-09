@@ -7,7 +7,6 @@ import { fetchJob, type TrackerJob, type TrackerJobDetail } from '@/lib/api/trac
 
 interface JobWorkAreaProps {
   job: TrackerJob;
-  canEditEverything: boolean;
   onPatch: (
     jobId: string,
     changes: Partial<TrackerJob>,
@@ -30,7 +29,6 @@ const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-fore
  */
 export function JobWorkArea({
   job,
-  canEditEverything,
   onPatch,
   onSetDead,
 }: JobWorkAreaProps) {
@@ -192,7 +190,6 @@ export function JobWorkArea({
         job_id {job.job_id} ·{' '}
         {linkIds.length > 1 ? `${linkIds.length} merged postings` : 'single posting'}
         {detail?.scored_at ? ` · scored ${new Date(detail.scored_at).toLocaleDateString()}` : ''}
-        {canEditEverything ? '' : ' · you can change status, notes and the resume'}
       </div>
     </div>
   );

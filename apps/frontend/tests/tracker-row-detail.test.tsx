@@ -75,7 +75,6 @@ function renderRow(
           meta={extra.statusOptions ? ({ actions: [] } as never) : null}
           selected={false}
           expanded={expanded}
-          canEditEverything
           onToggleSelect={() => {}}
           onToggleExpand={() => {}}
           onPatch={() => {}}
@@ -117,7 +116,6 @@ describe('row detail loading', () => {
               meta={null}
               selected={false}
               expanded={false}
-              canEditEverything
               onToggleSelect={() => {}}
               onToggleExpand={() => {}}
               onPatch={() => {}}
@@ -208,7 +206,6 @@ describe('changing status from the row', () => {
             meta={{ actions: [] } as never}
             selected={false}
             expanded={false}
-            canEditEverything
             onToggleSelect={() => {}}
             onToggleExpand={() => {}}
             onPatch={patch}
@@ -257,7 +254,6 @@ describe('the one-click status button on the row', () => {
             meta={{ actions: [] } as never}
             selected={false}
             expanded={false}
-            canEditEverything
             onToggleSelect={() => {}}
             onToggleExpand={() => {}}
             onPatch={patch}

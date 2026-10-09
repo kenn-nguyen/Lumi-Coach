@@ -18,7 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.tracker import repo
-from app.tracker.auth import TrackerUser, current_tracker_user, require_owner
+from app.tracker.auth import TrackerUser, current_tracker_user
 from app.tracker.enums import (
     ACTION_OPTIONS,
     ASSIGNEE_STATUS_OPTIONS,
@@ -112,7 +112,6 @@ def _row(data: dict[str, Any]) -> dict[str, Any]:
 def meta(user: TrackerUser = Depends(current_tracker_user)) -> dict[str, Any]:
     """Everything the UI needs to render its controls, so nothing is hardcoded twice."""
     return {
-        "role": user.role,
         "email": user.email,
         "statuses": list(STATUS_OPTIONS),
         # The shorter list the assignee works with. The sheet restricts their
@@ -198,14 +197,6 @@ def patch_job(
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                                 "A flagged job needs a note explaining why")
 
-    # The assignee works the same rows but must not be able to re-assign them away
-    # from themselves or edit the owner's own fields.
-    if not user.is_owner:
-        allowed = {"status", "notes", "resume_file"}
-        if set(changes) - allowed:
-            raise HTTPException(status.HTTP_403_FORBIDDEN,
-                                "The assignee can only change status, notes and the resume")
-
     updated = repo.update_job(session, user_id=user.user_id, job_id=job_id, changes=changes)
     if updated is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such job")
@@ -240,7 +231,7 @@ BULK_CHANGES: dict[str, dict[str, Any]] = {
 def bulk(
     request: BulkRequest,
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     if request.op == "rescore":
         # Clearing the fingerprint is what makes the next run re-score it; the score
@@ -265,7 +256,7 @@ def bulk(
 @router.get("/settings")
 def get_settings(
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     return {"settings": repo.get_settings(session, user_id=user.user_id),
             "apify_accounts": repo.list_apify_accounts(session, user_id=user.user_id)}
@@ -275,7 +266,7 @@ def get_settings(
 def put_settings(
     payload: SettingsPut,
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     written = repo.put_settings(session, user_id=user.user_id, values=payload.values)
     return {"written": written}
@@ -341,7 +332,7 @@ def start_run(
     request: RunRequest,
     background: BackgroundTasks,
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     existing = repo.active_run(session, user_id=user.user_id)
     if existing is not None:
@@ -358,7 +349,7 @@ def start_run(
 def cancel_run(
     run_id: str,
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     run = session.get(repo.TrackerRun, run_id)
     if run is None or run.user_id != user.user_id:
@@ -373,7 +364,7 @@ def cancel_run(
 @router.post("/maintenance/reassign")
 def reassign(
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     """Re-apply the routing rules to every row they are allowed to touch."""
     settings = repo.get_settings(session, user_id=user.user_id, redact=False)
@@ -401,7 +392,7 @@ def reassign(
 @router.post("/maintenance/skip-no-visa")
 def skip_no_visa(
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     """Sweep every row scored 'No (0%)' into Skip (auto), owned or not."""
     import sqlalchemy as sa
@@ -420,7 +411,7 @@ def skip_no_visa(
 def prune(
     payload: PrunePayload,
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     """Age out old rows and drop descriptions nothing will read again."""
     import sqlalchemy as sa
@@ -462,7 +453,7 @@ def prune(
 @router.post("/maintenance/validate")
 def validate(
     session: Session = Depends(get_session),
-    user: TrackerUser = Depends(require_owner),
+    user: TrackerUser = Depends(current_tracker_user),
 ) -> dict[str, Any]:
     """Check the setup can actually run, and say plainly what is missing."""
     settings = repo.get_settings(session, user_id=user.user_id, redact=False)

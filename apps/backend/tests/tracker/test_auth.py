@@ -12,11 +12,9 @@ import app.tracker.auth as auth
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch: pytest.MonkeyPatch):
     for key in ("TRACKER_DEV_NO_AUTH", "ENVIRONMENT", "RENDER", "RENDER_SERVICE_ID",
-                "KUBERNETES_SERVICE_HOST", "DYNO", "TRACKER_OWNER_EMAIL",
-                "TRACKER_ASSIGNEE_EMAILS"):
+                "KUBERNETES_SERVICE_HOST", "DYNO", "TRACKER_OWNER_EMAIL"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("TRACKER_OWNER_EMAIL", "owner@example.com")
-    monkeypatch.setenv("TRACKER_ASSIGNEE_EMAILS", "helper@example.com, other@example.com")
     importlib.reload(auth)
     yield
     importlib.reload(auth)
@@ -49,16 +47,14 @@ def test_a_deployed_host_refuses_the_bypass_even_if_the_flag_is_left_on(
 
 
 @pytest.mark.unit
-def test_roles_come_from_the_email() -> None:
+def test_only_the_owning_account_gets_in() -> None:
+    """One account holds the data; the helper signs in as it, nobody else gets in."""
     owner = auth.classify("Owner@Example.com")
-    assert owner is not None and owner.is_owner and owner.role == "owner"
+    assert owner is not None, "the owner email is matched regardless of case"
+    assert owner.user_id == "owner"
 
-    helper = auth.classify("helper@example.com")
-    assert helper is not None and not helper.is_owner and helper.role == "assignee"
-    assert helper.user_id == owner.user_id, "the assignee works the owner's rows"
-
-    assert auth.classify("stranger@example.com") is None
-    assert auth.classify("") is None
+    for stranger in ("stranger@example.com", "helper@example.com", ""):
+        assert auth.classify(stranger) is None, f"{stranger!r} should have no access"
 
 
 @pytest.mark.unit

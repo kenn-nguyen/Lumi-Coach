@@ -82,7 +82,6 @@ export function TrackerClient() {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
 
-  const isOwner = meta?.role !== 'assignee';
 
   React.useEffect(() => setOverrides(loadOverrides()), []);
 
@@ -309,12 +308,8 @@ export function TrackerClient() {
         </>
       ),
     },
-    ...(isOwner
-      ? [
-          { id: 'runs', label: 'Runs' },
-          { id: 'settings', label: 'Settings' },
-        ]
-      : []),
+    { id: 'runs', label: 'Runs' },
+    { id: 'settings', label: 'Settings' },
     { id: 'help', label: 'Help' },
   ];
 
@@ -333,15 +328,10 @@ export function TrackerClient() {
               ← Dashboard
             </Button>
           </Link>
-          {meta && (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              {meta.role}
-            </span>
-          )}
         </div>
       </header>
 
-      {isOwner && (
+      {(
         <div className="grid gap-2.5 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatChip
             unknown={loadFailed}
@@ -506,7 +496,7 @@ export function TrackerClient() {
             </div>
           )}
 
-          {selected.size > 0 && isOwner && (
+          {selected.size > 0 && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-primary bg-primary/5 px-3.5 py-2.5">
               <span className="font-mono text-xs font-semibold">{selected.size} selected</span>
               <Button size="sm" variant="outline" onClick={() => handleBulk('assign')}>
@@ -632,7 +622,6 @@ export function TrackerClient() {
                       rank={page * PAGE_SIZE + index + 1}
                       columns={columns}
                       meta={meta}
-                      canEditEverything={isOwner}
                       selected={selected.has(job.job_id)}
                       expanded={expanded.has(job.job_id)}
                       onToggleSelect={(id) => {

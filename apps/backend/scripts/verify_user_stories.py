@@ -25,7 +25,6 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.tracker.api import router  # noqa: E402
-from app.tracker.auth import TrackerUser, current_tracker_user  # noqa: E402
 
 SAFE_MARKERS = ("test", "tmp", "scratch", "ci")
 API = "/api/v1/tracker"
@@ -51,16 +50,6 @@ def story(sid: str, title: str) -> Callable:
 def owner_client() -> TestClient:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
-    return TestClient(app)
-
-
-def assignee_client() -> TestClient:
-    """The helper's view: same rows, fewer powers."""
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v1")
-    app.dependency_overrides[current_tracker_user] = lambda: TrackerUser(
-        user_id="owner", email="helper@localhost", is_owner=False
-    )
     return TestClient(app)
 
 
@@ -314,29 +303,19 @@ def d12(c):
     return "refused without a note, accepted with one"
 
 
-@story("D13", "The assignee cannot reach what is not theirs")
-def d13(_owner):
-    c = assignee_client()
-    meta = c.get(f"{API}/meta").json()
-    assert meta["role"] == "assignee", f"role resolved as {meta['role']}"
-    checks = {
-        "settings read": c.get(f"{API}/settings").status_code,
-        "settings write": c.put(f"{API}/settings", json={"values": {"RUN_INTERVAL_HOURS": "1"}}).status_code,
-        "bulk": c.post(f"{API}/jobs/bulk", json={"job_ids": ["x"], "op": "assign"}).status_code,
-        "start run": c.post(f"{API}/runs", json={"mode": "import"}).status_code,
-        "prune": c.post(f"{API}/maintenance/prune").status_code,
+@story("D13", "One account reaches everything it owns")
+def d13(c):
+    """Owner and helper share a login, so nothing is walled off from either."""
+    reachable = {
+        "settings": c.get(f"{API}/settings").status_code,
+        "runs": c.get(f"{API}/runs").status_code,
         "validate": c.post(f"{API}/maintenance/validate").status_code,
     }
-    for name, code in checks.items():
-        assert code == 403, f"{name} returned {code}, expected 403"
-
-    jid = a_new_job(c)
-    reassign = c.patch(f"{API}/jobs/{jid}", json={"owner": "Me"})
-    assert reassign.status_code == 403, f"assignee re-assigned a row ({reassign.status_code})"
-    allowed = c.patch(f"{API}/jobs/{jid}", json={"notes": "helper note"})
-    assert allowed.status_code == 200, "assignee could not write a note"
-    c.patch(f"{API}/jobs/{jid}", json={"notes": ""})
-    return "403 on settings, bulk, runs, prune, validate and re-assign; notes allowed"
+    for name, code in reachable.items():
+        assert code == 200, f"{name} returned {code} to the account that owns the data"
+    meta = c.get(f"{API}/meta").json()
+    assert "role" not in meta, "meta still advertises a role that no longer exists"
+    return "settings, runs and validate all reachable; no role in meta"
 
 
 # --- E. maintenance -----------------------------------------------------------
