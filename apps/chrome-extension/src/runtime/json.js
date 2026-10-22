@@ -107,13 +107,16 @@ function tryParseJson(text, validator) {
     }
   } catch {}
 
-  const directSlice = sliceLikelyJsonBlock(text, validator);
-  if (directSlice) {
-    return JSON.parse(directSlice);
-  }
+  // A strict slice is the first balanced block that parses, which is not
+  // necessarily the payload: when the real object fails to parse (e.g. curly
+  // quotes as delimiters), a nested literal such as `"customSections": {}` is
+  // still valid JSON on its own and would be returned as the whole answer. So a
+  // strict slice is held as a fallback, and the lenient repair below replaces
+  // it whenever it recovers a larger block.
+  let strictSlice = sliceLikelyJsonBlock(text, validator);
 
   const sanitizedText = sanitizeHtmlArtifacts(text);
-  if (sanitizedText !== text) {
+  if (!strictSlice && sanitizedText !== text) {
     try {
       const parsed = JSON.parse(sanitizedText);
       if (matchesValidator(parsed, validator)) {
@@ -121,18 +124,15 @@ function tryParseJson(text, validator) {
       }
     } catch {}
 
-    const sanitizedSlice = sliceLikelyJsonBlock(sanitizedText, validator);
-    if (sanitizedSlice) {
-      return JSON.parse(sanitizedSlice);
-    }
+    strictSlice = sliceLikelyJsonBlock(sanitizedText, validator);
   }
 
-  // Last resort: repair the JSON corruptions ChatGPT's web UI commonly
-  // introduces (smart/curly quotes substituted for ASCII quotes, exotic
-  // whitespace, trailing commas) and retry. This runs ONLY after every strict
-  // attempt above has already failed, so it can salvage otherwise-unparseable
-  // web-automation output without a model round-trip, and can never alter a
-  // response that already parsed cleanly.
+  // Repair the JSON corruptions LLM web UIs commonly introduce (smart/curly
+  // quotes substituted for ASCII quotes, exotic whitespace, trailing commas)
+  // and retry, salvaging otherwise-unparseable web-automation output without a
+  // model round-trip. A response that parsed whole above never gets here, and a
+  // strict slice is only replaced by a strictly longer repaired block, so
+  // content of JSON that was already intact is never rewritten.
   const repairedText = repairLenientJson(sanitizedText);
 
   // Build the repair candidates to try, widest-net last. The control-char
@@ -151,20 +151,21 @@ function tryParseJson(text, validator) {
     if (candidate === text || candidate === sanitizedText) {
       continue;
     }
+    let recovered = null;
     try {
       const parsed = JSON.parse(candidate);
       if (matchesValidator(parsed, validator)) {
-        return parsed;
+        recovered = candidate;
       }
     } catch {}
+    recovered ??= sliceLikelyJsonBlock(candidate, validator);
 
-    const repairedSlice = sliceLikelyJsonBlock(candidate, validator);
-    if (repairedSlice) {
-      return JSON.parse(repairedSlice);
+    if (recovered && (!strictSlice || recovered.length > strictSlice.length)) {
+      return JSON.parse(recovered);
     }
   }
 
-  return undefined;
+  return strictSlice ? JSON.parse(strictSlice) : undefined;
 }
 
 // Escape raw control characters (newline, carriage return, tab) that appear

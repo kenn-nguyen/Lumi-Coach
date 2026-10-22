@@ -18,6 +18,7 @@ from app import __version__
 from app.config import settings
 from app.database import db
 from app.pdf import close_pdf_renderer, init_pdf_renderer
+from app.tracker.api import router as tracker_router
 from app.routers import (
     admin_router,
     config_router,
@@ -87,6 +88,7 @@ app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(enrichment_router, prefix="/api/v1")
 app.include_router(extension_router, prefix="/api/v1")
 app.include_router(tailor_router, prefix="/api/v1")
+app.include_router(tracker_router, prefix="/api/v1")
 app.include_router(evals_router, prefix="/api/v1")
 app.include_router(user_evals_router, prefix="/api/v1")
 

@@ -1,0 +1,235 @@
+{
+“resume_data”: {
+“personalInfo”: {
+“name”: “KENN NGUYEN”,
+“title”: “Senior Product Manager - 0-to-1 B2B SaaS & Workflow Automation”,
+“customTagline”: “Yale SOM ’26”,
+“email”: “jane.doe@example.com”,
+“phone”: “(555) 010-0000”,
+“location”: “”,
+“website”: “https://lumi.ceo”,
+“linkedin”: “linkedin.com/in/kenn-nguyen”,
+“github”: “”
+},
+“summary”: “Senior Product Manager who turns email- and file-based B2B operations into enterprise software, most recently lifting automatic client identification on EDI bank payments from 5.7% to 35.6% at 99.7% precision, after scaling a multi-team B2B SaaS platform for banks to 2M+ daily verifications across 5 regulated markets”,
+“workExperience”: [
+{
+“id”: 9,
+“title”: “Sr. Product Director”,
+“company”: “Cartwheel.io”,
+“location”: “07/2026 - Present”,
+“context”: “B2B accounts-receivable automation platform for staffing agencies, covering invoicing, payments, cash application and collections”,
+“website”: “https://cartwheel.io”,
+“years”: “”,
+“description”: [
+“Turned 13.5K+ remittance emails a month into data that drives automatic cash application by owning requirements and quality for a vendor-built LLM parsing agent, reframing its job from reading invoice numbers to identifying who paid, since email is the only payer record for 37% of payments (97-99% field accuracy in validation)”,
+“Raised automatic client identification on 56K+ EDI 820 bank payments from 5.7% to 35.6% at 99.7% precision by defining entity-resolution rules for payer names that banks truncate or replace with funders and payment channels, making precision the success criterion so ambiguous matches are declined rather than guessed”,
+“Cleared $1.7M of mismatched cash applications across 143 payments by tracing in production data that matching accepted any invoice-number hit without checking the amount, then defining an amount-verified matching rule plus a one-off reprocess so every confirmed email and EDI payment ties to its invoice total”,
+“Refocused company priorities through a 45-day product vision and roadmap presented to the full executive team, ranking matching accuracy ahead of new features because wrong cash application erodes client trust faster than missing features cost deals”,
+“Owned the accounts-receivable and cash-application product for staffing agencies, including onboarding the platform’s largest enterprise client with 75K+ payments across ~1,200 staffing agencies and ~50 client users”
+]
+},
+{
+“id”: 8,
+“title”: “Lead Product Manager & Builder”,
+“company”: “Lumi Coach”,
+“location”: “2025 - 07/2026”,
+“context”: “An AI career-tech startup helping job seekers build stronger role-specific applications, referral relationships, and personalized outreach”,
+“website”: “https://lumi.ceo”,
+“years”: “”,
+“description”: [
+“Cut job application preparation from 5 hours to 15 minutes by building and launching a 0-to-1 agentic AI workflow product, splitting the work into independently validated, recoverable reasoning stages so failures in one stage do not cascade into the next”
+]
+},
+{
+“id”: 1,
+“title”: “Associate Product Director”,
+“company”: “Trusting Social (Sequoia-backed, Series D startup, $400M+ valuation)”,
+“location”: “2022 - 2025”,
+“context”: “AI-native fintech powering identity, risk decisioning, co-lending, and AI-agent infra for 300+ financial institutions and 650M+ scored consumers”,
+“website”: “https://trustingsocial.com/”,
+“years”: “12/2024 - 08/2025”,
+“description”: [
+“Led the B2B SaaS identity and risk product line for banks and fintechs, growing to ~$10M ARR in 2025 at ~40% YoY, managing 5 PMs and a cross-functional team of 20+ engineers, data scientists, and designers”,
+“Scaled the platform from 500K to 2M+ daily verifications and from 3 to 5 regulated markets by entering each market through its biggest unsolved fraud problem, treating local central-bank compliance as the baseline rather than the differentiator, a go-to-market wedge that won contracts”,
+“Cut banks’ fraud-rule change cycle from 1-2 months to 1-2 weeks by finding that risk teams’ real bottleneck was our engineering queue, not model accuracy, then defining user requirements for a self-serve admin portal so bank risk teams tune rules, thresholds, and approve/review/reject outcomes themselves”,
+“Reduced idea-to-client-ready-demo time by 80% by requiring working prototypes before any PRD, so engineering and data-science capacity went only to proven ideas and wrong bets died in days rather than after a full build”
+]
+},
+{
+“id”: 2,
+“title”: “Technical Product Manager”,
+“company”: “”,
+“location”: “”,
+“context”: null,
+“website”: “”,
+“years”: “06/2022 - 12/2024”,
+“description”: [
+“Launched 0-to-1 real-time payment authentication with 9 tier-1 banks in production within 12 months by targeting the fraud and mule-account detection gap banks could not solve in-house, then sequencing rollout from the highest-risk payment flows first”,
+“Cut client API/SDK integration from 1 month to under 1 week by recognizing that bespoke integrations were a symptom of missing platform tooling, then defining one configurable eKYC decisioning platform that returns a single approve/review/reject outcome instead of each bank rebuilding logic on raw model outputs”,
+“Won a major Indonesian identity prospect from a 15-day, 100K/day sales pilot by showing through backtest data that their incumbent missed 50%+ of AI-generated face inputs, then defining capture-pipeline requirements that closed the gap, scaling to a primary share of their 500K daily requests”
+]
+},
+{
+“id”: 3,
+“title”: “Product Manager”,
+“company”: “PAYPAL”,
+“location”: “Summer 2021”,
+“context”: null,
+“website”: null,
+“years”: “”,
+“description”: [
+“Recommended cross-border merchant payments as PayPal’s Asia SuperApp focus over messaging and local payments, identifying through customer research that PayPal’s moat was enabling Asian merchants to reach US and European buyers where WeChat, LINE, and regional wallets already dominated, and delivered a prioritized roadmap to Asia product leadership (MBA consulting project)”
+]
+},
+{
+“id”: 5,
+“title”: “Product Manager”,
+“company”: “ABC Technology”,
+“location”: “2017 - 2019”,
+“context”: null,
+“website”: null,
+“years”: “”,
+“description”: [
+“Founded an edtech tutoring marketplace from prototype to acquisition, reaching 6,100 active users within 3 months and 1,000+ downloads in the first 24 hours, by iterating rapidly on tutor-student matching flow, acquisition funnel, and early retention to find product-market fit”
+]
+},
+{
+“id”: 4,
+“title”: “Product Marketing Executive”,
+“company”: “SIEMENS”,
+“location”: “2016 - 2020”,
+“context”: null,
+“website”: null,
+“years”: “”,
+“description”: [
+“Launched a new product group from market research through commercial rollout across Southeast Asia, driving 250% adoption growth in the Philippines, 150% in Thailand, and Siemens’ first $1M+ project in Indonesia, recognized with 2 consecutive Fastest Growth Team awards”
+]
+}
+],
+“education”: [
+{
+“id”: 1,
+“institution”: “Yale School of Management, Master of Advanced Management (MAM), Dean’s scholarship”,
+“degree”: “”,
+“years”: “08/2025 - 05/2026”,
+“description”: null
+},
+{
+“id”: 2,
+“institution”: “National University of Singapore, MBA, Dean’s scholarship”,
+“degree”: “”,
+“years”: “2022”,
+“description”: null
+},
+{
+“id”: 3,
+“institution”: “Vietnam National University, B.E., Electrical Engineering”,
+“degree”: “”,
+“years”: “”,
+“description”: null
+}
+],
+“personalProjects”: [],
+“additional”: {
+“technicalSkills”: [
+“B2B SaaS Workflow Automation”,
+“Full Product Lifecycle (0-to-1 to Scale)”,
+“Large-Scale Operational Data Analysis (SQL)”,
+“LLM & Agentic AI Products”,
+“EDI 820 & Remittance Data”,
+“Entity Resolution & Matching Rules”,
+“Accounts Receivable & Cash Application”,
+“Product Vision, Roadmapping & Success Metrics”,
+“User Discovery & Market Research”,
+“Self-Serve Admin Tools & Configurable Rule Engines”,
+“Enterprise API/SDK Integration”,
+“Go-to-Market, Pricing & Packaging”
+],
+“languages”: [],
+“certificationsTraining”: [
+“Product Management (AWS), Data Analytics (Google), Design Thinking (Darden), Data Analysis (Duke)”
+],
+“awards”: [
+“National Physics Olympiad (Silver medal, Bronze medal, Fourth Prize - Top 0.01% nationwide)”
+]
+},
+“sectionMeta”: [
+{
+“id”: “personalInfo”,
+“key”: “personalInfo”,
+“displayName”: “Personal Info”,
+“sectionType”: “personalInfo”,
+“isDefault”: true,
+“isVisible”: true,
+“order”: 0
+},
+{
+“id”: “summary”,
+“key”: “summary”,
+“displayName”: “Summary”,
+“sectionType”: “text”,
+“isDefault”: true,
+“isVisible”: true,
+“order”: 1
+},
+{
+“id”: “education”,
+“key”: “education”,
+“displayName”: “Education”,
+“sectionType”: “itemList”,
+“isDefault”: true,
+“isVisible”: true,
+“order”: 4
+},
+{
+“id”: “workExperience”,
+“key”: “workExperience”,
+“displayName”: “Relevant Experience”,
+“sectionType”: “itemList”,
+“isDefault”: true,
+“isVisible”: true,
+“order”: 2
+},
+{
+“id”: “additional”,
+“key”: “additional”,
+“displayName”: “Skills & Awards”,
+“sectionType”: “stringList”,
+“isDefault”: true,
+“isVisible”: true,
+“order”: 5
+},
+{
+“id”: “personalProjects”,
+“key”: “personalProjects”,
+“displayName”: “Projects”,
+“sectionType”: “itemList”,
+“isDefault”: true,
+“isVisible”: true,
+“order”: 3
+}
+],
+“customSections”: {}
+},
+“generation_feedback”: {
+“summary”: “Clears the B2B SaaS, multi-team delivery, data-driven decision, and full-lifecycle bars with direct proof and strongly hits the email-and-file-to-software standout, while procurement or supply chain domain and founding-PM scope remain stretches.”,
+“pros”: [
+“Lead proof: Cartwheel email and EDI work maps directly to the JD’s core job of moving business operations off emails and files into software, with precision as a clear, testable success criterion (5.7% to 35.6% at 99.7% precision)”,
+“Multi-team B2B SaaS scale at Trusting Social: 5 PMs, 20+ person cross-functional team, ~$10M ARR at ~40% YoY, 3 to 5 regulated markets”,
+“Repeated 0-to-1 launches (9 tier-1 banks in 12 months, Lumi Coach, ABC Technology) back the full product lifecycle claim in the headline”
+],
+“cons”: [
+“Would strengthen the existing remittance-email lead bullet: after launch, what share of email-backed payments now apply automatically in production, or how many manual matching hours per month did ops or client users stop spending?”,
+“Would unlock stronger title and summary wording for procurement-heavy roles: did any work touch accounts payable, purchase orders, supplier or vendor data, invoice approval flows, or EDI sets beyond 820 (such as 810 or 850)? If not, procurement and supply chain stays a genuine gap to close in interview stories”,
+“Would unlock founding-PM wording in the summary: did you build a product function from scratch at any company (hired PMs, set up roadmap, PRD, launch, or review process)? Give team size, what you created, and what changed”,
+“Would strengthen the existing roadmap bullet: were founders or the CEO in the executive review, and what concrete decision followed (features deferred, accuracy target set, team reassigned)?”
+],
+“caveats”: [
+“Be ready to say you owned requirements and quality for the LLM parsing agent, an external vendor built it, and 97-99% is validation accuracy, not production”,
+“Be ready to defend 35.6% coverage at 99.7% precision, and note that the 94% recall figure came from validation on 12K+ labeled payments”,
+“Do not claim spreadsheet replacement, procurement or supply chain experience, or working directly with founders, since the source shows emails, bank files, and the executive team only”
+]
+},
+“flex_notes”: “”
+}

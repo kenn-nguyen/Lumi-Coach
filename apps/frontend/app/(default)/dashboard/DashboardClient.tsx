@@ -908,6 +908,11 @@ export default function DashboardPage({ initialData }: DashboardClientProps) {
               </div>
             </div>
           ) : null}
+          <Link href="/tracker">
+            <Button variant="outline" size="sm">
+              Job Tracker
+            </Button>
+          </Link>
           <AccountControl />
           <Link href="/settings">
             <Button variant="outline" size="icon" aria-label={t('nav.settings')}>
