@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,7 +8,7 @@ import {
   extractPrompt3PayloadFromText,
   extractPrompt4ResumeDataFromText,
 } from "./json.js";
-import { validatePrompt2Data } from "./validation.js";
+import { validatePrompt2Data, validateResumeData } from "./validation.js";
 
 const validPrompt2 = {
   validated_role: "Senior Product Manager",
@@ -227,6 +230,39 @@ describe("extractJsonFromText", () => {
 
     it("still throws when there is genuinely no JSON", () => {
       expect(() => extractJsonFromText("no json here at all")).toThrow();
+    });
+
+    it("repairs the whole object instead of returning a nested empty literal", () => {
+      const corrupted = "{“name”: “Jane”, “extras”: {}, “tags”: []}";
+      const parsed = extractJsonFromText(corrupted);
+      expect(parsed).toEqual({ name: "Jane", extras: {}, tags: [] });
+    });
+
+    it("keeps intact JSON in prose unchanged instead of repairing it", () => {
+      const text = 'Here you go:\n{"note": "Dean’s list"}\nThanks!';
+      const parsed = extractJsonFromText(text);
+      expect(parsed).toEqual({ note: "Dean’s list" });
+    });
+
+    // Captured Claude web output (contact details redacted) whose curly quotes
+    // used to make the parser return the `"customSections": {}` literal, so
+    // Prompt 3 failed validation with every resume field "missing".
+    it("parses a captured curly-quoted Prompt 3 response into the full payload", () => {
+      const rawText = fs.readFileSync(
+        path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "../../tests/fixtures/claude-prompt3-curly-quotes-2026-10.txt",
+        ),
+        "utf8",
+      );
+
+      const result = extractPrompt3PayloadFromText(rawText);
+
+      expect(result.usedLegacyShape).toBe(false);
+      expect(validateResumeData(result.resumeData)).toEqual([]);
+      expect(result.resumeData.workExperience).toHaveLength(7);
+      expect(result.resumeData.personalInfo.customTagline).toBe("Yale SOM '26");
+      expect(result.generationFeedback?.pros).toHaveLength(3);
     });
   });
 });
