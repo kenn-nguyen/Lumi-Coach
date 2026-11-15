@@ -1,6 +1,11 @@
+# Own project name: docker-compose.dev.yml also has a "postgres" service, and
+# sharing the default project would make each file replace the other's container.
+name: lumi-local
+
 services:
   postgres:
-    image: postgres:16
+    # Matches the production (Neon) major version so its dumps restore cleanly.
+    image: postgres:17
     container_name: som-career-coach-postgres
     restart: unless-stopped
     environment:
@@ -8,7 +13,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      # Override when 5432 is already taken, e.g. POSTGRES_PORT=5434.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - som-career-coach-postgres-data:/var/lib/postgresql/data
     healthcheck:
