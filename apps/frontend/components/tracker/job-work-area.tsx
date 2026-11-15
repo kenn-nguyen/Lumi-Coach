@@ -2,16 +2,11 @@
 
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
 import { fetchJob, type TrackerJob, type TrackerJobDetail } from '@/lib/api/tracker';
+import { linkedResumeIdOf, tailorHref } from '@/lib/tracker-tailor';
 
 interface JobWorkAreaProps {
   job: TrackerJob;
-  onPatch: (
-    jobId: string,
-    changes: Partial<TrackerJob>,
-    said?: { message: string; revert?: Partial<TrackerJob> },
-  ) => void;
   onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
 }
 
@@ -27,11 +22,8 @@ const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-fore
  * screen together, each holding its own draft of one value, and whichever lost
  * focus last silently overwrote the other.
  */
-export function JobWorkArea({
-  job,
-  onPatch,
-  onSetDead,
-}: JobWorkAreaProps) {
+export function JobWorkArea({ job, onSetDead }: JobWorkAreaProps) {
+  const linkedResumeId = linkedResumeIdOf(job.resume_file);
   const [detail, setDetail] = React.useState<TrackerJobDetail | null>(null);
   const [loaded, setLoaded] = React.useState(false);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -148,34 +140,42 @@ export function JobWorkArea({
 
         <section>
           <h4 className={LABEL}>Tailored resume</h4>
-          {job.resume_file ? (
+          {/* Opened in a new tab so the tracker keeps its filters and scroll position. */}
+          {linkedResumeId ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold text-success">✓ {job.resume_file}</span>
-              <button
-                type="button"
-                className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-border"
-                onClick={() => onPatch(job.job_id, { resume_file: '' })}
+              <a
+                href={`/resumes/${linkedResumeId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-success hover:underline"
               >
-                Build again
-              </button>
+                ✓ View resume →
+              </a>
+              <a
+                href={tailorHref(job.job_id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary hover:text-primary"
+              >
+                Tailor again
+              </a>
             </div>
           ) : (
             <div className="mt-2">
-              <span className="text-sm text-muted-foreground">Not built yet</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-2"
-                onClick={() =>
-                  onPatch(job.job_id, {
-                    resume_file: `${(job.company ?? 'role').replace(/\W+/g, '')}-PM.pdf`,
-                  })
-                }
+              {job.resume_file && (
+                // A filename recorded by hand before resumes were linked.
+                <p className="mb-2 text-sm text-muted-foreground">Noted: {job.resume_file}</p>
+              )}
+              <a
+                href={tailorHref(job.job_id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex rounded border border-primary px-3 py-1 text-sm font-semibold text-primary hover:bg-primary hover:text-white"
               >
-                Built with the extension
-              </Button>
+                Tailor resume →
+              </a>
               <p className="mt-2 text-xs text-muted-foreground">
-                Open a working link, then run the Lumi extension on that page.
+                Uses the saved description. Or run the Lumi extension on a working link.
               </p>
             </div>
           )}

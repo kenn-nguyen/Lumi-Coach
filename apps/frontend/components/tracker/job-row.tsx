@@ -401,7 +401,6 @@ export function JobRow({
           <td colSpan={columns.length} className="border-b border-border bg-muted p-0">
             <JobWorkArea
               job={job}
-              onPatch={onPatch}
               onSetDead={onSetDead}
             />
           </td>
