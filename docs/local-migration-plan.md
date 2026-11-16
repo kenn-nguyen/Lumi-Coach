@@ -126,7 +126,7 @@ the Neon file. Counts must match exactly.
   (port 5434: `dev-postgres` from `docker-compose.dev.yml` keeps 5432)
 - `PII_ENCRYPTION_KEY`, `PII_HASH_KEY`, `LLM_CONFIG_ENCRYPTION_KEY`: **the exact Render values**
 - `BACKEND_AUTH_SHARED_SECRET`: any long random value, the same as the frontend's
-- `FRONTEND_BASE_URL=http://localhost:3000`
+- `FRONTEND_BASE_URL=http://localhost:3001` (port 3001: 3000 is often taken by other local tools)
 - `TRACKER_OWNER_EMAIL`, `GOOGLE_CREDENTIALS_JSON`, `APIFY_API_TOKEN`, the LLM vars: from step 0
 - Leave `TRACKER_DEV_NO_AUTH` unset. Sign in for real so the user id matches the restored rows (see below).
 
@@ -135,6 +135,7 @@ the Neon file. Counts must match exactly.
 - `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
 - `BACKEND_AUTH_SHARED_SECRET`: the same value as the backend's
 - `BACKEND_ORIGIN=http://localhost:8000` (or leave the Next.js rewrite default)
+- `AUTH_URL=http://localhost:3001`, and start the frontend with `npm run dev -- -p 3001`
 
 **Google OAuth redirect.** Users are keyed by the Google account's `sub`
 (`auth.config.ts` → `session.user.id = token.sub`). Signing in locally with the
@@ -142,8 +143,8 @@ same Google account and the **same OAuth client** gives the same `sub`, so the
 restored resumes stay attached to you. In Google Cloud Console → Credentials →
 that OAuth client, add:
 
-- Authorized JavaScript origin: `http://localhost:3000`
-- Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
+- Authorized JavaScript origin: `http://localhost:3001`
+- Authorized redirect URI: `http://localhost:3001/api/auth/callback/google`
 
 A *different* OAuth client would also give the same `sub` for the same Google
 account. Reusing the existing one is simply fewer moving parts.
@@ -172,7 +173,7 @@ cd apps/frontend && npm install && npm run dev
 Checklist. Each item must pass before moving on:
 
 - [ ] `python scripts/which_db.py` reports the **local** database, not Neon
-- [ ] Sign in with Google at `http://localhost:3000`
+- [ ] Sign in with Google at `http://localhost:3001`
 - [ ] Dashboard lists the same resumes as production
 - [ ] Open one resume: names, emails and phone numbers read correctly (proves the PII key is right)
 - [ ] Download a PDF (proves Chromium works)
