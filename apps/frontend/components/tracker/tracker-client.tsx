@@ -253,6 +253,20 @@ export function TrackerClient() {
     };
   }, []);
 
+  // Jobs change in other tabs — most often a resume tailored from a row's "Tailor
+  // resume" link, which opens in a new tab — so returning here re-reads the current
+  // page. Skipped while a status change is in its hold window: the reload would
+  // show the old status under the user's cursor and make the pending change look lost.
+  React.useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== 'visible') return;
+      if (Object.keys(holdTimers.current).length > 0) return;
+      void load();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [load]);
+
   const commitHold = React.useCallback(
     (jobId: string, changes: Partial<TrackerJob>, said: { message: string; revert?: Partial<TrackerJob> }) => {
       delete holdTimers.current[jobId];

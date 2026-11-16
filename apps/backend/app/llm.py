@@ -626,6 +626,43 @@ def _get_reasoning_effort(provider: str, model: str) -> str | None:
     return None
 
 
+_CLAUDE_VERSION = re.compile(r"claude-(?:opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?:\D|$)")
+
+
+def claude_model_version(model: str) -> tuple[int, int] | None:
+    """(major, minor) of a Claude model id, e.g. ``anthropic/claude-opus-5-5`` -> (5, 5).
+
+    None for ids that are not current-style Claude names (including ``claude-3-5-*``).
+    """
+    match = _CLAUDE_VERSION.search(model.lower())
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2) or 0)
+
+
+def _apply_claude_request_rules(kwargs: dict[str, Any], provider: str, model: str) -> None:
+    """Make a request valid for the Claude model it targets.
+
+    - Claude 4.7 and newer reject ``temperature``/``top_p``/``top_k`` (400), and every
+      Claude model rejects them alongside thinking, so they are dropped there.
+    - Claude 5 models always think and cannot turn it off (``thinking: disabled`` is a
+      400 on Opus 5.5 and Sonnet 5.5); effort is the only control. Thinking counts
+      against ``max_tokens``, so a call that set neither ``thinking`` nor ``effort``
+      runs at ``low`` effort rather than the model default, keeping short-budget
+      calls from spending their whole budget thinking and returning no text.
+    """
+    if provider != "anthropic":
+        return
+    version = claude_model_version(model)
+    thinking_on = (kwargs.get("thinking") or {}).get("type") in ("enabled", "adaptive")
+    if thinking_on or (version is not None and version >= (4, 7)):
+        for key in ("temperature", "top_p", "top_k"):
+            kwargs.pop(key, None)
+    if version is not None and version >= (5, 0):
+        if "thinking" not in kwargs and "output_config" not in kwargs:
+            kwargs["output_config"] = {"effort": "low"}
+
+
 async def check_llm_health(
     config: LLMConfig | None = None,
     *,
@@ -662,6 +699,7 @@ async def check_llm_health(
         reasoning_effort = _get_reasoning_effort(config.provider, model_name)
         if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
+        _apply_claude_request_rules(kwargs, config.provider, model_name)
 
         response = await litellm.acompletion(**kwargs)
         content = _extract_choice_text(response.choices[0])
@@ -786,6 +824,7 @@ async def complete(
         reasoning_effort = _get_reasoning_effort(config.provider, model_name)
         if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
+        _apply_claude_request_rules(kwargs, config.provider, model_name)
 
         response = await router.acompletion(**kwargs)
 
@@ -850,6 +889,7 @@ async def _complete_direct(
         reasoning_effort = _get_reasoning_effort(effective_config.provider, model_name)
         if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
+    _apply_claude_request_rules(kwargs, effective_config.provider, model_name)
 
     try:
         response = await litellm.acompletion(**kwargs)
@@ -1097,6 +1137,7 @@ async def complete_json(
                 config.provider, model_name)
             if reasoning_effort:
                 kwargs["reasoning_effort"] = reasoning_effort
+            _apply_claude_request_rules(kwargs, config.provider, model_name)
 
             # Add JSON mode if supported
             if use_json_mode:

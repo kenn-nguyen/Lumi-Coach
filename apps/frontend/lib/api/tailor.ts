@@ -36,6 +36,8 @@ export interface StartTailorRequest {
   prompt_profile_id: PromptProfileId;
   jd_url?: string | null;
   jd_text?: string | null;
+  /** Tracker job the finished resume is linked back to (the backend writes the link). */
+  tracker_job_id?: string | null;
 }
 
 export async function startTailor(

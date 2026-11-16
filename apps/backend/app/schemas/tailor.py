@@ -19,8 +19,11 @@ class TailorRequest(BaseModel):
     prompt_profile_id: str = "profile5"
     jd_url: str | None = None
     jd_text: str | None = None
+    # Set when the run was started from a tracker job: the finished resume is
+    # linked back onto that job, even if the user has closed the page by then.
+    tracker_job_id: str | None = None
 
-    @field_validator("jd_url", "jd_text", mode="before")
+    @field_validator("jd_url", "jd_text", "tracker_job_id", mode="before")
     @classmethod
     def empty_str_to_none(cls, v: Any) -> Any:
         if isinstance(v, str) and not v.strip():

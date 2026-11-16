@@ -2,16 +2,19 @@
 
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
+import { TailorDialog } from '@/components/tailor/TailorDialog';
 import { fetchJob, type TrackerJob, type TrackerJobDetail } from '@/lib/api/tracker';
+import { LanguageProvider } from '@/lib/context/language-context';
+import { StatusCacheProvider } from '@/lib/context/status-cache';
+import {
+  fetchMasterResumeId,
+  linkIdsOf,
+  linkedResumeIdOf,
+  tailorPrefillFor,
+} from '@/lib/tracker-tailor';
 
 interface JobWorkAreaProps {
   job: TrackerJob;
-  onPatch: (
-    jobId: string,
-    changes: Partial<TrackerJob>,
-    said?: { message: string; revert?: Partial<TrackerJob> },
-  ) => void;
   onSetDead: (jobId: string, linkId: string, dead: boolean) => void;
 }
 
@@ -27,14 +30,33 @@ const LABEL = 'font-mono text-[10px] uppercase tracking-[0.14em] text-muted-fore
  * screen together, each holding its own draft of one value, and whichever lost
  * focus last silently overwrote the other.
  */
-export function JobWorkArea({
-  job,
-  onPatch,
-  onSetDead,
-}: JobWorkAreaProps) {
+export function JobWorkArea({ job, onSetDead }: JobWorkAreaProps) {
   const [detail, setDetail] = React.useState<TrackerJobDetail | null>(null);
   const [loaded, setLoaded] = React.useState(false);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  // Tailoring. The backend links the finished resume to this job; the id is also
+  // kept here so a run that finishes with the dialog open shows without a reload.
+  const [masterResumeId, setMasterResumeId] = React.useState<string | null>(null);
+  const [tailorOpen, setTailorOpen] = React.useState(false);
+  const [tailorError, setTailorError] = React.useState<string | null>(null);
+  const [justLinkedId, setJustLinkedId] = React.useState<string | null>(null);
+  const linkedResumeId = justLinkedId ?? linkedResumeIdOf(job.resume_file);
+
+  const openTailor = async () => {
+    setTailorError(null);
+    try {
+      const id = masterResumeId ?? (await fetchMasterResumeId());
+      if (!id) {
+        setTailorError('Upload a master resume on the dashboard first.');
+        return;
+      }
+      setMasterResumeId(id);
+      setTailorOpen(true);
+    } catch {
+      setTailorError('Could not load your master resume. Try again.');
+    }
+  };
 
   // The description is only fetched when a row is opened, which is what keeps the
   // list query small.
@@ -58,7 +80,12 @@ export function JobWorkArea({
     };
   }, [job.job_id]);
 
-  const linkIds = job.merged_job_ids?.length ? job.merged_job_ids : [job.job_id];
+  const tailorPrefill = React.useMemo(
+    () => tailorPrefillFor(job, detail?.jd_text ?? null, detail?.jd_truncated ?? false),
+    [job, detail]
+  );
+
+  const linkIds = linkIdsOf(job);
   const deadLinks = job.dead_links ?? {};
   const allDead = linkIds.every((id) => deadLinks[id]);
 
@@ -148,42 +175,68 @@ export function JobWorkArea({
 
         <section>
           <h4 className={LABEL}>Tailored resume</h4>
-          {job.resume_file ? (
+          {/* The resume opens in a new tab so the tracker keeps its filters and scroll position. */}
+          {linkedResumeId ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold text-success">✓ {job.resume_file}</span>
+              <a
+                href={`/resumes/${linkedResumeId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-success hover:underline"
+              >
+                ✓ View resume →
+              </a>
               <button
                 type="button"
-                className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-border"
-                onClick={() => onPatch(job.job_id, { resume_file: '' })}
+                onClick={openTailor}
+                disabled={!loaded}
+                className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
               >
-                Build again
+                Tailor again
               </button>
             </div>
           ) : (
             <div className="mt-2">
-              <span className="text-sm text-muted-foreground">Not built yet</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-2"
-                onClick={() =>
-                  onPatch(job.job_id, {
-                    resume_file: `${(job.company ?? 'role').replace(/\W+/g, '')}-PM.pdf`,
-                  })
-                }
+              {job.resume_file && (
+                // A filename recorded by hand before resumes were linked.
+                <p className="mb-2 text-sm text-muted-foreground">Noted: {job.resume_file}</p>
+              )}
+              <button
+                type="button"
+                onClick={openTailor}
+                disabled={!loaded}
+                className="inline-flex rounded border border-primary px-3 py-1 text-sm font-semibold text-primary hover:bg-primary hover:text-white disabled:opacity-50"
               >
-                Built with the extension
-              </Button>
+                Tailor resume →
+              </button>
               <p className="mt-2 text-xs text-muted-foreground">
-                Open a working link, then run the Lumi extension on that page.
+                Uses the saved description, or the newest working link if it was dropped or cut
+                short.
               </p>
             </div>
+          )}
+          {tailorError && <p className="mt-2 text-xs text-destructive">{tailorError}</p>}
+          {masterResumeId && tailorOpen && (
+            // The tracker page sits outside the app shell, because the shell renders
+            // nothing when signed out and the tracker can run signed out with the dev
+            // bypass. So the dialog brings the two contexts it reads (system status,
+            // and the language for its labels) rather than the page taking the shell.
+            <StatusCacheProvider>
+              <LanguageProvider>
+                <TailorDialog
+                  resumeId={masterResumeId}
+                  isOpen={tailorOpen}
+                  onClose={() => setTailorOpen(false)}
+                  prefill={tailorPrefill}
+                  onCompleted={setJustLinkedId}
+                />
+              </LanguageProvider>
+            </StatusCacheProvider>
           )}
           {job.referral_contact && (
             <p className="mt-2 text-xs text-warning">Referral: {job.referral_contact}</p>
           )}
         </section>
-
       </div>
 
       <div className="col-span-full border-t border-border pt-2 font-mono text-[10.5px] text-muted-foreground">

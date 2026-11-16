@@ -56,7 +56,9 @@ _TAILOR_STAGES = ["prompt1", "prompt2", "prompt3"]
 
 def _provider_has_key(provider: str, user_id: str | None, default_config: LLMConfig) -> bool:
     """Return True if any key source can supply a key for this provider."""
-    if default_config.provider == provider and default_config.api_key:
+    # Vertex has no API key: it authenticates as the server's Google account, so a
+    # project is what makes it usable. For key-based providers this is the key check.
+    if default_config.provider == provider and llm.is_llm_config_configured(default_config):
         return True
     if user_id:
         try:
@@ -111,12 +113,60 @@ def _preflight_check_stage_keys(user_id: str | None, default_config: LLMConfig) 
     )
 
 
+#: Claude reasoning effort per stage. Prompt 1 only scans the JD, so it thinks
+#: little; Prompt 2 weighs the hiring manager's value function and ranks proof, which
+#: is where depth pays off; Prompt 3 executes Prompt 2's brief. Claude 5 models cannot
+#: turn thinking off, so "low" is the floor rather than "none". Prompt 2 runs at
+#: "medium": "high" took ~5 minutes and ~24k thinking tokens on Opus 5.5.
+CLAUDE_STAGE_EFFORT = {"prompt1": "low", "prompt2": "medium", "prompt3": "low"}
+#: Thinking counts against max_tokens, and only generated tokens are billed. Opus 5.5
+#: thought ~29k tokens on Prompt 2 at high effort before writing its ~10k-token
+#: brief, so 32k cut the brief off; Prompt 2 keeps 64k of headroom.
+CLAUDE_STAGE_MAX_TOKENS = {"prompt1": 32000, "prompt2": 64000, "prompt3": 32000}
+#: Prompt 2 runs for minutes (~5 measured at high; 3-7 and once 17 on the web),
+#: well past the 120 s completion default.
+CLAUDE_STAGE_TIMEOUT_S = {"prompt1": 600, "prompt2": 900, "prompt3": 600}
+
+
+def _with_claude_stage_defaults(stage: str, config: LLMConfig, kwargs: dict) -> dict:
+    """Add the per-stage thinking settings for Claude, unless the stage config set its own.
+
+    Applies to Claude 4.6 and newer (the models with adaptive thinking and effort).
+    Anything the user's stage config sets wins, including its own max_tokens.
+    """
+    if config.provider != "anthropic":
+        return kwargs
+    version = llm.claude_model_version(config.model)
+    effort = CLAUDE_STAGE_EFFORT.get(stage)
+    if version is None or version < (4, 6) or effort is None:
+        return kwargs
+    if any(key in kwargs for key in ("thinking", "output_config", "reasoning_effort")):
+        return kwargs
+    defaults = {
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": effort},
+        "max_tokens": CLAUDE_STAGE_MAX_TOKENS[stage],
+        "timeout": CLAUDE_STAGE_TIMEOUT_S[stage],
+    }
+    return {**defaults, **kwargs}
+
+
 def _resolve_stage_llm_config(
     stage: str,
     default_config: LLMConfig,
     user_id: str | None = None,
 ) -> tuple[LLMConfig, dict]:
-    """Return (llm_config, extra_kwargs) for a pipeline stage.
+    """Return (llm_config, extra_kwargs) for a pipeline stage, with Claude stage defaults."""
+    config, kwargs = _resolve_configured_stage(stage, default_config, user_id)
+    return config, _with_claude_stage_defaults(stage, config, kwargs)
+
+
+def _resolve_configured_stage(
+    stage: str,
+    default_config: LLMConfig,
+    user_id: str | None = None,
+) -> tuple[LLMConfig, dict]:
+    """Return (llm_config, extra_kwargs) for a pipeline stage from the user's stage config.
 
     Extension schema: resolves the stage-specific provider, model, and API key.
     Legacy schema: applies model/kwargs override within the same provider.
@@ -320,6 +370,22 @@ def _extract_p3_payload(raw: str) -> tuple[dict, dict | None]:
     return parsed, None
 
 
+#: Output budget for each stage call. ``llm.complete`` defaults to 4096, which Claude
+#: overruns on these prompts: prompt 1 is cut off mid-JSON, and once it is complete
+#: prompt 2 runs past 8192 too. Only generated tokens are billed, so the budget is
+#: as large as each provider accepts: 16384 where the models allow far more, 8192
+#: elsewhere (DeepSeek's chat model rejects anything above). A stage config's
+#: ``maxTokens`` still takes precedence.
+STAGE_MAX_TOKENS = 8192
+LARGE_STAGE_MAX_TOKENS = 16384
+_LARGE_OUTPUT_PROVIDERS = {"anthropic", "gemini", "vertex_ai"}
+
+
+def stage_max_tokens(provider: str) -> int:
+    """Output budget for one tailor stage call on ``provider``."""
+    return LARGE_STAGE_MAX_TOKENS if provider in _LARGE_OUTPUT_PROVIDERS else STAGE_MAX_TOKENS
+
+
 async def _call_llm_with_repair(
     prompt: str,
     system_prompt: str,
@@ -337,6 +403,7 @@ async def _call_llm_with_repair(
         prompt,
         system_prompt=system_prompt,
         config=llm_config,
+        max_tokens=stage_max_tokens(llm_config.provider),
         model_override=model_override,
         stage_kwargs=dict(stage_kwargs) if stage_kwargs else None,
     )
@@ -356,8 +423,12 @@ async def _call_llm_with_repair(
         f"Previous response:\n{raw}"
     )
     # Repair call uses no special stage params — just need valid JSON output
+    # The repair echoes the whole previous response back, so it needs the same budget.
     repaired_raw = await llm.complete(
-        repair_prompt, system_prompt=system_prompt, config=llm_config
+        repair_prompt,
+        system_prompt=system_prompt,
+        config=llm_config,
+        max_tokens=stage_max_tokens(llm_config.provider),
     )
     try:
         parsed = _extract_json_from_text(repaired_raw)
@@ -376,9 +447,13 @@ async def run_tailor_pipeline(
     prompt_profile_id: str,
     llm_config: LLMConfig,
     apify_api_key: str | None,
+    tracker_link: tuple[str, str] | None = None,
 ) -> None:
     """
     Background task: runs the full P1 → P2 → P3 tailor pipeline.
+
+    ``tracker_link`` is ``(tracker_user_id, tracker_job_id)`` when the run was
+    started from a tracker job; the finished resume is recorded on that job.
 
     - Profile4 ("one-shot"): skips P1 and P2, runs only P3.
     - Profile3 ("lean"): P1/P2 return plain text (not JSON).
@@ -726,6 +801,21 @@ async def run_tailor_pipeline(
                 )
 
         _set_completed(resume_id, user_id, tailored_resume_id, warning=fallback_warning)
+
+        if tracker_link:
+            # The resume is already saved; a failed link only costs the tracker's
+            # "View resume" shortcut, so it must not turn the run into a failure.
+            try:
+                from app.tracker.tailor_link import link_tailored_resume
+
+                link_tailored_resume(*tracker_link, tailored_resume_id)
+            except Exception as link_exc:
+                logger.warning(
+                    "Failed to link resume %s to tracker job %s: %s",
+                    tailored_resume_id,
+                    tracker_link[1],
+                    link_exc,
+                )
 
         # Record the web tailor run in extension_runs (unified log — same table as extension).
         _total_ms = int((datetime.now(timezone.utc) - run_started_at).total_seconds() * 1000)
