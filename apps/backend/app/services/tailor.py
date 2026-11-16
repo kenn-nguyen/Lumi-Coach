@@ -56,7 +56,9 @@ _TAILOR_STAGES = ["prompt1", "prompt2", "prompt3"]
 
 def _provider_has_key(provider: str, user_id: str | None, default_config: LLMConfig) -> bool:
     """Return True if any key source can supply a key for this provider."""
-    if default_config.provider == provider and default_config.api_key:
+    # Vertex has no API key: it authenticates as the server's Google account, so a
+    # project is what makes it usable. For key-based providers this is the key check.
+    if default_config.provider == provider and llm.is_llm_config_configured(default_config):
         return True
     if user_id:
         try:
