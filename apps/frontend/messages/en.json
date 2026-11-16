@@ -644,11 +644,6 @@
     "title": "Tailor Resume",
     "subtitle": "Optimize your resume for a specific job",
     "heroTitle": "Tailor Your Resume",
-    "fromTracker": {
-      "for": "For {job}",
-      "noDescription": "The tracker has no saved description for this job. Paste it from the job page.",
-      "loadFailed": "Couldn't load the tracker job. Paste the description to continue."
-    },
     "selectResume": "Select Resume",
     "pasteJobDescription": "Paste Job Description",
     "pasteJobDescriptionBelow": "Paste Job Description Below",

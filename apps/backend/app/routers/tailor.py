@@ -60,6 +60,18 @@ async def start_tailor(
             detail="A tailor job is already running. Wait for it to finish.",
         )
 
+    # ── Tracker job to link the result to (optional) ───────────────────────
+    # Checked up front so a bad id fails now, not minutes later in the background.
+    tracker_user_id: str | None = None
+    if request.tracker_job_id:
+        from app.tracker.tailor_link import tracker_job_exists, tracker_user_id_for
+
+        tracker_user_id = tracker_user_id_for(current_user.email)
+        if tracker_user_id is None:
+            raise HTTPException(status_code=403, detail="This account has no tracker access.")
+        if not tracker_job_exists(tracker_user_id, request.tracker_job_id):
+            raise HTTPException(status_code=404, detail="Tracker job not found.")
+
     # ── Seed tailor_job state ──────────────────────────────────────────────
     job_id = str(uuid4())
     tailor_job = {
@@ -71,6 +83,7 @@ async def start_tailor(
         "completed_at": None,
         "tailored_resume_id": None,
         "error_message": None,
+        "tracker_job_id": request.tracker_job_id,
     }
     db.update_resume(resume_id, {"tailor_job": tailor_job}, user_id)
 
@@ -89,6 +102,7 @@ async def start_tailor(
         prompt_profile_id=request.prompt_profile_id,
         llm_config=llm_config,
         apify_api_key=load_config().get("apify_api_token") or None,
+        tracker_link=(tracker_user_id, request.tracker_job_id) if tracker_user_id else None,
     )
 
     logger.info("Tailor job %s queued for resume %s (user %s)", job_id, resume_id, user_id)

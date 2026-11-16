@@ -376,9 +376,13 @@ async def run_tailor_pipeline(
     prompt_profile_id: str,
     llm_config: LLMConfig,
     apify_api_key: str | None,
+    tracker_link: tuple[str, str] | None = None,
 ) -> None:
     """
     Background task: runs the full P1 → P2 → P3 tailor pipeline.
+
+    ``tracker_link`` is ``(tracker_user_id, tracker_job_id)`` when the run was
+    started from a tracker job; the finished resume is recorded on that job.
 
     - Profile4 ("one-shot"): skips P1 and P2, runs only P3.
     - Profile3 ("lean"): P1/P2 return plain text (not JSON).
@@ -726,6 +730,21 @@ async def run_tailor_pipeline(
                 )
 
         _set_completed(resume_id, user_id, tailored_resume_id, warning=fallback_warning)
+
+        if tracker_link:
+            # The resume is already saved; a failed link only costs the tracker's
+            # "View resume" shortcut, so it must not turn the run into a failure.
+            try:
+                from app.tracker.tailor_link import link_tailored_resume
+
+                link_tailored_resume(*tracker_link, tailored_resume_id)
+            except Exception as link_exc:
+                logger.warning(
+                    "Failed to link resume %s to tracker job %s: %s",
+                    tailored_resume_id,
+                    tracker_link[1],
+                    link_exc,
+                )
 
         # Record the web tailor run in extension_runs (unified log — same table as extension).
         _total_ms = int((datetime.now(timezone.utc) - run_started_at).total_seconds() * 1000)

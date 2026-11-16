@@ -39,6 +39,8 @@ export interface TrackerJobDetail extends TrackerJob {
   why: string | null;
   us_visa_reason: string | null;
   jd_text: string | null;
+  /** True when the stored description was cut at the storage cap (very long postings). */
+  jd_truncated?: boolean;
   imported_at: string | null;
   scored_at: string | null;
 }

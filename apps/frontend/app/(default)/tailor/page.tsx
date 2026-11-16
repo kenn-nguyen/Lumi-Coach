@@ -22,12 +22,6 @@ import { Loader2, ArrowLeft, AlertTriangle, Settings } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 import { DiffPreviewModal } from '@/components/tailor/diff-preview-modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  linkTailoredResume,
-  loadTrackerJobForTailor,
-  trackerJobIdFromSearch,
-  type TrackerJobForTailor,
-} from '@/lib/tracker-tailor';
 
 export default function TailorPage() {
   const { status: authStatus } = useSession();
@@ -41,9 +35,6 @@ export default function TailorPage() {
   const [promptLoading, setPromptLoading] = useState(false);
   const hasUserSelectedPrompt = useRef(false);
   const missingDiffConfirmInFlight = useRef(false);
-  // Set when the page was opened from a tracker job (`?trackerJob=`).
-  const [trackerJob, setTrackerJob] = useState<TrackerJobForTailor | null>(null);
-  const [trackerJobError, setTrackerJobError] = useState(false);
 
   // Diff preview modal state
   const [showDiffModal, setShowDiffModal] = useState(false);
@@ -99,30 +90,6 @@ export default function TailorPage() {
       setMasterResumeId(storedId);
     }
   }, [authStatus, router]);
-
-  // Read from window.location rather than useSearchParams, which would need a
-  // Suspense boundary around the whole page.
-  useEffect(() => {
-    if (authStatus !== 'authenticated') return;
-    const jobId = trackerJobIdFromSearch(window.location.search);
-    if (!jobId) return;
-    let cancelled = false;
-
-    loadTrackerJobForTailor(jobId)
-      .then((job) => {
-        if (cancelled) return;
-        setTrackerJob(job);
-        // Never overwrite text the user has already typed or pasted.
-        if (job.jdText) setJobDescription((current) => current || job.jdText || '');
-      })
-      .catch((err) => {
-        console.error('Failed to load tracker job', err);
-        if (!cancelled) setTrackerJobError(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [authStatus]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
@@ -192,15 +159,6 @@ export default function TailorPage() {
     setImprovedData(confirmed);
 
     const newResumeId = confirmed?.data?.resume_id;
-    if (newResumeId && trackerJob) {
-      // The resume is already saved; a failed link only costs the tracker shortcut,
-      // so it must not block the user from seeing their resume.
-      try {
-        await linkTailoredResume(trackerJob.jobId, newResumeId);
-      } catch (err) {
-        console.error('Failed to link resume to tracker job', err);
-      }
-    }
     if (newResumeId) {
       router.push(`/resumes/${newResumeId}`);
     } else {
@@ -419,23 +377,6 @@ export default function TailorPage() {
           <h1 className="font-serif text-4xl font-bold tracking-[-0.05em] mb-2">
             {t('tailor.heroTitle')}
           </h1>
-          {trackerJob && (
-            <p className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-              {t('tailor.fromTracker.for', {
-                job: [trackerJob.company, trackerJob.title].filter(Boolean).join(' · '),
-              })}
-            </p>
-          )}
-          {trackerJob && !trackerJob.jdText && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t('tailor.fromTracker.noDescription')}
-            </p>
-          )}
-          {trackerJobError && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t('tailor.fromTracker.loadFailed')}
-            </p>
-          )}
         </div>
 
         {isUsingFreeMode && (

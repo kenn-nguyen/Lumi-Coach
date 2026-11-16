@@ -29,6 +29,7 @@ from .models import (
     TrackerRunHandled,
     TrackerSetting,
 )
+from .normalize import JD_LIMIT
 from .ranking import build_sort_key
 
 #: Columns the list view renders. Anything not here is a wasted byte per row.
@@ -130,6 +131,10 @@ def get_job(session: Session, *, user_id: str, job_id: str) -> dict[str, Any] | 
     doc = session.get(TrackerJobDoc, job_id)
     data = {c.name: getattr(job, c.name) for c in TrackerJob.__table__.columns}
     data["jd_text"] = doc.jd_text if doc else None
+    # Descriptions are stored cut at JD_LIMIT (raising it would change the duplicate
+    # fingerprints of long postings), so say when one was cut: tailoring then fetches
+    # the full posting instead of working from the shortened copy.
+    data["jd_truncated"] = bool(doc and doc.jd_text and len(doc.jd_text) >= JD_LIMIT)
     data["listed_at"] = doc.listed_at if doc else None
     return data
 

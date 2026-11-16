@@ -27,15 +27,33 @@ import { useBackgroundTailor } from '@/lib/context/background-tailor';
 // Poll every 3 seconds while running
 const POLL_INTERVAL_MS = 3000;
 
+/** Starts the dialog filled in for one tracker job; the backend links the result to it. */
+export interface TailorJobPrefill {
+  trackerJobId: string;
+  /** "Company · Title", shown so the user knows which job this run is for. */
+  label: string;
+  jdText: string | null;
+  jdUrl: string | null;
+}
+
 interface TailorDialogProps {
   resumeId: string;
   isOpen: boolean;
   onClose: () => void;
+  prefill?: TailorJobPrefill;
+  /** Called when a run finishes while the dialog is still open. */
+  onCompleted?: (tailoredResumeId: string) => void;
 }
 
 type Phase = 'input' | 'running' | 'done' | 'error';
 
-export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
+export function TailorDialog({
+  resumeId,
+  isOpen,
+  onClose,
+  prefill,
+  onCompleted,
+}: TailorDialogProps) {
   const router = useRouter();
   const { status: systemStatus } = useStatusCache();
   const { job: bgJob, setJob } = useBackgroundTailor();
@@ -82,6 +100,7 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
           if (status.status === 'completed') {
             stopPolling();
             setPhase('done');
+            if (status.tailored_resume_id) onCompleted?.(status.tailored_resume_id);
           } else if (status.status === 'failed') {
             stopPolling();
             setErrorMsg(status.error_message || 'Pipeline failed.');
@@ -95,8 +114,14 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
         }
       }, POLL_INTERVAL_MS);
     },
-    [stopPolling]
+    [stopPolling, onCompleted]
   );
+
+  // Inputs as the dialog opens: blank, or the tracker job's text / link.
+  const resetInputs = useCallback(() => {
+    setJdText(prefill?.jdText ?? '');
+    setJdUrl(prefill?.jdUrl ?? '');
+  }, [prefill]);
 
   // Reset on close. On open, if a tailor job is already running for this resume,
   // reconnect to it and show progress instead of the input form — one job at a
@@ -117,6 +142,8 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
     if (bgJob?.resumeId === resumeId) {
       setPhase('running');
       startPolling(resumeId);
+    } else {
+      resetInputs();
     }
     fetchStageReadiness()
       .then((r) => {
@@ -145,6 +172,7 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
         prompt_profile_id: profileId,
         jd_url: hasUrl ? jdUrl.trim() : null,
         jd_text: hasText ? jdText.trim() : null,
+        tracker_job_id: prefill?.trackerJobId ?? null,
       });
 
       setPhase('running');
@@ -162,7 +190,7 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
     } finally {
       setIsSubmitting(false);
     }
-  }, [jdUrl, jdText, profileId, resumeId, startPolling, systemStatus]);
+  }, [jdUrl, jdText, profileId, resumeId, startPolling, systemStatus, prefill]);
 
   const handleCancel = useCallback(async () => {
     stopPolling();
@@ -204,6 +232,11 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
             Paste a LinkedIn job URL or the full job description text, then let the AI write a
             tailored version of your master resume.
           </DialogDescription>
+          {prefill?.label && (
+            <p className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              For {prefill.label}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="px-6 pb-6">
@@ -452,8 +485,7 @@ export function TailorDialog({ resumeId, isOpen, onClose }: TailorDialogProps) {
                     setPhase('input');
                     setErrorMsg('');
                     setStatusData(null);
-                    setJdUrl('');
-                    setJdText('');
+                    resetInputs();
                   }}
                 >
                   Try Again
